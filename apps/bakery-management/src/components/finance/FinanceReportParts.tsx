@@ -529,40 +529,47 @@ export function ReconciliationTable({ rec }: { rec: FinanceReconciliation }) {
 // ---------------------------------------------------------------------------
 
 /**
- * A4-Druck der Berichte. Die App-Hülle blendet `admin/layout.tsx` schon aus,
- * Seitenaktionen `PageHeader`; hier kommen schwarze Schrift, schmale Zellen,
- * keine Bedienelemente und - wie bei Backzettel und Hilfe - keine Animation
- * (sonst druckte ein gerade eingeblendeter Abschnitt blass). Hell rendert
- * `Providers.tsx` beim Drucken ohnehin (`useIsPrinting`).
+ * A4-Druck der Berichte. Gedruckt wird die eigene Druckfassung
+ * (`FinancePrint.tsx`, Klasse `fin-print-doc`); sie steht immer im DOM und
+ * ist am Bildschirm ausgeblendet, die Bildschirmfassung (`fin-screen`)
+ * umgekehrt im Druck. Erst in `beforeprint` eingehängt, hängte Chrome eine
+ * leere Seite an (Seitenzahl aus dem Stand davor). Die Regeln für
+ * `fin-screen` greifen nur noch, wenn eine Seite die Bildschirmfassung ohne
+ * Druckfassung zeigt.
  */
 export function FinanceReportPrintStyles() {
+  const screen = '.fin-report .fin-screen'
   return (
     <GlobalStyles
       styles={{
         '@page': { size: 'A4', margin: '14mm' },
+        '@media screen': {
+          '.fin-print-doc': { display: 'none !important' },
+        },
         '@media print': {
+          '.fin-report .fin-screen': { display: 'none !important' },
           '.fin-report, .fin-report *': {
             animation: 'none !important',
             transition: 'none !important',
             opacity: '1 !important',
-            color: '#000 !important',
             boxShadow: 'none !important',
           },
-          '.fin-report .MuiPaper-root': {
+          [`${screen}, ${screen} *`]: { color: '#000 !important' },
+          [`${screen} .MuiPaper-root`]: {
             border: '1px solid #bbb',
             backgroundColor: '#fff !important',
             backgroundImage: 'none !important',
           },
-          '.fin-report .MuiTableCell-root': {
+          [`${screen} .MuiTableCell-root`]: {
             padding: '3px 6px !important',
             fontSize: '9.5pt',
           },
-          '.fin-report thead': { display: 'table-header-group' },
-          '.fin-report tr, .fin-report li': { breakInside: 'avoid' },
-          '.fin-report [data-print="hide"], .fin-report .fin-no-print': {
+          [`${screen} thead`]: { display: 'table-header-group' },
+          [`${screen} tr, ${screen} li`]: { breakInside: 'avoid' },
+          [`${screen} [data-print="hide"], ${screen} .fin-no-print`]: {
             display: 'none !important',
           },
-          '.fin-report .fin-print-only': { display: 'block !important' },
+          [`${screen} .fin-print-only`]: { display: 'block !important' },
           // Diagramme: feste Druckbreite (FinanceCharts.tsx), schrumpfen aber
           // mit, falls die Spalte schmaler ist (das SVG hat eine viewBox).
           '.fin-report .fin-chart-print .recharts-wrapper': {
@@ -574,14 +581,14 @@ export function FinanceReportPrintStyles() {
             height: 'auto',
           },
           '.fin-report .recharts-tooltip-wrapper': { display: 'none' },
-          '.fin-report .fin-chart, .fin-report .fin-keep': {
+          [`${screen} .fin-chart, ${screen} .fin-keep`]: {
             breakInside: 'avoid',
           },
           // Schrift in farbigen Flächen bleibt weiß bzw. schwarz.
-          '.fin-report [data-ink="light"], .fin-report [data-ink="light"] *': {
+          [`${screen} [data-ink="light"], ${screen} [data-ink="light"] *`]: {
             color: '#fff !important',
           },
-          '.fin-report [data-ink="dark"], .fin-report [data-ink="dark"] *': {
+          [`${screen} [data-ink="dark"], ${screen} [data-ink="dark"] *`]: {
             color: '#0b0b0b !important',
           },
           '.fin-report a': { textDecoration: 'none' },

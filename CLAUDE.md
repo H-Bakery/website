@@ -484,17 +484,32 @@ Aus derselben bereinigten `finance-summary.json` plus den Monatssummen der Kasse
   Hochrechnung und aufgelaufenes Ergebnis liefert der Server (`projection.basis[]` mit
   `estimate_*`/`cumulative_result`, `months[].cumulative_result`). Geschätzte Anteile sind
   schraffiert, offene Monate gestrichelt mit `*` an der Achse. Farben: Einnahmen blau, Ausgaben
-  orange (wie `/admin/finance`), Ergebnis in Schriftfarbe. **Druck:** beim Drucken rendern die
-  Recharts-Diagramme mit fester Breite (`PRINT_CHART_WIDTH`) statt `ResponsiveContainer`;
-  Abdunkeln über `fill-opacity` (die Druckstile setzen `opacity: 1`), Flächen-Swatches mit
-  `print-color-adjust: exact`, Abschnitte nur mit Diagramm in `.fin-keep` (kein Umbruch). Mit
-  `page.pdf()` prüfen. Klick auf einen Monat öffnet die Monatsanalyse - nur mit Maus, am
-  Touchscreen zeigt ein Tipp die Zahlen.
+  orange (wie `/admin/finance`), Ergebnis in Schriftfarbe. Klick auf einen Monat öffnet die
+  Monatsanalyse - nur mit Maus, am Touchscreen zeigt ein Tipp die Zahlen.
+- **Druck ist ein eigenes Dokument**, nicht die Bildschirmseite: `JahresabschlussPrint.tsx` /
+  `MonatsanalysePrint.tsx` aus den Bausteinen in `components/finance/FinancePrint.tsx` (Kopf mit
+  Stempel „Vorläufig“/„Unvollständig“, Kennzahlenleiste, `PrintSection`, `PrintCategoryRows` mit
+  eingerückten Unterkategorien, `PrintBars`, `PrintSplit`, `CellBar`, nummerierte Anmerkungen).
+  Seite 1 ist die Übersicht (Kennzahlen, Diagramme, Herkunft | Posten), ab Seite 2 nummerierte
+  Tabellen (`fp-page-break`). Fußzeile „Bäckerei Heusser · … · Seite X von Y“ über `@page`-Randboxen
+  (Chrome ≥ 131; Safari druckt ohne) in einem rohen `<style>` - Emotion kann keine At-Regeln in
+  `@page` schachteln; jsdom kann sie nicht parsen, `test-setup.ts` verschluckt genau diese Meldung.
+  Prüfen mit `page.pdf()` (Seitenzahl = Fußzeile) und dem Bild jeder Seite, nie mit einem
+  Screenshot; echte Zahlen nur lokal. Drei Dinge nicht zurückbauen:
+  - **Das Druckdokument ist immer im DOM**, auf dem Bildschirm per `@media screen` versteckt,
+    `.fin-screen` im Druck (`FinanceReportPrintStyles`). Erst in `beforeprint` montiert, nahm
+    Chrome die Seitenzahl vom alten Stand und hängte eine **leere Seite** an (Fußzeile „von 4“,
+    PDF 5 Seiten).
+  - **Druck-Diagramme mit `fixed`** (`ChartFrame`: immer `PRINT_CHART_WIDTH` = 680 px bzw.
+    `PRINT_HALF_WIDTH`), damit sich beim Drucken keine Höhe mehr ändert. Abdunkeln über
+    `fill-opacity`, Swatches mit `print-color-adjust: exact`.
+  - **Breiten in `sx` als Pixel-String** (`px()`, `minWidth: '1px'`): MUI liest Zahlen ≤ 1 als
+    Prozent - `minWidth: 1` wurde 100 %, alle Anteilsbalken waren gleich lang.
 
 Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/financeReport` (Core
 und Routen, Fixture `tests/fixtures/finance-report.synthetic.js`) und in der Management-App
 `admin/finance/{jahr,monat}/**/*.spec.tsx`, `src/lib/financeCharts.spec.ts`,
-`components/finance/FinanceCharts.spec.tsx` (Fixtures `src/lib/financeReportFixtures.ts`, erfunden).
+`components/finance/{FinanceCharts,FinancePrint}.spec.tsx` (Fixtures `src/lib/financeReportFixtures.ts`, erfunden).
 
 ## Tagesziel-Ampel (`/admin/finance/tagesziel`, TASK-039)
 

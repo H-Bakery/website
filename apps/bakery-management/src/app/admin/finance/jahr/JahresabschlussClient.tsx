@@ -78,6 +78,7 @@ import {
   StatementSumRow,
   type StatementRowOptions,
 } from '../../../../components/finance/FinanceReportParts'
+import { JahresabschlussPrint } from './JahresabschlussPrint'
 
 const TITLE = 'Jahresabschluss'
 const SUBTITLE =
@@ -670,135 +671,147 @@ export default function JahresabschlussClient({
   return (
     <Box className="fin-report" data-testid="jahresabschluss">
       <FinanceReportPrintStyles />
-      <PageLayout
-        title={`${TITLE} ${report.year}`}
-        subtitle={SUBTITLE}
-        back={{ href: '/admin/finance', label: 'Finanzen' }}
-        status={
-          <Chip
-            label={yearStatusLabel(report)}
-            variant="outlined"
-            size="small"
-            data-testid="year-status"
-            data-status={report.status}
-          />
-        }
-        actions={
-          <>
-            <YearSwitcher report={report} onChange={changeYear} />
-            <Button
+      {/* Druckfassung: am Bildschirm ausgeblendet (FinanceReportPrintStyles) */}
+      <JahresabschlussPrint
+        report={report}
+        kpis={keyFigures(report).map(({ label, value, hint }) => ({
+          label,
+          value,
+          hint,
+        }))}
+        flowCaption={yearFlowCaption(report)}
+      />
+      <Box className="fin-screen">
+        <PageLayout
+          title={`${TITLE} ${report.year}`}
+          subtitle={SUBTITLE}
+          back={{ href: '/admin/finance', label: 'Finanzen' }}
+          status={
+            <Chip
+              label={yearStatusLabel(report)}
               variant="outlined"
-              startIcon={<PrintIcon />}
-              onClick={() => window.print()}
-            >
-              Drucken
-            </Button>
-          </>
-        }
-      >
-        <PrintOnlyLine data-testid="print-head">
-          Bäckerei Heusser · {yearStatusLabel(report)}
-          {report.coverage.data_from && report.coverage.data_to
-            ? ` · Bankdaten ${formatReportDate(
-                report.coverage.data_from
-              )} – ${formatReportDate(report.coverage.data_to)}`
-            : ''}
-        </PrintOnlyLine>
-
-        <Box>
-          <KeyFigures
-            aria-label={`Kennzahlen ${report.year}`}
-            items={keyFigures(report)}
-          />
-          {report.status === 'provisional' && (
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{ mt: 1.5 }}
-              data-testid="projection-method"
-            >
-              {report.projection ? (
-                <>
-                  <strong>Hochrechnung:</strong> Einnahmen{' '}
-                  {formatEuro(report.projection.income)}, Ausgaben{' '}
-                  {formatEuro(report.projection.expense)}.{' '}
-                  {report.projection.method}
-                </>
-              ) : (
-                <>
-                  <strong>Keine Hochrechnung:</strong>{' '}
-                  {report.projection_reason ?? 'Zu wenige Daten.'}
-                </>
-              )}
-            </Typography>
-          )}
-        </Box>
-
-        <YearCharts report={report} />
-
-        <PageSection
-          title="Einnahmen und Ausgaben"
-          description="Was über das Geschäftskonto ging, nach Buchungsdatum. Pfeil neben einem Posten: aufschlüsseln."
-          disablePadding
-        >
-          <StatementTable report={report} />
-        </PageSection>
-
-        <PageSection
-          title="Monat für Monat"
-          description="Ein Tipp auf den Monat öffnet die Monatsanalyse."
-          disablePadding
-        >
-          <MonthsTable report={report} />
-        </PageSection>
-
-        <PageSection
-          title="Kasse und Konto"
-          description={
-            report.reconciliation?.from && report.reconciliation.to
-              ? `Was die Kasse eingenommen hat und was davon aufs Konto kam – ${
-                  report.reconciliation.months
-                } volle Monat${
-                  report.reconciliation.months === 1 ? '' : 'e'
-                } (${formatMonth(report.reconciliation.from)} bis ${formatMonth(
-                  report.reconciliation.to
-                )}).`
-              : 'Was die Kasse eingenommen hat und was davon aufs Konto kam.'
+              size="small"
+              data-testid="year-status"
+              data-status={report.status}
+            />
+          }
+          actions={
+            <>
+              <YearSwitcher report={report} onChange={changeYear} />
+              <Button
+                variant="outlined"
+                startIcon={<PrintIcon />}
+                onClick={() => window.print()}
+              >
+                Drucken
+              </Button>
+            </>
           }
         >
-          {report.reconciliation ? (
-            <>
-              <ReconciliationTable rec={report.reconciliation} />
+          <PrintOnlyLine data-testid="print-head">
+            Bäckerei Heusser · {yearStatusLabel(report)}
+            {report.coverage.data_from && report.coverage.data_to
+              ? ` · Bankdaten ${formatReportDate(
+                  report.coverage.data_from
+                )} – ${formatReportDate(report.coverage.data_to)}`
+              : ''}
+          </PrintOnlyLine>
+
+          <Box>
+            <KeyFigures
+              aria-label={`Kennzahlen ${report.year}`}
+              items={keyFigures(report)}
+            />
+            {report.status === 'provisional' && (
               <Typography
                 variant="body2"
                 color="text.secondary"
                 sx={{ mt: 1.5 }}
+                data-testid="projection-method"
               >
-                Kassenumsatz in diesen Monaten{' '}
-                {formatEuro(report.reconciliation.kasse_revenue)} an{' '}
-                {report.reconciliation.kasse_days} Öffnungstagen.
+                {report.projection ? (
+                  <>
+                    <strong>Hochrechnung:</strong> Einnahmen{' '}
+                    {formatEuro(report.projection.income)}, Ausgaben{' '}
+                    {formatEuro(report.projection.expense)}.{' '}
+                    {report.projection.method}
+                  </>
+                ) : (
+                  <>
+                    <strong>Keine Hochrechnung:</strong>{' '}
+                    {report.projection_reason ?? 'Zu wenige Daten.'}
+                  </>
+                )}
               </Typography>
-            </>
-          ) : (
-            <Typography color="text.secondary">
-              Für dieses Jahr gibt es noch keinen vollen Monat mit Bankdaten und
-              Kassenberichten – der Vergleich folgt, sobald einer abgeschlossen
-              ist.
-            </Typography>
-          )}
-        </PageSection>
+            )}
+          </Box>
 
-        <PageSection
-          title="Was dieser Abschluss nicht enthält"
-          data-testid="year-notes"
-        >
-          {report.notes.length > 0 ? (
-            <ReportNotes notes={report.notes} />
-          ) : (
-            <Typography color="text.secondary">Keine Hinweise.</Typography>
-          )}
-        </PageSection>
-      </PageLayout>
+          <YearCharts report={report} />
+
+          <PageSection
+            title="Einnahmen und Ausgaben"
+            description="Was über das Geschäftskonto ging, nach Buchungsdatum. Pfeil neben einem Posten: aufschlüsseln."
+            disablePadding
+          >
+            <StatementTable report={report} />
+          </PageSection>
+
+          <PageSection
+            title="Monat für Monat"
+            description="Ein Tipp auf den Monat öffnet die Monatsanalyse."
+            disablePadding
+          >
+            <MonthsTable report={report} />
+          </PageSection>
+
+          <PageSection
+            title="Kasse und Konto"
+            description={
+              report.reconciliation?.from && report.reconciliation.to
+                ? `Was die Kasse eingenommen hat und was davon aufs Konto kam – ${
+                    report.reconciliation.months
+                  } volle Monat${
+                    report.reconciliation.months === 1 ? '' : 'e'
+                  } (${formatMonth(
+                    report.reconciliation.from
+                  )} bis ${formatMonth(report.reconciliation.to)}).`
+                : 'Was die Kasse eingenommen hat und was davon aufs Konto kam.'
+            }
+          >
+            {report.reconciliation ? (
+              <>
+                <ReconciliationTable rec={report.reconciliation} />
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ mt: 1.5 }}
+                >
+                  Kassenumsatz in diesen Monaten{' '}
+                  {formatEuro(report.reconciliation.kasse_revenue)} an{' '}
+                  {report.reconciliation.kasse_days} Öffnungstagen.
+                </Typography>
+              </>
+            ) : (
+              <Typography color="text.secondary">
+                Für dieses Jahr gibt es noch keinen vollen Monat mit Bankdaten
+                und Kassenberichten – der Vergleich folgt, sobald einer
+                abgeschlossen ist.
+              </Typography>
+            )}
+          </PageSection>
+
+          <PageSection
+            title="Was dieser Abschluss nicht enthält"
+            data-testid="year-notes"
+          >
+            {report.notes.length > 0 ? (
+              <ReportNotes notes={report.notes} />
+            ) : (
+              <Typography color="text.secondary">Keine Hinweise.</Typography>
+            )}
+          </PageSection>
+        </PageLayout>
+      </Box>
     </Box>
   )
 }

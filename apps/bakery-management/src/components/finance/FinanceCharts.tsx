@@ -44,8 +44,12 @@ import type {
 } from '../../lib/financeCharts'
 import { formatShare } from './FinanceReportParts'
 
-/** Breite der Diagramme auf A4 (182 mm Satzspiegel minus Kartenrand). */
-export const PRINT_CHART_WIDTH = 640
+/**
+ * Breite der Diagramme auf A4: 182 mm Satzspiegel (14 mm Rand) sind bei
+ * 96 dpi knapp 688 px - die Druckfassung (`FinancePrint.tsx`) setzt sie
+ * ohne Kartenrand.
+ */
+export const PRINT_CHART_WIDTH = 680
 
 const euroAxis = new Intl.NumberFormat('de-DE', {
   style: 'currency',
@@ -109,18 +113,27 @@ export function inkOn(hex: string): '#ffffff' | '#0b0b0b' {
 function ChartFrame({
   height,
   printHeight,
+  printWidth = PRINT_CHART_WIDTH,
+  fixed = false,
   children,
 }: {
   height: number
   printHeight?: number
+  printWidth?: number
+  /**
+   * Immer in Druckgröße (Druckfassung): dann ändert sich beim Drucken an
+   * der Höhe nichts - ein Umbau während `beforeprint` ließ Chrome eine
+   * leere Seite anhängen.
+   */
+  fixed?: boolean
   children: React.ReactElement
 }) {
   const printing = useIsPrinting()
-  if (printing) {
+  if (printing || fixed) {
     return (
       <Box className="fin-chart-print" sx={{ width: '100%' }}>
         {React.cloneElement(children, {
-          width: PRINT_CHART_WIDTH,
+          width: printWidth,
           height: printHeight ?? height,
         } as Record<string, unknown>)}
       </Box>
@@ -489,9 +502,17 @@ export function MonthlyFlowChart({
   points,
   highlight,
   onSelect,
+  printWidth,
+  printHeight = 250,
+  fixed,
 }: {
   points: FlowPoint[]
   highlight?: string
+  /** Druckmaße (Vorgabe: volle Satzbreite, 250 px hoch) */
+  printWidth?: number
+  printHeight?: number
+  /** Immer in Druckgröße zeichnen (Druckfassung) */
+  fixed?: boolean
   /**
    * Klick auf einen Monat (nur mit Maus - am Touchscreen zeigt ein Tipp die
    * Zahlen, eine Navigation stünde dem im Weg). Nur Monate mit Bankdaten.
@@ -515,7 +536,12 @@ export function MonthlyFlowChart({
   const dimOthers = (p: FlowPoint) => Boolean(highlight && p.key !== highlight)
   const noDim = () => false
   return (
-    <ChartFrame height={phone ? 240 : 300} printHeight={250}>
+    <ChartFrame
+      height={phone ? 240 : 300}
+      printHeight={printHeight}
+      printWidth={printWidth}
+      fixed={fixed}
+    >
       <ComposedChart
         data={points}
         stackOffset="sign"
@@ -732,8 +758,15 @@ function CumulativeTooltip({
  */
 export function CumulativeResultChart({
   points,
+  printWidth,
+  printHeight = 190,
+  fixed,
 }: {
   points: CumulativePoint[]
+  printWidth?: number
+  printHeight?: number
+  /** Immer in Druckgröße zeichnen (Druckfassung) */
+  fixed?: boolean
 }) {
   const c = useFinanceChartColors()
   const theme = useTheme()
@@ -773,7 +806,12 @@ export function CumulativeResultChart({
     return EndLabel
   }
   return (
-    <ChartFrame height={phone ? 200 : 230} printHeight={190}>
+    <ChartFrame
+      height={phone ? 200 : 230}
+      printHeight={printHeight}
+      printWidth={printWidth}
+      fixed={fixed}
+    >
       <ComposedChart
         data={points}
         margin={{ top: 24, right: 16, bottom: 4, left: 0 }}

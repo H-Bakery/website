@@ -74,6 +74,7 @@ import {
   StatementSumRow,
   type StatementRowOptions,
 } from '../../../../components/finance/FinanceReportParts'
+import { MonatsanalysePrint } from './MonatsanalysePrint'
 
 const TITLE = 'Monatsanalyse'
 const SUBTITLE =
@@ -360,20 +361,17 @@ function RowsTable({
   )
 }
 
-function ComparisonTable({
-  report,
-  emptyText,
-}: {
-  report: FinanceMonthReport
-  emptyText: string
-}) {
+export interface ComparisonRow {
+  key: string
+  label: string
+  data: Pick<FinanceMonthComparison, 'income' | 'expense' | 'result'>
+  diff: number | null
+}
+
+/** Zeilen des Vergleichs: Vormonat, Vorjahresmonat, Ø - was der Server liefert. */
+export function comparisonRows(report: FinanceMonthReport): ComparisonRow[] {
   const { previous_month, previous_year, average } = report.comparison
-  const rows: {
-    key: string
-    label: string
-    data: Pick<FinanceMonthComparison, 'income' | 'expense' | 'result'>
-    diff: number | null
-  }[] = []
+  const rows: ComparisonRow[] = []
   if (previous_month) {
     rows.push({
       key: 'previous_month',
@@ -400,6 +398,17 @@ function ComparisonTable({
       diff: average.diff_result,
     })
   }
+  return rows
+}
+
+function ComparisonTable({
+  report,
+  emptyText,
+}: {
+  report: FinanceMonthReport
+  emptyText: string
+}) {
+  const rows = comparisonRows(report)
   if (rows.length === 0) {
     return (
       <Typography
@@ -566,219 +575,237 @@ export default function MonatsanalyseClient({
   return (
     <Box className="fin-report" data-testid="monatsanalyse">
       <FinanceReportPrintStyles />
-      <PageLayout
-        title={`${TITLE} – ${report.label}`}
-        subtitle={SUBTITLE}
-        back={{
-          href: `/admin/finance/jahr?jahr=${year}`,
-          label: `Jahresabschluss ${year}`,
-        }}
-        status={
-          complete ? undefined : (
-            <Chip
-              label={`Unvollständig · bis ${formatDayMonth(
-                report.coverage.to
-              )}`}
-              variant="outlined"
-              size="small"
-              data-testid="month-status"
-            />
-          )
-        }
-        actions={
-          <>
-            <MonthSwitcher report={report} />
-            <Button
-              variant="outlined"
-              startIcon={<PrintIcon />}
-              onClick={() => window.print()}
+      {/* Druckfassung: am Bildschirm ausgeblendet (FinanceReportPrintStyles) */}
+      <MonatsanalysePrint
+        report={report}
+        kpis={keyFigures(report, complete).map(({ label, value, hint }) => ({
+          label,
+          value,
+          hint,
+        }))}
+        trendCaption={trendCaption(report)}
+        highlightsEmptyText={emptyHighlightsText(report)}
+        comparisonRows={comparisonRows(report)}
+        notes={notes}
+      />
+      <Box className="fin-screen">
+        <PageLayout
+          title={`${TITLE} – ${report.label}`}
+          subtitle={SUBTITLE}
+          back={{
+            href: `/admin/finance/jahr?jahr=${year}`,
+            label: `Jahresabschluss ${year}`,
+          }}
+          status={
+            complete ? undefined : (
+              <Chip
+                label={`Unvollständig · bis ${formatDayMonth(
+                  report.coverage.to
+                )}`}
+                variant="outlined"
+                size="small"
+                data-testid="month-status"
+              />
+            )
+          }
+          actions={
+            <>
+              <MonthSwitcher report={report} />
+              <Button
+                variant="outlined"
+                startIcon={<PrintIcon />}
+                onClick={() => window.print()}
+              >
+                Drucken
+              </Button>
+            </>
+          }
+        >
+          <PrintOnlyLine>
+            Bäckerei Heusser · {report.label}
+            {complete
+              ? ''
+              : ` · Bankdaten bis ${formatDayMonth(report.coverage.to)}`}
+          </PrintOnlyLine>
+
+          <KeyFigures
+            aria-label={`Kennzahlen ${report.label}`}
+            items={keyFigures(report, complete)}
+          />
+
+          <Box className="fin-keep">
+            <PageSection
+              title="Im Verlauf"
+              description="Einnahmen nach oben, Ausgaben nach unten, die Linie ist das Ergebnis. Tipp auf einen Monat zeigt die Zahlen; am Computer öffnet ein Klick den Monat."
+              data-testid="trend-section"
             >
-              Drucken
-            </Button>
-          </>
-        }
-      >
-        <PrintOnlyLine>
-          Bäckerei Heusser · {report.label}
-          {complete
-            ? ''
-            : ` · Bankdaten bis ${formatDayMonth(report.coverage.to)}`}
-        </PrintOnlyLine>
+              <TrendChart report={report} />
+            </PageSection>
+          </Box>
 
-        <KeyFigures
-          aria-label={`Kennzahlen ${report.label}`}
-          items={keyFigures(report, complete)}
-        />
-
-        <Box className="fin-keep">
           <PageSection
-            title="Im Verlauf"
-            description="Einnahmen nach oben, Ausgaben nach unten, die Linie ist das Ergebnis. Tipp auf einen Monat zeigt die Zahlen; am Computer öffnet ein Klick den Monat."
-            data-testid="trend-section"
-          >
-            <TrendChart report={report} />
-          </PageSection>
-        </Box>
-
-        <PageSection
-          title="Auffälligkeiten"
-          description={
-            avg && report.highlights_reason === null
-              ? `Gegenüber dem Durchschnitt von ${formatMonth(
-                  avg.from
-                )} bis ${formatMonth(avg.to)}.`
-              : undefined
-          }
-          data-testid="highlights-section"
-        >
-          <Highlights report={report} />
-        </PageSection>
-
-        <PageSection
-          title="Woher das Geld kam"
-          description="Einnahmen nach Art. Pfeil neben einem Posten: aufschlüsseln."
-          disablePadding
-        >
-          {incomeParts(statement).length > 0 && (
-            <Box sx={{ px: { xs: 2, md: 3 }, pb: 2 }}>
-              <IncomeSplitBar
-                parts={incomeParts(statement)}
-                label={`Einnahmen ${report.label} nach Herkunft`}
-              />
-            </Box>
-          )}
-          <RowsTable
-            rows={statement.income.rows}
-            total={statement.income.total}
-            totalLabel="Summe Einnahmen"
-            options={{
-              showShare: true,
-              comparison: comparison ? 'income' : undefined,
-            }}
-            averageLabel={averageLabel}
-            ariaLabel="Einnahmen nach Art"
-            testId="income-table"
-          />
-        </PageSection>
-
-        <PageSection
-          title="Wohin das Geld ging"
-          description={
-            comparison
-              ? `Ausgaben nach Art, die größten zuerst. Der Strich im Balken ist der Durchschnitt der ${avg?.months} vollen Monate davor.`
-              : 'Ausgaben nach Art, die größten zuerst.'
-          }
-          disablePadding
-        >
-          {expenseBars(statement).length > 0 && (
-            <Box sx={{ px: { xs: 2, md: 3 }, pb: 2 }}>
-              {comparison && (
-                <ChartLegend
-                  items={['expense', 'average']}
-                  labels={{
-                    expense: report.label,
-                    average: averageLabel,
-                  }}
-                />
-              )}
-              <CategoryBars
-                bars={expenseBars(statement)}
-                label={`Ausgaben ${report.label} nach Posten`}
-                showAverage={comparison}
-                averageLabel={averageLabel}
-              />
-            </Box>
-          )}
-          <RowsTable
-            rows={statement.expense.rows}
-            total={statement.expense.total}
-            totalLabel="Summe Ausgaben"
-            options={{
-              showShare: true,
-              comparison: comparison ? 'expense' : undefined,
-            }}
-            averageLabel={averageLabel}
-            ariaLabel="Ausgaben nach Art"
-            testId="expense-table"
-          />
-        </PageSection>
-
-        <PageSection
-          title="Im Vergleich"
-          description="Einnahmen, Ausgaben und Ergebnis anderer Monate."
-          disablePadding
-        >
-          <ComparisonTable
-            report={report}
-            emptyText={
-              complete
-                ? 'Noch keine Vergleichsmonate.'
-                : 'Der Vergleich folgt, wenn der Monat vollständig ist.'
+            title="Auffälligkeiten"
+            description={
+              avg && report.highlights_reason === null
+                ? `Gegenüber dem Durchschnitt von ${formatMonth(
+                    avg.from
+                  )} bis ${formatMonth(avg.to)}.`
+                : undefined
             }
-          />
-        </PageSection>
-
-        <PageSection
-          title="Kasse und Konto"
-          description="Was die Kasse eingenommen hat und was davon aufs Konto kam."
-        >
-          {report.reconciliation ? (
-            <ReconciliationTable rec={report.reconciliation} />
-          ) : (
-            <Typography color="text.secondary" data-testid="no-reconciliation">
-              {complete
-                ? 'Für diesen Monat gibt es keine Kassenberichte.'
-                : 'Der Abgleich folgt, wenn der Monat vollständig ist – Einzahlungen der letzten Tage fehlen sonst noch.'}
-            </Typography>
-          )}
-          {report.kasse_previous_year && (
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{ mt: 1.5 }}
-              data-testid="kasse-previous-year"
-            >
-              Kasse im Vorjahresmonat:{' '}
-              {formatEuro(report.kasse_previous_year.revenue)} an{' '}
-              {report.kasse_previous_year.days} Öffnungstagen (Ø{' '}
-              {formatEuro(report.kasse_previous_year.avg_day)} je Tag).
-            </Typography>
-          )}
-        </PageSection>
-
-        <PageSection
-          title="Unter dem Strich (neutral)"
-          description="Privat, Darlehen und Umbuchungen – sie ändern den Kontostand, nicht das Ergebnis."
-          disablePadding
-        >
-          <TableContainer sx={{ overflowX: 'auto' }}>
-            <Table size="small" aria-label="Neutral" data-testid="neutral">
-              <TableBody>
-                <StatementSumRow
-                  label="Ergebnis"
-                  amount={statement.result}
-                  options={{}}
-                  strong={false}
-                />
-                {statement.neutral.rows.map((row) => (
-                  <StatementRow key={row.category} row={row} options={{}} />
-                ))}
-                <StatementSumRow
-                  label="Kontoveränderung"
-                  amount={statement.net_change}
-                  options={{}}
-                />
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </PageSection>
-
-        {notes.length > 0 && (
-          <PageSection title="Hinweise" data-testid="month-notes">
-            <ReportNotes notes={notes} />
+            data-testid="highlights-section"
+          >
+            <Highlights report={report} />
           </PageSection>
-        )}
-      </PageLayout>
+
+          <PageSection
+            title="Woher das Geld kam"
+            description="Einnahmen nach Art. Pfeil neben einem Posten: aufschlüsseln."
+            disablePadding
+          >
+            {incomeParts(statement).length > 0 && (
+              <Box sx={{ px: { xs: 2, md: 3 }, pb: 2 }}>
+                <IncomeSplitBar
+                  parts={incomeParts(statement)}
+                  label={`Einnahmen ${report.label} nach Herkunft`}
+                />
+              </Box>
+            )}
+            <RowsTable
+              rows={statement.income.rows}
+              total={statement.income.total}
+              totalLabel="Summe Einnahmen"
+              options={{
+                showShare: true,
+                comparison: comparison ? 'income' : undefined,
+              }}
+              averageLabel={averageLabel}
+              ariaLabel="Einnahmen nach Art"
+              testId="income-table"
+            />
+          </PageSection>
+
+          <PageSection
+            title="Wohin das Geld ging"
+            description={
+              comparison
+                ? `Ausgaben nach Art, die größten zuerst. Der Strich im Balken ist der Durchschnitt der ${avg?.months} vollen Monate davor.`
+                : 'Ausgaben nach Art, die größten zuerst.'
+            }
+            disablePadding
+          >
+            {expenseBars(statement).length > 0 && (
+              <Box sx={{ px: { xs: 2, md: 3 }, pb: 2 }}>
+                {comparison && (
+                  <ChartLegend
+                    items={['expense', 'average']}
+                    labels={{
+                      expense: report.label,
+                      average: averageLabel,
+                    }}
+                  />
+                )}
+                <CategoryBars
+                  bars={expenseBars(statement)}
+                  label={`Ausgaben ${report.label} nach Posten`}
+                  showAverage={comparison}
+                  averageLabel={averageLabel}
+                />
+              </Box>
+            )}
+            <RowsTable
+              rows={statement.expense.rows}
+              total={statement.expense.total}
+              totalLabel="Summe Ausgaben"
+              options={{
+                showShare: true,
+                comparison: comparison ? 'expense' : undefined,
+              }}
+              averageLabel={averageLabel}
+              ariaLabel="Ausgaben nach Art"
+              testId="expense-table"
+            />
+          </PageSection>
+
+          <PageSection
+            title="Im Vergleich"
+            description="Einnahmen, Ausgaben und Ergebnis anderer Monate."
+            disablePadding
+          >
+            <ComparisonTable
+              report={report}
+              emptyText={
+                complete
+                  ? 'Noch keine Vergleichsmonate.'
+                  : 'Der Vergleich folgt, wenn der Monat vollständig ist.'
+              }
+            />
+          </PageSection>
+
+          <PageSection
+            title="Kasse und Konto"
+            description="Was die Kasse eingenommen hat und was davon aufs Konto kam."
+          >
+            {report.reconciliation ? (
+              <ReconciliationTable rec={report.reconciliation} />
+            ) : (
+              <Typography
+                color="text.secondary"
+                data-testid="no-reconciliation"
+              >
+                {complete
+                  ? 'Für diesen Monat gibt es keine Kassenberichte.'
+                  : 'Der Abgleich folgt, wenn der Monat vollständig ist – Einzahlungen der letzten Tage fehlen sonst noch.'}
+              </Typography>
+            )}
+            {report.kasse_previous_year && (
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mt: 1.5 }}
+                data-testid="kasse-previous-year"
+              >
+                Kasse im Vorjahresmonat:{' '}
+                {formatEuro(report.kasse_previous_year.revenue)} an{' '}
+                {report.kasse_previous_year.days} Öffnungstagen (Ø{' '}
+                {formatEuro(report.kasse_previous_year.avg_day)} je Tag).
+              </Typography>
+            )}
+          </PageSection>
+
+          <PageSection
+            title="Unter dem Strich (neutral)"
+            description="Privat, Darlehen und Umbuchungen – sie ändern den Kontostand, nicht das Ergebnis."
+            disablePadding
+          >
+            <TableContainer sx={{ overflowX: 'auto' }}>
+              <Table size="small" aria-label="Neutral" data-testid="neutral">
+                <TableBody>
+                  <StatementSumRow
+                    label="Ergebnis"
+                    amount={statement.result}
+                    options={{}}
+                    strong={false}
+                  />
+                  {statement.neutral.rows.map((row) => (
+                    <StatementRow key={row.category} row={row} options={{}} />
+                  ))}
+                  <StatementSumRow
+                    label="Kontoveränderung"
+                    amount={statement.net_change}
+                    options={{}}
+                  />
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </PageSection>
+
+          {notes.length > 0 && (
+            <PageSection title="Hinweise" data-testid="month-notes">
+              <ReportNotes notes={notes} />
+            </PageSection>
+          )}
+        </PageLayout>
+      </Box>
     </Box>
   )
 }

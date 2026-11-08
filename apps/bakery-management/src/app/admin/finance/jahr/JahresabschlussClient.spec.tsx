@@ -73,8 +73,9 @@ describe('JahresabschlussClient', () => {
         name: 'Jahresabschluss 2026',
       })
     ).toBeInTheDocument()
+    // Die Druckfassung trägt denselben Untertitel - hier die Bildschirmfassung.
     expect(
-      screen.getByText(
+      within(document.querySelector('.fin-screen') as HTMLElement).getByText(
         'Einnahmen und Ausgaben über das Geschäftskonto – kein steuerlicher Abschluss'
       )
     ).toBeInTheDocument()
