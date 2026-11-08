@@ -904,11 +904,19 @@ function validateBackzettelConfig(obj, options) {
             else if (seen.has(size.id))
               err(`${sp}.id`, `Größe „${size.id}“ ist doppelt.`)
             else seen.add(size.id)
-            if (!isText(size.label))
+            if (!isText(size.label)) {
+              // `{ label: 1,5 kg }` liest YAML als `label: 1` plus einen
+              // Schlüssel „5 kg“: das Komma trennt in `{ }` die Einträge.
+              const commaSplit =
+                typeof size.label === 'number' &&
+                Object.keys(size).some((k) => !SIZE_KEYS.has(k))
               err(
                 `${sp}.label`,
-                'label (Anzeigename der Größe, z. B. „500 g“) muss ein nicht-leerer Text sein.'
+                commaSplit
+                  ? 'label (Anzeigename der Größe) ist keine Text-Angabe: ein Komma im Namen trennt in { } die Einträge – bitte in Anführungszeichen setzen, z. B. label: "1,5 kg".'
+                  : 'label (Anzeigename der Größe, z. B. „500 g“) muss ein nicht-leerer Text sein.'
               )
+            }
             const sizeLabel = isSizeId(size.id) ? size.id : sp
             if (!isSet(size, 'dough_g')) {
               warn(

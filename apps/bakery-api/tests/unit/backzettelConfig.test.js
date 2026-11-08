@@ -919,6 +919,15 @@ describe('Z10: validateBackzettelConfig fuer v2', () => {
         v2((c) => (item(c, 'test-korn').sizes[1].label = 1)),
         'items[0].sizes[1].label'
       )
+      // `{ id: g1000, label: 1,5 kg }` ohne Anführungszeichen: YAML liest
+      // `label: 1` und einen Schlüssel „5 kg“ - die Meldung nennt die Ursache.
+      const yaml = require('js-yaml')
+      const comma = yaml.load('{ id: g1000, label: 1,5 kg, dough_g: 100 }')
+      expect(comma).toMatchObject({ label: 1, '5 kg': null })
+      const r2 = v2((c) => (item(c, 'test-korn').sizes[1] = comma))
+      expect(errorPaths(r2)).toEqual(['items[0].sizes[1].label'])
+      expect(r2.errors[0].message).toContain('Anführungszeichen')
+      expect(warningPaths(r2)).toContain('items[0].sizes[1].5 kg')
       expect(core.isSizeId('g500')).toBe(true)
       expect(core.isSizeId('500')).toBe(false)
       expect(core.isSizeId('Kasten')).toBe(false)
