@@ -542,6 +542,121 @@ export function createBackzettelService(
   // ------------------------------------------------------------- views
 
   /**
+   * Z10 O5 (Review): the oven figure of the Nachträge ticked „gebacken“, per
+   * line - what the tablet showed as baked (`deltaBakeExtras` of the baked
+   * quantity, like `bake - bakeUnbaked` in the confirmed view), never below
+   * 0. Reopen discards the Nachträge and keeps this in its audit
+   * (`bakedDeltas`), so the next confirm counts it as baked.
+   */
+  function bakedDeltaFigures(
+    date: string,
+    day: BackzettelDay,
+    rows: BackzettelLine[],
+    deltaRows: BackzettelDelta[],
+    config: any
+  ): Record<string, unknown>[] {
+    const baked = deltaRows.filter((d) => d.bakedAt)
+    if (baked.length === 0) return []
+    const snap = day.computedSnapshot
+    const lines = dayCore
+      .frozenSections(
+        rows.map((r) => r.get({ plain: true })),
+        config,
+        snap?.unsetKeys
+      )
+      .flatMap((s: any) => s.lines.map(({ line }: any) => line))
+    const later = (a: BackzettelDelta, b: BackzettelDelta) =>
+      new Date(b.bakedAt as Date).getTime() >
+      new Date(a.bakedAt as Date).getTime()
+        ? b
+        : a
+    const byKey = new Map<string, { qty: number; last: BackzettelDelta }>()
+    for (const d of baked) {
+      const key = rowKey(d, date)
+      const e = byKey.get(key)
+      byKey.set(key, {
+        qty: Math.round(((e?.qty ?? 0) + toNumber(d.qty)) * 100) / 100,
+        last: e ? later(e.last, d) : d,
+      })
+    }
+    const figures = dayCore.deltaBakeExtras(
+      dayCore.linesForDeltas(
+        lines,
+        baked.map((d) => ({
+          key: rowKey(d, date),
+          itemId: d.itemId,
+          variant: dayCore.apiVariant(d.variant),
+          bakeDate: d.bakeDate || date,
+        })),
+        config,
+        date
+      ),
+      Object.fromEntries([...byKey].map(([k, e]) => [k, { qty: e.qty }])),
+      snap?.preordersExact ?? null,
+      snap?.subtotalExact ?? null
+    )
+    const out: Record<string, unknown>[] = []
+    for (const [key, { last }] of byKey) {
+      const qty = Math.max(0, toNumber(figures[key] ?? 0))
+      if (qty <= 0) continue
+      out.push({
+        itemId: last.itemId,
+        variant: last.variant,
+        ...(last.bakeDate && last.bakeDate !== date
+          ? { bakeDate: last.bakeDate }
+          : {}),
+        qty,
+        bakedBy: last.bakedBy,
+        bakedAt: new Date(last.bakedAt as Date).toISOString(),
+      })
+    }
+    return out
+  }
+
+  type BakedFromReopen = { qty: number; at: string | null; by: number | null }
+
+  /**
+   * The baked Nachträge the reopen that made `date` a draft discarded
+   * (`bakedDeltas` in its audit), per line key. A draft day's latest reopen
+   * is always the one that made it a draft.
+   */
+  async function bakedDeltasFromReopen(
+    date: string,
+    transaction?: Transaction
+  ): Promise<Map<string, BakedFromReopen>> {
+    const out = new Map<string, BakedFromReopen>()
+    const last = await AuditLog.findOne({
+      where: { action: 'reopen', entity: 'backzettel_day', entityId: date },
+      order: [['id', 'DESC']],
+      attributes: ['data'],
+      ...(transaction ? { transaction } : {}),
+    })
+    const list = (last?.data as Record<string, unknown> | null)?.['bakedDeltas']
+    for (const t of Array.isArray(list) ? list : []) {
+      const e = t as Record<string, unknown>
+      if (typeof e['itemId'] !== 'string') continue
+      const qty = toNumber(e['qty'] as number)
+      if (!(qty > 0)) continue
+      out.set(
+        rowKey(
+          {
+            itemId: e['itemId'],
+            variant: e['variant'] as string | null,
+            bakeDate: typeof e['bakeDate'] === 'string' ? e['bakeDate'] : null,
+          },
+          date
+        ),
+        {
+          qty,
+          at: typeof e['bakedAt'] === 'string' ? e['bakedAt'] : null,
+          by: typeof e['bakedBy'] === 'number' ? e['bakedBy'] : null,
+        }
+      )
+    }
+    return out
+  }
+
+  /**
    * The draft sheet of dough day `date`: computed live (`computeDoughDay`),
    * stored rows only for corrections and ticks. Lines carry `bakeDate`; a
    * row is found by (bake date, item, variant) - the line key.
@@ -557,19 +672,38 @@ export function createBackzettelService(
     const seasonFactor = day ? toNumber(day.seasonFactor) || 1 : 1
     const result = computeSheet(loaded, date, inputs, seasonFactor)
     const rowsByKey = new Map(rows.map((r) => [rowKey(r, date), r]))
-    const users = await usersById(
-      rows.flatMap((r) => [r.correctionBy, r.doneBy, r.bakedBy])
-    )
+    // Z10 O5 (Review): what the reopen discarded as baked Nachträge counts
+    // as baked, as the next confirm will count it.
+    const fromReopen = day
+      ? await bakedDeltasFromReopen(date)
+      : new Map<string, BakedFromReopen>()
+    const users = await usersById([
+      ...rows.flatMap((r) => [r.correctionBy, r.doneBy, r.bakedBy]),
+      ...[...fromReopen.values()].map((e) => e.by),
+    ])
     const lineView = (line: any) => {
       const row = rowsByKey.get(line.key)
+      const extra = fromReopen.get(line.key)
       // After a reopen a tick only shows while the line still asks for the
       // quantity it was ticked for; confirm clears it otherwise. Same for
-      // the bake-list tick (O5).
-      const ticks = row
-        ? dayCore.ticksAfterConfirm(row, line)
-        : { done: null, baked: null }
+      // the bake-list tick (O5), with the baked Nachträge counted in.
+      const ticks =
+        row || extra
+          ? dayCore.ticksAfterConfirm(row ?? null, line, extra?.qty)
+          : { done: null, baked: null }
       const ticked = ticks.done === true
       const baked = ticks.baked === true
+      const lineBaked = !!row && row.bakedAt !== null
+      const bakedAt: Date | string | null = lineBaked
+        ? (row.bakedAt as Date)
+        : extra
+        ? extra.at
+        : null
+      const bakedBy: number | null = lineBaked
+        ? (row.bakedBy as number | null)
+        : extra
+        ? extra.by
+        : null
       return {
         id: row ? row.id : null,
         ...line,
@@ -577,10 +711,19 @@ export function createBackzettelService(
           row && toNumber(row.correction) !== 0
             ? userRef(users, row.correctionBy)
             : null,
-        doneAt: ticked ? row.doneAt : null,
-        doneBy: ticked ? userRef(users, row.doneBy) : null,
-        bakedAt: baked ? row.bakedAt : null,
-        bakedBy: baked ? userRef(users, row.bakedBy) : null,
+        doneAt: ticked && row ? (row.doneAt as Date | null) : null,
+        doneBy: ticked && row ? userRef(users, row.doneBy) : null,
+        bakedAt: baked ? bakedAt : null,
+        bakedBy: baked ? userRef(users, bakedBy) : null,
+        previouslyBaked:
+          ticks.baked === false
+            ? {
+                qty: dayCore.bakedAfterConfirm(row ?? null, line, extra?.qty)
+                  .qty,
+                at: bakedAt,
+                by: userRef(users, bakedBy),
+              }
+            : null,
         delta: null,
       }
     }
@@ -2101,8 +2244,54 @@ export function createBackzettelService(
       const keep = new Set<number>()
       const clearedTicks: Record<string, unknown>[] = []
       const clearedBakedTicks: Record<string, unknown>[] = []
+      const bakedFromDeltas: Record<string, unknown>[] = []
       const iso = (at: Date | string | null | undefined) =>
         at instanceof Date ? at.toISOString() : at ?? null
+      // Z10 O5 (Review): Nachträge ticked „gebacken“ that the reopen
+      // discarded still count as baked - the Backstube must not bake them
+      // twice.
+      const fromReopen = await bakedDeltasFromReopen(date, transaction)
+      /**
+       * The baked tick of a line after this confirm (`dayCore.bakedAfterConfirm`):
+       * the row's own tick plus the baked Nachträge. Stays, is set from the
+       * Nachträge when they cover the line, or is cleared and listed
+       * (`clearedBakedTicks` → `previouslyBaked`) when more is needed.
+       */
+      const bakedTick = (
+        row: BackzettelLine | null,
+        values: any,
+        where: Record<string, unknown>
+      ) => {
+        const extra = fromReopen.get(rowKey(values, date))
+        const state = dayCore.bakedAfterConfirm(row, values, extra?.qty)
+        const lineBaked = !!row && row.bakedAt !== null
+        const by: number | null =
+          row && lineBaked ? row.bakedBy : extra?.by ?? null
+        const at: string | null =
+          row && lineBaked ? iso(row.bakedAt) : extra?.at ?? null
+        if (state.baked === false) {
+          clearedBakedTicks.push({
+            ...where,
+            bakedBy: by,
+            bakedAt: at,
+            from: state.qty,
+            to: values.total,
+            ...(extra ? { fromDeltas: extra.qty } : {}),
+          })
+          return lineBaked ? { bakedAt: null, bakedBy: null } : {}
+        }
+        if (state.baked === true && !lineBaked) {
+          bakedFromDeltas.push({
+            ...where,
+            bakedBy: by,
+            bakedAt: at,
+            qty: state.qty,
+            to: values.total,
+          })
+          return { bakedAt: at ? new Date(at) : new Date(), bakedBy: by }
+        }
+        return {}
+      }
       for (const raw of dayCore.linesForConfirm(result.lines)) {
         const values = { ...raw, bakeDate: raw.bakeDate || date }
         const key = rowKey(values, date)
@@ -2114,7 +2303,6 @@ export function createBackzettelService(
           // (O5) follows the same rule, on its own.
           const ticks = dayCore.ticksAfterConfirm(row, values)
           const untick = ticks.done === false
-          const unbake = ticks.baked === false
           const where = {
             itemId: row.itemId,
             variant: row.variant,
@@ -2131,28 +2319,25 @@ export function createBackzettelService(
               to: values.total,
             })
           }
-          if (unbake) {
-            clearedBakedTicks.push({
-              ...where,
-              bakedBy: row.bakedBy,
-              bakedAt: iso(row.bakedAt),
-              from: toNumber(row.total),
-              to: values.total,
-            })
-          }
+          const baked = bakedTick(row, values, where)
           await row.update(
             {
               ...values,
               correctionBy: values.correction === 0 ? null : row.correctionBy,
               ...(untick ? { doneAt: null, doneBy: null } : {}),
-              ...(unbake ? { bakedAt: null, bakedBy: null } : {}),
+              ...baked,
             },
             { transaction }
           )
           keep.add(row.id)
         } else {
+          const baked = bakedTick(null, values, {
+            itemId: values.itemId,
+            variant: values.variant,
+            ...(values.bakeDate !== date ? { bakeDate: values.bakeDate } : {}),
+          })
           const created = await BackzettelLine.create(
-            { date, ...values, correctionBy: null },
+            { date, ...values, correctionBy: null, ...baked },
             { transaction }
           )
           keep.add(created.id)
@@ -2205,6 +2390,7 @@ export function createBackzettelService(
           discardedDeltas: discarded,
           clearedTicks,
           clearedBakedTicks,
+          ...(bakedFromDeltas.length ? { bakedFromDeltas } : {}),
           warnings: result.warnings.map((w: any) => w.code),
         },
         { transaction }
@@ -2266,6 +2452,24 @@ export function createBackzettelService(
         where: { date },
         transaction,
       })
+      // Z10 O5 (Review): what of the Nachträge was baked is kept, so the
+      // next confirm counts it (`bakedDeltasFromReopen`).
+      const bakedDeltas = deltas.some((d) => d.bakedAt)
+        ? bakedDeltaFigures(
+            date,
+            day,
+            await BackzettelLine.findAll({
+              where: { date },
+              order: [['id', 'ASC']],
+              transaction,
+            }),
+            deltas,
+            (() => {
+              const loaded = source.load()
+              return loaded.ok ? loaded.config : null
+            })()
+          )
+        : []
       const previous = {
         confirmedBy: day.confirmedBy,
         confirmedAt: day.confirmedAt,
@@ -2300,7 +2504,9 @@ export function createBackzettelService(
             qty: toNumber(d.qty),
             kind: d.kind,
             acknowledged: d.acknowledgedAt !== null,
+            baked: d.bakedAt !== null,
           })),
+          bakedDeltas,
         },
         { transaction }
       )

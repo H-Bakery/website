@@ -564,6 +564,50 @@ describe('Erneute Freigabe und eingefrorene Berechnung', () => {
     ).toEqual({ done: true, baked: null })
   })
 
+  it('bakedAfterConfirm (O5): gebackene Nachträge zählen nach Wieder öffnen mit', () => {
+    const at = '2026-11-28T04:00:00.000Z'
+    const row = { ...stored, bakedAt: at }
+    const more = { ...stored, total: stored.total + 8 }
+    // Zeile gebacken, +8 als Nachtrag gebacken: deckt die neue Menge.
+    expect(day.bakedAfterConfirm(row, more, 8)).toEqual({
+      baked: true,
+      qty: stored.total + 8,
+    })
+    // Nur +5 der +8 gebacken: Haken fällt, schon gebacken ist Zeile + 5.
+    expect(day.bakedAfterConfirm(row, more, 5)).toEqual({
+      baked: false,
+      qty: stored.total + 5,
+    })
+    // Zeile nicht gebacken, nur der Nachtrag: teils gebacken.
+    expect(day.bakedAfterConfirm({ ...stored }, more, 8)).toEqual({
+      baked: false,
+      qty: 8,
+    })
+    // Neue Zeile nur aus einem gebackenen Nachtrag: gesetzt.
+    expect(day.bakedAfterConfirm(null, { total: 6 }, 6)).toEqual({
+      baked: true,
+      qty: 6,
+    })
+    // Ohne gebackene Nachträge die Regel von „erledigt“; nie unter 0.
+    expect(day.bakedAfterConfirm(row, more, 0).baked).toBe(false)
+    expect(day.bakedAfterConfirm(row, { ...stored }, -3)).toEqual({
+      baked: true,
+      qty: stored.total,
+    })
+    expect(day.bakedAfterConfirm({ ...stored }, more, null)).toEqual({
+      baked: null,
+      qty: 0,
+    })
+    expect(day.ticksAfterConfirm(row, more, 8)).toEqual({
+      done: null,
+      baked: true,
+    })
+    expect(day.ticksAfterConfirm(null, more, 8)).toEqual({
+      done: null,
+      baked: false,
+    })
+  })
+
   it('deltaBakedUpdate (O5): gebacken heißt auch gesehen, zurücknehmen nur den Haken', () => {
     const at = new Date('2026-11-29T05:00:00Z')
     const open = { bakedAt: null, acknowledgedAt: null }

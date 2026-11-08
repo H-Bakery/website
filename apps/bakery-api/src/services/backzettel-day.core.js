@@ -571,11 +571,47 @@ function tickStillValid(row, values) {
  * einer Zeile stehen lässt (`done`/`baked`: `true` = bleibt, `false` = fällt
  * weg, `null` = war keiner gesetzt).
  */
-function ticksAfterConfirm(row, values) {
-  const valid = tickStillValid(row, values)
+function ticksAfterConfirm(row, values, bakedDeltaQty) {
+  const valid = !!row && tickStillValid(row, values)
   const state = (at) =>
     at === null || at === undefined ? null : valid ? true : false
-  return { done: state(row.doneAt), baked: state(row.bakedAt) }
+  return {
+    done: row ? state(row.doneAt) : null,
+    baked: bakedAfterConfirm(row, values, bakedDeltaQty).baked,
+  }
+}
+
+/**
+ * Z10 O5 (Review): der „gebacken“-Haken einer Zeile bei einer erneuten
+ * Freigabe nach „Wieder öffnen“. Wieder öffnen verwirft die Nachträge mit
+ * ihren eigenen Haken - was davon schon gebacken war, darf dabei nicht
+ * verloren gehen, sonst backt die Backstube es ein zweites Mal. Gebacken ist
+ * dann: die Zeile selbst (ihre bisherige Menge `row.total`, wenn ihr Haken
+ * steht) plus die Ofenzahl der gebackenen Nachträge (`bakedDeltaQty`, beim
+ * Wieder öffnen festgehalten; nie unter 0).
+ *
+ * - `baked: true`: der Haken gilt (bleibt stehen bzw. wird gesetzt, wenn
+ *   die Nachträge allein schon alles decken),
+ * - `baked: false`: es ist mehr zu backen; `qty` ist schon gebacken
+ *   (→ `clearedBakedTicks`, „bereits 78 gebacken - noch +4“),
+ * - `baked: null`: nichts gebacken.
+ *
+ * Ohne gebackene Nachträge gilt dieselbe Regel wie für „erledigt“
+ * (`tickStillValid`).
+ *
+ * @param {object|null} row gespeicherte Zeile (`total`, `bakedAt`, …) oder null
+ * @param {{ total: number }} values die Zeile der neuen Freigabe
+ * @param {number} [bakedDeltaQty] Ofenzahl der gebackenen Nachträge
+ * @returns {{ baked: boolean|null, qty: number }}
+ */
+function bakedAfterConfirm(row, values, bakedDeltaQty) {
+  const extra = Math.max(0, round2(Number(bakedDeltaQty) || 0))
+  const lineBaked = !!row && row.bakedAt !== null && row.bakedAt !== undefined
+  if (!lineBaked && extra === 0) return { baked: null, qty: 0 }
+  const qty = round2((lineBaked ? Number(row.total) || 0 : 0) + extra)
+  if (lineBaked && tickStillValid(row, values)) return { baked: true, qty }
+  const need = round2(Number(values && values.total) || 0)
+  return { baked: need <= qty, qty }
 }
 
 /**
@@ -1186,6 +1222,7 @@ module.exports = {
   frozenQtyChanged,
   tickStillValid,
   ticksAfterConfirm,
+  bakedAfterConfirm,
   deltaBakedUpdate,
   computedSnapshot,
   deltaBakeExtras,

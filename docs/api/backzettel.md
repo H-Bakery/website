@@ -252,7 +252,14 @@ later bake day (Saturday: Sunday's and Tuesday's rolls). With today's hq file (n
     (`dayCore.ticksAfterConfirm` = `tickStillValid` for both ticks, each on its own): a re-confirm
     that asks for more clears the baked tick and lists it as `clearedBakedTicks` in the confirm
     audit (→ `previouslyBaked`); a deleted row takes its tick along; reopen and re-confirm discard
-    the Nachträge with their ticks (they are folded into the lines). **Z9 snapshots** carry neither
+    the Nachträge (they are folded into the lines), but not what was baked of them: reopen stores
+    per line the oven figure of the Nachträge ticked baked (audit `bakedDeltas` - `deltaBakeExtras`
+    of the baked quantity, never below 0 - and `baked` on each `discardedDeltas` entry); the draft
+    view and the next confirm read the latest reopen audit and count it as baked
+    (`dayCore.bakedAfterConfirm`: the row's own tick at its old total plus that figure). Enough for
+    the new total: the tick stays, or is set from the Nachträge (confirm audit `bakedFromDeltas`);
+    otherwise `clearedBakedTicks` gets `from` = all that was baked (`fromDeltas` = the Nachträge'
+    part) → `previouslyBaked`. The draft view carries `previouslyBaked` for such lines too. **Z9 snapshots** carry neither
     tick (written at confirm, who ticked is personal - D13): `schema_version` stays 2.
 - **`getBakeLines(B, { light })`** (service only, for Rest am Abend, S4): the bake-list lines as one
   day view `{ date, status, sources, sections, deltas, deltaTotals }`; `status: 'confirmed'` only

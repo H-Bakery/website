@@ -143,8 +143,14 @@ Rest am Abend/Schnappschuss (S4), Bildschirme (S5) und Druck (S6) sind auf dem Z
   danach `previouslyBaked` „bereits 66 gebacken - noch +5"), weniger oder gleich lässt ihn stehen
   (`ticksAfterConfirm` im Tages-Kern). **Ein Nachtrag wird für sich abgehakt**, nie über seine Zeile
   (`POST /:backtag/bake/deltas/baked { ids }`); gebacken heißt auch gesehen (`deltaBakedUpdate`),
-  zurücknehmen lässt „Gesehen" stehen. Wieder öffnen und neu freigeben verwirft die Nachträge mit
-  ihren Haken (sie stehen dann in den Zeilen). Der Z9-Schnappschuss trägt keinen der Haken.
+  zurücknehmen lässt „Gesehen" stehen. Wieder öffnen und neu freigeben verwirft die Nachträge (sie
+  stehen dann in den Zeilen) - **was davon gebacken war, zählt weiter als gebacken**: Wieder öffnen
+  hält die Ofenzahl der gebackenen Nachträge fest (`bakedDeltas`), Entwurf und neue Freigabe
+  rechnen sie zur gebackenen Menge der Zeile (`bakedAfterConfirm` im Tages-Kern). Deckt das die
+  Zeile, steht der Haken (bleibt bzw. wird gesetzt); sonst „bereits 8 gebacken - noch +70"
+  (`previouslyBaked`). Auf dem Tablet bleibt ein gebackener Nachtrag abgehakt und zurücknehmbar,
+  wenn danach eine Abbestellung kommt („+8 schon gebacken · nichts zusätzlich zu backen").
+  Der Z9-Schnappschuss trägt keinen der Haken.
 - **Freigeben friert den Plan ein** (welche Backtage × Posten der Zettel trägt). Was ein
   freigegebener Zettel trägt, rechnet kein anderer Entwurf noch einmal (`owned_elsewhere`).
   Ein vor Z10 freigegebener Tag trägt alle Posten seines Datums (`legacyPlan`) und zeigt die

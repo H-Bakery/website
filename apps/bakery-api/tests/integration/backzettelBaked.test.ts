@@ -489,4 +489,101 @@ describe('tick survival on reopen and re-confirm (per row)', () => {
     const row = await BackzettelLine.findByPk(doppel.id)
     expect(row?.bakedAt).toBeNull()
   })
+
+  it('baked Nachträge survive reopen and re-confirm (not baked twice)', async () => {
+    // Doppel: line ticked, then a Nachtrag ticked too - all baked.
+    // Flitweck: line not ticked, only its Nachtrag - partly baked.
+    const doppelLine = await bakeLine(SUN, 'test-doppel')
+    expect(doppelLine.bakedAt).toBeNull()
+    const ticked = await as('backstube')
+      .post(`/api/backzettel/${SUN}/bake/${doppelLine.id}/baked`)
+      .send({ expectedTotal: doppelLine.total })
+    expect(ticked.status).toBe(200)
+    await apiPreorder(SUN, [
+      { productId: 'test-doppel', quantity: 3 },
+      { productId: 'test-flitweck', quantity: 2 },
+    ])
+    await idle()
+    const before = await bakeList(SUN)
+    const byItem = (list: any, itemId: string) =>
+      linesOf(list).find((l: any) => l.itemId === itemId)
+    const doppelFigure = byItem(before, 'test-doppel').delta.bake
+    const flitFigure = byItem(before, 'test-flitweck').delta.bake
+    const flitTotal = byItem(before, 'test-flitweck').total
+    expect(doppelFigure).toBeGreaterThan(0)
+    expect(flitFigure).toBeGreaterThan(0)
+    const baked = await as('backstube')
+      .post(`/api/backzettel/${SUN}/bake/deltas/baked`)
+      .send({ ids: before.deltas.map((d: any) => d.id) })
+    expect(baked.status).toBe(200)
+
+    const reopen = await as('inhaber')
+      .post(`/api/backzettel/${SAT}/reopen`)
+      .send({ reason: 'Testgrund' })
+    expect(reopen.status).toBe(200)
+    const reopenAudit = await AuditLog.findOne({
+      where: { action: 'reopen', entityId: SAT },
+      order: [['id', 'DESC']],
+    })
+    const data = reopenAudit?.data as any
+    expect(data.discardedDeltas).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ itemId: 'test-doppel', baked: true }),
+        expect.objectContaining({ itemId: 'test-flitweck', baked: true }),
+      ])
+    )
+    expect(data.bakedDeltas).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          itemId: 'test-doppel',
+          bakeDate: SUN,
+          qty: doppelFigure,
+          bakedBy: expect.any(Number),
+        }),
+        expect.objectContaining({ itemId: 'test-flitweck', qty: flitFigure }),
+      ])
+    )
+    // The draft already counts them: Doppel stays baked, Flitweck says how
+    // much is baked.
+    const draft = await bakeList(SUN)
+    expect(byItem(draft, 'test-doppel')).toMatchObject({
+      sheetStatus: 'draft',
+      total: doppelLine.total + 3,
+      bakedAt: ticked.body.data.bakedAt,
+    })
+    expect(byItem(draft, 'test-flitweck')).toMatchObject({
+      sheetStatus: 'draft',
+      bakedAt: null,
+      previouslyBaked: { qty: flitFigure, at: expect.any(String) },
+    })
+
+    const confirm = await as('backstube').post(`/api/backzettel/${SAT}/confirm`)
+    expect(confirm.status).toBe(200)
+    const after = await bakeList(SUN)
+    expect(byItem(after, 'test-doppel')).toMatchObject({
+      total: doppelLine.total + 3,
+      bakedAt: ticked.body.data.bakedAt,
+      delta: null,
+    })
+    const flit = byItem(after, 'test-flitweck')
+    expect(flit.total).toBeGreaterThan(flitTotal)
+    expect(flit).toMatchObject({
+      bakedAt: null,
+      previouslyBaked: {
+        qty: flitFigure,
+        by: { id: expect.any(Number), displayName: 'Test bk.backstube' },
+      },
+    })
+    const confirmAudit = await AuditLog.findOne({
+      where: { action: 'confirm', entityId: SAT },
+      order: [['id', 'DESC']],
+    })
+    expect((confirmAudit?.data as any).clearedBakedTicks).toEqual([
+      expect.objectContaining({
+        itemId: 'test-flitweck',
+        from: flitFigure,
+        fromDeltas: flitFigure,
+      }),
+    ])
+  })
 })
