@@ -2,4 +2,4 @@
 :HL["/fonts/merriweather-latin.woff2","font",{"crossOrigin":"anonymous","type":"font/woff2"}]
 :HL["/fonts/cinzel-latin.woff2","font",{"crossOrigin":"anonymous","type":"font/woff2"}]
 1:[["children",{"s":"__PAGE__","h":128}]]
-0:{"b":"tjsh6u_-4HOvVDeO_h8l4","t":{"t":{"s":"","h":16,"c":"$Q1"}}}
+0:{"b":"wR8F2Ec6EbQGTPaElkW3Y","t":{"t":{"s":"","h":16,"c":"$Q1"}}}
