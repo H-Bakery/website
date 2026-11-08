@@ -1140,4 +1140,29 @@ describe('Z10: Teigtag-Zettel im Tages-Core', () => {
     expect(day.machineDeltaExtras(cfgV2, sheet.lines, {}, SAT)).toEqual([])
     expect(day.machineDeltaExtras(null, sheet.lines, extras, SAT)).toEqual([])
   })
+
+  it('linesForDeltas: ein Nachtrag für einen anderen Backtag bekommt eine Zeile mit seinem Schlüssel (S3)', () => {
+    const key = `test-kaese|@${NEXT_TUE}`
+    const delta = {
+      key,
+      itemId: 'test-kaese',
+      variant: null,
+      bakeDate: NEXT_TUE,
+      qty: 3,
+    }
+    const out = day.linesForDeltas([], [delta], cfgV2, SAT)
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({
+      key,
+      bakeDate: NEXT_TUE,
+      doughDate: SAT,
+      total: 0,
+    })
+    // Backmenge je Zeile, über den passenden Schlüssel
+    expect(day.deltaBakeExtras(out, { [key]: { qty: 3 } }, null, null)).toEqual(
+      { [key]: 3 }
+    )
+    // ohne Zettel-Tag wie bisher (v1-Schlüssel)
+    expect(day.linesForDeltas([], [delta], cfgV2)[0].key).toBe('test-kaese|')
+  })
 })

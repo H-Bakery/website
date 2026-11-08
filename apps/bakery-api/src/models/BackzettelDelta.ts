@@ -6,6 +6,11 @@
  * a preorder's rows is its change since confirmation. Rows are written when the
  * confirmed day is read (idempotent), shown highlighted and acknowledged by the
  * Backstube; they are never merged into the frozen lines.
+ *
+ * Z10: `date` is the sheet (dough day) the delta belongs to, `bakeDate` the
+ * day the changed preorder is picked up - a Tuesday-roll preorder after
+ * Saturday's confirm is a row on Saturday with `bakeDate` Tuesday. Rows from
+ * before Z10 were backfilled with `bakeDate = date`.
  */
 import {
   CreationOptional,
@@ -32,6 +37,7 @@ export class BackzettelDelta extends Model<
 > {
   declare id: CreationOptional<number>
   declare date: string
+  declare bakeDate: string
   declare itemId: string
   declare variant: CreationOptional<string>
   declare qty: number
@@ -46,6 +52,7 @@ export class BackzettelDelta extends Model<
       {
         id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
         date: { type: DataTypes.DATEONLY, allowNull: false },
+        bakeDate: { type: DataTypes.DATEONLY, allowNull: false },
         itemId: { type: DataTypes.STRING(128), allowNull: false },
         variant: {
           type: DataTypes.STRING(64),

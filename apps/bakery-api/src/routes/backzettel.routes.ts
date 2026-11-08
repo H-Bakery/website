@@ -7,10 +7,13 @@
  *                                                 Z4: pendingApproval, writable, working (write-worktree version)
  *   PUT  /config/base                             inhaber, backstube (Z4): one Grundmenge → hq (rolling PR)
  *   GET  /reference?weekday=&weeks=6              inhaber, backstube (Z4): median sold per item (info only)
- *   GET  /:date                                   any session: the day (draft live / confirmed frozen + deltas)
+ *   GET  /:date                                   any session: the sheet of dough day :date (draft live /
+ *                                                 confirmed frozen + deltas); Z10: lines carry bakeDate
+ *   GET  /:date/bake-list                         any session (Z10): what is baked on :date, from every
+ *                                                 sheet that makes dough for it - no dough figures
  *   GET  /:date/prep                              any session: Vorbereitung for the day (done on d−1)
  *   PUT  /:date/season                            inhaber, backstube: { factor } (draft only)
- *   PUT  /:date/lines/:itemId/correction          inhaber, backstube: { correction, reason } (draft only)
+ *   PUT  /:date/lines/:itemId/correction          inhaber, backstube: { correction, reason, bakeDate? } (draft only)
  *   PUT  /:date/lines/:itemId/:variant/correction   same, for one variant
  *   POST /:date/confirm                           inhaber, backstube: freeze lines + preorder snapshot
  *   POST /:date/reopen                            inhaber: back to draft { reason? }
@@ -25,7 +28,10 @@
  *
  * Missing or invalid master data: GET answers `status: 'no-config'` with
  * `reasons` (a confirmed day stays readable, with `configStatus: 'no-config'`);
- * writes answer 409 `no_config`. A non-production weekday is 409 `ruhetag`.
+ * writes answer 409 `no_config`. A non-production weekday is 409 `ruhetag`
+ * (the bake list answers `status: 'ruhetag'`). A correction for a bake day
+ * that is not on the sheet is 400 `invalid_bake_date`, one for a pair a
+ * confirmed sheet holds 409 `owned_elsewhere` (Z10).
  * Planning writes (season, correction, confirm) outside today − 7 … today + 90
  * days (Berlin) are 400 `date_out_of_range` (W4 verification).
  */
@@ -136,6 +142,11 @@ export function createBackzettel(options: BackzettelRouterOptions = {}): {
   router.get(
     '/:date',
     handle(async (req) => service.getDay(req.params['date']))
+  )
+
+  router.get(
+    '/:date/bake-list',
+    handle(async (req) => service.getBakeList(req.params['date']))
   )
 
   router.get(

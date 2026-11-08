@@ -68,4 +68,9 @@ export const MIGRATIONS: MigrationEntry[] = [
     name: '20270106000000-rest-count-line-rows.js',
     module: require('../../migrations/20270106000000-rest-count-line-rows.js'),
   },
+  {
+    // Z10: backzettel_lines/_deltas.bake_date (Teigtag ≠ Backtag), backfilled
+    name: '20270201000000-backzettel-dough-day.js',
+    module: require('../../migrations/20270201000000-backzettel-dough-day.js'),
+  },
 ]

@@ -41,7 +41,7 @@ function authed() {
 }
 
 describe('createTestApp', () => {
-  it('runs the static migration list (pilot baseline + B3 auth + Z3 + B7 preorders + M4 rest + B8 tours)', () => {
+  it('runs the static migration list (pilot baseline + B3 auth + Z3 + B7 preorders + M4 rest + B8 tours + Z10)', () => {
     expect(api.migrations).toEqual(MIGRATIONS.map((m) => m.name))
     expect(api.migrations).toEqual([
       '20261105000000-pilot-baseline.js',
@@ -53,6 +53,7 @@ describe('createTestApp', () => {
       '20261201000000-rest-am-abend.js',
       '20270105000000-delivery-tours-b8.js',
       '20270106000000-rest-count-line-rows.js',
+      '20270201000000-backzettel-dough-day.js',
     ])
   })
 })

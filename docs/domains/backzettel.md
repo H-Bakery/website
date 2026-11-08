@@ -113,6 +113,31 @@ die Überarbeitung „Backzettel v2" (Z10) ist dort geplant - dieses Dokument be
 - **Rollen:** lesen jede Sitzung; planen, freigeben, abhaken, quittieren `inhaber` + `backstube`.
   Jede Änderung steht im `audit_log`.
 
+## Teigtag ≠ Backtag auf der API (Z10)
+
+Entwurf: [`docs/backzettel-v2.md`](../backzettel-v2.md); Endpunkte: [`docs/api/backzettel.md`](../api/backzettel.md),
+Abschnitt „Dough-day sheets and bake list". Stand: Stammdaten-Prüfung (S1), Kern (S2) und API (S3)
+sind fertig, die Bildschirme (S5) und der Druck (S6) folgen.
+
+- **Ein Tag ist der Zettel eines Teigtags** (`computeDoughDay`): was an D gebacken wird (`lead` 0)
+  und was an D für einen späteren Backtag angesetzt wird (`lead` ≥ 1 - Samstag macht die Brötchen
+  für Sonntag und Dienstag). Mit der heutigen hq-Datei (ohne `lead`) ist jeder Zettel der v1-Tag
+  plus zusätzliche Felder. Die Grundmenge steht beim **Backtag**.
+- **`GET /api/backzettel/:datum/bake-list`** ist die Backliste für die Person, die nur backt
+  (Sonntag): je Backtag die Zeilen aller Zettel, mit „Teig vom Samstag", ohne Teigzahlen.
+- **Freigeben friert den Plan ein** (welche Backtage × Posten der Zettel trägt). Was ein
+  freigegebener Zettel trägt, rechnet kein anderer Entwurf noch einmal (`owned_elsewhere`).
+  Ein vor Z10 freigegebener Tag trägt alle Posten seines Datums (`legacyPlan`) und zeigt die
+  v1-Ansicht (`sheetVersion: 1`).
+- **Nachträge landen beim Teigtag:** eine Vorbestellung für Dienstags-Brötchen nach der Freigabe
+  am Samstag ist ein Nachtrag auf dem Samstags-Zettel (`bakeDate` Dienstag) und steht auf der
+  Dienstags-Backliste - nicht auf dem Dienstags-Zettel.
+- **Korrekturen** nennen den Backtag (`bakeDate`); einer, der nicht auf dem Zettel steht, ist
+  400 `invalid_bake_date`.
+- **Umstellung in hq:** erst wenn S1-S3 auf der Box laufen. Ein Samstag, der **vor** der Umstellung
+  freigegeben wurde, trägt die Dienstags-Brötchen nicht - die Backliste warnt
+  (`not_on_confirmed_sheet`); dann den Samstag wieder öffnen und neu freigeben.
+
 ## Grundmengen (Z4, `/admin/backzettel/grundmengen`)
 
 Tabelle Posten × Di–So (nach Abschnitt, Hefeteig-Posten mit Sorten-Zeilen) zum Pflegen der

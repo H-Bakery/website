@@ -652,11 +652,16 @@ function deltaBakeExtras(lines, deltaByKey, exactByKey, subtotalByKey) {
  * wurde (W4-Verifikation Runde 6): sonst bekam so ein Nachtrag keine
  * Backmenge (`+0,5 Kranz` statt `+1`) und fiel aus Hefeteig und Fuellungen.
  *
+ * Z10: traegt der Nachtrag einen Backtag (`bakeDate`) und ist `sheetDate`
+ * (der Zettel-Tag) angegeben, bekommt die leere Zeile denselben Backtag -
+ * und damit denselben Schluessel wie der Nachtrag (`itemId|variant@bakeDate`).
+ *
  * @param {Array<{key: string}>} lines freigegebene Zeilen (`frozenLine`)
- * @param {Array<{key: string, itemId: string, variant: string|null}>} deltas
+ * @param {Array<{key: string, itemId: string, variant: string|null, bakeDate?: string}>} deltas
  * @param {object|null} config
+ * @param {string} [sheetDate] Teigtag des Zettels (Z10)
  */
-function linesForDeltas(lines, deltas, config) {
+function linesForDeltas(lines, deltas, config, sheetDate) {
   const out = Array.isArray(lines) ? [...lines] : []
   const known = new Set(out.map((l) => l.key))
   for (const d of Array.isArray(deltas) ? deltas : []) {
@@ -673,6 +678,9 @@ function linesForDeltas(lines, deltas, config) {
           cap: 0,
           correction: 0,
           total: 0,
+          ...(sheetDate && d.bakeDate
+            ? { date: sheetDate, bakeDate: d.bakeDate }
+            : {}),
         },
         config,
         []

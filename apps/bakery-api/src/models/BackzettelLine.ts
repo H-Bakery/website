@@ -4,7 +4,12 @@
  * On a draft day a row exists only where a correction was entered (the rest
  * is computed live). On confirmation every line is written with its frozen
  * numbers and a snapshot of name/section/unit. `variant` is '' for "no
- * variant", never null (unique index `date, item_id, variant`).
+ * variant", never null (unique index `date, bake_date, item_id, variant`).
+ *
+ * Z10 (docs/backzettel-v2.md §5.1): `date` is the sheet = dough day,
+ * `bakeDate` the day the line is baked. Saturday's sheet holds Sunday's and
+ * Tuesday's rolls (bakeDate ≠ date); rows from before Z10 were backfilled
+ * with `bakeDate = date`.
  *
  * `cap` is the CAP-Markt delivery template quantity (§5.4 `capTemplate`),
  * not an upper limit - the baseline column comment predates the plan.
@@ -24,6 +29,7 @@ export class BackzettelLine extends Model<
 > {
   declare id: CreationOptional<number>
   declare date: string
+  declare bakeDate: string
   declare itemId: string
   declare variant: CreationOptional<string>
   declare name: CreationOptional<string | null>
@@ -52,6 +58,7 @@ export class BackzettelLine extends Model<
       {
         id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
         date: { type: DataTypes.DATEONLY, allowNull: false },
+        bakeDate: { type: DataTypes.DATEONLY, allowNull: false },
         itemId: { type: DataTypes.STRING(128), allowNull: false },
         variant: {
           type: DataTypes.STRING(64),

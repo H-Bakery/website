@@ -26,6 +26,16 @@ export interface PreorderSnapshotItem {
   /** '' = no variant */
   variant: string
   qty: number
+  /** Z10: pickup day of the preorder (a sheet collects several bake days). */
+  pickupDate?: string
+}
+
+/** Z10: which (bake date × item) a sheet holds (`backzettel-plan.core.js`). */
+export interface BackzettelPlan {
+  version: number
+  doughDate: string
+  /** `itemIds: null` = every item (a day confirmed before Z10, `legacyPlan`). */
+  bakeDates: { date: string; itemIds: string[] | null }[]
 }
 
 /**
@@ -42,6 +52,18 @@ export interface ComputedSnapshot {
   /** Vorbestellungen je Zeile vor dem Aufrunden (fehlt bei Freigaben vor der W4-Verifikation). */
   preordersExact?: Record<string, number>
   subtotalExact?: Record<string, number>
+  /**
+   * Z10 (`sheetVersion: 2`): the frozen plan and dough-day parts. A snapshot
+   * without `plan` is a day confirmed before Z10 (`legacyPlan`).
+   */
+  sheetVersion?: number
+  plan?: BackzettelPlan | null
+  bakeDates?: unknown[]
+  doughs?: unknown[]
+  machine?: unknown[]
+  bread?: unknown
+  rolls?: unknown[]
+  openMasterData?: unknown[]
 }
 
 export class BackzettelDay extends Model<

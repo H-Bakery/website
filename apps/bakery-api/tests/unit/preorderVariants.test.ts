@@ -54,6 +54,21 @@ describe('createVariantsHook', () => {
     })
   })
 
+  it('Z10: a size product names its size and takes no Sorte', () => {
+    fs.writeFileSync(file, yaml.dump(fixture.configV2()))
+    const hook = createVariantsHook({ configPath: file })
+    expect(hook('test-korn-1000')).toEqual({
+      itemId: 'test-korn',
+      variants: [],
+      size: 'g1000',
+    })
+    expect(hook('test-zopf-v2')).toEqual({
+      itemId: 'test-zopf',
+      variants: ['nuss', 'mohn'],
+    })
+    expect(hook.all()).toEqual({ 'test-zopf-v2': ['nuss', 'mohn'] })
+  })
+
   it('lists nothing (null) without a file', () => {
     expect(createVariantsHook({ configPath: file }).all()).toBeNull()
   })

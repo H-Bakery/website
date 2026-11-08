@@ -16,6 +16,17 @@
  *   reopen     (inhaber) back to draft; deltas are folded into the live
  *              draft and discarded, the audit log keeps them. A re-confirm
  *              that changes a line's quantity clears its tick.
+ *
+ * Z10 (docs/backzettel-v2.md §5): a day is the sheet of a **dough day** D
+ * (`computeDoughDay`): the lead-0 lines baked on D and the lines whose dough
+ * is made on D for a later bake day (Saturday: Sunday's and Tuesday's
+ * rolls). Rows are per (bake date × item × variant); the frozen plan in
+ * `computed_snapshot.plan` says which pairs the sheet holds - a draft never
+ * recomputes a pair another confirmed sheet holds (`ownedPairs`), deltas are
+ * reconciled per frozen plan and recorded on the sheet that bakes the
+ * pickup day. A day confirmed before Z10 has no plan: `legacyPlan(date)`,
+ * `sheetVersion: 1`, its v1 layout. `getBakeList` collects one bake day
+ * from all its sheets.
  */
 import type { Request } from 'express'
 import { Op, Transaction } from 'sequelize'
@@ -33,7 +44,10 @@ import {
   User,
   getSequelize,
 } from '../models'
-import type { PreorderSnapshotItem } from '../models/BackzettelDay'
+import type {
+  BackzettelPlan,
+  PreorderSnapshotItem,
+} from '../models/BackzettelDay'
 import type {
   BackzettelSource,
   LoadedBackzettelConfig,
@@ -42,6 +56,7 @@ import type {
 /* eslint-disable @typescript-eslint/no-var-requires */
 const core = require('./backzettel.core')
 const dayCore = require('./backzettel-day.core')
+const planCore = require('./backzettel-plan.core')
 const { WEEKDAY_NAMES } = require('./backzettel-config.core')
 const shopOrders = require('./shop-orders.core')
 /* eslint-enable @typescript-eslint/no-var-requires */
@@ -174,14 +189,19 @@ function userRef(map: Map<number, UserRef>, id: number | null | undefined) {
   return map.get(id) ?? { id, displayName: `#${id}` }
 }
 
-/** Not cancelled preorder positions with pickup on `date` (snapshot form). */
+/**
+ * Not cancelled preorder positions with pickup on one of `dates` (snapshot
+ * form). Z10: every entry carries its `pickupDate` - a sheet collects the
+ * bake days of its plan (Saturday: Sunday's and Tuesday's rolls).
+ */
 async function loadPreorderSnapshot(
-  date: string,
+  dates: string[],
   transaction?: Transaction
 ): Promise<PreorderSnapshotItem[]> {
+  if (dates.length === 0) return []
   const preorders = await Preorder.findAll({
-    where: { pickupDate: date, status: { [Op.ne]: 'storniert' } },
-    attributes: ['id', 'status'],
+    where: { pickupDate: dates, status: { [Op.ne]: 'storniert' } },
+    attributes: ['id', 'status', 'pickupDate'],
     include: [
       {
         model: PreorderItem,
@@ -197,16 +217,17 @@ async function loadPreorderSnapshot(
 }
 
 /**
- * Status of every preorder that is on `date` now, cancelled ones included -
- * tells a cancelled order from a removed line or an order moved to another
- * day (`reconcileDeltas`, W4-verify r5).
+ * Status of every preorder that is on one of `dates` now, cancelled ones
+ * included - tells a cancelled order from a removed line or an order moved
+ * to another day (`reconcileDeltas`, W4-verify r5).
  */
 async function loadDayOrderStates(
-  date: string,
+  dates: string[],
   transaction?: Transaction
 ): Promise<Record<string, string>> {
+  if (dates.length === 0) return {}
   const rows = await Preorder.findAll({
-    where: { pickupDate: date },
+    where: { pickupDate: dates },
     attributes: ['id', 'status'],
     transaction,
   })
@@ -237,27 +258,122 @@ async function loadCapTemplates(
   }))
 }
 
-function computeDraft(
+/** Z10: a frozen or live plan of a sheet (`backzettel-plan.core.js`). */
+type Plan = BackzettelPlan
+
+/** Everything a sheet (dough day) is computed from, read in one go. */
+interface SheetInputs {
+  /** `${bakeDate}|${itemId}` → date of the confirmed sheet that holds it (§5.4). */
+  owned: Map<string, string>
+  /** The sheet day plus every bake day it may collect. */
+  dates: string[]
+  snapshot: PreorderSnapshotItem[]
+  templatesByDate: Record<string, unknown[]>
+  rows: BackzettelLine[]
+}
+
+/** The key of a stored row - as the core keys the line (`lineKey`). */
+function rowKey(
+  row: { itemId: string; variant: string | null; bakeDate?: string | null },
+  sheetDate: string
+): string {
+  return core.lineKey(
+    row.itemId,
+    dayCore.apiVariant(row.variant),
+    row.bakeDate || sheetDate,
+    sheetDate
+  )
+}
+
+/**
+ * The (bake date × item) pairs held by **other** confirmed sheets (§5.4): a
+ * draft never recomputes them, so nothing is counted twice while hq switches
+ * an item to `lead: 1` (an old Tuesday sheet keeps its rolls). A day
+ * confirmed before Z10 holds every item of its own date (`legacyPlan`).
+ */
+async function ownedPairs(
+  config: any,
+  date: string,
+  transaction?: Transaction
+): Promise<Map<string, string>> {
+  const range = planCore.LOOKAHEAD_DAYS
+  const days = await BackzettelDay.findAll({
+    where: {
+      status: 'confirmed',
+      date: {
+        [Op.between]: [
+          planCore.addDays(date, -range),
+          planCore.addDays(date, range),
+        ],
+      },
+    },
+    attributes: ['date', 'computedSnapshot'],
+    order: [['date', 'ASC']],
+    transaction,
+  })
+  const allItems: string[] = config.items.map((i: any) => i.id)
+  const out = new Map<string, string>()
+  for (const d of days) {
+    if (d.date === date) continue
+    const plan: Plan = dayCore.planOfSnapshot(d.computedSnapshot, d.date)
+    for (const b of plan.bakeDates) {
+      for (const itemId of b.itemIds ?? allItems) {
+        out.set(planCore.ownedKey(b.date, itemId), d.date)
+      }
+    }
+  }
+  return out
+}
+
+async function loadSheetInputs(
   loaded: Loaded,
   date: string,
-  inputs: {
-    snapshot: PreorderSnapshotItem[]
-    templates: unknown[]
-    rows: Array<BackzettelLine | Record<string, unknown>>
-    seasonFactor: number
+  transaction?: Transaction
+): Promise<SheetInputs> {
+  const bakeDates: string[] = planCore.bakeDatesFor(loaded.config, date)
+  const dates = bakeDates.includes(date) ? bakeDates : [date, ...bakeDates]
+  const [owned, snapshot, rows, templates] = await Promise.all([
+    ownedPairs(loaded.config, date, transaction),
+    loadPreorderSnapshot(dates, transaction),
+    BackzettelLine.findAll({ where: { date }, transaction }),
+    Promise.all(
+      dates.map((b) => loadCapTemplates(core.isoWeekday(b), transaction))
+    ),
+  ])
+  return {
+    owned,
+    dates,
+    snapshot,
+    rows,
+    templatesByDate: Object.fromEntries(dates.map((b, i) => [b, templates[i]])),
   }
+}
+
+/** The sheet of dough day `date` (`computeDoughDay`), live. */
+function computeSheet(
+  loaded: Loaded,
+  date: string,
+  inputs: SheetInputs,
+  seasonFactor: number,
+  rows: Array<BackzettelLine | Record<string, unknown>> = inputs.rows
 ) {
-  const result = core.computeDay({
+  const preorderItems = dayCore.toCorePreorderItems(inputs.snapshot, date)
+  const result = core.computeDoughDay({
     config: loaded.config,
     date,
-    preorderItems: dayCore.toCorePreorderItems(inputs.snapshot, date),
-    capTemplate: inputs.templates,
+    seasonFactor,
+    bakeInputs: Object.fromEntries(
+      inputs.dates.map((b) => [
+        b,
+        { preorderItems, capTemplate: inputs.templatesByDate[b] ?? [] },
+      ])
+    ),
     corrections: dayCore.correctionsFromRows(
-      inputs.rows.map((r) =>
+      rows.map((r) =>
         r instanceof BackzettelLine ? r.get({ plain: true }) : r
       )
     ),
-    seasonFactor: inputs.seasonFactor,
+    owned: [...inputs.owned.keys()],
     recipes: loaded.recipes,
     catalog: loaded.catalog,
   })
@@ -265,6 +381,40 @@ function computeDraft(
     throw new BackzettelError(400, result.error, result.message)
   }
   return result
+}
+
+/** The positions of a snapshot that a plan covers (by pickup day). */
+function snapshotForPlan(
+  snapshot: PreorderSnapshotItem[],
+  plan: Plan,
+  date: string
+): PreorderSnapshotItem[] {
+  const dates: string[] = planCore.planBakeDates(plan)
+  return snapshot.filter((s) => dates.includes(s.pickupDate || date))
+}
+
+/** The Z10 fields of a sheet (`computeDoughDay` or a v2 `computed_snapshot`). */
+function sheetFields(
+  source: Record<string, any>,
+  isDoughDay: boolean | null
+): Record<string, unknown> {
+  return {
+    sheetVersion: 2,
+    isDoughDay,
+    bakeDates: source['bakeDates'] ?? [],
+    plan: source['plan'] ?? null,
+    doughs: source['doughs'] ?? [],
+    machine: source['machine'] ?? [],
+    bread: source['bread'] ?? null,
+    rolls: source['rolls'] ?? [],
+    openMasterData: source['openMasterData'] ?? [],
+  }
+}
+
+/** German short date: `2026-11-28` → „Samstag, 28.11.“. */
+function dayText(date: string): string {
+  const [, m, d] = date.split('-')
+  return `${WEEKDAY_NAMES[core.isoWeekday(date)]}, ${d}.${m}.`
 }
 
 /** `YYYY-MM-DD` shifted by `days` calendar days. */
@@ -330,30 +480,22 @@ export function createBackzettelService(
 ) {
   // ------------------------------------------------------------- views
 
+  /**
+   * The draft sheet of dough day `date`: computed live (`computeDoughDay`),
+   * stored rows only for corrections and ticks. Lines carry `bakeDate`; a
+   * row is found by (bake date, item, variant) - the line key.
+   */
   async function draftView(
     date: string,
     day: BackzettelDay | null,
     loaded: Loaded
   ) {
     const weekday = core.isoWeekday(date)
-    const [snapshot, templates, rows] = await Promise.all([
-      loadPreorderSnapshot(date),
-      loadCapTemplates(weekday),
-      BackzettelLine.findAll({ where: { date } }),
-    ])
+    const inputs = await loadSheetInputs(loaded, date)
+    const rows = inputs.rows
     const seasonFactor = day ? toNumber(day.seasonFactor) || 1 : 1
-    const result = computeDraft(loaded, date, {
-      snapshot,
-      templates,
-      rows,
-      seasonFactor,
-    })
-    const rowsByKey = new Map(
-      rows.map((r) => [
-        core.lineKey(r.itemId, dayCore.apiVariant(r.variant)),
-        r,
-      ])
-    )
+    const result = computeSheet(loaded, date, inputs, seasonFactor)
+    const rowsByKey = new Map(rows.map((r) => [rowKey(r, date), r]))
     const users = await usersById(
       rows.flatMap((r) => [r.correctionBy, r.doneBy])
     )
@@ -394,6 +536,7 @@ export function createBackzettelService(
       deltas: [],
       warnings: result.warnings,
       configStatus: 'ok' as const,
+      ...sheetFields(result, result.isDoughDay),
     }
   }
 
@@ -414,6 +557,10 @@ export function createBackzettelService(
   ) {
     const weekday = core.isoWeekday(date)
     const config = loaded.ok ? loaded.config : null
+    const snap = day.computedSnapshot
+    // Z10: a snapshot with a plan is a dough-day sheet (v2); without, a day
+    // confirmed before Z10 - its v1 layout stays (`sheetVersion: 1`).
+    const v2 = !!(snap && snap.plan && Array.isArray(snap.plan.bakeDates))
     const [rows, deltaRows, confirmAudits] = await Promise.all([
       BackzettelLine.findAll({ where: { date }, order: [['id', 'ASC']] }),
       BackzettelDelta.findAll({ where: { date }, order: [['id', 'ASC']] }),
@@ -443,9 +590,14 @@ export function createBackzettelService(
         const tick = t as Record<string, unknown>
         if (typeof tick['itemId'] !== 'string') continue
         cleared.set(
-          core.lineKey(
-            tick['itemId'],
-            dayCore.apiVariant(tick['variant'] as string | null)
+          rowKey(
+            {
+              itemId: tick['itemId'],
+              variant: tick['variant'] as string | null,
+              bakeDate:
+                typeof tick['bakeDate'] === 'string' ? tick['bakeDate'] : null,
+            },
+            date
           ),
           {
             qty: toNumber(tick['from'] as number),
@@ -486,9 +638,11 @@ export function createBackzettelService(
     )
     const deltas = deltaRows.map((d) => {
       const item = itemsById.get(d.itemId)
+      const bakeDate = d.bakeDate || date
       return {
         id: d.id,
-        key: core.lineKey(d.itemId, dayCore.apiVariant(d.variant)),
+        key: rowKey(d, date),
+        bakeDate,
         itemId: d.itemId,
         name: item ? item.name : d.itemId,
         unit: item ? item.unit : null,
@@ -504,7 +658,7 @@ export function createBackzettelService(
         preorderMovedTo: (() => {
           const now =
             d.preorderId === null ? null : codes.get(d.preorderId) ?? null
-          return now && now.pickupDate !== date ? now.pickupDate : null
+          return now && now.pickupDate !== bakeDate ? now.pickupDate : null
         })(),
         createdAt: d.createdAt,
         acknowledgedAt: d.acknowledgedAt,
@@ -550,6 +704,8 @@ export function createBackzettelService(
       id: s.id,
       label: s.label,
       lines: s.lines.map(({ row, line }: any) => {
+        // A day confirmed before Z10 was made on its own date.
+        if (!v2 && line.bakeDate) line.lead = 0
         lines.push(line)
         return {
           id: row.id,
@@ -581,24 +737,35 @@ export function createBackzettelService(
     // Frozen at confirm; the current master data only says whether it would
     // now compute something else (`configChangedSinceConfirm`). Days
     // confirmed before the snapshot column existed fall back to recomputing.
+    // Z10: a v2 sheet computes Hefeteig (with litres) and fillings like
+    // `computeDoughDay` (`sheetParts`), an old day like v1 `computeDay`.
+    const hefeteigAndFillings = (cfg: any, list: any[], w: unknown[]) =>
+      v2
+        ? (() => {
+            const parts = core.sheetParts(
+              cfg,
+              list,
+              date,
+              loaded.recipes || {},
+              w
+            )
+            return { hefeteig: parts.hefeteig, fillings: parts.fillings }
+          })()
+        : {
+            hefeteig: core.computeHefeteig(cfg, list),
+            fillings: core.computeFillings(cfg, list, loaded.recipes || {}, w),
+          }
     const recomputed =
       config && !light
         ? (() => {
             const w: unknown[] = []
             return {
-              hefeteig: core.computeHefeteig(config, lines),
-              fillings: core.computeFillings(
-                config,
-                lines,
-                loaded.recipes || {},
-                w
-              ),
+              ...hefeteigAndFillings(config, lines, w),
               prep: core.computePrep(config, lines, weekday),
               warnings: w,
             }
           })()
         : null
-    const snap = day.computedSnapshot
     const frozen = snap ?? recomputed
     const hefeteig = frozen ? frozen.hefeteig : null
     const fillings = frozen ? frozen.fillings : null
@@ -612,11 +779,12 @@ export function createBackzettelService(
     // the fillings. `delta.bake` per line (after rounding), `deltaExtras`
     // the change in Hefeteig/Füllungen - the frozen figures stay as they are.
     let deltaExtras: unknown = null
+    let deltaMachine: unknown[] = []
     if (deltaByKey.size > 0) {
       // W4-verify r6: a Nachtrag for an item/variant not baked at confirm
       // time has no frozen line - give it an empty one, so it gets an oven
       // figure and reaches Hefeteig and Füllungen.
-      const deltaLines = dayCore.linesForDeltas(lines, deltas, config)
+      const deltaLines = dayCore.linesForDeltas(lines, deltas, config, date)
       const extras = dayCore.deltaBakeExtras(
         deltaLines,
         Object.fromEntries(deltaByKey),
@@ -671,15 +839,20 @@ export function createBackzettelService(
             core.computePrep(config, adjusted, weekday)
           )
         }
-        deltaExtras = dayCore.hefeteigFillingsDiff(recomputed, {
-          hefeteig: core.computeHefeteig(config, adjusted),
-          fillings: core.computeFillings(
+        deltaExtras = dayCore.hefeteigFillingsDiff(
+          recomputed,
+          hefeteigAndFillings(config, adjusted, [])
+        )
+        // Z10: what the Nachträge mean at the machine (kg, litres, batches
+        // per dough box) - the frozen machine strip stays as confirmed.
+        if (v2) {
+          deltaMachine = dayCore.machineDeltaExtras(
             config,
-            adjusted,
-            loaded.recipes || {},
-            []
-          ),
-        })
+            deltaLines,
+            extras,
+            date
+          )
+        }
       }
     }
 
@@ -698,19 +871,29 @@ export function createBackzettelService(
       ...dayCore.prepDateFor(date, config ? config.days : null),
       deltas,
       deltaExtras,
+      // Z10: per machine box, only boxes that change (v2 sheets).
+      deltaMachine,
       // W4-verify r6: per key incl. items without a frozen line.
       deltaTotals: Object.fromEntries(deltaByKey),
       warnings,
       configStatus: loaded.ok ? ('ok' as const) : ('no-config' as const),
       configChangedSinceConfirm,
       ...(loaded.ok ? {} : { configReasons: loaded.reasons }),
+      ...(v2 && snap
+        ? sheetFields(snap, config ? planCore.isDoughDay(config, date) : null)
+        : { sheetVersion: 1, plan: planCore.legacyPlan(date) }),
     }
   }
 
-  /** Delta rows that are not recorded yet (pure; `dayCore.reconcileDeltas`). */
+  /**
+   * Delta rows that are not recorded yet (pure; `dayCore.reconcileDeltas`),
+   * per bake day of the sheet's frozen `plan` (Z10; `legacyPlan` for a day
+   * confirmed before Z10, so its old preorders still count).
+   */
   function unrecordedDeltas(
     loaded: Loaded,
     date: string,
+    plan: Plan,
     current: PreorderSnapshotItem[],
     recorded: BackzettelDelta[],
     snapshot: unknown,
@@ -719,6 +902,7 @@ export function createBackzettelService(
     return dayCore.reconcileDeltas({
       config: loaded.config,
       date,
+      plan,
       snapshot,
       current,
       orders,
@@ -727,8 +911,56 @@ export function createBackzettelService(
         variant: r.variant,
         preorderId: r.preorderId,
         qty: toNumber(r.qty),
+        bakeDate: r.bakeDate || date,
       })),
       catalog: loaded.catalog,
+    })
+  }
+
+  /** Does a confirmed sheet's preorder state differ from its deltas? */
+  async function pendingFor(loaded: Loaded, day: BackzettelDay) {
+    const plan: Plan = dayCore.planOfSnapshot(day.computedSnapshot, day.date)
+    return (
+      unrecordedDeltas(
+        loaded,
+        day.date,
+        plan,
+        await loadPreorderSnapshot(planCore.planBakeDates(plan)),
+        await BackzettelDelta.findAll({ where: { date: day.date } }),
+        day.preorderSnapshot || []
+      ).length > 0
+    )
+  }
+
+  /**
+   * Confirmed sheets whose frozen plan bakes on one of `bakeDates` (a sheet
+   * is at most `LOOKAHEAD_DAYS` before its bake days), ascending.
+   */
+  async function confirmedSheetsFor(
+    bakeDates: string[],
+    transaction?: Transaction
+  ): Promise<BackzettelDay[]> {
+    const valid = [...new Set(bakeDates.filter((d) => core.isValidDate(d)))]
+    if (valid.length === 0) return []
+    valid.sort()
+    const days = await BackzettelDay.findAll({
+      where: {
+        status: 'confirmed',
+        date: {
+          [Op.between]: [
+            planCore.addDays(valid[0], -planCore.LOOKAHEAD_DAYS),
+            valid[valid.length - 1],
+          ],
+        },
+      },
+      order: [['date', 'ASC']],
+      transaction,
+    })
+    return days.filter((d) => {
+      const dates: string[] = planCore.planBakeDates(
+        dayCore.planOfSnapshot(d.computedSnapshot, d.date)
+      )
+      return dates.some((b) => valid.includes(b))
     })
   }
 
@@ -774,17 +1006,20 @@ export function createBackzettelService(
       return null
     }
     warnedPending.delete(date)
+    const plan: Plan = dayCore.planOfSnapshot(day.computedSnapshot, date)
+    const dates: string[] = planCore.planBakeDates(plan)
     const rows = unrecordedDeltas(
       loaded,
       date,
-      await loadPreorderSnapshot(date, transaction),
+      plan,
+      await loadPreorderSnapshot(dates, transaction),
       await BackzettelDelta.findAll({ where: { date }, transaction }),
       day.preorderSnapshot || [],
-      await loadDayOrderStates(date, transaction)
+      await loadDayOrderStates(dates, transaction)
     )
     if (rows.length === 0) return 0
     const created = await BackzettelDelta.bulkCreate(
-      rows.map((r: any) => ({ date, ...r })),
+      rows.map((r: any) => ({ date, ...r, bakeDate: r.bakeDate || date })),
       { transaction }
     )
     // A preorder write is attributed to its writer; the reconciliation sweep
@@ -806,16 +1041,19 @@ export function createBackzettelService(
 
   /**
    * Preorder write hook (`PreordersService.onWrite`, app.ts): records the
-   * deltas of every touched confirmed day in the preorder's transaction.
+   * deltas of every confirmed sheet that bakes on a touched pickup day, in
+   * the preorder's transaction. Z10: that is the sheet of the dough day, not
+   * only the pickup day itself - a Tuesday-roll preorder after Saturday's
+   * confirm is a delta on Saturday (bake date Tuesday).
    */
   async function recordPreorderDeltas(
     dates: string[],
     context: { transaction: Transaction; req: Request | null; via: string }
   ): Promise<void> {
-    for (const date of dates) {
-      if (!core.isValidDate(date)) continue
+    const sheets = await confirmedSheetsFor(dates, context.transaction)
+    for (const sheet of sheets) {
       await recordDeltasIn(
-        date,
+        sheet.date,
         context.transaction,
         context.req,
         `preorder_${context.via}`,
@@ -835,11 +1073,23 @@ export function createBackzettelService(
     options: { from?: string; req?: Request | null } = {}
   ): Promise<{ date: string; recorded: number | null }[]> {
     const from = options.from ?? berlinYesterday(new Date())
-    const days = await BackzettelDay.findAll({
-      where: { status: 'confirmed', date: { [Op.gte]: from } },
-      attributes: ['date'],
+    // Z10: a sheet before `from` still counts while it bakes on or after it
+    // (Saturday's sheet holds Tuesday's rolls).
+    const candidates = await BackzettelDay.findAll({
+      where: {
+        status: 'confirmed',
+        date: { [Op.gte]: planCore.addDays(from, -planCore.LOOKAHEAD_DAYS) },
+      },
+      attributes: ['date', 'computedSnapshot'],
       order: [['date', 'ASC']],
     })
+    const days = candidates.filter((d) =>
+      (
+        planCore.planBakeDates(
+          dayCore.planOfSnapshot(d.computedSnapshot, d.date)
+        ) as string[]
+      ).some((b) => b >= from)
+    )
     const out: { date: string; recorded: number | null }[] = []
     for (const d of days) {
       const recorded = await getSequelize().transaction((transaction) =>
@@ -918,15 +1168,7 @@ export function createBackzettelService(
     const day = await BackzettelDay.findByPk(date)
     if (day && day.status === 'confirmed') {
       const view = await confirmedView(date, day, loaded)
-      const deltasPending = loaded.ok
-        ? unrecordedDeltas(
-            loaded,
-            date,
-            await loadPreorderSnapshot(date),
-            await BackzettelDelta.findAll({ where: { date } }),
-            day.preorderSnapshot || []
-          ).length > 0
-        : null
+      const deltasPending = loaded.ok ? await pendingFor(loaded, day) : null
       if (deltasPending === true) scheduleCatchUp(date)
       return { ...view, deltasPending }
     }
@@ -955,6 +1197,229 @@ export function createBackzettelService(
     return confirmedView(date, day, source.load(), { light: true })
   }
 
+  /**
+   * Z10: the sheets that feed bake day `date` (§5.3): every confirmed sheet
+   * whose frozen plan bakes on it (lines from the stored rows), plus the
+   * dough days of the current master data that are still drafts (computed
+   * live, without the pairs a confirmed sheet holds). Each with its lines
+   * for this bake day and its Nachträge.
+   */
+  async function bakeSources(
+    loaded: Loaded,
+    date: string,
+    { light = false }: { light?: boolean } = {}
+  ) {
+    const config = loaded.config
+    const confirmed = await confirmedSheetsFor([date])
+    const confirmedDates = new Set(confirmed.map((d) => d.date))
+    const plans = confirmed.map(
+      (d) => dayCore.planOfSnapshot(d.computedSnapshot, d.date) as Plan
+    )
+    const warnings: Record<string, unknown>[] = []
+    const sources: {
+      doughDate: string
+      status: 'draft' | 'confirmed'
+      confirmedAt: Date | null
+      view: any
+      lines: any[]
+    }[] = []
+    for (const day of confirmed) {
+      const view = await confirmedView(day.date, day, loaded, { light })
+      sources.push({
+        doughDate: day.date,
+        status: 'confirmed',
+        confirmedAt: day.confirmedAt,
+        view,
+        lines: [],
+      })
+    }
+    const doughDates: string[] = planCore.doughDatesFor(config, date)
+    for (const d of doughDates) {
+      if (confirmedDates.has(d)) continue
+      const day = await BackzettelDay.findByPk(d)
+      if (day && day.status === 'confirmed') {
+        // Confirmed before hq moved these items to this dough day: its
+        // frozen plan does not hold them, so no sheet does - say so, never
+        // drop them silently (transition, docs/backzettel-v2.md §9.2).
+        const lost = config.items.filter(
+          (item: any) =>
+            planCore.doughDateFor(config, item, date) === d &&
+            !plans.some((p) => planCore.planIncludes(p, date, item.id))
+        )
+        if (lost.length > 0) {
+          warnings.push({
+            code: 'not_on_confirmed_sheet',
+            doughDate: d,
+            items: lost.map((i: any) => i.id),
+            message: `${lost.map((i: any) => i.name).join(', ')} für ${dayText(
+              date
+            )} stehen auf keinem Zettel: der Zettel vom ${dayText(
+              d
+            )} wurde vor der Umstellung freigegeben. Bitte dort „Wieder öffnen“ und neu freigeben.`,
+          })
+        }
+        continue
+      }
+      if (!config.days.includes(core.isoWeekday(d))) continue
+      sources.push({
+        doughDate: d,
+        status: 'draft',
+        confirmedAt: null,
+        view: await draftView(d, day, loaded),
+        lines: [],
+      })
+    }
+    sources.sort((a, b) => a.doughDate.localeCompare(b.doughDate))
+    for (const src of sources) {
+      src.lines = src.view.sections
+        .flatMap((s: any) => s.lines)
+        .filter((l: any) => (l.bakeDate || src.doughDate) === date)
+    }
+    // A draft without a line for this day adds nothing (Sunday's own,
+    // empty sheet); a confirmed sheet stays listed - it may carry Nachträge.
+    return {
+      sources: sources.filter(
+        (s) => s.status === 'confirmed' || s.lines.length > 0
+      ),
+      confirmed,
+      warnings,
+    }
+  }
+
+  /**
+   * `GET /:date/bake-list` (Z10, §4.4): what is baked on `date`, from every
+   * sheet that makes dough for it - no dough figures. For the person who
+   * only bakes (Sunday). Reads write nothing; like `getDay`, unrecorded
+   * deltas of a feeding confirmed sheet start a background catch-up.
+   */
+  async function getBakeList(date: string) {
+    assertDate(date)
+    const loaded = source.load()
+    if (!loaded.ok) {
+      return {
+        date,
+        status: 'no-config' as const,
+        reasons: loaded.reasons,
+        warnings: loaded.warnings,
+      }
+    }
+    const weekday = core.isoWeekday(date)
+    const head = { date, weekday, weekdayName: WEEKDAY_NAMES[weekday] }
+    if (!loaded.config.days.includes(weekday)) {
+      return {
+        ...head,
+        status: 'ruhetag' as const,
+        message: `${WEEKDAY_NAMES[weekday]} ist Ruhetag - an diesem Tag wird nicht gebacken.`,
+        sources: [],
+        sections: [],
+        rolls: [],
+        deltas: [],
+        deltasPending: false,
+        warnings: [],
+      }
+    }
+    const { sources, confirmed, warnings } = await bakeSources(loaded, date)
+    const list = core.bakeListFromLines(
+      loaded.config,
+      date,
+      sources.map((s) => ({
+        doughDate: s.doughDate,
+        status: s.status,
+        lines: s.lines,
+        deltas: s.view.deltas,
+      }))
+    )
+    let deltasPending = false
+    for (const day of confirmed) {
+      if (await pendingFor(loaded, day)) {
+        deltasPending = true
+        scheduleCatchUp(day.date)
+      }
+    }
+    return {
+      ...head,
+      status: 'ok' as const,
+      sources: sources.map((s) => ({
+        doughDate: s.doughDate,
+        weekday: core.isoWeekday(s.doughDate),
+        weekdayName: WEEKDAY_NAMES[core.isoWeekday(s.doughDate)],
+        status: s.status,
+        confirmedAt: s.confirmedAt,
+        lineCount: s.lines.length,
+      })),
+      sections: list.sections,
+      rolls: list.rolls,
+      deltas: list.deltas,
+      deltasPending,
+      warnings: [...warnings, ...list.warnings],
+    }
+  }
+
+  /**
+   * Z10, for evaluations per bake day (Rest am Abend, §5.5): the lines baked
+   * on `date` from every feeding sheet, as one day view - `status`
+   * `confirmed` only when every sheet with lines for this day is confirmed,
+   * else `draft` (planned only). `deltaTotals` are keyed `itemId|variant`
+   * like a same-day sheet. `null` without master data or on a Ruhetag.
+   * `light` as in `getConfirmedLines`.
+   */
+  async function getBakeLines(
+    date: string,
+    { light = true }: { light?: boolean } = {}
+  ) {
+    assertDate(date)
+    const loaded = source.load()
+    if (!loaded.ok) return null
+    const weekday = core.isoWeekday(date)
+    if (!loaded.config.days.includes(weekday)) return null
+    const { sources } = await bakeSources(loaded, date, { light })
+    const withLines = sources.filter((s) => s.lines.length > 0)
+    const allConfirmed =
+      sources.length > 0 &&
+      (withLines.length > 0 ? withLines : sources).every(
+        (s) => s.status === 'confirmed'
+      )
+    const deltas: any[] = []
+    const deltaTotals: Record<string, any> = {}
+    for (const src of sources) {
+      if (src.status !== 'confirmed') continue
+      const keyBake = new Map<string, string>()
+      for (const d of src.view.deltas as any[]) {
+        keyBake.set(d.key, d.bakeDate || src.doughDate)
+        if ((d.bakeDate || src.doughDate) === date) deltas.push(d)
+      }
+      for (const [key, entry] of Object.entries(
+        (src.view.deltaTotals ?? {}) as Record<string, any>
+      )) {
+        if ((keyBake.get(key) ?? src.doughDate) !== date) continue
+        deltaTotals[key.split('@')[0]] = entry
+      }
+    }
+    const list = core.bakeListFromLines(
+      loaded.config,
+      date,
+      sources.map((s) => ({
+        doughDate: s.doughDate,
+        status: s.status,
+        lines: s.lines,
+      }))
+    )
+    return {
+      date,
+      weekday,
+      weekdayName: WEEKDAY_NAMES[weekday],
+      status: allConfirmed ? ('confirmed' as const) : ('draft' as const),
+      sources: sources.map((s) => ({
+        doughDate: s.doughDate,
+        status: s.status,
+        lineCount: s.lines.length,
+      })),
+      sections: list.sections,
+      deltas,
+      deltaTotals,
+    }
+  }
+
   async function getPrep(date: string) {
     const day: any = await getDay(date)
     if (day.status === 'no-config') return day
@@ -979,6 +1444,7 @@ export function createBackzettelService(
       config: loaded.config,
       errors: loaded.reasons,
       warnings: loaded.warnings,
+      open: loaded.open,
       recipesMissing: loaded.recipesMissing,
       catalogSize: loaded.catalog ? loaded.catalog.length : null,
     }
@@ -1060,39 +1526,31 @@ export function createBackzettelService(
     next: {
       itemId: string
       variant: string | null
+      bakeDate: string
       correction: number
       reason: string | null
     },
     transaction: Transaction
   ) {
-    const weekday = core.isoWeekday(date)
-    const [snapshot, templates, rows] = await Promise.all([
-      loadPreorderSnapshot(date, transaction),
-      loadCapTemplates(weekday, transaction),
-      BackzettelLine.findAll({ where: { date }, transaction }),
-    ])
-    const plain: Record<string, unknown>[] = rows
+    const inputs = await loadSheetInputs(loaded, date, transaction)
+    const key = rowKey(next, date)
+    const plain: Record<string, unknown>[] = inputs.rows
+      .filter((r) => rowKey(r, date) !== key)
       .map((r) => r.get({ plain: true }) as Record<string, unknown>)
-      .filter(
-        (r) =>
-          !(
-            r.itemId === next.itemId &&
-            dayCore.apiVariant(r.variant) === dayCore.apiVariant(next.variant)
-          )
-      )
     plain.push({
       itemId: next.itemId,
       variant: next.variant,
+      bakeDate: next.bakeDate,
       correction: next.correction,
       correctionReason: next.reason,
     })
-    const result = computeDraft(loaded, date, {
-      snapshot,
-      templates,
-      rows: plain,
-      seasonFactor: toNumber(day.seasonFactor) || 1,
-    })
-    const key = core.lineKey(next.itemId, dayCore.apiVariant(next.variant))
+    const result = computeSheet(
+      loaded,
+      date,
+      inputs,
+      toNumber(day.seasonFactor) || 1,
+      plain
+    )
     const hit = (result.lines as Array<Record<string, unknown>>).find(
       (l) => l.key === key
     )
@@ -1192,6 +1650,76 @@ export function createBackzettelService(
     )
   }
 
+  /**
+   * Z10: `bakeDate` in the correction body (default: the sheet day). It must
+   * be a bake day of this sheet on which the item is made from this sheet's
+   * dough - else 400 `invalid_bake_date`; a pair a confirmed sheet holds is
+   * 409 `owned_elsewhere` (correct it there, after „Wieder öffnen“).
+   */
+  function parseBakeDate(body: unknown, date: string): string {
+    const raw =
+      body && typeof body === 'object'
+        ? (body as Record<string, unknown>)['bakeDate']
+        : undefined
+    if (raw === undefined || raw === null || raw === '') return date
+    if (typeof raw !== 'string' || !core.isValidDate(raw)) {
+      throw new BackzettelError(
+        400,
+        'invalid_bake_date',
+        `Ungültiger Backtag „${String(raw)}“; erwartet wird JJJJ-MM-TT.`
+      )
+    }
+    return raw
+  }
+
+  async function assertBakeDateOfSheet(
+    loaded: Loaded,
+    date: string,
+    bakeDate: string,
+    item: { id: string; name: string },
+    transaction: Transaction
+  ): Promise<void> {
+    const plan: Plan = planCore.planForSheet(loaded.config, date)
+    if (!planCore.planBakeDates(plan).includes(bakeDate)) {
+      throw new BackzettelError(
+        400,
+        'invalid_bake_date',
+        `${dayText(bakeDate)} ist kein Backtag des Zettels vom ${dayText(
+          date
+        )}.`,
+        { bakeDates: planCore.planBakeDates(plan) }
+      )
+    }
+    if (!planCore.planIncludes(plan, bakeDate, item.id)) {
+      const doughDate = planCore.doughDateFor(loaded.config, item, bakeDate)
+      throw new BackzettelError(
+        400,
+        'invalid_bake_date',
+        `„${item.name}“ für ${dayText(
+          bakeDate
+        )} wird nicht an diesem Teigtag gemacht, sondern am ${dayText(
+          doughDate
+        )} - bitte dort korrigieren.`,
+        { doughDate }
+      )
+    }
+    const owner = (await ownedPairs(loaded.config, date, transaction)).get(
+      planCore.ownedKey(bakeDate, item.id)
+    )
+    if (owner) {
+      throw new BackzettelError(
+        409,
+        'owned_elsewhere',
+        `„${item.name}“ für ${dayText(
+          bakeDate
+        )} steht schon auf dem freigegebenen Zettel vom ${dayText(
+          owner
+        )}. Änderungen dort nach „Wieder öffnen“.`,
+        { sheetDate: owner }
+      )
+    }
+  }
+
   async function setCorrection(
     date: string,
     itemId: string,
@@ -1207,15 +1735,23 @@ export function createBackzettelService(
     const parsed = dayCore.parseCorrection(body, line.item)
     if (!parsed.ok) throw new BackzettelError(400, parsed.error, parsed.message)
     const expected = parseExpectedCorrection(body)
+    const bakeDate = parseBakeDate(body, date)
     await writeDraft(date, async (day, loadedNow, transaction) => {
-      const where = { date, itemId, variant: line.variant }
+      await assertBakeDateOfSheet(
+        loadedNow,
+        date,
+        bakeDate,
+        line.item,
+        transaction
+      )
+      const where = { date, bakeDate, itemId, variant: line.variant }
       const row = await BackzettelLine.findOne({ where, transaction })
       if (parsed.value.correction < 0) {
         await assertCorrectionFits(
           date,
           day,
           loadedNow,
-          { itemId, variant: line.variant, ...parsed.value },
+          { itemId, variant: line.variant, bakeDate, ...parsed.value },
           transaction
         )
       }
@@ -1253,7 +1789,13 @@ export function createBackzettelService(
         'correction',
         'backzettel_day',
         date,
-        { itemId, variant: line.variant, from, to },
+        {
+          itemId,
+          variant: line.variant,
+          ...(bakeDate !== date ? { bakeDate } : {}),
+          from,
+          to,
+        },
         { transaction }
       )
     })
@@ -1262,31 +1804,23 @@ export function createBackzettelService(
 
   async function confirm(date: string, req: Request) {
     await writeDraft(date, async (day, loaded, transaction) => {
-      const weekday = core.isoWeekday(date)
-      const [snapshot, templates, rows] = await Promise.all([
-        loadPreorderSnapshot(date, transaction),
-        loadCapTemplates(weekday, transaction),
-        BackzettelLine.findAll({ where: { date }, transaction }),
-      ])
-      const result = computeDraft(loaded, date, {
-        snapshot,
-        templates,
-        rows,
-        seasonFactor: toNumber(day.seasonFactor) || 1,
-      })
-      const rowsByKey = new Map(
-        rows.map((r) => [
-          core.lineKey(r.itemId, dayCore.apiVariant(r.variant)),
-          r,
-        ])
+      const inputs = await loadSheetInputs(loaded, date, transaction)
+      const rows = inputs.rows
+      const result = computeSheet(
+        loaded,
+        date,
+        inputs,
+        toNumber(day.seasonFactor) || 1
       )
+      // Z10: what this sheet covers is frozen with it (`computed_snapshot.plan`);
+      // its preorder snapshot holds the positions of those bake days.
+      const snapshot = snapshotForPlan(inputs.snapshot, result.plan, date)
+      const rowsByKey = new Map(rows.map((r) => [rowKey(r, date), r]))
       const keep = new Set<number>()
       const clearedTicks: Record<string, unknown>[] = []
-      for (const values of dayCore.linesForConfirm(result.lines)) {
-        const key = core.lineKey(
-          values.itemId,
-          dayCore.apiVariant(values.variant)
-        )
+      for (const raw of dayCore.linesForConfirm(result.lines)) {
+        const values = { ...raw, bakeDate: raw.bakeDate || date }
+        const key = rowKey(values, date)
         const row = rowsByKey.get(key)
         if (row) {
           // A tick from the previous confirmation stands if the line still
@@ -1298,6 +1832,9 @@ export function createBackzettelService(
             clearedTicks.push({
               itemId: row.itemId,
               variant: row.variant,
+              ...(row.bakeDate && row.bakeDate !== date
+                ? { bakeDate: row.bakeDate }
+                : {}),
               doneBy: row.doneBy,
               doneAt:
                 row.doneAt instanceof Date
@@ -1355,12 +1892,18 @@ export function createBackzettelService(
           lines: result.lines.map((l: any) => ({
             itemId: l.itemId,
             variant: l.variant,
+            ...(l.bakeDate && l.bakeDate !== date
+              ? { bakeDate: l.bakeDate }
+              : {}),
             total: l.total,
           })),
           preorderPositions: snapshot.length,
           removedLines: removed.map((r) => ({
             itemId: r.itemId,
             variant: r.variant,
+            ...(r.bakeDate && r.bakeDate !== date
+              ? { bakeDate: r.bakeDate }
+              : {}),
           })),
           discardedDeltas: discarded,
           clearedTicks,
@@ -1452,6 +1995,9 @@ export function createBackzettelService(
             id: d.id,
             itemId: d.itemId,
             variant: d.variant,
+            ...(d.bakeDate && d.bakeDate !== date
+              ? { bakeDate: d.bakeDate }
+              : {}),
             preorderId: d.preorderId,
             qty: toNumber(d.qty),
             kind: d.kind,
@@ -1541,7 +2087,15 @@ export function createBackzettelService(
         done ? 'line_done' : 'line_undone',
         'backzettel_line',
         line.id,
-        { date, itemId: line.itemId, variant: line.variant, total },
+        {
+          date,
+          ...(line.bakeDate && line.bakeDate !== date
+            ? { bakeDate: line.bakeDate }
+            : {}),
+          itemId: line.itemId,
+          variant: line.variant,
+          total,
+        },
         { transaction }
       )
       return line
@@ -1550,6 +2104,7 @@ export function createBackzettelService(
     return {
       id: row.id,
       date: row.date,
+      bakeDate: row.bakeDate || row.date,
       itemId: row.itemId,
       variant: dayCore.apiVariant(row.variant),
       doneAt: row.doneAt,
@@ -1595,6 +2150,7 @@ export function createBackzettelService(
     return {
       id: row.id,
       date: row.date,
+      bakeDate: row.bakeDate || row.date,
       itemId: row.itemId,
       variant: dayCore.apiVariant(row.variant),
       qty: toNumber(row.qty),
@@ -1664,6 +2220,7 @@ export function createBackzettelService(
     return rows.map((row) => ({
       id: row.id,
       date: row.date,
+      bakeDate: row.bakeDate || row.date,
       itemId: row.itemId,
       variant: dayCore.apiVariant(row.variant),
       qty: toNumber(row.qty),
@@ -1677,6 +2234,8 @@ export function createBackzettelService(
   return {
     getDay,
     getConfirmedLines,
+    getBakeList,
+    getBakeLines,
     getPrep,
     getConfig,
     setSeasonFactor,

@@ -10,6 +10,10 @@
  * Sorten-Slug an. Steht das Produkt in einem Posten, prüft
  * `delivery-preorders.core.js` (`checkVariant`) gegen dessen `variants`.
  *
+ * Z10: ein Produkt eines Größen-Postens (Brot je Laibgröße) nennt seine
+ * Größe selbst (`products[].size`): `variants: []` - die Vorbestellung
+ * speichert `''`, die Maske fragt nicht nach einer Sorte - und `size` dazu.
+ *
  * `hook.all()` liefert alle Produkte mit Sorten auf einmal
  * (`{ [productId]: ['nuss', …] }`, `null` ohne gültige Stammdatei) - für
  * `GET /api/preorders/variants`, die Sorten-Chips der Erfassungsmaske (P1).
@@ -32,6 +36,8 @@ const backzettel = require('./backzettel.core')
 export interface VariantInfo {
   itemId: string
   variants: string[]
+  /** Z10: die Laibgröße, auf die das Produkt fällt (nur Größen-Posten). */
+  size?: string | null
 }
 
 export type VariantsForProduct = (productId: string) => VariantInfo | null
@@ -107,7 +113,10 @@ export function createVariantsHook(
     const config = load()
     if (!config) return null
     const info = backzettel.variantsForProduct(config, productId)
-    return info ? { itemId: info.itemId, variants: info.variants } : null
+    if (!info) return null
+    return info.size === undefined
+      ? { itemId: info.itemId, variants: info.variants }
+      : { itemId: info.itemId, variants: info.variants, size: info.size }
   }) as VariantsHook
   hook.all = () => {
     const config = load()

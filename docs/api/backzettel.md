@@ -140,6 +140,75 @@ for the delta tests, written through `POST/PATCH /api/preorders`, cancel and bul
 edit/move/cancel after confirm, parallel GETs record nothing, idempotent reconcile, broken config →
 reconcile after repair).
 
+## Dough-day sheets and bake list (Z10, slice S3)
+
+Design: [../backzettel-v2.md](../backzettel-v2.md) §5. A day is now the **sheet of a dough day D**
+(`core.computeDoughDay`): the lead-0 lines baked on D plus the lines whose dough is made on D for a
+later bake day (Saturday: Sunday's and Tuesday's rolls). With today's hq file (no `lead`, no
+`dough_days`) every line has `bakeDate === date` and the answer is the v1 day plus additive fields.
+
+| Endpoint                                           | Who                | Change                                                                                                                                                                                                                                                                                                                          |
+| -------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /config`                                      | any session        | + `open` and `working.open`: open master data `[{ path, code, message }]` (explicit `null`s, §3)                                                                                                                                                                                                                                |
+| `GET /:date`                                       | any session        | + `sheetVersion` (2; 1 = confirmed before Z10), `isDoughDay`, `bakeDates[{ date, weekday, weekdayName, label, lineCount }]`, `plan`, `doughs`, `machine`, `bread`, `rolls`, `openMasterData`; lines + `bakeDate`, `doughDate`, `lead`, `variantKind`, `variantLabel`, `bruch?`; deltas + `bakeDate`; confirmed + `deltaMachine` |
+| `GET /:date/bake-list`                             | any session        | **new**: `{ date, weekday, weekdayName, status: ok \| no-config \| ruhetag, sources[{ doughDate, status: draft \| confirmed, confirmedAt, lineCount }], sections, rolls, deltas, deltasPending, warnings }` - no dough figures                                                                                                  |
+| `PUT /:date/lines/:itemId[/:variant]/correction`   | inhaber, backstube | + optional `bakeDate` (default `date`): must be a bake day of the sheet on which the item is made from this sheet's dough → else 400 `invalid_bake_date`; a pair another confirmed sheet holds → 409 `owned_elsewhere` (`sheetDate`)                                                                                            |
+| `POST /:date/lines/:lineId/done`, `…/deltas/…/ack` | inhaber, backstube | answers + `bakeDate`; on a lead > 0 line "done" means **made** (no "baked" tick in Z10)                                                                                                                                                                                                                                         |
+
+- **Line keys:** `itemId|variant` when `bakeDate === date` (all v1 keys stay valid), else
+  `itemId|variant@bakeDate`. Rows are looked up by (sheet date, bake date, item, variant).
+- **Inputs per bake day:** preorders with `pickup_date` in `bakeDatesFor(D)` (status ≠ storniert;
+  snapshot entries carry `pickupDate`), CAP templates of each bake day's weekday, D's season factor
+  and the corrections with their `bakeDate`.
+- **Confirm** freezes the rows per (bake date × item × variant), `computed_snapshot` v2
+  (`sheetVersion: 2`, `plan`, `bakeDates`, `doughs`, `machine`, `bread`, `rolls`,
+  `openMasterData` besides the v1 fields) and the preorder snapshot of the plan's bake days. Tick
+  rules unchanged, per row.
+- **Confirmed view:** v2 parts come from the snapshot. A snapshot **without `plan`** is a day
+  confirmed before Z10: `sheetVersion: 1`, `plan = legacyPlan(date)` (every item of that date),
+  no `doughs`/`machine`/`bread`/`rolls`, lines with `lead: 0` - the screens keep the v1 layout.
+  `configChangedSinceConfirm` recomputes the way the day was computed (`sheetParts` for v2, v1
+  `computeHefeteig` for old days). `deltaExtras` keeps its v1 shape; `deltaMachine` lists the
+  machine boxes a Nachtrag changes (v2 only, `machineDeltaExtras`).
+- **Ownership (§5.4):** a (bake date, item) pair belongs to the confirmed sheet whose frozen plan
+  holds it (`ownedPairs`, confirmed sheets within ±14 days). A draft never recomputes such a pair
+  (core warning `owned_elsewhere`); a correction on it is 409 `owned_elsewhere`. Reopen clears the
+  plan, the pairs are free again. So a Tuesday confirmed before hq moves the rolls to `lead: 1`
+  keeps them and the Saturday draft does not count them twice.
+- **Deltas by dough day:** the preorder write hook records on every confirmed sheet whose frozen
+  plan bakes on a touched pickup day (`confirmedSheetsFor`), each reconciled with **its own** plan
+  (`reconcileDeltas({ plan })`, `legacyPlan` for old days, so an old Tuesday still sees its rolls).
+  A Tuesday-roll preorder after Saturday's confirm is a delta row `date = Saturday`,
+  `bake_date = Tuesday`, none on Tuesday's sheet; `preorderMovedTo` compares with the delta's bake
+  day. `reconcileConfirmedDays({ from })` also covers sheets up to 14 days before `from` whose plan
+  bakes on or after it. `deltasPending` and the background catch-up work per plan as before.
+- **Bake list** (`getBakeList`): sources = confirmed sheets whose plan bakes on B (lines from the
+  rows, with ticks = made and Nachträge) + the dough days of the current master data that are still
+  drafts (live, without owned pairs; a draft without a line for B is not listed). Lines carry
+  `doughDate`, `sheetStatus` and `madeOn` („Teig vom Samstag" / „Teig von heute"). A dough day
+  that was confirmed **before** hq moved items to it holds them in no plan: warning
+  `not_on_confirmed_sheet` (names the items, asks to reopen that sheet) - never silently dropped.
+  Ruhetag answers `status: 'ruhetag'` (200) with empty lists.
+- **`getBakeLines(B, { light })`** (service only, for Rest am Abend, S4): the bake-list lines as one
+  day view `{ date, status, sources, sections, deltas, deltaTotals }`; `status: 'confirmed'` only
+  when every source with lines for B is confirmed; `deltaTotals` keyed `itemId|variant`; `null`
+  without master data or on a Ruhetag. `getConfirmedLines` stays until S4 switches over.
+- **Migration** `20270201000000-backzettel-dough-day.js`: `backzettel_lines.bake_date` and
+  `backzettel_deltas.bake_date` (DATEONLY NOT NULL DEFAULT `''`, backfilled `= date`), unique index
+  `backzettel_lines_date_bake_item_variant (date, bake_date, item_id, variant)` instead of
+  `backzettel_lines_date_item_variant`, indexes on `bake_date`. `down()` restores the old index and
+  refuses while a line has `bake_date <> date`. Models: `BackzettelLine.bakeDate`,
+  `BackzettelDelta.bakeDate` (always written by the service).
+- **Preorders:** `preorder-variants.ts` passes the size of a size product (`variants: []` +
+  `size`); the entry form asks for no Sorte, the preorder stores `variant: ''`, the core puts it on
+  its size.
+
+Tests: `tests/integration/backzettelV2.test.ts` (synthetic hq from `configV2()`: Saturday sheet with
+Sunday/Tuesday rolls, Sunday without dough, Monday 409, bake lists, corrections with `bakeDate`,
+Tuesday-roll delta on Saturday shown on Tuesday's bake list, transition from a Tuesday and a
+Saturday confirmed before Z10, roles, `getBakeLines`), `tests/migrations/pilotBaseline.test.ts`
+(backfill, index, a v1-confirmed day reads as before, idempotent, down), `tests/unit/preorderVariants.test.ts`.
+
 ## Grundmengen (Z4): base write + reference
 
 Two additions to `/api/backzettel` (registered **before** `/:date`, which would otherwise read
