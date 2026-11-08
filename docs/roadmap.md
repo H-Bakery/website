@@ -673,6 +673,25 @@ Exit criteria:
 - [x] **Z6** (`feat/Z6-backstube-tablet`) Backstube tablet view (M, → Z3).
 - [x] **Z7** (`feat/Z5-Z7-backzettel-day`) Print, 3 pages (S, → Z5).
 - [ ] **Z8** Fill the CAP delivery templates Tue–Sat (S, owner).
+- [ ] **Z10** Backzettel v2 - the sheet the bakers actually work from (L, → Z1-Z7, Q-L answers).
+      Domain reference (private, with real reference values): `hq/notes/procedures/backliste.md`;
+      baker questionnaire `hq/notes/procedures/backliste-fragebogen.md`. Scope:
+  - **Doughs as master data** (`doughs[]`: `kg_per_liter` - the bakers' "Liter" is the recipe
+    unit, 1 L water + flour + rest -, `liter_rounding`, `batch_max_kg`, shared doughs, add-ons
+    such as Dunkelsauer per litre). Litres are computed, never estimated: without `kg_per_liter`
+    the sheet shows kg only.
+  - **Bread by loaf size** (dough weight per size) instead of `unit: Liter`; a dough may feed
+    another item with a fixed extra (Kerbricher from Mischteig + Körner).
+  - **Brötchen in Bruch** (one divider press = 30 pieces; weight per Bruch, pieces per product,
+    a Bruch split across products).
+  - **Dough day ≠ bake day**: Brötchen are made the day before baking; Saturday makes Sunday's
+    and Tuesday's, Sunday only bakes. The dough-day sheet collects base + preorders + CAP of its
+    bake days; freeze and deltas follow the dough day; a slim bake list per bake day.
+  - **One A4 page per dough day** (kneader strip, Brot, Brötchen per bake day, Hefeteig, notes)
+    replaces the 3-page print for the bakers; weighing list and recipes stay optional.
+  - Hefeteig: one batch (kneader ~90 kg), water = dough ÷ 4, Kranz/Zopf variants Marzipan,
+    Mohn, Spezial. The current core already reproduces the paper Hefeteig totals.
+  - Tests with invented quantities only; the real reference values stay in hq.
 - [~] **B5b** (`feat/B5b-Z9-hq-writeback`, merged; live push needs the Q3 token, H1/H2 merged and the `install.sh` write-clone step run on the box) hq write-back as a rolling PR per §4a: worktree `app/edits`, rebase, commit as
   `Verwaltung (App)` + `Co-authored-by`, push with lease, open/append the PR, offline retry,
   "wartet auf Freigabe" badge until merged (M, → B5, H1, Q3).
@@ -767,6 +786,11 @@ Exit criterion: the Christmas preorders were handed over from the app and no dat
 - **Q-B9** What is different on Sunday: which rolls, any cake?
 - **Q-B10** Which products can be preordered, and which with a filling choice?
 - **Q-B11** For Advent, is a factor of 1.0 + corrections enough, or a factor per week?
+
+Partly answered on 2026-11-08 from two Saturday paper sheets and the owner (Q-B1, Q-B2, Q-B3
+1 × 1200 g, Q-B4 Marzipan yes, Q-B5 one batch ~90 kg, Q-B6, Q-B8 loaves per size, Q-B9 in part).
+Details, the follow-up questions Q-L1…Q-L11 and the printed questionnaire live in
+`hq/notes/procedures/backliste.md` (private); answers are recorded there.
 
 **Open business questions:**
 
