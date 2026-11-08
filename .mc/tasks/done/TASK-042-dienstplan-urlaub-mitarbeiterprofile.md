@@ -2,7 +2,7 @@
 id: TASK-042
 title: Dienstplan und Urlaubsplanung mit Mitarbeiterprofilen (Verwaltung, nur Inhaber)
 slug: dienstplan-urlaub-mitarbeiterprofile
-status: in-progress
+status: done
 priority: 2
 owner: ''
 projects: []
@@ -181,10 +181,15 @@ Antworten des Inhabers:
       Ein-/Austritt im Jahr) - Migration heißt `20270301000000-dienstplan.js` (sortiert nach den
       Migrationen von `main`)
 - [x] Woche/Monat/Jahr in der Verwaltung, Woche ist Standard; Profil-Seite mit Urlaubskonto
-- [x] alte Mock-`/admin/staff` ersetzt (gab es seit B12 nicht mehr); `@fullcalendar/*` und
-      `date-fns` entfernt
+- [x] kein altes `/admin/staff` zu ersetzen (seit B12 gelöscht); die Seiten liegen unter
+      `/admin/dienstplan`, `/admin/dienstplan/mitarbeiter` und `/admin/dienstplan/mitarbeiter/[id]`;
+      `@fullcalendar/*` und `date-fns` entfernt
 - [x] Synthetischer Seed für lokale Entwicklung (`setup-dev`), keine echten Namen
 - [x] `docs/domains/dienstplan.md` (Deutsch) + `docs/api/` ergänzt, `docs/README.md` verlinkt,
       Roadmap-M5-Zeile verweist auf diesen Task
 - [x] type-check, lint, format, `nx test bakery-api`, `nx test bakery-management` grün
-- [ ] Build grün; PR auf `main`
+- [x] Build grün (`bakery-api`, `bakery-management` mit webpack, voll und Pilotbetrieb);
+      Smoke-Test mit `setup-dev` (synthetischer Seed): API, Woche/Monat/Jahr, Liste und Profil
+      für den Inhaber; PIN-Station und Verkauf bekommen 403; im Pilotbetrieb gesperrt und nicht
+      im Menü
+- [ ] PR auf `main` (Branch `feat/dienstplan`, noch nicht gepusht)

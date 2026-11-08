@@ -11,7 +11,7 @@ Management-App `src/lib/dienstplanApi.ts`, `src/lib/dienstplanCalendar.ts`,
 `src/app/admin/dienstplan/` (Kalender: `DienstplanClient.tsx`, `MonthView.tsx`, `YearView.tsx`;
 Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). API-Details (Endpunkte, Fehlercodes, Tabellen):
 [`docs/api/dienstplan.md`](../api/dienstplan.md). Task und Entscheidungen des Inhabers:
-`.mc/tasks/todo/TASK-042-dienstplan-urlaub-mitarbeiterprofile.md`.
+`.mc/tasks/done/TASK-042-dienstplan-urlaub-mitarbeiterprofile.md`.
 
 ## Zugriff und Pilot
 

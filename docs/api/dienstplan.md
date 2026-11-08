@@ -3,7 +3,7 @@
 After the pilot (roadmap §6 M5 candidate, D11: hidden in pilot mode). The owner plans who works
 in the shop when (shifts, Verkauf only), who is away (all areas: urlaub / frei / abwesend) and
 keeps a vacation account per person and year. Task and decisions:
-`.mc/tasks/todo/TASK-042-dienstplan-urlaub-mitarbeiterprofile.md` (section "Entscheidungen").
+`.mc/tasks/done/TASK-042-dienstplan-urlaub-mitarbeiterprofile.md` (section "Entscheidungen").
 
 Code in `apps/bakery-api/`: rules and formulas **once** in `src/services/vacation.core.js`
 (dependency-free, `tests/unit/vacationCore.test.js`); DB, validation, transaction and audit in
