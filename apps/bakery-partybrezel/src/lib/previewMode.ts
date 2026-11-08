@@ -26,16 +26,18 @@ export function savePreviewMode(mode: PreviewMode): void {
 let webglResult: boolean | null = null
 
 /**
- * Prüft einmal je Seite, ob ein WebGL-Kontext entsteht, und gibt ihn sofort
- * wieder frei. Fällt die 3D-Ansicht später aus (Kontext verloren), merkt
- * `markWebGLUnavailable()` das für die übrige Sitzung.
+ * Prüft einmal je Seite, ob ein WebGL-2-Kontext entsteht, und gibt ihn sofort
+ * wieder frei. three.js (ab r163) kann nur WebGL 2 - ein Gerät mit nur
+ * WebGL 1 bekommt gleich 2D, statt erst den 3D-Teil zu laden. Lässt sich
+ * der Renderer trotzdem nicht starten, merkt `markWebGLUnavailable()` das
+ * für die übrige Sitzung. Ein später verlorener Kontext ist dagegen nur eine
+ * Unterbrechung (`usePreviewMode`), kein „nicht verfügbar“.
  */
 export function webglAvailable(): boolean {
   if (webglResult !== null) return webglResult
   try {
     const canvas = document.createElement('canvas')
-    const gl = (canvas.getContext('webgl2') ??
-      canvas.getContext('webgl')) as WebGLRenderingContext | null
+    const gl = canvas.getContext('webgl2')
     webglResult = Boolean(gl)
     gl?.getExtension('WEBGL_lose_context')?.loseContext()
   } catch {

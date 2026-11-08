@@ -37,13 +37,16 @@ export default function ToppingStep({
   onCopyToAll,
 }: ToppingStepProps) {
   const preview = usePreviewMode()
-  // Die 3D-Ansicht zeigt eine Brezel: die zuletzt bearbeitete (sonst die erste).
-  // Ein WebGL-Kontext für alle Karten statt einer je Brezel.
+  // Die 3D-Ansicht zeigt eine Brezel: die erste, bis „In 3D ansehen“ eine
+  // andere wählt. Ein WebGL-Kontext für alle Karten statt einer je Brezel.
+  // Ein Belag-Klick verschiebt sie bewusst nicht - sonst springen die Chips
+  // der Karte unter dem Zeiger weg und WebGL startet neu.
   const [activeId, setActiveId] = useState<string | null>(null)
+  // Nur für das eine Mounten nach „In 3D ansehen“ (der Knopf verschwindet).
   const [focus3D, setFocus3D] = useState(false)
-  const activate = (id: string, viaButton = false) => {
+  const show3D = (id: string) => {
     setActiveId(id)
-    setFocus3D(viaButton)
+    setFocus3D(true)
   }
   const active3D = pretzels.some((p) => p.id === activeId)
     ? activeId
@@ -111,9 +114,11 @@ export default function ToppingStep({
                 sx={{
                   display: 'grid',
                   gap: 2,
+                  // Gleiche Spalte für alle Karten, solange 3D gewählt ist:
+                  // die Chips stehen in jeder Karte an derselben Stelle.
                   gridTemplateColumns: {
                     xs: '1fr',
-                    md: `${in3D ? 300 : 200}px minmax(0, 1fr)`,
+                    md: `${preview.mode === '3d' ? 380 : 200}px minmax(0, 1fr)`,
                   },
                   alignItems: 'start',
                 }}
@@ -134,10 +139,12 @@ export default function ToppingStep({
                       config={config}
                       mode={in3D ? '3d' : '2d'}
                       onUnavailable={preview.markUnavailable}
+                      onInterrupted={preview.markInterrupted}
                       focus3D={focus3D}
+                      onFocused={() => setFocus3D(false)}
                       onShow3D={
                         preview.mode === '3d' && !in3D
-                          ? () => activate(pretzel.id, true)
+                          ? () => show3D(pretzel.id)
                           : undefined
                       }
                     />
@@ -156,10 +163,7 @@ export default function ToppingStep({
                           }`,
                         }))}
                         selected={topping?.id ?? null}
-                        onSelect={(id) => {
-                          activate(pretzel.id)
-                          onPartTopping(pretzel.id, part, id)
-                        }}
+                        onSelect={(id) => onPartTopping(pretzel.id, part, id)}
                       />
                     ))
                   ) : (
@@ -177,10 +181,7 @@ export default function ToppingStep({
                           ariaLabel: `${o.label} für ${label}`,
                         }))}
                         selected={uniform ? parts[0]?.id ?? null : null}
-                        onSelect={(id) => {
-                          activate(pretzel.id)
-                          onPretzelTopping(pretzel.id, id)
-                        }}
+                        onSelect={(id) => onPretzelTopping(pretzel.id, id)}
                       />
                     </>
                   )}

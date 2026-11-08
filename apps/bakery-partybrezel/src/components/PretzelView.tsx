@@ -23,8 +23,8 @@ const PretzelPreview3D = dynamic(() => import('./PretzelPreview3D'), {
       role="status"
       sx={{
         width: '100%',
-        aspectRatio: '4 / 3',
-        maxHeight: 360,
+        aspectRatio: '16 / 10',
+        maxHeight: 400,
         display: 'grid',
         placeItems: 'center',
         color: 'text.secondary',
@@ -37,7 +37,9 @@ const PretzelPreview3D = dynamic(() => import('./PretzelPreview3D'), {
 })
 
 export const WEBGL_UNAVAILABLE_TEXT =
-  '3D-Ansicht ist auf diesem Gerät nicht verfügbar – Sie sehen die 2D-Vorschau.'
+  'Die 3D-Ansicht ist auf diesem Gerät nicht verfügbar – Sie sehen die 2D-Vorschau.'
+export const WEBGL_INTERRUPTED_TEXT =
+  'Die 3D-Ansicht wurde unterbrochen – Sie sehen die 2D-Vorschau. Mit „3D“ lässt sie sich erneut öffnen.'
 
 export interface PreviewModeToggleProps {
   preview: PreviewModeState
@@ -45,7 +47,12 @@ export interface PreviewModeToggleProps {
 
 /** Umschalter 2D | 3D für alle Vorschauen des Schritts. */
 export function PreviewModeToggle({ preview }: PreviewModeToggleProps) {
-  const unavailable = preview.webgl === false
+  const notice =
+    preview.notice === 'unavailable'
+      ? WEBGL_UNAVAILABLE_TEXT
+      : preview.notice === 'interrupted'
+      ? WEBGL_INTERRUPTED_TEXT
+      : ''
   return (
     <Box
       sx={{
@@ -67,7 +74,7 @@ export function PreviewModeToggle({ preview }: PreviewModeToggleProps) {
           if (value) preview.setMode(value)
         }}
         aria-labelledby="preview-mode-label"
-        aria-describedby={unavailable ? 'preview-mode-notice' : undefined}
+        aria-describedby={notice ? 'preview-mode-notice' : undefined}
       >
         <ToggleButton value="2d" aria-label="2D-Ansicht" sx={{ px: 2 }}>
           2D
@@ -81,17 +88,17 @@ export function PreviewModeToggle({ preview }: PreviewModeToggleProps) {
           3D
         </ToggleButton>
       </ToggleButtonGroup>
-      {unavailable && (
-        <Typography
-          id="preview-mode-notice"
-          role="status"
-          variant="body2"
-          color="text.secondary"
-          data-testid="webgl-unavailable"
-        >
-          {WEBGL_UNAVAILABLE_TEXT}
-        </Typography>
-      )}
+      {/* Die Status-Region steht immer im DOM, damit Screenreader den
+          später eingesetzten Text auch ansagen. */}
+      <Typography
+        id="preview-mode-notice"
+        role="status"
+        variant="body2"
+        color="text.secondary"
+        data-testid="preview-notice"
+      >
+        {notice}
+      </Typography>
     </Box>
   )
 }
@@ -103,11 +110,16 @@ export interface PretzelViewProps {
   config: PartybrezelConfig
   /** '3d' nur für die Brezel, die gerade bearbeitet wird. */
   mode: PreviewMode
+  /** Die 3D-Ansicht ließ sich nicht starten. */
   onUnavailable: () => void
+  /** Der WebGL-Kontext ging verloren. */
+  onInterrupted: () => void
   /** Bei mehreren Brezeln: diese Brezel in 3D zeigen. */
   onShow3D?: () => void
   /** Die 3D-Ansicht kam per Knopf hierher: Fokus auf ihre Bedienung. */
   focus3D?: boolean
+  /** Der Fokus ist gesetzt - nur einmal, nicht bei jedem neuen Mounten. */
+  onFocused?: () => void
 }
 
 /**
@@ -121,8 +133,10 @@ export default function PretzelView({
   config,
   mode,
   onUnavailable,
+  onInterrupted,
   onShow3D,
   focus3D = false,
+  onFocused,
 }: PretzelViewProps) {
   if (mode === '3d') {
     return (
@@ -133,7 +147,9 @@ export default function PretzelView({
           config={config}
           label={label}
           onUnavailable={onUnavailable}
+          onInterrupted={onInterrupted}
           focusOnMount={focus3D}
+          onFocused={onFocused}
         />
         <PretzelLegend parts={parts} label={label} />
       </Box>

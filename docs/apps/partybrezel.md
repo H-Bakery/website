@@ -132,18 +132,28 @@ Skalierung kommt aus `gramsPerPart`, nicht aus festen Zahlen.
 - **Nachgeladen:** `PretzelView` lädt die Komponente per `next/dynamic` (`ssr: false`) erst,
   wenn 3D gezeigt wird; three ist nicht im ersten Bundle (erstes Laden von `/` ≈ +2 kB gzip für
   Umschalter und Lader, der 3D-Teil ≈ 160 kB gzip kommt erst bei Bedarf).
-- **Vorgabe und Rückfall:** 3D, wenn das Gerät WebGL kann (geprüft erst im Browser; Export und
-  erster Render zeigen 2D). Ohne WebGL, wenn der Kontext nicht entsteht oder verloren geht:
-  2D mit dem Hinweis „3D-Ansicht ist auf diesem Gerät nicht verfügbar“. Die Wahl merkt sich
-  `localStorage` (`bakery-partybrezel-view-v1`, try/catch, nur Komfort).
-- **Mehrere Brezeln:** nur **eine** 3D-Ansicht (ein WebGL-Kontext) - die zuletzt bearbeitete
-  Brezel, sonst die erste; die übrigen Karten zeigen 2D und „In 3D ansehen“.
+- **Vorgabe und Rückfall:** 3D, wenn das Gerät WebGL 2 kann (three.js kann kein WebGL 1; geprüft
+  erst im Browser; Export und erster Render zeigen 2D). Fehlt WebGL 2 oder startet der Renderer
+  nicht: 2D, 3D gesperrt, Hinweis „Die 3D-Ansicht ist auf diesem Gerät nicht verfügbar“. Geht
+  der Kontext später verloren (App gewechselt, Speicherdruck), ist das nur eine Unterbrechung:
+  2D mit „Die 3D-Ansicht wurde unterbrochen“, „3D“ bleibt wählbar und die gemerkte Wahl
+  unverändert. Der Hinweis steht in einer immer vorhandenen `role="status"`-Region. Die Wahl
+  merkt sich `localStorage` (`bakery-partybrezel-view-v1`, try/catch, nur Komfort).
+- **Mehrere Brezeln:** nur **eine** 3D-Ansicht (ein WebGL-Kontext) - die erste Brezel, bis
+  „In 3D ansehen“ eine andere wählt; die übrigen Karten zeigen 2D. Ein Belag-Klick verschiebt
+  die 3D-Ansicht nicht, und solange 3D gewählt ist, haben alle Karten dieselbe Bildspalte - die
+  Chips springen nicht unter dem Zeiger weg. Der Fokus geht nach „In 3D ansehen“ einmal auf die
+  3D-Bedienung, nicht bei späterem Umschalten.
 - **Bedienung:** ziehen dreht (seitlich; senkrecht wischen scrollt auf dem Handy die Seite),
-  Zoom begrenzt und nur mit Strg/⌘ + Mausrad bzw. Trackpad-Pinch (sonst scrollt das Rad die
-  Seite), kein Verschieben, nie von unten. Langsame Auto-Drehung bis zur ersten Bedienung, unter
-  `prefers-reduced-motion` keine. Knöpfe „Nach links drehen“, „Nach rechts drehen“, „Ansicht
-  zurücksetzen“. Das Canvas hat `role="img"` und einen Text mit Größe und Belag je Teil; die
-  Legende bleibt darunter.
+  Zoom begrenzt (nie so nah, dass die Brezel angeschnitten wird) und nur mit Strg/⌘ + Mausrad
+  bzw. Trackpad-Pinch (sonst scrollt das Rad die Seite), kein Verschieben, nie von unten. Beim
+  Öffnen dreht sie sich **einmal** langsam rundum und hält dann an, unter
+  `prefers-reduced-motion` gar nicht. Knöpfe (Gruppe „3D-Ansicht von … bedienen“): „Nach links
+  drehen“ (↺), „Ansicht zurücksetzen“, „Nach rechts drehen“ (↻, von oben im Uhrzeigersinn),
+  „Drehung anhalten“ / „Einmal rundum drehen“. Der Hinweis unter dem Bild richtet sich nach dem
+  Zeiger (Touch: wischen und Knöpfe; sonst ziehen und Strg/⌘ + Mausrad). Das Canvas hat
+  `role="img"` und einen Text mit Größe und Belag je Teil; die Nummern tragen einen Ring in der
+  Belagsfarbe, die Legende bleibt darunter.
 - **Ressourcen:** Größe per `ResizeObserver`, Pixeldichte ≤ 2, gerendert wird nur bei Bewegung;
   außerhalb des Bildes (`IntersectionObserver`) und im Hintergrund-Tab ruht die Schleife. Beim
   Abbauen wird alles freigegeben (Renderer, Geometrien, Materialien, Controls, Listener); jedes

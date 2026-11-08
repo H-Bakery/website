@@ -4,6 +4,7 @@ import { createOrderReducer, initialOrderState } from './orderState'
 import {
   ARM_RADIUS,
   BELLY_RADIUS,
+  FILLING_THICKNESS,
   ausbundAt,
   MATERIAL_CRUMB,
   MATERIAL_CRUST,
@@ -74,7 +75,7 @@ describe('pretzelCurve', () => {
     expect(a[2]).toBeCloseTo(b[2], 5)
     // ... aber A liegt oben, Unterkante von A über Oberkante von B
     expect(sliceHeightAt(c.keyU[2]) - 0.78 * ARM_RADIUS).toBeGreaterThan(
-      sliceHeightAt(c.keyU[16]) + 0.05 + 0.78 * ARM_RADIUS
+      sliceHeightAt(c.keyU[16]) + FILLING_THICKNESS + 0.78 * ARM_RADIUS
     )
   })
 })
@@ -139,28 +140,45 @@ describe('partMeshes', () => {
     }
   })
 
-  it('wendet jedes Dreieck nach außen (Normale passt zur Fläche)', () => {
-    for (const m of partMeshes(3)) {
-      const P = m.positions
-      const N = m.normals
-      let wrong = 0
-      for (let t = 0; t < m.indices.length; t += 3) {
-        const [a, b, c] = [m.indices[t], m.indices[t + 1], m.indices[t + 2]]
-        const e1 = [0, 1, 2].map((k) => P[b * 3 + k] - P[a * 3 + k])
-        const e2 = [0, 1, 2].map((k) => P[c * 3 + k] - P[a * 3 + k])
-        const face = [
-          e1[1] * e2[2] - e1[2] * e2[1],
-          e1[2] * e2[0] - e1[0] * e2[2],
-          e1[0] * e2[1] - e1[1] * e2[0],
-        ]
-        const n = [0, 1, 2].map(
-          (k) => N[a * 3 + k] + N[b * 3 + k] + N[c * 3 + k]
-        )
-        if (face[0] * n[0] + face[1] * n[1] + face[2] * n[2] < 0) wrong += 1
+  // Unabhängig davon, wie MeshBuilder die Dreiecke wendet: ein geschlossener
+  // Körper hat keine offene Kante, und zeigen alle Flächen nach außen, ist
+  // sein Volumen (Divergenzsatz) positiv.
+  it.each([1, 2, 3, 4])(
+    'baut bei %i Teilen geschlossene Körper mit Flächen nach außen',
+    (n) => {
+      for (const m of partMeshes(n)) {
+        const P = m.positions
+        const key = (i: number) =>
+          [0, 1, 2].map((k) => Math.round(P[i * 3 + k] * 1e4)).join(',')
+        const edges = new Map<string, number>()
+        let volume = 0
+        for (let t = 0; t < m.indices.length; t += 3) {
+          const ids = [m.indices[t], m.indices[t + 1], m.indices[t + 2]]
+          const [a, b, c] = ids.map((i) => [
+            P[i * 3],
+            P[i * 3 + 1],
+            P[i * 3 + 2],
+          ])
+          volume +=
+            (a[0] * (b[1] * c[2] - b[2] * c[1]) -
+              a[1] * (b[0] * c[2] - b[2] * c[0]) +
+              a[2] * (b[0] * c[1] - b[1] * c[0])) /
+            6
+          const ks = ids.map(key)
+          for (let j = 0; j < 3; j += 1) {
+            const p = ks[j]
+            const q = ks[(j + 1) % 3]
+            if (p === q) continue
+            const e = p < q ? `${p}|${q}` : `${q}|${p}`
+            edges.set(e, (edges.get(e) ?? 0) + 1)
+          }
+        }
+        const open = [...edges.values()].filter((v) => v === 1).length
+        expect(open).toBe(0)
+        expect(volume).toBeGreaterThan(0.01)
       }
-      expect(wrong).toBe(0)
     }
-  })
+  )
 
   it('rechnet jede Teilezahl nur einmal', () => {
     expect(partMeshes(3)).toBe(partMeshes(3))

@@ -5,7 +5,7 @@
  * Bundle. Die Geometrie rechnet `src/lib/pretzel3d.ts`; hier entstehen nur
  * Szene, Licht, Materialien und Bedienung.
  */
-import React, { useEffect, useMemo, useRef } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Box from '@mui/material/Box'
 import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
@@ -13,6 +13,8 @@ import Typography from '@mui/material/Typography'
 import RotateLeftIcon from '@mui/icons-material/RotateLeft'
 import RotateRightIcon from '@mui/icons-material/RotateRight'
 import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong'
+import PauseIcon from '@mui/icons-material/Pause'
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import type {
@@ -35,13 +37,23 @@ export interface PretzelPreview3DProps {
   config: PartybrezelConfig
   /** z. B. "Brezel 1 (groß)". */
   label: string
-  /** WebGL fehlt oder der Kontext ging verloren: die Seite zeigt dann 2D. */
+  /** Der Renderer startet nicht (kein WebGL 2): die Seite zeigt dann 2D. */
   onUnavailable: () => void
+  /** Der Kontext ging verloren (vorübergehend): die Seite zeigt vorerst 2D. */
+  onInterrupted: () => void
   /** Nach „In 3D ansehen“: Fokus auf die Bedienung, statt ihn zu verlieren. */
   focusOnMount?: boolean
+  /** Der Fokus wurde gesetzt (damit er nur einmal springt). */
+  onFocused?: () => void
 }
 
 const ROTATE_STEP = Math.PI / 6
+const AUTO_ROTATE_SPEED = 2
+/** Eine Umdrehung (Bogenmaß), danach hält die Auto-Drehung an. */
+const FULL_TURN = 2 * Math.PI
+/** Kamera: Abstand und Neigung (0 = senkrecht von oben). */
+const CAMERA_DISTANCE = 4.1
+const CAMERA_TILT = 0.7
 /** Kruste: helle Unterseite, goldbraune Flanke, dunkle Laugenkruste oben. */
 const CRUST_UNDER = '#c98a4b'
 const CRUST_SIDE = '#9a5a24'
@@ -53,6 +65,7 @@ interface SceneHandle {
   setPretzel: (d: Pretzel3DDescription) => void
   rotate: (angle: number) => void
   reset: () => void
+  setAutoRotate: (on: boolean) => void
   dispose: () => void
 }
 
@@ -122,6 +135,7 @@ function createScene(
     label: string
     badges: () => (HTMLElement | null)[]
     onLost: () => void
+    onAutoRotate: (on: boolean) => void
   }
 ): SceneHandle {
   const canvas = document.createElement('canvas')
@@ -155,14 +169,16 @@ function createScene(
 
   const scene = new THREE.Scene()
   const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 50)
-  const target = new THREE.Vector3(0, 0.12, 0.04)
+  const target = new THREE.Vector3(0, 0.08, 0.06)
   camera.position.copy(
-    new THREE.Vector3().setFromSphericalCoords(4.5, 0.82, 0).add(target)
+    new THREE.Vector3()
+      .setFromSphericalCoords(CAMERA_DISTANCE, CAMERA_TILT, 0)
+      .add(target)
   )
   camera.lookAt(target)
 
-  scene.add(new THREE.HemisphereLight(0xfff3e2, 0x5a3b22, 1.25))
-  const key = new THREE.DirectionalLight(0xffffff, 2.4)
+  scene.add(new THREE.HemisphereLight(0xfff3e2, 0x5a3b22, 1.35))
+  const key = new THREE.DirectionalLight(0xffffff, 1.8)
   key.position.set(2.2, 4.5, 2.6)
   key.castShadow = true
   key.shadow.mapSize.set(1024, 1024)
@@ -178,6 +194,11 @@ function createScene(
   const fill = new THREE.DirectionalLight(0xffe0bd, 0.7)
   fill.position.set(-3, 2, -1.5)
   scene.add(fill)
+  // Gegenlicht: heller Rand, damit sich die dunkle Kruste auch im
+  // Dunkelmodus vom Hintergrund abhebt.
+  const rim = new THREE.DirectionalLight(0xfff0dc, 1.1)
+  rim.position.set(-0.8, 2.2, -4)
+  scene.add(rim)
 
   // Schatten: weicher Fleck + echter Schatten des Hauptlichts.
   const blobTexture = shadowTexture()
@@ -202,7 +223,7 @@ function createScene(
 
   const crust = new THREE.MeshStandardMaterial({
     vertexColors: true,
-    roughness: 0.42,
+    roughness: 0.6,
     metalness: 0,
   })
   const crumb = new THREE.MeshStandardMaterial({
@@ -226,13 +247,14 @@ function createScene(
   controls.enablePan = false
   controls.enableDamping = !reduced
   controls.dampingFactor = 0.08
-  controls.minDistance = 2.8
+  // Näher als 3,4 schnitte die große Brezel an den Rändern ab.
+  controls.minDistance = 3.4
   controls.maxDistance = 7
   controls.minPolarAngle = 0.15
   controls.maxPolarAngle = 1.3
   controls.rotateSpeed = 0.8
-  controls.autoRotate = !reduced
-  controls.autoRotateSpeed = 1.2
+  controls.autoRotate = false
+  controls.autoRotateSpeed = AUTO_ROTATE_SPEED
   // Senkrecht wischen scrollt auf dem Handy die Seite (sonst bliebe sie am
   // Bild hängen); seitlich ziehen dreht. OrbitControls setzt sonst 'none'.
   canvas.style.touchAction = 'pan-y'
@@ -248,7 +270,17 @@ function createScene(
   let pageVisible = !document.hidden
   let width = 0
   let height = 0
+  /** Bisher automatisch gedrehter Winkel; nach einer Umdrehung ist Schluss. */
+  let turned = 0
   const projected = new THREE.Vector3()
+
+  const setAutoRotate = (on: boolean) => {
+    if (controls.autoRotate === on) return
+    controls.autoRotate = on
+    turned = 0
+    options.onAutoRotate(on)
+    if (on) requestRender()
+  }
 
   const placeBadges = () => {
     const els = options.badges()
@@ -273,6 +305,11 @@ function createScene(
     const delta = last ? Math.min((time - last) / 1000, 0.1) : 1 / 60
     last = time
     const moved = controls.update(delta)
+    if (controls.autoRotate) {
+      // gleiche Rechnung wie OrbitControls' Auto-Drehung
+      turned += ((2 * Math.PI) / 60) * controls.autoRotateSpeed * delta
+      if (turned >= FULL_TURN) setAutoRotate(false)
+    }
     if (moved || needsRender) {
       needsRender = false
       render()
@@ -292,9 +329,7 @@ function createScene(
     schedule()
   }
 
-  const stopAutoRotate = () => {
-    controls.autoRotate = false
-  }
+  const stopAutoRotate = () => setAutoRotate(false)
   controls.addEventListener('start', stopAutoRotate)
   controls.addEventListener('change', requestRender)
 
@@ -307,7 +342,7 @@ function createScene(
 
   const onReducedChange = (e: MediaQueryListEvent) => {
     if (e.matches) {
-      controls.autoRotate = false
+      setAutoRotate(false)
       controls.enableDamping = false
     }
   }
@@ -362,7 +397,9 @@ function createScene(
   const disposePretzel = () => {
     if (!pretzel) return
     pretzel.traverse((obj) => {
-      if (obj instanceof THREE.Mesh || obj instanceof THREE.InstancedMesh) {
+      // gibt den Instanz-Puffer auf der GPU frei (sonst bliebe er je Wechsel)
+      if (obj instanceof THREE.InstancedMesh) obj.dispose()
+      if (obj instanceof THREE.Mesh) {
         if (obj.geometry !== saltGeometry) obj.geometry.dispose()
         const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
         for (const m of mats)
@@ -372,6 +409,9 @@ function createScene(
     scene.remove(pretzel)
     pretzel = null
   }
+
+  // Eine Umdrehung zum Kennenlernen, nicht bei reduzierter Bewegung.
+  if (!reduced) setAutoRotate(true)
 
   return {
     setPretzel(d) {
@@ -432,15 +472,16 @@ function createScene(
       requestRender()
     },
     rotate(angle) {
-      controls.autoRotate = false
+      setAutoRotate(false)
       controls.rotateLeft(angle)
       requestRender()
     },
     reset() {
-      controls.autoRotate = false
+      setAutoRotate(false)
       controls.reset()
       requestRender()
     },
+    setAutoRotate,
     dispose() {
       if (raf) cancelAnimationFrame(raf)
       raf = 0
@@ -473,14 +514,21 @@ export default function PretzelPreview3D({
   config,
   label,
   onUnavailable,
+  onInterrupted,
   focusOnMount = false,
+  onFocused,
 }: PretzelPreview3DProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const firstButtonRef = useRef<HTMLButtonElement>(null)
   const sceneRef = useRef<SceneHandle | null>(null)
   const badgeRefs = useRef<(HTMLElement | null)[]>([])
-  const onUnavailableRef = useRef(onUnavailable)
-  onUnavailableRef.current = onUnavailable
+  const callbacks = useRef({ onUnavailable, onInterrupted, onFocused })
+  callbacks.current = { onUnavailable, onInterrupted, onFocused }
+  const [spinning, setSpinning] = useState(false)
+  // Touch-Geräte haben weder Mausrad noch Strg-Taste: eigener Hinweis.
+  const [coarse] = useState(
+    () => window.matchMedia?.('(pointer: coarse)').matches ?? false
+  )
 
   const toppingKey = parts.map((t) => t?.id ?? '').join('|')
   const description = useMemo(
@@ -500,14 +548,15 @@ export default function PretzelPreview3D({
       handle = createScene(container, {
         label: descriptionRef.current.ariaLabel,
         badges: () => badgeRefs.current,
-        onLost: () => onUnavailableRef.current(),
+        onLost: () => callbacks.current.onInterrupted(),
+        onAutoRotate: setSpinning,
       })
     } catch {
-      onUnavailableRef.current()
+      callbacks.current.onUnavailable()
       return
     }
     sceneRef.current = handle
-    handle.setPretzel(descriptionRef.current)
+    // Die Brezel baut der Effekt unten (er läuft auch beim ersten Mounten).
     return () => {
       sceneRef.current = null
       handle.dispose()
@@ -515,7 +564,9 @@ export default function PretzelPreview3D({
   }, [])
 
   useEffect(() => {
-    if (focusOnMount) firstButtonRef.current?.focus()
+    if (!focusOnMount) return
+    firstButtonRef.current?.focus()
+    callbacks.current.onFocused?.()
     // nur beim Erscheinen
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -535,8 +586,8 @@ export default function PretzelPreview3D({
         sx={{
           position: 'relative',
           width: '100%',
-          aspectRatio: '4 / 3',
-          maxHeight: 360,
+          aspectRatio: '16 / 10',
+          maxHeight: 400,
           cursor: 'grab',
           '&:active': { cursor: 'grabbing' },
           borderRadius: 2,
@@ -555,18 +606,20 @@ export default function PretzelPreview3D({
               top: 0,
               visibility: 'hidden',
               transform: 'translate(-50%, -50%)',
-              width: 26,
-              height: 26,
+              width: 24,
+              height: 24,
               borderRadius: '50%',
               display: 'grid',
               placeItems: 'center',
-              fontSize: 15,
+              fontSize: 13,
               fontWeight: 700,
               lineHeight: 1,
               bgcolor: 'background.paper',
               color: 'text.primary',
-              border: 2,
+              border: 1.5,
               borderColor: 'text.primary',
+              // Ring in der Belagsfarbe: verbindet Nummer und Füllung.
+              boxShadow: `inset 0 0 0 3px ${p.color}`,
               pointerEvents: 'none',
               userSelect: 'none',
             }}
@@ -576,6 +629,8 @@ export default function PretzelPreview3D({
         ))}
       </Box>
       <Box
+        role="group"
+        aria-label={`3D-Ansicht von ${label} bedienen`}
         sx={{
           display: 'flex',
           alignItems: 'center',
@@ -583,11 +638,13 @@ export default function PretzelPreview3D({
           gap: 0.5,
         }}
       >
+        {/* rotateLeft(+) dreht die Brezel von oben gesehen gegen den
+            Uhrzeigersinn - „nach rechts“ (↻) ist also das Minus. */}
         <Tooltip title="Nach links drehen">
           <IconButton
             ref={firstButtonRef}
             aria-label="Nach links drehen"
-            onClick={() => sceneRef.current?.rotate(-ROTATE_STEP)}
+            onClick={() => sceneRef.current?.rotate(ROTATE_STEP)}
             sx={buttonSx}
           >
             <RotateLeftIcon />
@@ -605,10 +662,19 @@ export default function PretzelPreview3D({
         <Tooltip title="Nach rechts drehen">
           <IconButton
             aria-label="Nach rechts drehen"
-            onClick={() => sceneRef.current?.rotate(ROTATE_STEP)}
+            onClick={() => sceneRef.current?.rotate(-ROTATE_STEP)}
             sx={buttonSx}
           >
             <RotateRightIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title={spinning ? 'Drehung anhalten' : 'Einmal rundum drehen'}>
+          <IconButton
+            aria-label={spinning ? 'Drehung anhalten' : 'Einmal rundum drehen'}
+            onClick={() => sceneRef.current?.setAutoRotate(!spinning)}
+            sx={buttonSx}
+          >
+            {spinning ? <PauseIcon /> : <PlayArrowIcon />}
           </IconButton>
         </Tooltip>
       </Box>
@@ -618,8 +684,9 @@ export default function PretzelPreview3D({
         component="p"
         sx={{ textAlign: 'center', m: 0 }}
       >
-        Schematische Darstellung. Zum Drehen seitlich ziehen, zum Zoomen Strg +
-        Mausrad.
+        {coarse
+          ? 'Schematische Darstellung. Zum Drehen seitlich wischen oder die Knöpfe nutzen.'
+          : 'Schematische Darstellung. Zum Drehen ziehen, zum Zoomen Strg/⌘ + Mausrad.'}
       </Typography>
     </Box>
   )

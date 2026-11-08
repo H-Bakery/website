@@ -60,10 +60,14 @@ export const ARM_RADIUS = 0.1
 /** Querschnitt: breiter als hoch (der Teig liegt auf dem Blech). */
 export const WIDTH_FACTOR = 1.12
 export const HEIGHT_FACTOR = 0.78
-/** Dicke der Füllung zwischen Unter- und Oberteil = Abstand, um den das Oberteil gehoben ist. */
-export const FILLING_THICKNESS = 0.05
-/** Die Füllung steht seitlich etwas über den Teig hinaus. */
-export const FILLING_OVERHANG = 1.14
+/**
+ * Dicke der Füllung zwischen Unter- und Oberteil = Abstand, um den das
+ * Oberteil gehoben ist. Gut ein Drittel der Bauchhöhe, damit der Belag auch
+ * im kleinen Bild als Farbe zu sehen ist und nicht nur als Strich.
+ */
+export const FILLING_THICKNESS = 0.1
+/** Die Füllung steht seitlich deutlich über den Teig hinaus (sichtbar von oben). */
+export const FILLING_OVERHANG = 1.25
 /** Halbe Fuge zwischen zwei Teilen (Weltmaß). */
 export const PART_GAP = 0.03
 
@@ -225,9 +229,9 @@ export function sliceHeightAt(u: number, curve = pretzelCurve()): number {
   const overB = 2 * HEIGHT_FACTOR * ARM_RADIUS + FILLING_THICKNESS + 0.015
   const dA = Math.abs(v - curve.keyU[IDX_CROSSING_A]) * L
   const crossing = overB * (1 - smoothstep(0.24, 0.62, dA))
-  // Die Enden liegen auf der Flanke des Bauchs.
+  // Die Enden liegen auf der Flanke des Bauchs, etwas hineingedrückt.
   const endDistance = Math.min(v, 1 - v) * L
-  const ends = 0.15 * (1 - smoothstep(0, 0.42, endDistance))
+  const ends = 0.12 * (1 - smoothstep(0, 0.42, endDistance))
   return HEIGHT_FACTOR * radiusAt(v, curve) + crossing + ends
 }
 
@@ -558,7 +562,7 @@ function sweepSpan(
           const mottle =
             p.topTheta === undefined
               ? 0
-              : 0.07 * Math.sin(arc * 21 + p.topTheta * 5) * Math.sin(arc * 6.3)
+              : 0.04 * Math.sin(arc * 21 + p.topTheta * 5) * Math.sin(arc * 6.3)
           builder.vertex(
             along(f, p.a, p.b),
             frameNormal(f, p.na, p.nb),
@@ -724,10 +728,21 @@ export function sizeScale(size: SizeConfig, config: PartybrezelConfig): number {
   return Math.cbrt(size.gramsPerPart / largest)
 }
 
+/**
+ * Wo auf einem Stück die Nummer steht: in der Mitte; an einem freien
+ * Strangende (die Arme) näher am Ende, damit die Nummer nicht auf der
+ * Kreuzung sitzt.
+ */
+function anchorU(s: PartSpan): number {
+  if (s.start <= 0) return s.start + (s.end - s.start) * 0.35
+  if (s.end >= 1) return s.end - (s.end - s.start) * 0.35
+  return (s.start + s.end) / 2
+}
+
 function anchorFor(spans: PartSpan[], curve: PretzelCurve): Vec3 {
   const sum: Vec3 = [0, 0, 0]
   for (const s of spans) {
-    const f = frameAt((s.start + s.end) / 2, curve)
+    const f = frameAt(anchorU(s), curve)
     const top = along(f, 0, FILLING_THICKNESS + HEIGHT_FACTOR * f.radius)
     sum[0] += top[0]
     sum[1] += top[1] + 0.14
