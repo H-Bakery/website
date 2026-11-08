@@ -173,16 +173,37 @@ describe('Dienstplan - Mitarbeiterprofil', () => {
     expect(absence).toHaveTextContent('04.08.2026 – 08.08.2026')
     expect(absence).toHaveTextContent('Urlaub')
     expect(absence).toHaveTextContent('genehmigt')
-    expect(absence).toHaveTextContent('5 Urlaubstage')
+    expect(within(absence).getByRole('cell', { name: '5' })).toBeInTheDocument()
 
-    expect(screen.getByText('Di, 10.11.2026, 06:00–12:00')).toBeInTheDocument()
-    expect(screen.getByText('5:30 h · 30 min Pause')).toBeInTheDocument()
+    const shift = screen.getByTestId('upcoming-shift-21')
+    expect(within(shift).getByText('Di, 10.11.2026')).toBeInTheDocument()
+    expect(within(shift).getByText('06:00–12:00')).toBeInTheDocument()
+    expect(within(shift).getByText('5:30 h · 30 min Pause')).toBeInTheDocument()
 
     // Vom Profil in den Kalender, gefiltert auf den Bereich der Person.
     expect(screen.getByRole('link', { name: 'Im Kalender' })).toHaveAttribute(
       'href',
       '/admin/dienstplan?bereich=verkauf'
     )
+  })
+
+  it('Anspruch je Jahr steht zugeklappt unter dem Konto', async () => {
+    api.saveEntitlement.mockResolvedValue({
+      employeeId: 3,
+      year: 2026,
+      entitlementDays: 24,
+      carryoverDays: 2,
+    })
+    renderProfile()
+    await screen.findByRole('heading', { name: 'Erika Beispiel' })
+    expect(
+      screen.queryByRole('button', { name: 'Anspruch 2026 bearbeiten' })
+    ).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Anspruch je Jahr' }))
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Anspruch 2026 bearbeiten' })
+    )
+    expect(dialog().getByLabelText(/Übertrag aus 2025/)).toHaveValue('3')
   })
 
   it('ohne Anspruch: „offen“, nie 0 - und blättert ins nächste Jahr', async () => {

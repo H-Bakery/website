@@ -6,16 +6,11 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   IconButton,
-  List,
-  ListItem,
-  ListItemText,
-  Paper,
   Stack,
   TextField,
   Tooltip,
@@ -23,7 +18,6 @@ import {
 } from '@mui/material'
 import {
   Add as AddIcon,
-  ArrowBack as BackIcon,
   ChevronLeft as PrevIcon,
   ChevronRight as NextIcon,
   Delete as DeleteIcon,
@@ -52,8 +46,20 @@ import {
   type Employee,
   type EmployeeProfile,
   type Entitlement,
+  type Shift,
   type VacationBalance,
 } from '../../../../../lib/dienstplanApi'
+import {
+  EmptyState,
+  ErrorState,
+  KeyFigures,
+  LoadingState,
+  PageLayout,
+  PageSection,
+  ResponsiveList,
+  SECTION_GAP,
+  type ResponsiveColumn,
+} from '../../../../../components/layout'
 import EmployeeDialog, { ColorDot, messageOf } from '../EmployeeDialog'
 import AbsenceDialog, {
   useFullScreenDialog,
@@ -71,6 +77,11 @@ interface Notice {
   warnings: DienstplanWarning[]
 }
 
+const BACK = {
+  href: '/admin/dienstplan/mitarbeiter',
+  label: 'Alle Mitarbeiter',
+}
+
 /**
  * Profil eines Mitarbeiters (TASK-042, nur Inhaber mit persönlicher
  * Sitzung): Stammdaten (bearbeiten, ausscheiden / wieder aktivieren),
@@ -79,6 +90,10 @@ interface Notice {
  *
  * Alle Zahlen des Kontos kommen fertig aus der API (`vacation.core.js`);
  * fehlt der Anspruch, steht „offen“ - nie 0.
+ *
+ * Layout-Kit: Stammdaten und Urlaubskonto nebeneinander (ab `md`),
+ * Abwesenheiten und Schichten als `ResponsiveList` in voller Breite (am
+ * Handy Karten).
  */
 export default function MitarbeiterProfilClient({ id }: { id: number }) {
   // Ohne Wahl liefert die API das laufende Jahr (Berlin).
@@ -115,15 +130,14 @@ export default function MitarbeiterProfilClient({ id }: { id: number }) {
   }
 
   if (!profile) {
-    return loadError ? (
-      <Box>
-        <BackLink />
-        <Alert severity="error">{loadError}</Alert>
-      </Box>
-    ) : (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-        <CircularProgress aria-label="Profil wird geladen" />
-      </Box>
+    return (
+      <PageLayout title="Mitarbeiter" back={BACK}>
+        {loadError ? (
+          <ErrorState message={loadError} onRetry={() => void reload()} />
+        ) : (
+          <LoadingState label="Profil wird geladen …" />
+        )}
+      </PageLayout>
     )
   }
 
@@ -174,79 +188,47 @@ export default function MitarbeiterProfilClient({ id }: { id: number }) {
   }
 
   return (
-    <Box>
-      <BackLink />
-      <Box
-        sx={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 2,
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          mb: 3,
-        }}
-      >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <ColorDot color={employee.color} size={20} />
-          <Box>
-            <Typography variant="h4" component="h1">
-              {employee.displayName}
-            </Typography>
-            <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
-              <Chip
-                size="small"
-                variant="outlined"
-                label={AREA_LABELS[employee.area]}
-              />
-              <Chip
-                size="small"
-                color={employee.active ? 'success' : 'default'}
-                variant={employee.active ? 'filled' : 'outlined'}
-                label={employee.active ? 'aktiv' : 'ausgeschieden'}
-              />
-            </Stack>
-          </Box>
-        </Box>
-        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-          <Button
-            component={Link}
-            href={`/admin/dienstplan?bereich=${employee.area}`}
+    <PageLayout
+      title={employee.displayName}
+      subtitle={subtitleOf(employee)}
+      back={BACK}
+      status={
+        <>
+          <Chip
+            size="small"
             variant="outlined"
-            startIcon={<CalendarIcon />}
-          >
-            Im Kalender
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<EditIcon />}
-            onClick={() => setDialog({ kind: 'employee' })}
-          >
-            Bearbeiten
-          </Button>
-          <Button
-            variant="outlined"
-            color={employee.active ? 'warning' : 'primary'}
-            onClick={() => void toggleActive()}
-          >
-            {employee.active ? 'Ausscheiden' : 'Wieder aktivieren'}
-          </Button>
-        </Stack>
-      </Box>
-
+            label={AREA_LABELS[employee.area]}
+          />
+          <Chip
+            size="small"
+            color={employee.active ? 'success' : 'default'}
+            variant={employee.active ? 'filled' : 'outlined'}
+            label={employee.active ? 'aktiv' : 'ausgeschieden'}
+          />
+        </>
+      }
+      actions={
+        <Button
+          component={Link}
+          href={`/admin/dienstplan?bereich=${employee.area}`}
+          variant="outlined"
+          startIcon={<CalendarIcon />}
+        >
+          Im Kalender
+        </Button>
+      }
+    >
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+        <Alert severity="error" onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
       {loadError && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {loadError}
-        </Alert>
+        <ErrorState message={loadError} onRetry={() => void reload()} />
       )}
       {notice && (
         <Alert
           severity={notice.warnings.length > 0 ? 'warning' : 'success'}
-          sx={{ mb: 2 }}
           onClose={() => setNotice(null)}
         >
           {notice.message}
@@ -265,192 +247,167 @@ export default function MitarbeiterProfilClient({ id }: { id: number }) {
       <Box
         sx={{
           display: 'grid',
-          gap: 2,
-          gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+          gap: SECTION_GAP,
+          gridTemplateColumns: {
+            xs: 'minmax(0, 1fr)',
+            md: 'repeat(2, minmax(0, 1fr))',
+          },
           alignItems: 'start',
         }}
       >
-        <MasterData employee={employee} />
+        <PageSection
+          title="Stammdaten"
+          actions={
+            <>
+              <Button
+                size="small"
+                startIcon={<EditIcon />}
+                onClick={() => setDialog({ kind: 'employee' })}
+              >
+                Bearbeiten
+              </Button>
+              <Button
+                size="small"
+                color={employee.active ? 'warning' : 'primary'}
+                onClick={() => void toggleActive()}
+              >
+                {employee.active ? 'Ausscheiden' : 'Wieder aktivieren'}
+              </Button>
+            </>
+          }
+        >
+          <MasterData employee={employee} />
+        </PageSection>
 
-        <Section
+        <PageSection
           title={`Urlaubskonto ${shownYear}`}
-          action={
-            <Stack direction="row" alignItems="center">
-              <IconButton
-                aria-label="Vorheriges Jahr"
-                onClick={() => setYear(shownYear - 1)}
-                disabled={shownYear <= 2000}
-              >
-                <PrevIcon />
-              </IconButton>
-              <IconButton
-                aria-label="Nächstes Jahr"
-                onClick={() => setYear(shownYear + 1)}
-                disabled={shownYear >= 2100}
-              >
-                <NextIcon />
-              </IconButton>
-            </Stack>
+          description="Arbeitstage; genehmigter und geplanter Urlaub getrennt."
+          actions={
+            <>
+              <Tooltip title="Vorheriges Jahr">
+                <span>
+                  <IconButton
+                    aria-label="Vorheriges Jahr"
+                    onClick={() => setYear(shownYear - 1)}
+                    disabled={shownYear <= 2000}
+                  >
+                    <PrevIcon />
+                  </IconButton>
+                </span>
+              </Tooltip>
+              <Tooltip title="Nächstes Jahr">
+                <span>
+                  <IconButton
+                    aria-label="Nächstes Jahr"
+                    onClick={() => setYear(shownYear + 1)}
+                    disabled={shownYear >= 2100}
+                  >
+                    <NextIcon />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            </>
+          }
+          detailsLabel="Anspruch je Jahr"
+          details={
+            profile.entitlements.length > 0 ? (
+              <EntitlementList
+                rows={profile.entitlements}
+                onEdit={(row) =>
+                  setDialog({ kind: 'entitlement', year: row.year, row })
+                }
+              />
+            ) : undefined
           }
         >
           <BalanceView balance={balance} year={shownYear} />
           <Button
             size="small"
             startIcon={<EditIcon />}
-            sx={{ mt: 1 }}
+            sx={{ mt: 1.5, ml: -0.5 }}
             onClick={() =>
               setDialog({ kind: 'entitlement', year: shownYear, row: yearRow })
             }
           >
             Anspruch und Übertrag {shownYear}
           </Button>
-          {profile.entitlements.length > 0 && (
-            <EntitlementList
-              rows={profile.entitlements}
-              onEdit={(row) =>
-                setDialog({ kind: 'entitlement', year: row.year, row })
-              }
-            />
-          )}
-        </Section>
-
-        <Section
-          title={`Abwesenheiten ${shownYear}`}
-          action={
-            <Button
-              size="small"
-              startIcon={<AddIcon />}
-              onClick={() => setDialog({ kind: 'absence', absence: null })}
-            >
-              Eintragen
-            </Button>
-          }
-        >
-          {profile.absences.length === 0 ? (
-            <Typography color="text.secondary">
-              Keine Abwesenheiten in {shownYear}.
-            </Typography>
-          ) : (
-            <List disablePadding aria-label={`Abwesenheiten ${shownYear}`}>
-              {profile.absences.map((absence, index) => (
-                <ListItem
-                  key={absence.id}
-                  divider={index < profile.absences.length - 1}
-                  disableGutters
-                  data-testid={`absence-${absence.id}`}
-                  secondaryAction={
-                    <Box sx={{ whiteSpace: 'nowrap' }}>
-                      <Tooltip title="Bearbeiten">
-                        <IconButton
-                          aria-label={`Abwesenheit ${formatAbsenceRange(
-                            absence
-                          )} bearbeiten`}
-                          onClick={() =>
-                            setDialog({ kind: 'absence', absence })
-                          }
-                        >
-                          <EditIcon />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Löschen">
-                        <IconButton
-                          aria-label={`Abwesenheit ${formatAbsenceRange(
-                            absence
-                          )} löschen`}
-                          onClick={() => void removeAbsence(absence)}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  }
-                  sx={{ pr: 12 }}
-                >
-                  <ListItemText
-                    primary={
-                      <Box
-                        component="span"
-                        sx={{
-                          display: 'flex',
-                          flexWrap: 'wrap',
-                          gap: 1,
-                          alignItems: 'center',
-                        }}
-                      >
-                        <span>{formatAbsenceRange(absence)}</span>
-                        <Chip
-                          size="small"
-                          color={
-                            absence.type === 'urlaub' ? 'primary' : 'default'
-                          }
-                          variant="outlined"
-                          label={ABSENCE_TYPE_LABELS[absence.type]}
-                        />
-                        <Chip
-                          size="small"
-                          variant="outlined"
-                          sx={
-                            absence.status === 'geplant'
-                              ? { borderStyle: 'dashed' }
-                              : undefined
-                          }
-                          label={ABSENCE_STATUS_LABELS[absence.status]}
-                        />
-                      </Box>
-                    }
-                    secondary={[
-                      absence.type === 'urlaub'
-                        ? `${formatDays(absence.days)} Urlaubstage`
-                        : null,
-                      absence.note,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  />
-                </ListItem>
-              ))}
-            </List>
-          )}
-        </Section>
-
-        <Section title="Kommende Schichten">
-          {employee.area !== 'verkauf' &&
-          profile.upcomingShifts.length === 0 ? (
-            <Typography color="text.secondary">
-              Schichten gibt es nur im Verkauf.
-            </Typography>
-          ) : profile.upcomingShifts.length === 0 ? (
-            <Typography color="text.secondary">
-              Keine Schichten geplant.
-            </Typography>
-          ) : (
-            <List disablePadding aria-label="Kommende Schichten">
-              {profile.upcomingShifts.map((shift, index) => (
-                <ListItem
-                  key={shift.id}
-                  divider={index < profile.upcomingShifts.length - 1}
-                  disableGutters
-                >
-                  <ListItemText
-                    primary={`${formatDateWithWeekday(shift.date)}, ${
-                      shift.startTime
-                    }–${shift.endTime}`}
-                    secondary={[
-                      formatMinutes(shift.minutes),
-                      shift.breakMinutes > 0
-                        ? `${shift.breakMinutes} min Pause`
-                        : null,
-                      shift.note,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  />
-                </ListItem>
-              ))}
-            </List>
-          )}
-        </Section>
+        </PageSection>
       </Box>
+
+      <PageSection
+        title={`Abwesenheiten ${shownYear}`}
+        description="Nur Urlaub zählt aufs Urlaubskonto."
+        actions={
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<AddIcon />}
+            onClick={() => setDialog({ kind: 'absence', absence: null })}
+          >
+            Eintragen
+          </Button>
+        }
+        disablePadding={profile.absences.length > 0}
+      >
+        {profile.absences.length === 0 ? (
+          <EmptyState title={`Keine Abwesenheiten in ${shownYear}.`} />
+        ) : (
+          <ResponsiveList
+            aria-label={`Abwesenheiten ${shownYear}`}
+            rows={profile.absences}
+            columns={ABSENCE_COLUMNS}
+            rowKey={(absence) => absence.id}
+            rowTestId={(absence) => `absence-${absence.id}`}
+            actions={(absence) => (
+              <>
+                <Tooltip title="Bearbeiten">
+                  <IconButton
+                    aria-label={`Abwesenheit ${formatAbsenceRange(
+                      absence
+                    )} bearbeiten`}
+                    onClick={() => setDialog({ kind: 'absence', absence })}
+                  >
+                    <EditIcon />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Löschen">
+                  <IconButton
+                    aria-label={`Abwesenheit ${formatAbsenceRange(
+                      absence
+                    )} löschen`}
+                    onClick={() => void removeAbsence(absence)}
+                  >
+                    <DeleteIcon />
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
+          />
+        )}
+      </PageSection>
+
+      <PageSection
+        title="Kommende Schichten"
+        disablePadding={profile.upcomingShifts.length > 0}
+      >
+        {profile.upcomingShifts.length === 0 ? (
+          <EmptyState
+            title={
+              employee.area !== 'verkauf'
+                ? 'Schichten gibt es nur im Verkauf.'
+                : 'Keine Schichten geplant.'
+            }
+          />
+        ) : (
+          <ResponsiveList
+            aria-label="Kommende Schichten"
+            rows={profile.upcomingShifts}
+            columns={SHIFT_COLUMNS}
+            rowKey={(shift) => shift.id}
+            rowTestId={(shift) => `upcoming-shift-${shift.id}`}
+          />
+        )}
+      </PageSection>
 
       {dialog?.kind === 'employee' && (
         <EmployeeDialog
@@ -484,9 +441,111 @@ export default function MitarbeiterProfilClient({ id }: { id: number }) {
           }
         />
       )}
-    </Box>
+    </PageLayout>
   )
 }
+
+/** Eine Zeile unter dem Namen: Beschäftigung und Wochenstunden. */
+function subtitleOf(employee: Employee): string | undefined {
+  const parts: string[] = []
+  if (employee.employmentType) {
+    parts.push(EMPLOYMENT_TYPE_LABELS[employee.employmentType])
+  }
+  if (employee.weeklyHours !== null) {
+    parts.push(`${formatDays(employee.weeklyHours)} Std./Woche`)
+  }
+  return parts.length > 0 ? parts.join(' · ') : undefined
+}
+
+const ABSENCE_COLUMNS: ResponsiveColumn<Absence>[] = [
+  {
+    key: 'range',
+    header: 'Zeitraum',
+    primary: true,
+    cell: (absence) => (
+      <Typography variant="body2" fontWeight={600}>
+        {formatAbsenceRange(absence)}
+      </Typography>
+    ),
+  },
+  {
+    key: 'type',
+    header: 'Art',
+    inline: true,
+    cell: (absence) => (
+      <Chip
+        size="small"
+        color={absence.type === 'urlaub' ? 'primary' : 'default'}
+        variant="outlined"
+        label={ABSENCE_TYPE_LABELS[absence.type]}
+      />
+    ),
+  },
+  {
+    key: 'status',
+    header: 'Status',
+    inline: true,
+    cell: (absence) => (
+      <Chip
+        size="small"
+        variant="outlined"
+        sx={
+          absence.status === 'geplant' ? { borderStyle: 'dashed' } : undefined
+        }
+        label={ABSENCE_STATUS_LABELS[absence.status]}
+      />
+    ),
+  },
+  {
+    key: 'days',
+    header: 'Urlaubstage',
+    align: 'right',
+    // Nur Urlaub zählt aufs Konto - bei „frei“/„abwesend“ keine Zahl.
+    cell: (absence) =>
+      absence.type === 'urlaub' ? formatDays(absence.days) : '–',
+    cardCell: (absence) =>
+      absence.type === 'urlaub' ? `${formatDays(absence.days)} Tage` : '–',
+  },
+  {
+    key: 'note',
+    header: 'Notiz',
+    cell: (absence) => absence.note ?? '–',
+  },
+]
+
+const SHIFT_COLUMNS: ResponsiveColumn<Shift>[] = [
+  {
+    key: 'date',
+    header: 'Tag',
+    primary: true,
+    cell: (shift) => (
+      <Typography variant="body2" fontWeight={600}>
+        {formatDateWithWeekday(shift.date)}
+      </Typography>
+    ),
+  },
+  {
+    key: 'time',
+    header: 'Zeit',
+    cell: (shift) => `${shift.startTime}–${shift.endTime}`,
+  },
+  {
+    key: 'minutes',
+    header: 'Arbeitszeit',
+    cell: (shift) =>
+      [
+        formatMinutes(shift.minutes),
+        shift.breakMinutes > 0 ? `${shift.breakMinutes} min Pause` : null,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+  },
+  {
+    key: 'note',
+    header: 'Notiz',
+    cell: (shift) => shift.note ?? '–',
+  },
+]
 
 /** Startdatum für eine neue Abwesenheit: heute im laufenden Jahr, sonst 1.1. */
 function defaultAbsenceDate(year: number): string {
@@ -499,100 +558,85 @@ function defaultAbsenceDate(year: number): string {
   return iso.startsWith(`${year}-`) ? iso : `${year}-01-01`
 }
 
-function BackLink() {
+/**
+ * Bezeichnung-Wert-Liste (`<dl>`): Bezeichnung links in `text.secondary`,
+ * Wert rechts; am Handy bricht ein langer Wert um, statt die Seite zu
+ * verbreitern.
+ */
+function DataList({ children }: { children: React.ReactNode }) {
   return (
-    <Button
-      component={Link}
-      href="/admin/dienstplan/mitarbeiter"
-      startIcon={<BackIcon />}
-      size="small"
-      sx={{ mb: 2 }}
+    <Box
+      component="dl"
+      sx={{
+        m: 0,
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1fr) auto',
+        columnGap: 2,
+        '& > dt, & > dd': {
+          py: 0.75,
+          borderBottom: 1,
+          borderColor: 'divider',
+        },
+        '& > dt:nth-last-of-type(1), & > dd:nth-last-of-type(1)': {
+          borderBottom: 0,
+        },
+      }}
     >
-      Alle Mitarbeiter
-    </Button>
-  )
-}
-
-function Section({
-  title,
-  action,
-  children,
-}: {
-  title: string
-  action?: React.ReactNode
-  children: React.ReactNode
-}) {
-  return (
-    <Paper variant="outlined" component="section" sx={{ p: 2 }}>
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 1,
-          mb: 1,
-          flexWrap: 'wrap',
-        }}
-      >
-        <Typography variant="h6" component="h2">
-          {title}
-        </Typography>
-        {action}
-      </Box>
       {children}
-    </Paper>
+    </Box>
   )
 }
 
-/** Zeile „Bezeichnung - Wert“, auf dem Handy untereinander. */
-function Field({
+function DataRow({
   label,
   value,
   hint,
   testId,
 }: {
-  label: string
+  label: React.ReactNode
   value: React.ReactNode
   hint?: string
   testId?: string
 }) {
   return (
-    <Box
-      sx={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        gap: 2,
-        py: 0.75,
-        borderBottom: 1,
-        borderColor: 'divider',
-        '&:last-of-type': { borderBottom: 0 },
-      }}
-    >
-      <Box>
-        <Typography variant="body2">{label}</Typography>
+    <>
+      <Box component="dt" sx={{ minWidth: 0 }}>
+        <Typography variant="body2" color="text.secondary">
+          {label}
+        </Typography>
         {hint && (
-          <Typography variant="caption" color="text.secondary">
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: 'block' }}
+          >
             {hint}
           </Typography>
         )}
       </Box>
       <Typography
+        component="dd"
         variant="body2"
         fontWeight={600}
-        sx={{ textAlign: 'right', overflowWrap: 'anywhere' }}
+        sx={{
+          m: 0,
+          textAlign: 'right',
+          overflowWrap: 'anywhere',
+          fontVariantNumeric: 'tabular-nums',
+        }}
         data-testid={testId}
       >
         {value}
       </Typography>
-    </Box>
+    </>
   )
 }
 
 function MasterData({ employee }: { employee: Employee }) {
   return (
-    <Section title="Stammdaten">
-      <Field label="Bereich" value={AREA_LABELS[employee.area]} />
-      <Field
+    <DataList>
+      <DataRow label="Bereich" value={AREA_LABELS[employee.area]} />
+      <DataRow
         label="Beschäftigung"
         value={
           employee.employmentType
@@ -600,20 +644,32 @@ function MasterData({ employee }: { employee: Employee }) {
             : '–'
         }
       />
-      <Field
+      <DataRow
         label="Wochenstunden (Soll)"
         value={
           employee.weeklyHours === null ? '–' : formatDays(employee.weeklyHours)
         }
       />
-      <Field label="Eintritt" value={formatDateDe(employee.entryDate)} />
-      <Field label="Austritt" value={formatDateDe(employee.exitDate)} />
-      <Field
+      <DataRow label="Eintritt" value={formatDateDe(employee.entryDate)} />
+      <DataRow label="Austritt" value={formatDateDe(employee.exitDate)} />
+      <DataRow
+        label="Kalenderfarbe"
+        value={
+          <Box
+            component="span"
+            sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}
+          >
+            <ColorDot color={employee.color} size={14} />
+            {employee.color ? 'gesetzt' : 'keine'}
+          </Box>
+        }
+      />
+      <DataRow
         label="Login"
         value={employee.userId === null ? 'kein Login' : 'verknüpft'}
       />
-      {employee.note && <Field label="Notiz" value={employee.note} />}
-    </Section>
+      {employee.note && <DataRow label="Notiz" value={employee.note} />}
+    </DataList>
   )
 }
 
@@ -626,9 +682,9 @@ function BalanceView({
 }) {
   if (balance.status === 'not-employed') {
     return (
-      <Alert severity="info">
-        In {year} nicht beschäftigt (Ein-/Austritt) - kein Urlaubskonto.
-      </Alert>
+      <EmptyState
+        title={`In ${year} nicht beschäftigt (Ein-/Austritt) - kein Urlaubskonto.`}
+      />
     )
   }
   const noConfig = balance.status === 'no-config'
@@ -640,64 +696,88 @@ function BalanceView({
         )})`
       : undefined
   return (
-    <Box>
+    <Stack spacing={2}>
       {noConfig && (
-        <Alert severity="info" sx={{ mb: 1 }}>
+        <Alert severity="info">
           Für {year} ist kein Urlaubsanspruch erfasst - Anspruch und Rest sind
           offen.
         </Alert>
       )}
-      <Field
-        label="Anspruch"
-        hint={proRata}
-        value={formatOpenDays(balance.entitlement)}
-        testId="balance-entitlement"
+      <KeyFigures
+        variant="plain"
+        dense
+        aria-label={`Urlaubskonto ${year}`}
+        items={[
+          {
+            label: 'Anspruch',
+            value: (
+              <span data-testid="balance-entitlement">
+                {formatOpenDays(balance.entitlement)}
+              </span>
+            ),
+            hint: proRata,
+          },
+          {
+            label: 'Genommen',
+            value: (
+              <span data-testid="balance-approved">
+                {formatDays(balance.approvedDays)}
+              </span>
+            ),
+            hint: 'genehmigt',
+          },
+          {
+            label: 'Geplant',
+            value: (
+              <span data-testid="balance-planned">
+                {formatDays(balance.plannedDays)}
+              </span>
+            ),
+            hint: 'noch nicht genehmigt',
+          },
+          {
+            label: 'Rest',
+            value: (
+              <span data-testid="balance-remaining">
+                {formatOpenDays(balance.remainingDays)}
+              </span>
+            ),
+            hint: (
+              <>
+                nach geplantem Urlaub:{' '}
+                <span data-testid="balance-remaining-after-planned">
+                  {formatOpenDays(balance.remainingAfterPlannedDays)}
+                </span>
+              </>
+            ),
+          },
+        ]}
       />
-      <Field
-        label={`Übertrag aus ${year - 1}`}
-        hint={
-          balance.carryoverDays !== null
-            ? `verfällt am ${deadline}, soweit nicht genommen`
-            : 'nicht erfasst'
-        }
-        value={formatDays(balance.carryoverDays)}
-        testId="balance-carryover"
-      />
-      <Field
-        label="Genommen"
-        hint="genehmigter Urlaub im Jahr"
-        value={formatDays(balance.approvedDays)}
-        testId="balance-approved"
-      />
-      <Field
-        label="Geplant"
-        hint="noch nicht genehmigt"
-        value={formatDays(balance.plannedDays)}
-        testId="balance-planned"
-      />
-      <Field
-        label="Verfallen"
-        hint={
-          balance.carryoverOpen !== null && balance.carryoverOpen > 0
-            ? `${formatDays(
-                balance.carryoverOpen
-              )} Tage Übertrag noch bis ${deadline}`
-            : `Übertrag, nicht bis ${deadline} genommen`
-        }
-        value={formatDays(balance.carryoverExpired)}
-        testId="balance-expired"
-      />
-      <Field
-        label="Rest"
-        value={formatOpenDays(balance.remainingDays)}
-        testId="balance-remaining"
-      />
-      <Field
-        label="Rest nach geplantem Urlaub"
-        value={formatOpenDays(balance.remainingAfterPlannedDays)}
-        testId="balance-remaining-after-planned"
-      />
-    </Box>
+      <DataList>
+        <DataRow
+          label={`Übertrag aus ${year - 1}`}
+          hint={
+            balance.carryoverDays !== null
+              ? `verfällt am ${deadline}, soweit nicht genommen`
+              : 'nicht erfasst'
+          }
+          value={formatDays(balance.carryoverDays)}
+          testId="balance-carryover"
+        />
+        <DataRow
+          label="Verfallen"
+          hint={
+            balance.carryoverOpen !== null && balance.carryoverOpen > 0
+              ? `${formatDays(
+                  balance.carryoverOpen
+                )} Tage Übertrag noch bis ${deadline}`
+              : `Übertrag, nicht bis ${deadline} genommen`
+          }
+          value={formatDays(balance.carryoverExpired)}
+          testId="balance-expired"
+        />
+      </DataList>
+    </Stack>
   )
 }
 
@@ -709,39 +789,28 @@ function EntitlementList({
   onEdit: (row: Entitlement) => void
 }) {
   return (
-    <Box sx={{ mt: 2 }}>
-      <Typography variant="subtitle2" component="h3">
-        Anspruch je Jahr
-      </Typography>
-      <List dense disablePadding aria-label="Anspruch je Jahr">
-        {rows.map((row) => (
-          <ListItem
-            key={row.year}
-            disableGutters
-            secondaryAction={
-              <IconButton
-                edge="end"
-                aria-label={`Anspruch ${row.year} bearbeiten`}
-                onClick={() => onEdit(row)}
-              >
-                <EditIcon fontSize="small" />
-              </IconButton>
-            }
-          >
-            <ListItemText
-              primary={`${row.year}: ${formatOpenDays(
-                row.entitlementDays
-              )} Tage`}
-              secondary={
-                row.carryoverDays === null
-                  ? 'Übertrag nicht erfasst'
-                  : `Übertrag ${formatDays(row.carryoverDays)} Tage`
-              }
-            />
-          </ListItem>
-        ))}
-      </List>
-    </Box>
+    <DataList>
+      {rows.map((row) => (
+        <DataRow
+          key={row.year}
+          label={`${row.year}: ${formatOpenDays(row.entitlementDays)} Tage`}
+          hint={
+            row.carryoverDays === null
+              ? 'Übertrag nicht erfasst'
+              : `Übertrag ${formatDays(row.carryoverDays)} Tage`
+          }
+          value={
+            <IconButton
+              aria-label={`Anspruch ${row.year} bearbeiten`}
+              onClick={() => onEdit(row)}
+              sx={{ my: -0.5 }}
+            >
+              <EditIcon fontSize="small" />
+            </IconButton>
+          }
+        />
+      ))}
+    </DataList>
   )
 }
 

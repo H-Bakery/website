@@ -8,12 +8,10 @@ import {
   Button,
   ButtonBase,
   Chip,
-  CircularProgress,
   IconButton,
   LinearProgress,
   Menu,
   MenuItem,
-  Paper,
   Table,
   TableBody,
   TableCell,
@@ -25,13 +23,8 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material'
-import {
-  Add as AddIcon,
-  CalendarMonth as CalendarIcon,
-  ChevronLeft as PrevIcon,
-  ChevronRight as NextIcon,
-  Badge as StaffIcon,
-} from '@mui/icons-material'
+import type { Theme } from '@mui/material/styles'
+import { Add as AddIcon, Badge as StaffIcon } from '@mui/icons-material'
 import {
   ABSENCE_STATUS_LABELS,
   ABSENCE_TYPE_LABELS,
@@ -77,6 +70,15 @@ import {
   type CalendarView,
   type CellEntries,
 } from '../../../lib/dienstplanCalendar'
+import {
+  DayNavigator,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PageLayout,
+  PageSection,
+  shiftIsoDate,
+} from '../../../components/layout'
 import { ColorDot, messageOf } from './mitarbeiter/EmployeeDialog'
 import { profileHref } from './mitarbeiter/MitarbeiterClient'
 import AbsenceDialog from './AbsenceDialog'
@@ -117,8 +119,17 @@ function canHaveShifts(employee: Employee): boolean {
 
 const AREA_FILTERS: AreaFilter[] = ['alle', ...AREAS]
 
-const NAME_COLUMN_WIDTH = 170
-const DAY_COLUMN_MIN_WIDTH = 128
+/**
+ * Spaltenbreiten des Rasters (px): Handy schmaler, damit neben der
+ * stehenbleibenden Namensspalte noch ein Tag sichtbar ist.
+ */
+const NAME_COLUMN_WIDTH = { xs: 116, sm: 170 } as const
+const DAY_COLUMN_MIN_WIDTH = { xs: 112, sm: 128 } as const
+
+/** Pfeile der Wochennavigation: sieben Tage weiter oder zurück. */
+function weekStep(date: string, direction: 1 | -1): string | null {
+  return shiftIsoDate(date, direction * 7)
+}
 
 /**
  * Kalender des Dienstplans (TASK-042, nur Inhaber mit persönlicher
@@ -130,6 +141,11 @@ const DAY_COLUMN_MIN_WIDTH = 128
  * Alle Daten kommen aus `GET /api/dienstplan?from&to`; Feiertage, Ruhetag
  * und Besetzung rechnet der Browser nicht selbst. Woche, Ansicht und
  * Bereich stehen in der URL.
+ *
+ * Layout-Kit: Wochenwechsel als `DayNavigator` (Schritt 7 Tage) vorne im
+ * Kopf, Ansicht und Bereich als Aktionen des Kalender-Abschnitts; das Raster
+ * selbst ist eine eigene Tabelle, die am Handy waagrecht scrollt (die
+ * Namensspalte bleibt stehen).
  */
 export default function DienstplanClient({
   week: weekParam,
@@ -295,95 +311,23 @@ export default function DienstplanClient({
 
   const thisWeek = mondayOf(calendar?.today ?? todayIso())
 
-  return (
-    <Box>
-      <Box
-        sx={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 2,
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          mb: 2,
-        }}
+  const toolbar = (
+    <>
+      <ToggleButtonGroup
+        exclusive
+        size="small"
+        value={view}
+        onChange={(_, value: CalendarView | null) =>
+          value && navigate({ view: value })
+        }
+        aria-label="Ansicht"
       >
-        <Box>
-          <Typography variant="h4" component="h1">
-            <CalendarIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-            Dienstplan
-          </Typography>
-          <Typography color="text.secondary">
-            Schichten im Verkauf, Urlaub und Abwesenheiten
-          </Typography>
-        </Box>
-        <Button
-          component={Link}
-          href="/admin/dienstplan/mitarbeiter"
-          variant="outlined"
-          startIcon={<StaffIcon />}
-        >
-          Mitarbeiter
-        </Button>
-      </Box>
-
-      <Box
-        sx={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 1.5,
-          alignItems: 'center',
-          mb: 2,
-        }}
-      >
-        <ToggleButtonGroup
-          exclusive
-          size="small"
-          value={view}
-          onChange={(_, value: CalendarView | null) =>
-            value && navigate({ view: value })
-          }
-          aria-label="Ansicht"
-        >
-          {CALENDAR_VIEWS.map((v) => (
-            <ToggleButton key={v} value={v}>
-              {CALENDAR_VIEW_LABELS[v]}
-            </ToggleButton>
-          ))}
-        </ToggleButtonGroup>
-        {view === 'woche' && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <IconButton
-              aria-label="Vorige Woche"
-              onClick={() => navigate({ week: addDays(week, -7) })}
-            >
-              <PrevIcon />
-            </IconButton>
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={() => navigate({ week: thisWeek })}
-              disabled={week === thisWeek}
-            >
-              Heute
-            </Button>
-            <IconButton
-              aria-label="Nächste Woche"
-              onClick={() => navigate({ week: addDays(week, 7) })}
-            >
-              <NextIcon />
-            </IconButton>
-            <Typography
-              component="h2"
-              variant="subtitle1"
-              sx={{ fontWeight: 600, ml: 1 }}
-              data-testid="week-title"
-            >
-              {formatWeekTitle(week)}
-            </Typography>
-          </Box>
-        )}
-      </Box>
-
+        {CALENDAR_VIEWS.map((v) => (
+          <ToggleButton key={v} value={v}>
+            {CALENDAR_VIEW_LABELS[v]}
+          </ToggleButton>
+        ))}
+      </ToggleButtonGroup>
       <ToggleButtonGroup
         exclusive
         size="small"
@@ -392,7 +336,7 @@ export default function DienstplanClient({
           value && navigate({ area: value })
         }
         aria-label="Bereich"
-        sx={{ mb: 2, flexWrap: 'wrap' }}
+        sx={{ flexWrap: 'wrap' }}
       >
         {AREA_FILTERS.map((a) => (
           <ToggleButton key={a} value={a}>
@@ -400,21 +344,55 @@ export default function DienstplanClient({
           </ToggleButton>
         ))}
       </ToggleButtonGroup>
+    </>
+  )
 
+  // Kein Kalender für diese Woche und kein Laden mehr: der Fehler steht im
+  // Abschnitt statt eines (leeren) Rasters. Scheitert nur das Auffrischen
+  // einer geladenen Woche, steht er oben und das Raster bleibt.
+  const blockingError = shownCalendar === null && loadError && !loading
+
+  return (
+    <PageLayout
+      width="wide"
+      title="Dienstplan"
+      subtitle="Schichten im Verkauf, Urlaub und Abwesenheiten"
+      actions={
+        <>
+          {view === 'woche' && (
+            <DayNavigator
+              value={week}
+              onChange={(date) => navigate({ week: mondayOf(date) })}
+              label="Woche"
+              step={weekStep}
+              prevLabel="Vorige Woche"
+              nextLabel="Nächste Woche"
+              today={thisWeek}
+              data-testid="week-navigator"
+            />
+          )}
+          <Button
+            component={Link}
+            href="/admin/dienstplan/mitarbeiter"
+            variant="outlined"
+            startIcon={<StaffIcon />}
+          >
+            Mitarbeiter
+          </Button>
+        </>
+      }
+    >
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+        <Alert severity="error" onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
-      {loadError && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {loadError}
-        </Alert>
+      {loadError && !blockingError && (
+        <ErrorState message={loadError} onRetry={() => void reload()} />
       )}
       {notice && (
         <Alert
           severity={notice.warnings.length > 0 ? 'warning' : 'success'}
-          sx={{ mb: 2 }}
           onClose={() => setNotice(null)}
         >
           {notice.message}
@@ -430,34 +408,52 @@ export default function DienstplanClient({
         </Alert>
       )}
 
-      {view !== 'woche' ? (
-        <Paper variant="outlined" sx={{ p: 3 }}>
-          <Typography color="text.secondary">
-            {view === 'monat' ? 'Die Monatsansicht' : 'Die Jahresansicht'}{' '}
-            folgt. Bis dahin zeigt die Woche alle Einträge.
-          </Typography>
-        </Paper>
-      ) : shownCalendar === null ? (
-        loadError && !loading ? null : (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-            <CircularProgress aria-label="Dienstplan wird geladen" />
-          </Box>
-        )
-      ) : (
-        <WeekView
-          calendar={shownCalendar}
-          dates={dates}
-          area={area}
-          loading={loading}
-          onAdd={openAdd}
-          onShift={(employee, shift) =>
-            setDialog({ kind: 'shift', employee, date: shift.date, shift })
-          }
-          onAbsence={(employee, absence, date) =>
-            setDialog({ kind: 'absence', employee, date, absence })
-          }
-        />
-      )}
+      <PageSection
+        title={
+          view === 'woche' ? (
+            <span data-testid="week-title">{formatWeekTitle(week)}</span>
+          ) : view === 'monat' ? (
+            'Monatsansicht'
+          ) : (
+            'Jahresansicht'
+          )
+        }
+        description={
+          view === 'woche' && shownCalendar
+            ? 'Leere Zelle antippen: Schicht oder Abwesenheit anlegen. Eintrag antippen: bearbeiten.'
+            : undefined
+        }
+        actions={toolbar}
+        disablePadding={view === 'woche' && shownCalendar !== null}
+        data-testid="calendar-section"
+      >
+        {view !== 'woche' ? (
+          <EmptyState
+            title={`${
+              view === 'monat' ? 'Die Monatsansicht' : 'Die Jahresansicht'
+            } folgt.`}
+            description="Bis dahin zeigt die Woche alle Einträge."
+          />
+        ) : shownCalendar !== null ? (
+          <WeekView
+            calendar={shownCalendar}
+            dates={dates}
+            area={area}
+            loading={loading}
+            onAdd={openAdd}
+            onShift={(employee, shift) =>
+              setDialog({ kind: 'shift', employee, date: shift.date, shift })
+            }
+            onAbsence={(employee, absence, date) =>
+              setDialog({ kind: 'absence', employee, date, absence })
+            }
+          />
+        ) : blockingError ? (
+          <ErrorState message={loadError} onRetry={() => void reload()} />
+        ) : (
+          <LoadingState label="Dienstplan wird geladen …" />
+        )}
+      </PageSection>
 
       <Menu
         anchorEl={addMenu?.anchor ?? null}
@@ -538,12 +534,13 @@ export default function DienstplanClient({
           }
         />
       )}
-    </Box>
+    </PageLayout>
   )
 }
 
 /**
- * Wochentabelle. Auf schmalen Bildschirmen scrollt sie waagrecht; die
+ * Wochentabelle im Kalender-Abschnitt (bis an den Rand der Karte). Auf
+ * schmalen Bildschirmen scrollt nur sie waagrecht, nie die Seite; die
  * Namensspalte bleibt stehen.
  */
 function WeekView({
@@ -574,12 +571,21 @@ function WeekView({
 
   if (calendar.employees.length === 0) {
     return (
-      <Paper variant="outlined" sx={{ p: 3 }}>
-        <Typography color="text.secondary">
-          Noch keine Mitarbeiter. Unter{' '}
-          <Link href="/admin/dienstplan/mitarbeiter">Mitarbeiter</Link> anlegen.
-        </Typography>
-      </Paper>
+      <Box sx={{ px: { xs: 2, md: 3 }, pb: { xs: 2, md: 3 } }}>
+        <EmptyState
+          title="Noch keine Mitarbeiter."
+          description="Erst Mitarbeiter anlegen, dann Schichten und Abwesenheiten eintragen."
+          action={
+            <Button
+              component={Link}
+              href="/admin/dienstplan/mitarbeiter"
+              variant="outlined"
+            >
+              Zur Mitarbeiterliste
+            </Button>
+          }
+        />
+      </Box>
     )
   }
 
@@ -592,27 +598,34 @@ function WeekView({
         />
       )}
       <TableContainer
-        component={Paper}
-        variant="outlined"
-        sx={{ overflowX: 'auto', opacity: loading ? 0.6 : 1 }}
+        sx={{
+          overflowX: 'auto',
+          borderTop: 1,
+          borderColor: 'divider',
+          opacity: loading ? 0.6 : 1,
+        }}
       >
         <Table
           size="small"
           aria-label={`Dienstplan ${formatWeekTitle(dates[0])}`}
           sx={{
             tableLayout: 'fixed',
-            minWidth: NAME_COLUMN_WIDTH + 7 * DAY_COLUMN_MIN_WIDTH,
+            minWidth: {
+              xs: NAME_COLUMN_WIDTH.xs + 7 * DAY_COLUMN_MIN_WIDTH.xs,
+              sm: NAME_COLUMN_WIDTH.sm + 7 * DAY_COLUMN_MIN_WIDTH.sm,
+            },
             '& td, & th': { borderRight: 1, borderColor: 'divider' },
+            '& td:last-of-type, & th:last-of-type': { borderRight: 0 },
           }}
         >
           <TableHead>
             <TableRow>
               <TableCell
-                sx={{
-                  ...stickyName,
+                sx={(theme) => ({
+                  ...stickyName(theme),
                   zIndex: 3,
                   width: NAME_COLUMN_WIDTH,
-                }}
+                })}
               >
                 Mitarbeiter
               </TableCell>
@@ -631,7 +644,11 @@ function WeekView({
             {groups.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8}>
-                  <Typography color="text.secondary" sx={{ py: 1 }}>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ py: 1 }}
+                  >
                     Keine Mitarbeiter in diesem Bereich.
                   </Typography>
                 </TableCell>
@@ -644,9 +661,24 @@ function WeekView({
                       component="th"
                       scope="rowgroup"
                       colSpan={8}
-                      sx={{ fontWeight: 700, py: 0.75 }}
+                      sx={{
+                        typography: 'subtitle2',
+                        fontWeight: 600,
+                        py: 0.75,
+                        bgcolor: 'action.hover',
+                      }}
                     >
-                      {group.label} ({group.employees.length})
+                      {/* bleibt beim waagrechten Scrollen links stehen */}
+                      <Box
+                        component="span"
+                        sx={{
+                          position: 'sticky',
+                          left: 8,
+                          display: 'inline-block',
+                        }}
+                      >
+                        {group.label} ({group.employees.length})
+                      </Box>
                     </TableCell>
                   </TableRow>
                   {group.employees.map((employee) => (
@@ -668,6 +700,7 @@ function WeekView({
                             component={Link}
                             href={profileHref(employee.id)}
                             sx={{
+                              typography: 'body2',
                               color: 'text.primary',
                               fontWeight: 600,
                               overflow: 'hidden',
@@ -711,13 +744,28 @@ function WeekView({
   )
 }
 
-const stickyName = {
-  position: 'sticky',
-  left: 0,
-  zIndex: 2,
-  bgcolor: 'background.paper',
-  verticalAlign: 'top',
-} as const
+/**
+ * Stehenbleibende Namensspalte. Sie braucht einen deckenden Grund; im
+ * Dunkelmodus legt MUI über `Paper` (Elevation 1, die Fläche von
+ * `PageSection`) einen hellen Schleier - den bekommt die Zelle auch, sonst
+ * wäre sie dunkler als das Raster daneben.
+ */
+function stickyName(theme: Theme) {
+  return {
+    position: 'sticky',
+    left: 0,
+    zIndex: 2,
+    verticalAlign: 'top',
+    bgcolor: 'background.paper',
+    backgroundImage:
+      theme.palette.mode === 'dark'
+        ? `linear-gradient(${PAPER_OVERLAY}, ${PAPER_OVERLAY})`
+        : 'none',
+  } as const
+}
+
+/** MUI-Schleier für Elevation 1 im Dunkelmodus (`getOverlayAlpha(1)`). */
+const PAPER_OVERLAY = 'rgba(255, 255, 255, 0.051)'
 
 function DayHeader({
   date,
@@ -743,7 +791,7 @@ function DayHeader({
     >
       <Typography
         variant="body2"
-        sx={{ fontWeight: 700 }}
+        sx={{ fontWeight: 600 }}
         color={today ? 'primary' : undefined}
       >
         {formatDateShort(date)}
@@ -815,7 +863,7 @@ function DayCell({
             height: '100%',
             minHeight: 48,
             borderRadius: 1,
-            color: 'text.disabled',
+            color: 'text.secondary',
             '& svg': { opacity: 0 },
             '&:hover, &:focus-visible': {
               bgcolor: 'action.hover',

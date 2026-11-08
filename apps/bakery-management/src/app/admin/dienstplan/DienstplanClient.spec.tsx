@@ -340,6 +340,30 @@ describe('Dienstplan - Kalender (Woche)', () => {
     )
   })
 
+  it('Seitenkopf aus dem Layout-Kit: eine h1, Datumsfeld springt in die Woche des Tages', async () => {
+    api.fetchCalendar.mockImplementation(async (range) =>
+      range.from === WEEK[0] ? calendar() : calendarFor(range)
+    )
+    renderCalendar()
+    await ready()
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Dienstplan' })
+    ).toBeInTheDocument()
+    const nav = screen.getByRole('group', { name: 'Woche wechseln' })
+    const field = within(nav).getByLabelText('Woche')
+    expect(field).toHaveValue('2026-11-09')
+    // Ein Donnerstag → Montag seiner Woche.
+    fireEvent.change(field, { target: { value: '2026-12-03' } })
+    expect(mockReplace).toHaveBeenLastCalledWith(
+      '/admin/dienstplan?woche=2026-11-30',
+      { scroll: false }
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId('week-title')).toHaveTextContent('30.11.')
+    )
+  })
+
   it('beim Blättern nie die alte Woche unter den neuen Tagen; Ladefehler zeigt kein leeres Raster', async () => {
     renderCalendar()
     await ready()
@@ -357,7 +381,7 @@ describe('Dienstplan - Kalender (Woche)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Nächste Woche' }))
     // Während die neue Woche lädt: kein Raster, kein „anlegen“.
     expect(
-      screen.getByRole('progressbar', { name: 'Dienstplan wird geladen' })
+      screen.getByRole('progressbar', { name: /Dienstplan wird geladen/ })
     ).toBeInTheDocument()
     expect(screen.queryByTestId('row-3')).not.toBeInTheDocument()
     expect(screen.queryAllByRole('button', { name: / anlegen$/ })).toHaveLength(
@@ -369,7 +393,7 @@ describe('Dienstplan - Kalender (Woche)', () => {
       await screen.findByText('Der Dienstplan konnte nicht geladen werden.')
     ).toBeInTheDocument()
     expect(
-      screen.queryByRole('progressbar', { name: 'Dienstplan wird geladen' })
+      screen.queryByRole('progressbar', { name: /Dienstplan wird geladen/ })
     ).not.toBeInTheDocument()
     expect(screen.queryByTestId('row-3')).not.toBeInTheDocument()
     expect(screen.queryAllByRole('button', { name: / anlegen$/ })).toHaveLength(

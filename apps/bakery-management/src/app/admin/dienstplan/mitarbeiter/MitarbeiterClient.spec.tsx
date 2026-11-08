@@ -156,12 +156,21 @@ describe('Dienstplan - Mitarbeiterliste', () => {
     expect(
       await screen.findByText('Nur mit persönlicher Anmeldung.')
     ).toBeInTheDocument()
+    // Nicht geladen ist nicht leer: keine erfundene leere Liste.
+    expect(screen.queryByText(/Noch keine Mitarbeiter/)).not.toBeInTheDocument()
+
+    api.fetchEmployees.mockResolvedValue(EMPLOYEES)
+    fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }))
+    expect(await screen.findByText('Erika Beispiel')).toBeInTheDocument()
+    expect(
+      screen.queryByText('Nur mit persönlicher Anmeldung.')
+    ).not.toBeInTheDocument()
   })
 
-  it('führt zum Kalender', async () => {
+  it('führt zurück zum Kalender (Rücklink im Kopf)', async () => {
     renderList()
     expect(
-      await screen.findByRole('link', { name: 'Kalender' })
+      await screen.findByRole('link', { name: 'Dienstplan' })
     ).toHaveAttribute('href', '/admin/dienstplan')
   })
 
