@@ -55,6 +55,10 @@ export const PILOT_ALLOWED_ROUTES: readonly string[] = [
   // freigegeben (Entscheidung 2026-11-08). Nur Inhaber mit persönlicher
   // Sitzung - das regeln ROLE_ACCESS und PERSONAL_ONLY_ROUTES (roles.ts).
   '/admin/dienstplan',
+  // Rest am Abend: im Pilot freigegeben (Entscheidung 2026-11-08). Zählen
+  // dürfen Verkauf und Backstube, die Auswertung (/admin/rest/auswertung)
+  // bleibt Inhaber - das regelt ROLE_ACCESS (roles.ts).
+  '/admin/rest',
   // Kommende Pilot-Bildschirme (M1/M2):
   '/admin/preorders',
   '/admin/preorders/abholliste', // P2 (liegt unter /admin/preorders)
@@ -71,7 +75,6 @@ export const PILOT_ALLOWED_ROUTES: readonly string[] = [
  * in `PILOT_ALLOWED_ROUTES` oder hier steht.
  */
 export const PILOT_HIDDEN_ROUTES: readonly string[] = [
-  '/admin/rest', // Rest am Abend (M4, nach dem Pilot)
   '/admin/sitzung-pruefen', // Ziel des Proxys, nicht zum direkten Aufruf
 ]
 

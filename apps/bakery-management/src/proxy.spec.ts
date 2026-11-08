@@ -137,10 +137,36 @@ describe('proxy im Pilotbetrieb', () => {
     else process.env.NEXT_PUBLIC_PILOT_MODE = original
   })
 
-  it('gesperrte Seite (Rest am Abend): Ersatzseite, ohne Sitzungsprüfung', async () => {
-    const response = await proxy(request('/admin/rest', token()))
+  it('gesperrte Seite: Ersatzseite, ohne Sitzungsprüfung', async () => {
+    const response = await proxy(request('/admin/sitzung-pruefen', token()))
     expect(rewrittenTo(response)).toBe(PILOT_UNAVAILABLE_PATH)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('Rest am Abend: Inhaber erreicht Zählliste und Auswertung (Entscheidung 2026-11-08)', async () => {
+    apiAnswers(200, 'inhaber')
+    for (const path of ['/admin/rest', '/admin/rest/auswertung']) {
+      const response = await proxy(request(path, token()))
+      expect(rewrittenTo(response)).toBeNull()
+      expect(response.headers.get(NEXT)).toBe('1')
+    }
+  })
+
+  it('Rest am Abend: Verkauf und Backstube zählen, die Auswertung bleibt Inhaber', async () => {
+    for (const role of ['verkauf', 'backstube']) {
+      apiAnswers(200, role)
+      const count = await proxy(request('/admin/rest', token()))
+      expect(rewrittenTo(count)).toBeNull()
+      expect(count.headers.get(NEXT)).toBe('1')
+      const summary = await proxy(request('/admin/rest/auswertung', token()))
+      expect(rewrittenTo(summary)).toBe(SESSION_CHECK_PATH)
+    }
+  })
+
+  it('Rest am Abend: Fahrer kommt nicht hinein', async () => {
+    apiAnswers(200, 'fahrer')
+    const response = await proxy(request('/admin/rest', token()))
+    expect(rewrittenTo(response)).toBe(SESSION_CHECK_PATH)
   })
 
   it('Dienstplan: für den Inhaber erreichbar (Entscheidung 2026-11-08)', async () => {

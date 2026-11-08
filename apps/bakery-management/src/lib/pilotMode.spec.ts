@@ -132,10 +132,18 @@ describe('isPilotPathAllowed', () => {
     expect(isPilotPathAllowed(route, true)).toBe(true)
   })
 
-  it('sperrt Rest am Abend (M4, nach dem Pilot), bis der Inhaber es freigibt', () => {
-    expect(isPilotPathAllowed('/admin/rest', true)).toBe(false)
-    expect(isPilotPathAllowed('/admin/rest/auswertung', true)).toBe(false)
-    expect(isPilotPathAllowed('/admin/rest', false)).toBe(true)
+  it('gibt Rest am Abend im Pilot frei (M4, Entscheidung 2026-11-08)', () => {
+    for (const route of ['/admin/rest', '/admin/rest/auswertung']) {
+      expect(isPilotPathAllowed(route, true)).toBe(true)
+      expect(isPilotHiddenPath(route)).toBe(false)
+      expect(isPilotPathAllowed(route, false)).toBe(true)
+    }
+    expect(PILOT_ALLOWED_ROUTES).toContain('/admin/rest')
+    expect(PILOT_HIDDEN_ROUTES).not.toContain('/admin/rest')
+    expect(isPilotPathAllowed('/admin/restx', true)).toBe(false)
+    expect(hrefs(getNavigation(true))).toEqual(
+      expect.arrayContaining(['/admin/rest', '/admin/rest/auswertung'])
+    )
   })
 
   it('gibt den Dienstplan im Pilot frei (TASK-042, Entscheidung 2026-11-08)', () => {

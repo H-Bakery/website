@@ -203,6 +203,36 @@ describe('AdminLayout mit Rollen im Pilotbetrieb (Dienstplan, Entscheidung 2026-
     }
   )
 
+  it('Rest am Abend: Inhaber sieht Zählliste und Auswertung (Entscheidung 2026-11-08)', () => {
+    renderLayout('/admin', fakeSession({ role: 'inhaber' }))
+    expect(navLabels()).toEqual(
+      expect.arrayContaining(['Rest am Abend', 'Rest-Auswertung'])
+    )
+    for (const path of ['/admin/rest', '/admin/rest/auswertung']) {
+      cleanup()
+      renderLayout(path, fakeSession({ role: 'inhaber' }))
+      expect(screen.getByText('Seiteninhalt')).toBeInTheDocument()
+      expect(
+        screen.queryByText('Im Pilotbetrieb nicht verfügbar')
+      ).not.toBeInTheDocument()
+      expect(screen.queryByText('Kein Zugriff')).not.toBeInTheDocument()
+    }
+  })
+
+  it.each(['verkauf', 'backstube'] as const)(
+    '%s zählt den Rest am Abend, die Auswertung bleibt Inhaber',
+    (role) => {
+      renderLayout('/admin/rest', fakeSession({ role }))
+      expect(navLabels()).toContain('Rest am Abend')
+      expect(navLabels()).not.toContain('Rest-Auswertung')
+      expect(screen.getByText('Seiteninhalt')).toBeInTheDocument()
+      cleanup()
+      renderLayout('/admin/rest/auswertung', fakeSession({ role }))
+      expect(screen.getByText('Kein Zugriff')).toBeInTheDocument()
+      expect(screen.queryByText('Seiteninhalt')).not.toBeInTheDocument()
+    }
+  )
+
   it('Inhaber an der Station: auch im Pilotbetrieb kein Dienstplan', () => {
     renderLayout(
       '/admin/dienstplan',

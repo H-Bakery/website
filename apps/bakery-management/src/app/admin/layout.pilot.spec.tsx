@@ -48,6 +48,8 @@ describe('AdminLayout im Pilotbetrieb (NEXT_PUBLIC_PILOT_MODE=1)', () => {
       'Anmeldung',
       'Hilfe',
       'Dienstplan', // TASK-042, für den Inhaber freigegeben (2026-11-08)
+      'Rest am Abend', // M4, im Pilot freigegeben (2026-11-08)
+      'Rest-Auswertung',
     ].forEach((label) => expect(nav.getByText(label)).toBeInTheDocument())
     ;[
       'Bestellungen',
@@ -70,7 +72,7 @@ describe('AdminLayout im Pilotbetrieb (NEXT_PUBLIC_PILOT_MODE=1)', () => {
     expect(screen.queryByText('Entwicklung')).not.toBeInTheDocument()
   })
 
-  it.each(['/admin/rest', '/admin/rest/auswertung'])(
+  it.each(['/admin/sitzung-pruefen', '/admin/cash'])(
     'sperrt %s mit einem deutschen Hinweis',
     (route) => {
       renderLayout(route)
@@ -92,6 +94,8 @@ describe('AdminLayout im Pilotbetrieb (NEXT_PUBLIC_PILOT_MODE=1)', () => {
     '/admin/partners/1',
     '/admin/dienstplan',
     '/admin/dienstplan/mitarbeiter/3',
+    '/admin/rest',
+    '/admin/rest/auswertung',
   ])('zeigt die erlaubte Seite %s', (route) => {
     renderLayout(route)
     expect(screen.getByTestId('page-content')).toBeInTheDocument()
