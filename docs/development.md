@@ -30,6 +30,7 @@ Prerequisites: Node ≥ 20.9 locally (the box runs Node 22 LTS). `.npmrc` sets
 | Management (Verwaltung) | `npm run serve:management` | 4201 |
 | Fahrer-App (delivery)   | `npm run serve:delivery`   | 4300 |
 | TypeScript API          | `npm run serve:api`        | 5000 |
+| Partybrezel-Prototyp    | `npm run dev:partybrezel`  | 4221 |
 
 Ports come from each app's `project.json`. There is one API: since B12 the mock server
 (`serve:api:simple`) is deleted, and management, shop and Fahrer-App all talk to the TypeScript
