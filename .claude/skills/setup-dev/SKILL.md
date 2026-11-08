@@ -24,7 +24,7 @@ The real `../hq` is never read or written.
 - `up.sh` stops a running instance first, then starts and seeds a fresh one (the DB is new on
   every start).
 - Uncommitted changes are **not** included. For live editing use `nx serve` instead (see
-  CLAUDE.md); this skill is for testing a finished state like staff would see it.
+  `docs/development.md`); this skill is for testing a finished state like staff would see it.
 
 When it is up, give the user the addresses and logins that `up.sh` prints:
 

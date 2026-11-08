@@ -1,523 +1,164 @@
-# Development Guide
+# Development
 
-## Development Workflow
+How to install, run, test and build this monorepo. Domain rules live in [`docs/domains/`](./domains/),
+API internals in [`docs/api/`](./api/), the pilot plan in [`roadmap.md`](./roadmap.md), box operation
+in [`runbook.md`](./runbook.md).
 
-### Getting Started
+## Workspace
+
+This repo (`website/`) is one of two sibling checkouts:
+
+```
+bakery/
+├── website/   this repo (public) – all application code, Nx monorepo
+└── hq/        private content repo – products, recipes, Backzettel config, cash reports, finance
+```
+
+`git` runs inside one of the two, never from `bakery/`. All `npm` / `npx nx` commands run from
+`website/`. The apps read `hq` at build or run time; see [hq paths](#hq-paths).
+
+Prerequisites: Node ≥ 20.9 locally (the box runs Node 22 LTS). `.npmrc` sets
+`legacy-peer-deps=true`, so install with plain `npm ci`. A husky `pre-commit` hook runs
+`lint-staged` (prettier + `eslint --fix`).
+
+## Run
+
+| What                    | Command                    | Port |
+| ----------------------- | -------------------------- | ---- |
+| Landing page            | `npm run dev:landing`      | 3000 |
+| Shop                    | `npm run serve:shop`       | 4200 |
+| Management (Verwaltung) | `npm run serve:management` | 4201 |
+| Fahrer-App (delivery)   | `npm run serve:delivery`   | 4300 |
+| TypeScript API          | `npm run serve:api`        | 5000 |
+
+Ports come from each app's `project.json`. There is one API: since B12 the mock server
+(`serve:api:simple`) is deleted, and management, shop and Fahrer-App all talk to the TypeScript
+API. The shop needs `PUBLIC_CATALOGUE=1` on the API (anonymous `GET /api/products`); shop and
+Fahrer-App call the API directly, so their origins must be in `CORS_ORIGIN` (4200 and 4300 are in
+the default list).
+
+**The whole system at once** (real API + management in full and pilot mode + Fahrer-App + shop,
+synthetic or real hq data): the `setup-dev` skill in `.claude/skills/setup-dev/` (`up.sh` with
+synthetic seed data from any ref, `real.sh` with the real hq and a persistent DB). Prefer it over
+starting servers by hand.
+
+### Real API
+
+`npm run serve:api` bundles the API with esbuild (`apps/bakery-api/build.mjs` →
+`dist/apps/bakery-api/bundle/main.js` + `cli.js`), opens SQLite at `DB_PATH` (default
+`./data/bakery.db`, gitignored; absolute and required in production), runs the migrations and
+listens. `npm run build:api` bundles only. There is no default account: in development
+`BOOTSTRAP_ADMIN_USER` / `BOOTSTRAP_ADMIN_PASSWORD` create an Inhaber at start; otherwise use the
+CLI (after `build:api`):
 
 ```bash
-# Clone repository
-git clone https://github.com/yourusername/bakery-monorepo.git
-cd bakery-monorepo
-
-# Install dependencies
-npm install
-
-# Start development
-npm run dev              # Starts all services
-npm run dev:shop         # Start only shop
-npm run dev:api          # Start only API
+CREATE_USER_PASSWORD=… npm run api:create-user -- --username anna --display-name "Anna" --role verkauf
+npm run api:import-partners -- --file apps/bakery-api/data/partner-store.json --dry-run
+npm run api:import-deliveries -- --file apps/bakery-api/data/delivery-store.json --dry-run
 ```
 
-### Nx Commands
+The two imports move the old mock server's JSON stores into SQLite (idempotent); see
+[`api/partners.md`](./api/partners.md) and [`api/deliveries.md`](./api/deliveries.md).
 
-#### Essential Commands
+More in [`api/overview.md`](./api/overview.md).
+
+### hq paths
+
+| Env var                | Default                                 | Used by                                |
+| ---------------------- | --------------------------------------- | -------------------------------------- |
+| `HQ_DIR`               | `<website>/../hq`                       | real API (base for the rest)           |
+| `HQ_PRODUCTS_DIR`      | `<website>/../hq/products`              | landing, management, API               |
+| `HQ_REPORTS_DIR`       | `<website>/../hq/data/reports`          | reports, analytics, Tagesziel          |
+| `HQ_FINANCE_DIR`       | `<website>/../hq/data/finance`          | finance, Tagesziel config              |
+| `HQ_BACKZETTEL_CONFIG` | `${HQ_DIR}/config/backzettel.yaml`      | Backzettel                             |
+| `HQ_WRITE_DIR`         | – (dev: write straight to the read dir) | real API write-back (box: `app/edits`) |
+
+A missing `hq` is not an error: reports/finance answer `status: 'no-data'`, the landing page falls
+back to bundled JSON in `src/mocks/products/` and logs `HQ products directory not found`. If a
+product edit "doesn't show up", look for that log before suspecting a cache.
+
+## Nx
+
+Project names often differ from directory names - check with `npx nx show projects`. The shared
+libs are `ui`, `contexts`, `test-utils`, `data-mocks` (unprefixed) next to `shared-types`,
+`shared-utils`, `shared-data-access`. Import across projects only via the `@bakery/*` aliases in
+`tsconfig.base.json`.
+
+## Test
 
 ```bash
-# Serve applications
-nx serve bakery-shop
-nx serve bakery-management --port=4201
-nx serve bakery-api --port=3333
-
-# Build applications
-nx build bakery-shop --configuration=production
-nx affected:build --base=main
-
-# Run tests
-nx test bakery-shop
-nx affected:test
-nx run-many --target=test --all
-
-# Linting and formatting
-nx affected:lint
-nx format:write
+npx nx test <project>                 # one project, e.g. npx nx test bakery-management
+npx nx test <project> -- -t "name"    # one test case
+npm run test:unit                     # all projects
+NX_DAEMON=false npx nx run-many --target=test --all   # what the known-issues numbers come from
+npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/<file>.test.js   # API core
+npm run test:e2e:management           # Playwright (…:shop, …:landing, …:delivery)
+npm run lint:all  |  npm run format:check  |  npm run type-check
 ```
 
-#### Code Generation
+- `apps/bakery-api/jest.config.js` has three projects: `js` (`tests/**/*.test.js`), `ts`
+  (`src/**/*.spec.ts`, `tests/**/*.test.ts`, ts-jest, transpile-only) and `contract-later` (the
+  contract suites in `tests/contract/` once more with the clock shifted to 2028). The contract
+  suites compare the API with answers recorded from the deleted mock server
+  (`tests/contract/recorded/`). See `apps/bakery-api/tests/README.md`.
+- jest passes specs that have type errors - run `npm run type-check` before merging.
+- E2E suites and the synthetic product catalogue: [`testing/e2e.md`](./testing/e2e.md).
+- Tests use **synthetic fixtures only** - the repo is public.
+- Failing suites that are known: [`known-issues.md`](./known-issues.md).
+
+## Build
 
 ```bash
-# Generate new application
-nx g @nx/next:app my-app
-
-# Generate new library
-nx g @nx/react:lib feature-name --directory=libs/bakery-shop
-
-# Generate component
-nx g @nx/react:component button --project=shared-ui
-
-# Generate service
-nx g @nx/node:service order --project=bakery-api
+npx nx build <project>
+NX_ISOLATE_PLUGINS=false NODE_ENV=production npx nx build bakery-management   # Next apps, see below
+npm run affected:build | affected:test | affected:lint
+npm run clean            # nx reset + rm dist tmp coverage .nx
 ```
 
-## Project Structure Best Practices
+**Next apps need `NX_ISOLATE_PLUGINS=false` and `NODE_ENV=production`** (ci.yml sets both). With
+plugins in-process, `@nx/vite/plugin` calls Vite's `resolveConfig()` on a cold graph cache, which
+sets `NODE_ENV=development` inside the Nx process; `next build` inherits it and dies in prerender
+with `Cannot read properties of null (reading 'useState')`. With isolated plugins, `withNx()`'s
+nested project graph crashes the IPC layer (`Could not create project graph`). A warm
+`.nx/workspace-data` hides both - after `npm run clean` you need the variables. TypeScript errors
+printed inside `##[group]` blocks of _succeeded_ tasks (vite's dts plugin) are not the cause.
 
-### Application Structure
+`NEXT_PUBLIC_*` variables are baked in at `next build`, not read at `next start`.
 
-```
-apps/bakery-shop/
-├── app/                    # Next.js 15 app directory
-│   ├── layout.tsx         # Root layout
-│   ├── page.tsx           # Home page
-│   └── products/
-│       ├── page.tsx       # Products list
-│       └── [id]/
-│           └── page.tsx   # Product detail
-├── components/            # App-specific components
-├── hooks/                 # App-specific hooks
-├── services/              # API service layer
-└── project.json          # Nx configuration
-```
-
-### Library Structure
-
-```
-libs/bakery-shop/feature-cart/
-├── src/
-│   ├── lib/
-│   │   ├── cart-context.tsx
-│   │   ├── cart-provider.tsx
-│   │   ├── hooks/
-│   │   │   └── use-cart.ts
-│   │   └── components/
-│   │       ├── cart-item.tsx
-│   │       └── cart-summary.tsx
-│   ├── index.ts           # Public API
-│   └── test-setup.ts
-├── project.json
-├── tsconfig.json
-└── README.md
-```
-
-## Code Organization
-
-### Module Boundaries
-
-Configure in `.eslintrc.json`:
-```json
-{
-  "overrides": [
-    {
-      "files": ["*.ts", "*.tsx"],
-      "rules": {
-        "@nx/enforce-module-boundaries": [
-          "error",
-          {
-            "enforceBuildableLibDependency": true,
-            "allow": [],
-            "depConstraints": [
-              {
-                "sourceTag": "scope:shop",
-                "onlyDependOnLibsWithTags": ["scope:shop", "scope:shared"]
-              },
-              {
-                "sourceTag": "scope:management",
-                "onlyDependOnLibsWithTags": ["scope:management", "scope:shared"]
-              },
-              {
-                "sourceTag": "type:feature",
-                "onlyDependOnLibsWithTags": ["type:feature", "type:ui", "type:data-access", "type:util"]
-              },
-              {
-                "sourceTag": "type:ui",
-                "onlyDependOnLibsWithTags": ["type:ui", "type:util"]
-              },
-              {
-                "sourceTag": "type:util",
-                "onlyDependOnLibsWithTags": ["type:util"]
-              }
-            ]
-          }
-        ]
-      }
-    }
-  ]
-}
-```
-
-### Import Paths
-
-Configure in `tsconfig.base.json`:
-```json
-{
-  "compilerOptions": {
-    "paths": {
-      "@bakery/shared/ui": ["libs/shared/ui/src/index.ts"],
-      "@bakery/shared/types": ["libs/shared/types/src/index.ts"],
-      "@bakery/shared/utils": ["libs/shared/utils/src/index.ts"],
-      "@bakery/shop/*": ["libs/bakery-shop/*/src/index.ts"],
-      "@bakery/management/*": ["libs/bakery-management/*/src/index.ts"]
-    }
-  }
-}
-```
-
-## Development Best Practices
-
-### 1. Component Development
-
-```typescript
-// libs/shared/ui/src/lib/button/button.tsx
-import { ButtonHTMLAttributes, forwardRef } from 'react';
-import { cn } from '@bakery/shared/utils';
-
-export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'danger';
-  size?: 'sm' | 'md' | 'lg';
-}
-
-export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = 'primary', size = 'md', ...props }, ref) => {
-    return (
-      <button
-        ref={ref}
-        className={cn(
-          'inline-flex items-center justify-center rounded-md font-medium',
-          {
-            'bg-blue-600 text-white hover:bg-blue-700': variant === 'primary',
-            'bg-gray-200 text-gray-900 hover:bg-gray-300': variant === 'secondary',
-            'bg-red-600 text-white hover:bg-red-700': variant === 'danger',
-            'px-3 py-1.5 text-sm': size === 'sm',
-            'px-4 py-2 text-base': size === 'md',
-            'px-6 py-3 text-lg': size === 'lg',
-          },
-          className
-        )}
-        {...props}
-      />
-    );
-  }
-);
-
-Button.displayName = 'Button';
-```
-
-### 2. Service Layer Pattern
-
-```typescript
-// libs/shared/data-access/src/lib/api-client.ts
-export class ApiClient {
-  constructor(private baseUrl: string) {}
-
-  private async request<T>(
-    endpoint: string,
-    options?: RequestInit
-  ): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options?.headers,
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`API Error: ${response.statusText}`);
-    }
-
-    return response.json();
-  }
-
-  get<T>(endpoint: string): Promise<T> {
-    return this.request<T>(endpoint);
-  }
-
-  post<T>(endpoint: string, data: unknown): Promise<T> {
-    return this.request<T>(endpoint, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-}
-```
-
-### 3. State Management
-
-```typescript
-// libs/bakery-shop/feature-cart/src/lib/cart-store.ts
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-
-interface CartState {
-  items: CartItem[];
-  addItem: (product: Product) => void;
-  removeItem: (productId: string) => void;
-  updateQuantity: (productId: string, quantity: number) => void;
-  clearCart: () => void;
-  total: number;
-}
-
-export const useCartStore = create<CartState>()(
-  persist(
-    (set, get) => ({
-      items: [],
-      
-      addItem: (product) =>
-        set((state) => {
-          const existing = state.items.find((i) => i.id === product.id);
-          if (existing) {
-            return {
-              items: state.items.map((i) =>
-                i.id === product.id
-                  ? { ...i, quantity: i.quantity + 1 }
-                  : i
-              ),
-            };
-          }
-          return {
-            items: [...state.items, { ...product, quantity: 1 }],
-          };
-        }),
-
-      removeItem: (productId) =>
-        set((state) => ({
-          items: state.items.filter((i) => i.id !== productId),
-        })),
-
-      updateQuantity: (productId, quantity) =>
-        set((state) => ({
-          items: state.items.map((i) =>
-            i.id === productId ? { ...i, quantity } : i
-          ),
-        })),
-
-      clearCart: () => set({ items: [] }),
-
-      get total() {
-        return get().items.reduce(
-          (sum, item) => sum + item.price * item.quantity,
-          0
-        );
-      },
-    }),
-    {
-      name: 'bakery-cart',
-    }
-  )
-);
-```
-
-### 4. Error Handling
-
-```typescript
-// libs/shared/utils/src/lib/error-boundary.tsx
-import { Component, ReactNode } from 'react';
-
-interface Props {
-  children: ReactNode;
-  fallback?: ReactNode;
-}
-
-interface State {
-  hasError: boolean;
-  error?: Error;
-}
-
-export class ErrorBoundary extends Component<Props, State> {
-  constructor(props: Props) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, errorInfo: any) {
-    console.error('Error caught by boundary:', error, errorInfo);
-    // Send to error tracking service
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return this.props.fallback || <div>Something went wrong.</div>;
-    }
-
-    return this.props.children;
-  }
-}
-```
-
-## Git Workflow
-
-### Branch Strategy
-
-```
-main                 # Production-ready code
-├── develop          # Integration branch
-    ├── feature/*    # Feature branches
-    ├── bugfix/*     # Bug fixes
-    └── hotfix/*     # Emergency fixes
-```
-
-### Commit Messages
-
-Follow conventional commits:
-```bash
-feat: add shopping cart functionality
-fix: resolve checkout button alignment issue
-docs: update API documentation
-style: format code with prettier
-refactor: extract payment logic to service
-test: add unit tests for order service
-chore: update dependencies
-```
-
-### Pull Request Process
-
-1. Create feature branch
-```bash
-git checkout -b feature/add-delivery-tracking
-```
-
-2. Make changes and commit
-```bash
-git add .
-git commit -m "feat: add delivery tracking to order page"
-```
-
-3. Run affected checks
-```bash
-nx affected:lint
-nx affected:test
-nx affected:build
-```
-
-4. Push and create PR
-```bash
-git push origin feature/add-delivery-tracking
-```
-
-## Environment Setup
-
-### VS Code Extensions
-
-Recommended extensions in `.vscode/extensions.json`:
-```json
-{
-  "recommendations": [
-    "nrwl.angular-console",
-    "firsttris.vscode-jest-runner",
-    "dbaeumer.vscode-eslint",
-    "esbenp.prettier-vscode",
-    "bradlc.vscode-tailwindcss",
-    "prisma.prisma"
-  ]
-}
-```
-
-### Workspace Settings
-
-`.vscode/settings.json`:
-```json
-{
-  "editor.formatOnSave": true,
-  "editor.defaultFormatter": "esbenp.prettier-vscode",
-  "editor.codeActionsOnSave": {
-    "source.fixAll.eslint": true
-  },
-  "typescript.tsdk": "node_modules/typescript/lib",
-  "typescript.enablePromptUseWorkspaceTsdk": true
-}
-```
-
-## Performance Optimization
-
-### 1. Build Optimization
-
-```json
-// nx.json
-{
-  "tasksRunnerOptions": {
-    "default": {
-      "runner": "@nrwl/nx-cloud",
-      "options": {
-        "cacheableOperations": ["build", "lint", "test", "e2e"],
-        "parallel": 3,
-        "cacheDirectory": ".nx/cache"
-      }
-    }
-  }
-}
-```
-
-### 2. Development Performance
+### Landing page (static export → GitHub Pages)
 
 ```bash
-# Use Nx computation caching
-nx build bakery-shop --skip-nx-cache=false
-
-# Run only affected
-nx affected:build --base=main
-
-# Use Nx Cloud for distributed caching
-nx connect-to-nx-cloud
+rm -rf apps/bakery-landing/.next      # a stale dev cache breaks the export
+NODE_ENV=production npx nx build-static-standalone bakery-landing   # → apps/bakery-landing/out/
 ```
 
-### 3. Bundle Size Optimization
+`build-static-standalone` runs `generate-sitemap.js`, then `next build` with
+`NX_STANDALONE_BUILD=1`, bypassing the Nx graph; the Pages workflow does the same, and the
+`build` target of `bakery-landing` is the same export. `npm run build:landing:standalone` is the
+plain `next build` without the sitemap. `<Html> should not be imported outside of pages/_document`
+or `Cannot find module for page` = stale `.next`.
 
-```javascript
-// next.config.js
-module.exports = {
-  experimental: {
-    optimizeCss: true,
-  },
-  webpack: (config, { isServer }) => {
-    if (!isServer) {
-      config.optimization.splitChunks = {
-        chunks: 'all',
-        cacheGroups: {
-          default: false,
-          vendors: false,
-          vendor: {
-            name: 'vendor',
-            chunks: 'all',
-            test: /node_modules/,
-          },
-        },
-      };
-    }
-    return config;
-  },
-};
-```
+### API type-check
 
-## Debugging
+`npx nx run bakery-api:typecheck` (`tsc --noEmit` over `tsconfig.bundle.json` and
+`tsconfig.spec.json`; `nx build bakery-api` depends on it). `tsconfig.app.json` is not what the
+build checks - `tsc -p` on it reports a spurious error.
 
-### Backend Debugging
+## CI
 
-```json
-// .vscode/launch.json
-{
-  "version": "0.2.0",
-  "configurations": [
-    {
-      "type": "node",
-      "request": "launch",
-      "name": "Debug API",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["nx", "serve", "bakery-api"],
-      "skipFiles": ["<node_internals>/**"],
-      "console": "integratedTerminal"
-    }
-  ]
-}
-```
+`.github/workflows/ci.yml` filters by changed paths, then runs `format:check`, `lint:affected`,
+`type-check` and tests (`test-unit` in three shards, three `test-e2e-*` jobs, aggregate
+`ci-status`). E2E runs against the built apps plus an API on a synthetic catalogue
+(`tools/e2e/`), so no private `hq` is needed.
 
-### Frontend Debugging
+- **Coverage thresholds and `--shard` don't mix**: a shard runs a third of the tests but measures
+  all sources. The configs with thresholds drop them when `JEST_SHARDED=true` (set by the shard
+  step); Codecov merges the uploads, and a full `npm run test:coverage` is what is judged.
+- `deploy-to-github-pages.yml` publishes the landing export on every push to `main`.
+  `deploy-old.yml` (Vercel + Cloud Run) is manual-only and has no configured secrets - unused.
 
-```bash
-# Debug in Chrome DevTools
-npm run dev:shop -- --inspect
+## Task tracking
 
-# Debug tests
-nx test bakery-shop --watch --debug
-```
+Dev tasks: markdown with YAML frontmatter in `.mc/tasks/{todo,done}/` (MissionControl). The `mc`
+CLI is **not installed** - edit the files directly. The pilot plan and its task list live only in
+[`roadmap.md`](./roadmap.md).

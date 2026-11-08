@@ -841,7 +841,8 @@ Details, the follow-up questions Q-L1…Q-L11 and the printed questionnaire live
 - A Playwright smoke test for each new pilot screen.
 - Errors carry `message` + `error`.
 - German UI copy.
-- The checkbox in §6 updated and the CLAUDE.md section touched where behaviour changed.
+- The checkbox in §6 updated and the matching doc in `docs/domains/`, `docs/api/` or `docs/apps/`
+  touched where behaviour changed (the CLAUDE.md files only hold rules that always apply).
 
 **Worktree builds:** use `--webpack`, `NX_DAEMON=false`, private ports and `HQ_PRODUCTS_DIR`.
 Symlinked `node_modules` breaks Turbopack.

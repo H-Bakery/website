@@ -76,7 +76,7 @@ Caddy bzw. der Tunnel lässt es gar nicht erst durch.
 haben - das sind heute ein bis zwei Personen am Samstag. Es öffnet nichts ins Internet, die
 Kundendaten verlassen die verschlüsselte Verbindung nirgends, und der Mehraufwand ist einmalig.
 Die App ist für den Fall „VPN aus" schon gebaut: Offline-Kopie und Warteschlange (siehe
-`apps/bakery-delivery/CLAUDE.md`, „Offline").
+[`docs/apps/delivery.md`](apps/delivery.md#offline)).
 
 Weg B lohnt sich erst, wenn wechselnde Aushilfen fahren oder Kundschaft selbst etwas sehen soll
 (Sendungsverfolgung). Dann vorher: eigene Subdomain, Pfad-Whitelist mit Test, Proxy-Limit, und

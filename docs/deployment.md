@@ -1,4 +1,4 @@
-> **Superseded (2026-11-05)** by [roadmap.md](roadmap.md) (pilot plan, decisions D1–D12). Kept for history.
+> **Superseded (2026-11-05)** - pilot plan in [roadmap.md](roadmap.md), box operation in [runbook.md](runbook.md). Kept for history.
 
 # Deployment Guide
 

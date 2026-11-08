@@ -66,6 +66,21 @@ systemd ≥ 247). Wer die API übernimmt, kommt so nicht an Telegram-Token und B
 laufen `npm ci` und der Build. Was root ausführt (Skripte in `bin/`, Units), kommt aus dem
 root-eigenen Klon `src/`, nie aus einem Release.
 
+### 1.1 Vor einer Änderung an `deploy/`
+
+- **Neue Geheimnisse der Betriebs-Skripte gehören in `ops.env`, nie in `bakery.env`.** `bakery.env`
+  kann der Benutzer `bakery` lesen - und damit jeder, der die API oder ein npm-Skript übernimmt.
+- **`NEXT_PUBLIC_*` werden beim Build eingebacken.** Eine Änderung in `bakery.env` wirkt erst nach
+  `deploy.sh --rebuild` (§4).
+- **Braucht der Build eine neue Variable, sie in `DEPLOY_BUILD_ENV_KEYS` freigeben**
+  (`deploy/scripts/deploy.sh`, Vorgabe: `NEXT_PUBLIC_*`, `API_URL`, `HQ_*_DIR`, `TZ`) - nicht die
+  geleerte Umgebung (`env -i`) des Builds aushebeln. npm-Skripte sind fremder Code.
+- **Was root ausführt, nie aus einem Release** (das gehört `bakery`), sondern aus `/opt/bakery/src`.
+- **Node 22 LTS** auf der Box (§3.3).
+- **Testen:** `deploy/tests/run-tests.sh` (macOS/Linux, ohne root, fünf Ports ab 5120 -
+  `TEST_PORT_BASE` -, nur synthetische Daten). Nicht abgedeckt sind `install.sh`, die systemd-Units,
+  Caddy, restic gegen ein echtes Repository und `npm ci`/Build im Release - das braucht die Box.
+
 ## 2. Wer macht was
 
 | Aufgabe                                           | Wer                          | Wann                            |

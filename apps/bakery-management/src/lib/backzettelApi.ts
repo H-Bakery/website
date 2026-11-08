@@ -1,7 +1,7 @@
 /**
- * Client der Backzettel-API (Z3, `apps/bakery-api/CLAUDE.md` „Backzettel API
- * (Z3)"). Geteilt von der Tagesplanung (`/admin/backzettel`, Z5/Z7) und der
- * Backstube-Ansicht (`/backstube`, Z6).
+ * Client der Backzettel-API (Z3, `docs/api/backzettel.md`). Geteilt von der
+ * Tagesplanung (`/admin/backzettel`, Z5/Z7) und der Backstube-Ansicht
+ * (`/backstube`, Z6).
  *
  * Kapselt `apiClient` wie `partnerApi.ts`: die Seiten kennen keine
  * Endpunkt-Strings. Fehler kommen als `ApiError` (Status, maschinenlesbarer
