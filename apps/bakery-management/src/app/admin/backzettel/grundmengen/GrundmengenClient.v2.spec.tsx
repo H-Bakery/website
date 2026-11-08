@@ -116,6 +116,26 @@ describe('GrundmengenClient - Backzettel v2 (Z10)', () => {
     expect(sat(screen.getByTestId('row-testkorn'))).toEqual(['≈ 9 St.'])
   })
 
+  it('Druck: Median je Laibgröße; ohne Kassennummer der Größe „≈ unbekannt“, nie leer', async () => {
+    mockGet(syntheticViewV2(), syntheticReferenceV2)
+    renderWithTheme(<GrundmengenClient />)
+    await screen.findByTestId('row-testkorn-g500')
+    const print = within(screen.getByTestId('grundmengen-print'))
+    const wd = syntheticReferenceV2().weekdays[0].weekday
+    expect(
+      print.getByTestId(`print-reference-testkorn-g500-${wd}`)
+    ).toHaveTextContent('≈ 6 St.')
+    expect(
+      print.getByTestId(`print-reference-testkorn-g1000-${wd}`)
+    ).toHaveTextContent('≈ unbekannt')
+    expect(
+      print.getByTestId(`print-reference-testkorn-${wd}`)
+    ).toHaveTextContent('≈ 9 St.')
+    expect(screen.getByTestId('grundmengen-print')).toHaveTextContent(
+      '„≈ unbekannt“ = für diese Größe ist keine eigene Kassennummer hinterlegt'
+    )
+  })
+
   it('Posten ohne Kassennummer: auch die Größen-Zeilen ohne Referenz', async () => {
     const ref = syntheticReferenceV2()
     const korn = ref.weekdays[0].items[0]
