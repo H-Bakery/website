@@ -1,6 +1,6 @@
 /**
  * Endpunkte der Anmeldung und Benutzerverwaltung (B3-Vertrag, siehe
- * `apps/bakery-api/CLAUDE.md` „Auth (B3)“).
+ * `docs/api/auth.md`).
  *
  * Kapselt `apiClient` wie `partnerApi.ts`. Login, Refresh, PIN und Logout
  * laufen mit `retryOnUnauthorized: false`: ihre 401 heißt „falsche Daten“

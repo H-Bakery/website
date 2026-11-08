@@ -4,7 +4,7 @@
  * Partybrezel-Prototyp: rein statischer Export, keine Workspace-Libs, also
  * kein withNx(). Der Basis-Pfad kommt aus PARTYBREZEL_BASE_PATH, damit der
  * Export auch unter einem Unterpfad laufen kann (z. B. /partybrezel auf der
- * Pages-Seite der Landing Page) - siehe docs/partybrezel-prototyp.md.
+ * Pages-Seite der Landing Page) - siehe docs/apps/partybrezel.md.
  */
 
 /** @param {string | undefined} raw */

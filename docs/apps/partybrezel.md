@@ -7,6 +7,8 @@ Fragen (Q-P1 … Q-P7) am Bildschirm durchspielen, bevor Produkte, Backzettel un
 
 Eigenständige statische Next.js-App (Next 16, React 18, MUI 5, App Router, `output: 'export'`),
 aufgebaut wie `apps/bakery-landing`, aber ohne `withNx()` und ohne `@bakery/*`-Libs.
+Kein Pilot-Bildschirm, nicht auf der Box. Kurzfassung für Agenten:
+[`apps/bakery-partybrezel/CLAUDE.md`](../../apps/bakery-partybrezel/CLAUDE.md).
 
 ## Was feststeht und was nicht
 
@@ -47,6 +49,10 @@ npm run serve:partybrezel        # = nx serve-static bakery-partybrezel -> out/ 
 npm run test:unit:partybrezel    # = nx test bakery-partybrezel (jest + RTL)
 npx nx lint bakery-partybrezel   # eigenes lint-Target, damit `nx affected:lint` in CI die App mitnimmt
 ```
+
+CI baut die App in der Build-Matrix von `.github/workflows/ci.yml` mit. Tests: Kern in
+`src/lib/*.spec.ts`, der Durchklick aller Schritte (auch unter React StrictMode) in
+`src/components/PartybrezelDesigner.spec.tsx`.
 
 Gebaut wird mit **webpack** (`next build --webpack`) - Turbopack ist in Worktrees mit verlinktem
 `node_modules` unzuverlässig. `out/` und `.next/` sind über die Root-`.gitignore` ausgeschlossen.

@@ -370,9 +370,11 @@ fi
 # leeres NEXT_PUBLIC_API_URL der Normalfall: der Browser fragt /api auf der
 # eigenen Origin, Caddy reicht es an die API weiter (gleiche Origin, kein CORS).
 # Unveränderte Vorlage: der Build würde einen Host einbacken, den kein Gerät erreicht.
+# Eine Domain ist nicht nötig: im LAN-HTTP-Betrieb bis Q2 ist CORS_ORIGIN
+# http://<IP oder Name der Box>; der Wechsel auf HTTPS braucht keinen neuen Build.
 for key in NEXT_PUBLIC_API_URL CORS_ORIGIN; do
   case "${!key:-}" in
-  *example.*) die 2 "$key enthält noch den Platzhalter aus der Vorlage (${!key}) - echte Domain in /etc/bakery/bakery.env eintragen" ;;
+  *example.*) die 2 "$key enthält noch den Platzhalter aus der Vorlage (${!key}) - in /etc/bakery/bakery.env die echte Domain eintragen, im LAN-HTTP-Betrieb (bis Q2) http://<IP oder Name der Box>" ;;
   esac
 done
 

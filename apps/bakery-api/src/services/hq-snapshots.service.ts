@@ -20,7 +20,9 @@
  * `app/edits` worktree of the same clone and with the CLI process. The commit
  * is made before the push waits for the network: whatever happens on the
  * wire, the snapshot is on disk and in the local history (`written`), and
- * the server's retry timer pushes it.
+ * the server's retry timer pushes it. The GitHub token is read at the time
+ * of each push (`GitHubTokenProvider`, a GitHub App token in
+ * `HQ_GITHUB_TOKEN_FILE` is renewed every 30 minutes).
  */
 import * as fs from 'fs'
 import * as path from 'path'
@@ -38,6 +40,7 @@ import {
   withRepoLock,
 } from './hq-git'
 import type { SyncError, SyncLog } from './hq-edits-sync.service'
+import { GitHubTokenProvider, staticGitHubToken } from './github-token'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const core = require('./hq-snapshots.core')
@@ -47,7 +50,10 @@ const writeback = require('./hq-writeback.core')
 export interface HqSnapshotsOptions {
   /** Worktree on `main` (`HQ_SNAPSHOT_DIR`); `null` = disabled. */
   snapshotDir: string | null
+  /** Fixed token; ignored when `tokenProvider` is given. */
   token?: string | null
+  /** Where the token is read from at the time of use (github-token.ts). */
+  tokenProvider?: GitHubTokenProvider
   branch?: string
   remote?: string
   retryMs?: number
@@ -121,7 +127,7 @@ export class HqSnapshotWriter {
   readonly branch: string
   readonly remote: string
   readonly retryMs: number
-  private readonly token: string | null
+  private readonly tokenProvider: GitHubTokenProvider
   private readonly git: HqGit
   private readonly now: () => Date
   private readonly log: SyncLog
@@ -140,7 +146,8 @@ export class HqSnapshotWriter {
     this.snapshotDir = options.snapshotDir
       ? path.resolve(options.snapshotDir)
       : null
-    this.token = options.token || null
+    this.tokenProvider =
+      options.tokenProvider ?? staticGitHubToken(options.token || null)
     this.branch = options.branch || writeback.BASE_BRANCH
     this.remote = options.remote || 'origin'
     this.retryMs = options.retryMs ?? writeback.DEFAULT_RETRY_MS
@@ -432,7 +439,11 @@ export class HqSnapshotWriter {
    */
   private async push(dir: string): Promise<SyncError | null> {
     const remoteRef = `refs/remotes/${this.remote}/${this.branch}`
-    const net = { token: this.token, timeoutMs: NETWORK_GIT_TIMEOUT_MS }
+    // Read per network call: the push may wait minutes for the network lock.
+    const net = () => ({
+      token: this.tokenProvider.read().token,
+      timeoutMs: NETWORK_GIT_TIMEOUT_MS,
+    })
     const count = async () =>
       (await revParse(this.git, dir, remoteRef))
         ? countCommits(this.git, dir, `${remoteRef}..HEAD`)
@@ -446,7 +457,7 @@ export class HqSnapshotWriter {
           this.remote,
           `${sha}:refs/heads/${this.branch}`,
         ],
-        net
+        net()
       )
 
     try {
@@ -480,7 +491,7 @@ export class HqSnapshotWriter {
                   this.remote,
                   `+refs/heads/${this.branch}:${remoteRef}`,
                 ],
-                net
+                net()
               )
               const conflict = await withRepoLock(
                 dir,

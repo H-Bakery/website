@@ -223,8 +223,18 @@ export interface HqConfig {
 
 /** B5b/Z9: Übertragung nach GitHub. */
 export interface HqSyncConfig {
-  /** `HQ_GITHUB_TOKEN`, sonst `GITHUB_TOKEN`; `null` = B5b aus. */
+  /**
+   * Fester Token: `HQ_GITHUB_TOKEN`, sonst - nur ohne `HQ_GITHUB_TOKEN_FILE` -
+   * `GITHUB_TOKEN`. `null` und kein `tokenFile` = B5b aus.
+   */
   token: string | null
+  /**
+   * `HQ_GITHUB_TOKEN_FILE` (Q3, GitHub-App): Datei mit einem Installations-
+   * token, das `deploy/scripts/hq-token.sh` alle 30 min erneuert. Wird bei
+   * jeder Verwendung neu gelesen (services/github-token.ts). `null`, wenn
+   * `HQ_GITHUB_TOKEN` gesetzt ist - der feste Token gewinnt.
+   */
+  tokenFile: string | null
   /** `HQ_GITHUB_REPO`, Vorgabe `H-Bakery/hq`. */
   githubRepo: string
   /** `GITHUB_API_URL`, Vorgabe `https://api.github.com` (Tests: Fake-Server). */
@@ -238,7 +248,8 @@ export const DEFAULT_GITHUB_API_URL = 'https://api.github.com'
 export const DEFAULT_HQ_SYNC_RETRY_MS = 15 * 60 * 1000
 
 export function loadHqSyncConfig(
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
+  cwd: string = process.cwd()
 ): HqSyncConfig {
   const value = (name: string) => env[name]?.trim() || undefined
   const repo = value('HQ_GITHUB_REPO') ?? DEFAULT_HQ_GITHUB_REPO
@@ -257,8 +268,24 @@ export function loadHqSyncConfig(
   if (retryMs < 1000) {
     throw new ConfigError('HQ_SYNC_RETRY_MS must be at least 1000.')
   }
+  // Vorrang: HQ_GITHUB_TOKEN > HQ_GITHUB_TOKEN_FILE > GITHUB_TOKEN.
+  const explicitToken = value('HQ_GITHUB_TOKEN')
+  const tokenFileRaw = explicitToken ? undefined : value('HQ_GITHUB_TOKEN_FILE')
+  if (
+    tokenFileRaw &&
+    (env['NODE_ENV'] || 'development') === 'production' &&
+    !path.isAbsolute(tokenFileRaw)
+  ) {
+    throw new ConfigError(
+      `HQ_GITHUB_TOKEN_FILE must be absolute in production, got "${tokenFileRaw}".`
+    )
+  }
   return {
-    token: value('HQ_GITHUB_TOKEN') ?? value('GITHUB_TOKEN') ?? null,
+    token:
+      explicitToken ??
+      (tokenFileRaw ? undefined : value('GITHUB_TOKEN')) ??
+      null,
+    tokenFile: tokenFileRaw ? path.resolve(cwd, tokenFileRaw) : null,
     githubRepo: repo,
     githubApiUrl: apiUrl,
     retryMs,

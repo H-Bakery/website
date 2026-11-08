@@ -1805,7 +1805,7 @@ export class DeliveryToursService {
       speed: core.isNumber(input['speed']) ? Number(input['speed']) : null,
       at: this.nowIso(),
     }
-    // Telemetrie alle 30 s je Fahrer: nicht im audit_log (s. CLAUDE.md).
+    // Telemetrie alle 30 s je Fahrer: nicht im audit_log (s. docs/api/deliveries.md).
     try {
       await getSequelize().transaction(async (transaction) => {
         const row = await DeliveryTour.findByPk(tourId, { transaction })

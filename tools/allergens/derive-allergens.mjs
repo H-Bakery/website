@@ -715,7 +715,7 @@ const MANAGED_KEYS = ['allergens', 'allergens_source', 'allergen_recipe']
  * Setzt die drei Keys im Frontmatter — als Textoperation, nicht über einen
  * YAML-Serialisierer.
  *
- * Der Grund steht in `CLAUDE.md`: `hq/products/*.md` hat eine feste
+ * Der Grund steht in `docs/domains/produkte.md`: `hq/products/*.md` hat eine feste
  * Schlüsselreihenfolge und eine eigene Quoting-Konvention (`image` und
  * `short_description` in Anführungszeichen, `price` ohne). Ein Round-Trip
  * durch einen Serialisierer formatiert die ganze Datei um. Hier wird deshalb

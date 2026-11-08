@@ -166,11 +166,15 @@ export RESTIC_REPOSITORY
 paths=("$BACKUP_DIR/current/bakery.db")
 # Aus /etc/bakery nur lesbare Dateien (bakery.env). ops.env und das restic-
 # Passwort sind für bakery absichtlich unlesbar - sie öffnen das Backup selbst
-# und gehören in den Passwort-Safe, nicht ins Backup.
+# und gehören in den Passwort-Safe, nicht ins Backup. Ebenso nie ins Backup:
+# der Schlüssel der GitHub-App und das daraus erzeugte Token (Q3) - das Token
+# gilt eine Stunde und entsteht nach einer Wiederherstellung neu.
 for f in "$BAKERY_ETC"/*; do
   [ -f "$f" ] || continue
-  case "$(basename "$f")" in restic-password | ops.env) continue ;; esac
+  case "$(basename "$f")" in restic-password | ops.env | github-app.pem | hq-token) continue ;; esac
   [ "$f" != "${RESTIC_PASSWORD_FILE:-}" ] || continue
+  [ "$f" != "${HQ_GITHUB_TOKEN_FILE:-}" ] || continue
+  [ "$f" != "${GH_APP_KEY:-}" ] || continue
   if [ -r "$f" ]; then
     paths+=("$f")
   else

@@ -12,7 +12,7 @@
  *   src/routes/targets.routes.js   install(app, auth, { financeDir, reportsDir })
  *     GET /api/finance/targets, /targets/status?date=, /targets/period?from=&to=
  *
- * Access (pilot decision, see apps/bakery-api/CLAUDE.md "hq data (B4)"):
+ * Access (pilot decision, see docs/api/hq-data.md):
  *   - everything needs a session (global guard in `app.ts`);
  *   - reports + analytics: `inhaber` only;
  *   - finance + targets: `inhaber` only **and a personal session** - a PIN on
