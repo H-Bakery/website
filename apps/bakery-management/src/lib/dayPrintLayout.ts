@@ -126,6 +126,129 @@ export function hasPrintDetail(line: BackzettelLine): boolean {
   )
 }
 
+/**
+ * Abschnitte bis zu so vielen Zeilen bleiben im Zwei-Spalten-Druck in einer
+ * Spalte (Review Z10 Runde 2); längere dürfen auf die zweite Spalte umbrechen.
+ */
+export const KEEP_SECTION_LINES = 8
+/**
+ * Bricht ein langer Abschnitt um, stehen mindestens so viele Zeilen unter der
+ * Überschrift und mindestens so viele unter „… (Forts.)“ - nie eine
+ * Überschrift allein unten in der linken Spalte.
+ */
+export const MIN_SPLIT_LINES = 3
+/** Höhe einer Abschnitts-Überschrift in Zeilen (Schätzung der Seite, eher zu groß). */
+const SECTION_HEAD_ROWS = 1.5
+/**
+ * Zum Verteilen auf die Spalten: so hoch, wie sie im Druck wirklich sind
+ * (gemessen mit `page.pdf()` am vollen Samstag: Überschrift und Zeile mit
+ * kleiner Angabe kaum höher als eine Zeile). Mit den großzügigen Werten der
+ * Schätzung stand links deutlich mehr als rechts.
+ */
+const BALANCE_HEAD_ROWS = 1.1
+const BALANCE_DETAIL_ROWS = 1.1
+
+/** Ein Stück eines Abschnitts in einer Druckspalte. */
+export interface PrintColumnChunk {
+  section: BackzettelSection
+  lines: BackzettelLine[]
+  /** Fortsetzung aus der linken Spalte: Überschrift „… (Forts.)“. */
+  continued: boolean
+}
+
+/** Höhe einer Zeile der übrigen Abschnitte in Zeilen (mit kleiner Angabe höher). */
+function otherLineRows(line: BackzettelLine): number {
+  return hasPrintDetail(line) ? 1.7 : 1
+}
+
+/** Geschätzte Höhe einer Spalte in Zeilen (für die Seite, eher zu groß). */
+export function printColumnRows(chunks: PrintColumnChunk[]): number {
+  let rows = 0
+  for (const c of chunks) {
+    rows += SECTION_HEAD_ROWS
+    for (const l of c.lines) rows += otherLineRows(l)
+  }
+  return rows
+}
+
+/**
+ * Verteilt die übrigen Abschnitte auf zwei Spalten (links zuerst, Reihenfolge
+ * bleibt). Gewählt wird die Teilung mit der niedrigsten höheren Spalte -
+ * zwischen zwei Abschnitten oder in einem Abschnitt mit mehr als
+ * `KEEP_SECTION_LINES` Zeilen, dort mit mindestens `MIN_SPLIT_LINES` Zeilen auf
+ * jeder Seite. Die Fortsetzung bekommt ihre Überschrift „… (Forts.)“ - eine
+ * Zeile steht nie ohne ihren Abschnitt oben in der rechten Spalte.
+ *
+ * Gerechnet wird hier und nicht mit CSS-Spalten: dort lässt Chrome eine
+ * Überschrift unten links stehen und setzt die Zeilen ohne Überschrift nach
+ * rechts (Review Z10, voller Samstag).
+ */
+export function printColumns(
+  sections: BackzettelSection[]
+): [PrintColumnChunk[], PrintColumnChunk[]] {
+  const HEAD = BALANCE_HEAD_ROWS
+  const rowsOf = sections.map((s) =>
+    s.lines.map((l) => (hasPrintDetail(l) ? BALANCE_DETAIL_ROWS : 1))
+  )
+  const total = rowsOf.reduce(
+    (n, r) => n + HEAD + r.reduce((a, b) => a + b, 0),
+    0
+  )
+  // Kandidaten: vor Abschnitt i (k = 0) oder nach k Zeilen von Abschnitt i.
+  let best = { i: sections.length, k: 0, height: total, left: total }
+  const better = (height: number, k: number, left: number) => {
+    if (Math.abs(height - best.height) > 1e-9) return height < best.height
+    // Gleich hoch: lieber zwischen Abschnitten, dann links voller.
+    if (k > 0 !== best.k > 0) return k === 0
+    return left > best.left
+  }
+  let before = 0
+  for (let i = 0; i <= sections.length; i++) {
+    const consider = (k: number, left: number, right: number) => {
+      const height = Math.max(left, right)
+      if (better(height, k, left)) best = { i, k, height, left }
+    }
+    consider(0, before, total - before)
+    if (i === sections.length) break
+    const rows = rowsOf[i]
+    if (rows.length > KEEP_SECTION_LINES) {
+      let left = before + HEAD
+      for (let k = 1; k < rows.length; k++) {
+        left += rows[k - 1]
+        if (k < MIN_SPLIT_LINES || rows.length - k < MIN_SPLIT_LINES) continue
+        consider(k, left, total - left + HEAD)
+      }
+    }
+    before += HEAD + rows.reduce((a, b) => a + b, 0)
+  }
+  const { i, k } = best
+  const left: PrintColumnChunk[] = sections
+    .slice(0, i)
+    .map((section) => ({ section, lines: section.lines, continued: false }))
+  const right: PrintColumnChunk[] = []
+  if (i < sections.length) {
+    const split = sections[i]
+    if (k > 0) {
+      left.push({
+        section: split,
+        lines: split.lines.slice(0, k),
+        continued: false,
+      })
+      right.push({
+        section: split,
+        lines: split.lines.slice(k),
+        continued: true,
+      })
+    } else {
+      right.push({ section: split, lines: split.lines, continued: false })
+    }
+    for (const section of sections.slice(i + 1)) {
+      right.push({ section, lines: section.lines, continued: false })
+    }
+  }
+  return [left, right]
+}
+
 export interface DayPrintLayout extends PrintStep {
   /** Index in `DAY_PRINT_STEPS` (0 = luftig). */
   step: number
@@ -222,15 +345,15 @@ export function dayPrintHeights(
   // Notizzeilen (ohne Zeilen auch ohne Überschrift).
   if (noteLines > 0) fixed += row + noteLines * NOTE_LINE_MM
 
-  // Übrige Abschnitte: zwei Spalten.
-  let othersRows = 0
-  for (const section of parts.others) {
-    othersRows += 1.5
-    for (const l of section.lines) othersRows += hasPrintDetail(l) ? 1.7 : 1
-  }
+  // Übrige Abschnitte: zwei Spalten (`printColumns`), so hoch wie die höhere.
   const others =
     parts.others.length > 0
-      ? heading + (Math.ceil(othersRows / 2) + 1) * row
+      ? heading +
+        (Math.ceil(
+          Math.max(...printColumns(parts.others).map(printColumnRows))
+        ) +
+          1) *
+          row
       : 0
 
   return { fixed, others }
@@ -276,12 +399,27 @@ export function dayPrintLayout(day: BackzettelDay): DayPrintLayout {
     }
   }
   const h = tightest as { fixed: number; others: number }
+  if (parts.others.length === 0) {
+    return {
+      ...DAY_PRINT_STEPS[last],
+      step: last,
+      othersOnSecondSheet: false,
+      noteLines: NOTE_LINES,
+      estimatedMm: Math.round(h.fixed + h.others),
+    }
+  }
+  // Blatt 2: Seite 1 trägt statt der Abschnitte nur den Kasten „Weitere
+  // Abschnitte auf Blatt 2: …“ (zwei Zeilen) und darf wieder luftiger werden.
+  const page1 = (s: PrintStep) =>
+    dayPrintHeights(day, parts, s).fixed + 2 * s.rowMm
+  const found = DAY_PRINT_STEPS.findIndex((s) => page1(s) <= PAGE_HEIGHT_MM)
+  const step = found === -1 ? last : found
   return {
-    ...DAY_PRINT_STEPS[last],
-    step: last,
-    othersOnSecondSheet: parts.others.length > 0,
+    ...DAY_PRINT_STEPS[step],
+    step,
+    othersOnSecondSheet: true,
     noteLines: NOTE_LINES,
-    estimatedMm: Math.round(h.fixed + (parts.others.length > 0 ? 0 : h.others)),
+    estimatedMm: Math.round(page1(DAY_PRINT_STEPS[step])),
   }
 }
 

@@ -1,22 +1,63 @@
 import {
   DAY_PRINT_STEPS,
+  KEEP_SECTION_LINES,
+  MIN_SPLIT_LINES,
   PAGE_HEIGHT_MM,
   bakeListPrintLayout,
   dayPrintHeights,
   dayPrintLayout,
   dayPrintParts,
   NOTE_LINES,
+  printColumnRows,
+  printColumns,
 } from './dayPrintLayout'
-import type { BackzettelDay, BackzettelLine } from './backzettelApi'
+import type {
+  BackzettelDay,
+  BackzettelLine,
+  BackzettelSection,
+} from './backzettelApi'
 import {
   SAT,
+  busySaturdayV2Confirmed,
+  busySaturdayV2Draft,
   line,
   saturdayDraft,
   saturdayV2Confirmed,
   saturdayV2Draft,
   sundayBakeList,
+  sundayV2Sheet,
   tuesdayBakeList,
 } from './backzettelFixtures'
+
+const lineCount = (day: BackzettelDay) =>
+  day.sections.reduce((n, s) => n + s.lines.length, 0)
+
+/** Alle Teigtag-Zettel der Specs (Z10). */
+const V2_DAYS: [string, () => BackzettelDay][] = [
+  ['Samstag Entwurf', () => saturdayV2Draft()],
+  ['Samstag freigegeben', () => saturdayV2Confirmed()],
+  ['voller Samstag Entwurf', () => busySaturdayV2Draft()],
+  [
+    'voller Samstag freigegeben mit Nachträgen',
+    () => busySaturdayV2Confirmed(),
+  ],
+  ['Sonntag', () => sundayV2Sheet()],
+]
+
+function section(id: string, n: number, from = 0): BackzettelSection {
+  return {
+    id,
+    label: id,
+    lines: Array.from({ length: n }, (_, i) =>
+      line({
+        key: `${id}-${from + i}|`,
+        itemId: `${id}-${from + i}`,
+        name: `Test ${id} ${from + i}`,
+        section: id,
+      })
+    ),
+  }
+}
 
 /** Ein voller Samstag: n erfundene Zeilen in drei übrigen Abschnitten. */
 function busySaturday(extraLines: number): BackzettelDay {
@@ -139,8 +180,11 @@ describe('dayPrintLayout (Z10 S6)', () => {
 
   it('passt es auch knapp nicht, kommen die übrigen Abschnitte auf Blatt 2 - nie weggelassen', () => {
     const layout = dayPrintLayout(busySaturday(200))
-    expect(layout.step).toBe(DAY_PRINT_STEPS.length - 1)
     expect(layout.othersOnSecondSheet).toBe(true)
+    // Seite 1 ohne die Abschnitte passt wieder luftig, mit allen Notizzeilen.
+    expect(layout.step).toBe(0)
+    expect(layout.noteLines).toBe(NOTE_LINES)
+    expect(layout.estimatedMm).toBeLessThanOrEqual(PAGE_HEIGHT_MM)
   })
 
   it('ohne übrige Abschnitte gibt es kein Blatt 2, auch wenn es eng wird', () => {
@@ -154,6 +198,99 @@ describe('dayPrintLayout (Z10 S6)', () => {
       })),
     }
     expect(dayPrintLayout(huge).othersOnSecondSheet).toBe(false)
+  })
+})
+
+describe('der volle Samstag (≈ 60 Zeilen) auf einer Seite (Z10, §9 Nr. 3)', () => {
+  it('ist der größte Teigtag-Zettel der Specs', () => {
+    const counts = V2_DAYS.map(([, make]) => lineCount(make()))
+    expect(lineCount(busySaturdayV2Draft())).toBe(Math.max(...counts))
+    expect(lineCount(busySaturdayV2Draft())).toBeGreaterThanOrEqual(56)
+    expect(busySaturdayV2Confirmed().deltas).toHaveLength(6)
+  })
+
+  it.each(V2_DAYS)('%s passt auf ein Blatt, ohne Blatt 2', (_name, make) => {
+    const layout = dayPrintLayout(make())
+    expect(layout.othersOnSecondSheet).toBe(false)
+    expect(layout.estimatedMm).toBeLessThanOrEqual(PAGE_HEIGHT_MM)
+  })
+
+  it('der volle Samstag behält mindestens zwei Notizzeilen', () => {
+    expect(
+      dayPrintLayout(busySaturdayV2Draft()).noteLines
+    ).toBeGreaterThanOrEqual(2)
+    expect(
+      dayPrintLayout(busySaturdayV2Confirmed()).noteLines
+    ).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe('printColumns: zwei Spalten, keine Überschrift ohne Zeilen (Z10)', () => {
+  it('kurze Abschnitte bleiben ganz, die Spalten sind etwa gleich hoch', () => {
+    const [left, right] = printColumns([
+      section('laugen', 3),
+      section('kaffee', 6),
+      section('kuchen', 4),
+    ])
+    expect(left.map((c) => c.section.id)).toEqual(['laugen', 'kaffee'])
+    expect(right.map((c) => c.section.id)).toEqual(['kuchen'])
+    expect([...left, ...right].some((c) => c.continued)).toBe(false)
+  })
+
+  it('ein langer Abschnitt bricht um: rechts „Forts.“, mindestens drei Zeilen je Seite', () => {
+    const long = section('kaffee', 14)
+    const [left, right] = printColumns([section('laugen', 2), long])
+    const first = left[left.length - 1]
+    const rest = right[0]
+    expect(first.section.id).toBe('kaffee')
+    expect(first.continued).toBe(false)
+    expect(rest).toMatchObject({ continued: true })
+    expect(rest.section.id).toBe('kaffee')
+    expect(first.lines.length).toBeGreaterThanOrEqual(MIN_SPLIT_LINES)
+    expect(rest.lines.length).toBeGreaterThanOrEqual(MIN_SPLIT_LINES)
+    // nichts verloren, Reihenfolge bleibt
+    expect([...first.lines, ...rest.lines].map((l) => l.key)).toEqual(
+      long.lines.map((l) => l.key)
+    )
+    const h = [printColumnRows(left), printColumnRows(right)]
+    expect(Math.abs(h[0] - h[1])).toBeLessThanOrEqual(2)
+  })
+
+  it(`bis ${KEEP_SECTION_LINES} Zeilen bricht kein Abschnitt um, auch wenn es schief wird`, () => {
+    const [left, right] = printColumns([section('kaffee', KEEP_SECTION_LINES)])
+    expect(left).toHaveLength(1)
+    expect(left[0].lines).toHaveLength(KEEP_SECTION_LINES)
+    expect(right).toEqual([])
+  })
+
+  it('jede Zeile steht genau einmal, jede Spalte beginnt mit einer Überschrift', () => {
+    const sections = [
+      section('a', 9),
+      section('b', 2),
+      section('c', 12),
+      section('d', 1),
+    ]
+    const cols = printColumns(sections)
+    const keys = cols.flat().flatMap((c) => c.lines.map((l) => l.key))
+    expect(keys).toEqual(sections.flatMap((s) => s.lines.map((l) => l.key)))
+    for (const col of cols)
+      for (const c of col) expect(c.lines.length).toBeGreaterThan(0)
+    expect(cols.flat().filter((c) => c.continued).length).toBeLessThanOrEqual(1)
+  })
+
+  it('der volle Samstag: Kaffeestückchen (9 Zeilen) brechen mit „Forts.“ um oder bleiben ganz', () => {
+    const parts = dayPrintParts(busySaturdayV2Draft())
+    expect(parts.others.map((s) => s.id)).toEqual([
+      'laugen',
+      'kaffeestueckchen',
+      'kuchen',
+    ])
+    const cols = printColumns(parts.others)
+    for (const c of cols.flat()) {
+      if (c.continued)
+        expect(c.lines.length).toBeGreaterThanOrEqual(MIN_SPLIT_LINES)
+    }
+    expect(cols.flat().reduce((n, c) => n + c.lines.length, 0)).toBe(16)
   })
 })
 

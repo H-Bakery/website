@@ -12,16 +12,22 @@
  *   data/finance/finance-summary.json + config/targets.json (last 3 full months)
  * Nothing here is real data.
  *
- *   node make-hq.js <dir> [today=YYYY-MM-DD]
+ *   node make-hq.js <dir> [today=YYYY-MM-DD] [--busy-saturday]
+ *
+ * --busy-saturday adds 24 more Saturday lines (bread sizes, rolls for Sunday and
+ * Tuesday, Laugen, Kaffeestückchen, Kuchen, Hefeteig) so the Saturday sheet has
+ * about 60 lines - for the one-page print check (docs/domains/backzettel.md, „Druck“).
  */
 'use strict'
 const fs = require('fs')
 const path = require('path')
 
 const ROOT = process.env.TREE || process.cwd() // start.sh runs this from the worktree
-const dir = path.resolve(process.argv[2])
+const args = process.argv.slice(2).filter((a) => !a.startsWith('--'))
+const BUSY_SATURDAY = process.argv.includes('--busy-saturday')
+const dir = path.resolve(args[0])
 const today =
-  process.argv[3] ||
+  args[1] ||
   new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(
     new Date()
   )
@@ -62,6 +68,128 @@ for (const f of fs.readdirSync(productsSrc)) {
   })
 }
 const byId = Object.fromEntries(catalog.map((p) => [p.id, p]))
+
+// Voller Samstag (--busy-saturday): weitere Posten nur für den Samstags-Zettel
+// (Teig Samstag, gebacken Samstag, Sonntag oder Dienstag). Erfundene Mengen.
+const BUSY_SATURDAY_ITEMS = `  # --- voller Samstag (--busy-saturday)
+  - id: probekruste
+    name: Probekruste
+    section: brot
+    dough: { id: mischteig }
+    sizes:
+      - { id: g500, label: 500 g, dough_g: 570 }
+      - { id: g1000, label: 1 kg, dough_g: 1120 }
+      - { id: kasten, label: Kasten, dough_g: 1040 }
+    products:
+      - { id: probekruste-500g, size: g500 }
+      - { id: probekruste-1000g, size: g1000 }
+    base: { 6: { g500: 7, g1000: 5, kasten: 2 } }
+  - id: weizenkasten
+    name: Testkasten Weizen
+    section: brot
+    dough: { id: dinkelteig }
+    sizes: [{ id: kasten, label: Kasten, dough_g: 640 }]
+    products: [{ id: testkasten-weizen-500g, size: kasten }]
+    base: { 6: { kasten: 5 } }
+  - id: mohnsemmel
+    name: Mustersemmel Mohn
+    section: broetchen
+    products: [{ id: mustersemmel-mohn }]
+    lead: 1
+    dough: { id: weckteig }
+    bruch: { g: 1300, group: bunte-broetchen }
+    base: { 2: 9, 7: 14 }
+  - id: koernerbaguette
+    name: Testbaguette Körner
+    section: broetchen
+    products: [{ id: testbaguette-koerner }]
+    lead: 1
+    dough: { id: weckteig, piece_g: 270 }
+    base: { 2: 3, 7: 7 }
+  - id: baguette-klein
+    name: Musterbaguette klein
+    section: broetchen
+    products: [{ id: musterbaguette-klein }]
+    base: { 6: 11 }
+  - id: baguette-gross
+    name: Musterbaguette groß
+    section: broetchen
+    products: [{ id: musterbaguette-gross }]
+    base: { 6: 5 }
+  - id: kaesebrezel
+    name: Musterbrezel Käse
+    section: laugen
+    products: [{ id: musterbrezel-kaese }]
+    base: { 6: 9 }
+  - id: pizzastange
+    name: Probestange Pizza
+    section: laugen
+    products: [{ id: probestange-pizza }]
+    base: { 6: 7 }
+  - id: schinkenstange
+    name: Probestange Schinken
+    section: laugen
+    products: [{ id: probestange-schinken }]
+    base: { 6: 7 }
+  - id: rosinenschnecke
+    name: Musterschnecke Rosinen
+    section: kaffeestueckchen
+    products: [{ id: musterschnecke-rosinen }]
+    tray: { no: 5 }
+    base: { 6: 13 }
+  - id: nussschnecke
+    name: Musterschnecke Nuss
+    section: kaffeestueckchen
+    products: [{ id: musterschnecke-nuss }]
+    tray: { no: 6 }
+    base: { 6: 11 }
+  - id: vanilleplunder
+    name: Probeplunder Vanille
+    section: kaffeestueckchen
+    products: [{ id: probeplunder-vanille }]
+    base: { 6: 9 }
+  - id: quarktasche
+    name: Testtasche Quark
+    section: kaffeestueckchen
+    products: [{ id: testtasche-quark }]
+    base: { 6: 7 }
+  - id: kirschtasche
+    name: Testtasche Kirsch
+    section: kaffeestueckchen
+    products: [{ id: testtasche-kirsch }]
+    base: { 6: 7 }
+  - id: kaeseecke
+    name: Testecke Käse
+    section: kaffeestueckchen
+    products: [{ id: testecke-kaese }]
+    base: { 6: 5 }
+  - id: salamiecke
+    name: Testecke Salami
+    section: kaffeestueckchen
+    products: [{ id: testecke-salami }]
+    base: { 6: null }
+  - id: kaesekuchen
+    name: Testkäsekuchen
+    section: kuchen
+    products: [{ id: kaesekuchen-1-stueck, factor: 0.25 }]
+    base: { 6: 3 }
+  - id: streuselkuchen
+    name: Musterkuchen Streusel
+    section: kuchen
+    products: [{ id: musterkuchen-streusel-1-stueck, factor: 0.25 }]
+    base: { 6: 2 }
+  - id: rahmkuchen
+    name: Testkuchen Rahm
+    section: kuchen
+    products: [{ id: testkuchen-rahm }]
+    base: { 6: 1 }
+  - id: fruchtzopf
+    name: Probezopf Frucht
+    section: hefeteig
+    products: [{ id: probetorte-frucht }]
+    dough: { id: hefeteig-test, piece_g: 430, pieces: 1 }
+    base: { 6: 3 }
+`
 
 // ---------------------------------------------------------------- backzettel
 w(
@@ -287,7 +415,7 @@ items:
     plu: [43]
     dough: { id: hefeteig-test, piece_g: 300, pieces: 3 }
     base: { 6: 3, 7: 2 }
-doughs:
+${BUSY_SATURDAY ? BUSY_SATURDAY_ITEMS : ''}doughs:
   - id: hefeteig-test
     name: Hefeteig (Test)
     kg_per_liter: 3.5

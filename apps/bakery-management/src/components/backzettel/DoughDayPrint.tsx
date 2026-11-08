@@ -43,6 +43,7 @@ import {
   PAGE_MARGIN_MM,
   dayPrintLayout,
   dayPrintParts,
+  printColumns,
   type HefeteigPrintRow,
 } from '../../lib/dayPrintLayout'
 import {
@@ -163,19 +164,35 @@ const doughDayPrintStyles = (
           gap: '1.5mm',
           minHeight: 'var(--dd-row)',
         },
-        // Hefeteig und übrige Abschnitte: zwei Spalten.
+        // Hefeteig und Nachträge (ein Abschnitt): zwei CSS-Spalten.
         '.dd-print .dd-two': {
           columnCount: 2,
           columnGap: '5mm',
         },
-        '.dd-print .dd-others': { marginTop: '1.8mm' },
+        // Übrige Abschnitte: zwei feste Spalten, aufgeteilt von
+        // `printColumns` - ein umbrechender Abschnitt bekommt rechts
+        // „… (Forts.)“ statt Zeilen ohne Überschrift.
+        '.dd-print .dd-others': {
+          marginTop: '1.8mm',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+          columnGap: '5mm',
+          alignItems: 'start',
+        },
         '.dd-print .dd-section-head': {
           margin: '1mm 0 0',
           borderBottom: '1.2pt solid #000',
           breakAfter: 'avoid',
         },
-        '.dd-print .dd-others > div:first-child > .dd-section-head': {
+        '.dd-print .dd-col > div:first-child > .dd-section-head': {
           marginTop: 0,
+        },
+        // Hinweis auf Blatt 2: gerahmt, damit ihn niemand übersieht.
+        '.dd-print .dd-next': {
+          border: '1.5pt solid #000',
+          padding: '1mm 2mm',
+          margin: '1.8mm 0',
+          fontSize: 'calc(var(--dd-font) * 1.1)',
         },
         '.dd-print .dd-row': {
           display: 'flex',
@@ -187,9 +204,6 @@ const doughDayPrintStyles = (
         },
         '.dd-print .dd-name': { flex: '1 1 auto', minWidth: 0 },
         '.dd-print .dd-detail': { marginLeft: '1.5mm' },
-        // Ein kurzer Abschnitt bleibt in einer Spalte - sonst stünde seine
-        // Fortsetzung oben in der rechten Spalte ohne Überschrift.
-        '.dd-print .dd-keep': { breakInside: 'avoid' },
         '.dd-print .dd-initials': { display: 'block', lineHeight: 1 },
         '.dd-print .dd-counts': { fontWeight: 700, textAlign: 'right' },
         '.dd-print .dd-delta-qty': {
@@ -593,12 +607,10 @@ function lineDetail(line: BackzettelLine): string {
 }
 
 /**
- * Abschnitte bis zu so vielen Zeilen bleiben im Zwei-Spalten-Druck in einer
- * Spalte (Review Z10 Runde 2); längere dürfen umbrechen, sonst bliebe zu viel
- * Platz leer und das Blatt reichte nicht.
+ * Übrige Abschnitte in zwei festen Spalten (`printColumns`): kurze Abschnitte
+ * bleiben ganz, ein langer kann umbrechen und steht rechts unter
+ * „Abschnitt (Forts.)“.
  */
-const KEEP_SECTION_LINES = 8
-
 function SectionsPrint({
   sections,
   config,
@@ -606,36 +618,46 @@ function SectionsPrint({
   sections: BackzettelDay['sections']
   config: BackzettelConfigData | null
 }) {
+  const columns = printColumns(sections)
   return (
-    <div className="dd-two dd-others" data-testid="dd-others">
-      {sections.map((section) => (
-        <div
-          key={section.id}
-          className={
-            section.lines.length <= KEEP_SECTION_LINES ? 'dd-keep' : undefined
-          }
-          data-testid={`dd-section-${section.id}`}
-        >
-          <h3 className="dd-section-head">{section.label}</h3>
-          {section.lines.map((line) => {
-            const detail = lineDetail(line)
-            return (
-              <div
-                key={line.key}
-                className="dd-row"
-                data-testid={`dd-line-${line.key}`}
-              >
-                <span className="dd-name">
-                  {lineLabel(line, config)}
-                  {detail && <span className="small dd-detail">{detail}</span>}
-                </span>
-                <span className="num total">{minQtyText(line, line.unit)}</span>
-                <span className="tick">
-                  <Tick lines={[line]} />
-                </span>
-              </div>
-            )
-          })}
+    <div className="dd-others" data-testid="dd-others">
+      {columns.map((chunks, col) => (
+        <div key={col} className="dd-col" data-testid={`dd-col-${col + 1}`}>
+          {chunks.map(({ section, lines, continued }) => (
+            <div
+              key={`${section.id}${continued ? '-forts' : ''}`}
+              data-testid={`dd-section-${section.id}${
+                continued ? '-forts' : ''
+              }`}
+            >
+              <h3 className="dd-section-head">
+                {continued ? `${section.label} (Forts.)` : section.label}
+              </h3>
+              {lines.map((line) => {
+                const detail = lineDetail(line)
+                return (
+                  <div
+                    key={line.key}
+                    className="dd-row"
+                    data-testid={`dd-line-${line.key}`}
+                  >
+                    <span className="dd-name">
+                      {lineLabel(line, config)}
+                      {detail && (
+                        <span className="small dd-detail">{detail}</span>
+                      )}
+                    </span>
+                    <span className="num total">
+                      {minQtyText(line, line.unit)}
+                    </span>
+                    <span className="tick">
+                      <Tick lines={[line]} />
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          ))}
         </div>
       ))}
     </div>
@@ -803,9 +825,9 @@ export function DoughDayPrint({
         <HefeteigPrint day={day} rows={parts.hefeteig} config={config} />
 
         {layout.othersOnSecondSheet ? (
-          <p className="small" data-testid="dd-others-next">
-            <strong>Weitere Posten auf Blatt 2</strong> (
-            {parts.others.map((s) => s.label).join(', ')}).
+          <p className="dd-next" data-testid="dd-others-next">
+            <strong>Weitere Abschnitte auf Blatt 2:</strong>{' '}
+            {parts.others.map((s) => s.label).join(', ')}
           </p>
         ) : (
           others

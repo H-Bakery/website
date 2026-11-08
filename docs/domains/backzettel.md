@@ -257,7 +257,8 @@ erweitertes `GET /api/backzettel/config`.
   (Größen als Spalten), Brötchen je Backtag (spätere Backtage zuerst, `n Bruch × g – Aufteilung`,
   „+n frei" nur als Hinweis), Hefeteig (gefüllte Posten in einer Zeile mit den Sorten), die übrigen
   Abschnitte knapp in zwei Spalten (Basis/Saison/Vorb./CAP stehen nur als Text dabei, wenn sie etwas
-  sagen), Nachträge (nie in den Mengen), „Hinweise", „Offen: …" (offene Stammdaten und fehlende
+  sagen; Aufteilung siehe unten „Spalten"), Nachträge (nie in den Mengen), „Hinweise", „Offen: …"
+  (offene Stammdaten und fehlende
   Teig-Angaben, je einmal) und vier Notizzeilen. **Unbekanntes bleibt unbekannt:** Liter ohne
   `kg_per_liter` sind „–" mit Grund („Liter unbekannt (kg je Liter offen)"), ohne Rundung stehen die
   genauen Liter mit „Rundung offen", kg mit fehlendem Teil „≥ n kg", ganz unbekannt „– kg"; die
@@ -268,10 +269,22 @@ erweitertes `GET /api/backzettel/config`.
   **Dichte:** `src/lib/dayPrintLayout.ts` schätzt die Höhe je Block in mm (wie `notfallLayout`) und
   wählt die erste von fünf Stufen (10 pt … 7 pt, `DAY_PRINT_STEPS`), die auf 268 mm passt (A4, Rand
   10 mm). Passt auch die dichteste nicht, werden zuerst die Notizzeilen gekürzt (bis keine,
-  `noteLines`); erst danach kommen die **übrigen Abschnitte auf Blatt 2** mit Hinweis
-  „Weitere Posten auf Blatt 2 (…)" auf Seite 1 - weggelassen wird nie etwas. Die Stufe steht als
-  `data-print-step` am Druckbild. **Abwiegeliste, skalierte Rezepte und Vorbereitung** stehen in
-  `BackzettelPrintExtras.tsx` und kommen nur mit Haken bei „Abwiegeliste & Rezepte mitdrucken"
+  `noteLines`); erst danach kommen die **übrigen Abschnitte auf Blatt 2**, und auf Seite 1 steht an
+  ihrer Stelle ein gerahmter Kasten „**Weitere Abschnitte auf Blatt 2:** Laugen, …"; weggelassen
+  wird nie etwas. Seite 1 nimmt dann wieder die luftigste Stufe, in der sie ohne die
+  Abschnitte passt. Die Stufe steht als `data-print-step` am Druckbild.
+  **Spalten der übrigen Abschnitte:** keine CSS-Spalten (Chrome ließ eine Überschrift unten links
+  stehen und setzte die Zeilen ohne Überschrift nach rechts), sondern zwei feste Spalten, aufgeteilt
+  von `printColumns` in `dayPrintLayout.ts`: Reihenfolge bleibt, links zuerst; gewählt wird die
+  Teilung mit der niedrigsten höheren Spalte. Ein Abschnitt bis 8 Zeilen (`KEEP_SECTION_LINES`)
+  bleibt ganz; ein längerer darf umbrechen, mit mindestens 3 Zeilen (`MIN_SPLIT_LINES`) unter der
+  Überschrift und mindestens 3 rechts unter „**Kaffeestückchen (Forts.)**" - nie eine Überschrift
+  ohne ihre ersten Zeilen, nie Zeilen ohne Überschrift. Gewählt wurde die wiederholte Überschrift
+  statt „Überschrift mit den ersten Zeilen zusammenhalten", weil sonst rechts oben Zeilen ohne
+  Abschnitt stünden. Grenze: passen die übrigen Abschnitte auch auf Blatt 2 nicht in zwei Spalten
+  einer Seite (weit über 100 Zeilen), laufen beide Spalten über die Seite weiter.
+  **Abwiegeliste, skalierte Rezepte und Vorbereitung** stehen in `BackzettelPrintExtras.tsx` und
+  kommen nur mit Haken bei „Abwiegeliste & Rezepte mitdrucken"
   (`localStorage` `bakery-backzettel-print-extras`, Vorgabe aus, O8) auf eigene Blätter. Mit der
   heutigen hq-Datei (ohne `lead`) liefert die API für Entwürfe und neue Freigaben schon
   `sheetVersion: 2` - gedruckt wird also ab jetzt der Einseiter; alles außer Brot-Litern und Hefeteig
@@ -283,9 +296,16 @@ erweitertes `GET /api/backzettel/config`.
   (`bakeListPrintLayout`), nicht auf ein zweites Blatt.
 - **Geprüft wird mit `page.pdf()`, nie mit einem Screenshot:** Seite im Browser laden,
   `emulateMedia({ media: 'print' })` nur zum Messen, vor `page.pdf({ format: 'A4' })` mit
-  `media: null` zurücksetzen, Seiten zählen. Stand S6 (erfundener voller Samstag: 56 Zeilen, 40
-  Vorbestellungen, nach der Freigabe 6 Nachträge): Entwurf und freigegebener Zettel mit Nachträgen je
-  1 Seite (Stufe 3 bzw. 4), Backliste Sonntag/Dienstag/Samstag je 1 Seite; mit Abwiegeliste 4 Blätter.
+  `media: null` zurücksetzen, Seiten zählen. Stand S6: geprüft war nur ein erfundener Samstag mit 34
+  Zeilen (Entwurf und freigegeben mit Nachträgen je 1 Seite, Backliste Sonntag/Dienstag/Samstag je 1 Seite, mit
+  Abwiegeliste 4 Blätter). Nachgeprüft mit dem vollen Samstag aus `make-hq.js --busy-saturday`
+  (58 Zeilen, nach der Freigabe 7 Nachträge für So/Di/Sa): Entwurf 1 Seite (Stufe 4, 237 mm),
+  freigegeben 1 Seite (Stufe 3), freigegeben mit Nachträgen 1 Seite (Stufe 4, 258 mm, 2 Notizzeilen);
+  Kaffeestückchen (10 Zeilen) brechen mit „Kaffeestückchen (Forts.)" um. Erzwungener Überlauf
+  (+40 Zeilen per Route-Umschreibung): Seite 1 mit Kasten „Weitere Abschnitte auf Blatt 2" in Stufe 1,
+  Blatt 2 = 1 Seite. In den Specs ist `busySaturdayV2Draft/Confirmed` (`backzettelFixtures.ts`, 60
+  Zeilen, 6 Nachträge) der größte Teigtag-Zettel; `dayPrintLayout.spec.ts` verlangt, dass jeder
+  Teigtag-Zettel der Specs auf ein Blatt passt.
 - **Druck eines Tages von vor Z10 (Z7, `sheetVersion: 1`):** `components/backzettel/BackzettelPrint.tsx`, eigenes schlichtes HTML, auf dem
   Bildschirm unsichtbar; im Druck verschwinden `.bz-screen` und die App-Hülle. S. 1 Backzettel (alle
   Abschnitte, Gesamt groß, Kästchen, Nachträge, Hinweise; Entwurf mit Banner; knapp gesetzt, bricht nur

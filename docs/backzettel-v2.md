@@ -746,9 +746,16 @@ Questionnaire answers (`backliste-fragebogen.md`) only fill `null`s in hq; no co
 2. **Transition week.** Ownership (§5.4) prevents double counting, but a Tuesday whose sheet was
    confirmed before the switch shows its rolls on Tuesday, not Saturday. Switch hq on a
    Monday/Tuesday after the Tuesday sheet is confirmed, or reopen it.
-3. **One page.** A busy Saturday (≈ 60 lines) may not fit; `dayPrintLayout` compacts, and the
-   page-count test uses the largest fixture. If it still overflows, the "other sections" move to
-   the second sheet (fallback built in).
+3. **One page** - resolved. The S6 check had only a 34-line Saturday. Now the largest spec fixture
+   is a 60-line busy Saturday (`busySaturdayV2Draft/Confirmed`, 6 Nachträge), and
+   `dayPrintLayout.spec.ts` requires every v2 fixture to fit one sheet. `page.pdf()` with
+   `make-hq.js --busy-saturday` (58 lines, 7 Nachträge after confirm): draft, confirmed and
+   confirmed with Nachträge 1 page each. The other sections no longer use CSS columns (a section
+   over 8 lines could split and leave its rows without heading at the top of the right column):
+   `printColumns` splits them into two fixed columns, a long section continues under
+   "… (Forts.)" with at least 3 rows on each side. If a sheet still overflows, the other sections
+   move to sheet 2 and page 1 shows a framed "Weitere Abschnitte auf Blatt 2: …" box (checked with
+   a forced overflow: 2 pages). Details: docs/domains/backzettel.md, "Druck".
 4. **Paper formula differences.** The paper computes the combined litres slightly differently
    (Korn share applied to the whole dough); after rounding it agrees on both reference Saturdays.
    Dunkelsauer rounding differs between Saturday and weekdays → `rounding: null` until answered.
@@ -846,8 +853,8 @@ Built as designed, with these differences:
 - `v2CoveredKeys`/`linesByKey` moved from `RollsByBakeDay.tsx` to `backzettelFormat.ts` (re-exported)
   so the print and the layout share them.
 - The root `CLAUDE.md` only points to `docs/domains/*.md`; the rules went there.
-- `page.pdf()` check (synthetic busy Saturday, 56 lines, 6 Nachträge after confirm): draft and
-  confirmed sheet 1 page each, bake lists 1 page each.
+- `page.pdf()` check: draft and confirmed sheet 1 page each, bake lists 1 page each. The Saturday
+  checked then had 34 lines, not the 56 first noted here; the busy-Saturday recheck is in §9 Nr. 3.
 
 Original plan:
 

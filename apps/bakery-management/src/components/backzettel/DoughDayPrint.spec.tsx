@@ -7,6 +7,8 @@ import {
   SUN,
   TEST_CONFIG_V2,
   V2_TUE,
+  busySaturdayV2Confirmed,
+  busySaturdayV2Draft,
   line,
   saturdayV2Confirmed,
   saturdayV2Draft,
@@ -294,11 +296,65 @@ describe('Druck eines Teigtag-Zettels (Z10 S6)', () => {
       ],
     })
     expect(page.getByTestId('dd-others-next')).toHaveTextContent(
-      'Weitere Posten auf Blatt 2 (Kaffeestückchen, Kuchen)'
+      'Weitere Abschnitte auf Blatt 2: Kaffeestückchen, Kuchen'
     )
+    expect(page.getByTestId('dd-others-next')).toHaveClass('dd-next')
+    expect(
+      within(page.getByTestId('print-page-1')).queryByTestId('dd-others')
+    ).not.toBeInTheDocument()
     const second = within(page.getByTestId('print-dd-others'))
     expect(second.getByTestId('dd-line-test-extra-199|')).toBeInTheDocument()
     expect(page.getByTestId('print-dd-others')).toHaveClass('bz-break')
+  })
+
+  it('voller Samstag: jede Zeile steht genau einmal auf Seite 1, kein Blatt 2', () => {
+    for (const day of [busySaturdayV2Draft(), busySaturdayV2Confirmed()]) {
+      const page = renderPrint(day)
+      const sheet = page.getByTestId('print-page-1')
+      expect(page.queryByTestId('dd-others-next')).not.toBeInTheDocument()
+      expect(page.queryByTestId('print-dd-others')).not.toBeInTheDocument()
+      // Brot und Brötchen über ihre Zellen, die übrigen als Zeile.
+      for (const sec of day.sections) {
+        for (const l of sec.lines) {
+          if (sec.id === 'brot' || sec.id === 'broetchen') continue
+          if (sec.id === 'hefeteig') {
+            expect(
+              within(sheet).getByTestId(`dd-hefe-${l.itemId}`)
+            ).toBeInTheDocument()
+            continue
+          }
+          expect(within(sheet).getAllByTestId(`dd-line-${l.key}`)).toHaveLength(
+            1
+          )
+        }
+      }
+      expect(within(sheet).getAllByTestId(/^dd-bruch-/)).toHaveLength(10)
+      expect(
+        within(sheet).getByTestId('dd-bread-test-roggen|kasten')
+      ).toHaveTextContent('offen')
+      page.unmount()
+    }
+  })
+
+  it('ein langer Abschnitt bricht in die zweite Spalte um und steht dort unter „… (Forts.)“', () => {
+    const page = renderPrint(busySaturdayV2Draft())
+    const left = within(page.getByTestId('dd-col-1'))
+    const right = within(page.getByTestId('dd-col-2'))
+    expect(left.getByText('Kaffeestückchen')).toBeInTheDocument()
+    expect(right.getByText('Kaffeestückchen (Forts.)')).toBeInTheDocument()
+    // die Fortsetzung beginnt mit ihrer Überschrift, nicht mit einer Zeile
+    const forts = page.getByTestId('dd-section-kaffeestueckchen-forts')
+    expect(forts.firstElementChild).toHaveTextContent(
+      'Kaffeestückchen (Forts.)'
+    )
+    expect(
+      forts.querySelectorAll('[data-testid^="dd-line-"]').length
+    ).toBeGreaterThanOrEqual(3)
+    expect(
+      page
+        .getByTestId('dd-section-kaffeestueckchen')
+        .querySelectorAll('[data-testid^="dd-line-"]').length
+    ).toBeGreaterThanOrEqual(3)
   })
 
   it('Sonntag ohne Teig: Hinweis auf die Backliste', () => {

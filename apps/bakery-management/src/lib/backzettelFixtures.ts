@@ -9,7 +9,15 @@ import type {
   BackzettelConfigData,
   BackzettelConfigResponse,
   BackzettelDay,
+  BackzettelDeltaEntry,
   BackzettelLine,
+  BreadRow,
+  BruchGroup,
+  DoughSummary,
+  MachineBox,
+  MissingPart,
+  RollsBlock,
+  SingleRow,
 } from './backzettelApi'
 
 export const SAT = '2026-11-28'
@@ -1527,6 +1535,928 @@ export function sundayBakeList(overrides: Partial<BakeList> = {}): BakeList {
     deltas: [],
     deltasPending: false,
     warnings: [],
+    ...overrides,
+  }
+}
+
+// ---------------------------------------------------------------- voller Samstag
+
+/*
+ * Ein voller Samstag für den Einseiter (Z10, docs/backzettel-v2.md §9 Nr. 3):
+ * 60 Zeilen - Brot in vier Größen, Brötchen in Bruch für Sonntag und
+ * Dienstag, Ware für heute, Hefeteig, Laugen, Kaffeestückchen, Kuchen - sechs
+ * Maschinen-Kästen, Hinweise und offene Stammdaten. Alle Namen tragen „Test“,
+ * alle Zahlen sind erfunden; die Server-Felder (kg, Brüche, Liter) sind grob
+ * stimmig, gerechnet wird hier nichts, was ein Spec prüft.
+ */
+
+const BUSY_SIZES = [
+  { id: 'g420', label: '420 g' },
+  { id: 'g820', label: '820 g' },
+  { id: 'g1300', label: '1,3 kg' },
+  { id: 'kasten', label: 'Kasten' },
+]
+
+/** Brot je Größe: Stück je Größe, `null` = Grundmenge offen. */
+const BUSY_BREAD: {
+  itemId: string
+  name: string
+  doughId: string
+  sizes: Record<string, number | null>
+  kg: number | null
+  kgKnown: number
+  note?: string
+}[] = [
+  {
+    itemId: 'test-korn',
+    name: 'Testkorn',
+    doughId: 'test-korn-teig',
+    sizes: { g420: 12, g820: 6, g1300: 2, kasten: 3 },
+    kg: 16.4,
+    kgKnown: 16.4,
+    note: 'Gemeinsamer Teig: Korn + Holz',
+  },
+  {
+    itemId: 'test-holz',
+    name: 'Testholz',
+    doughId: 'test-holz-teig',
+    sizes: { g420: 8, g820: 4 },
+    kg: 7.4,
+    kgKnown: 7.4,
+    note: 'Gemeinsamer Teig: Korn + Holz',
+  },
+  {
+    itemId: 'test-misch',
+    name: 'Testmisch',
+    doughId: 'test-misch-teig',
+    sizes: { g420: 10, g820: 8, g1300: 4, kasten: 2 },
+    kg: 18.8,
+    kgKnown: 18.8,
+  },
+  {
+    itemId: 'test-kern',
+    name: 'Testkern',
+    doughId: 'test-misch-teig',
+    sizes: { g1300: 5 },
+    kg: 6.5,
+    kgKnown: 6.5,
+    note: 'Fester Anteil Testmisch, dazu Testkörner',
+  },
+  {
+    itemId: 'test-dinkel',
+    name: 'Testdinkel',
+    doughId: 'test-dinkel-teig',
+    sizes: { g420: 6, g820: 4 },
+    kg: 6.3,
+    kgKnown: 6.3,
+  },
+  {
+    itemId: 'test-roggen',
+    name: 'Testroggen',
+    doughId: 'test-roggen-teig',
+    sizes: { g820: 5, g1300: 3, kasten: null },
+    kg: null,
+    kgKnown: 7.9,
+  },
+  {
+    itemId: 'test-vollkorn',
+    name: 'Testvollkorn',
+    doughId: 'test-roggen-teig',
+    sizes: { g820: 4, kasten: 2 },
+    kg: 5.6,
+    kgKnown: 5.6,
+  },
+]
+
+const busySizeLabel = (id: string) =>
+  BUSY_SIZES.find((s) => s.id === id)?.label ?? id
+
+function busyBreadLines(): BackzettelLine[] {
+  const out: BackzettelLine[] = []
+  for (const b of BUSY_BREAD) {
+    for (const [size, total] of Object.entries(b.sizes)) {
+      out.push(
+        sizeLine(
+          b.itemId,
+          b.name,
+          size,
+          busySizeLabel(size),
+          total ?? 0,
+          total === null ? { baseUnset: true, base: 0 } : {}
+        )
+      )
+    }
+  }
+  out.push(
+    v2Line({
+      itemId: 'test-hafer',
+      name: 'Testhafer',
+      section: 'brot',
+      unit: 'Liter',
+      total: 1.5,
+    })
+  )
+  return out
+}
+
+function busyBreadRows(): BreadRow[] {
+  const rows: BreadRow[] = BUSY_BREAD.map((b) => ({
+    itemId: b.itemId,
+    name: b.name,
+    bakeDate: SAT,
+    doughId: b.doughId,
+    unit: 'Stück',
+    cells: Object.fromEntries(
+      BUSY_SIZES.map((sz) => {
+        if (!(sz.id in b.sizes)) return [sz.id, null]
+        const total = b.sizes[sz.id]
+        return [
+          sz.id,
+          {
+            key: `${b.itemId}|${sz.id}`,
+            variant: sz.id,
+            total: total ?? 0,
+            baseUnset: total === null,
+            ...(total === null ? { totalIsMinimum: true } : {}),
+          },
+        ]
+      })
+    ),
+    single: null,
+    kg: b.kg,
+    kgKnown: b.kgKnown,
+    complete: b.kg !== null,
+    note: b.note ?? null,
+  }))
+  rows.push({
+    itemId: 'test-hafer',
+    name: 'Testhafer',
+    bakeDate: SAT,
+    doughId: null,
+    unit: 'Liter',
+    cells: Object.fromEntries(BUSY_SIZES.map((sz) => [sz.id, null])),
+    single: {
+      key: 'test-hafer|',
+      variant: null,
+      total: 1.5,
+      baseUnset: false,
+      unit: 'Liter',
+    },
+    kg: null,
+    kgKnown: 0,
+    complete: true,
+    note: null,
+  })
+  return rows
+}
+
+/** Eine Bruch-Gruppe: Mitglieder [itemId, Name, Stück, Vorbestellt]. */
+interface BusyGroup {
+  group: string
+  name: string
+  doughId: string
+  g: number | null
+  perProduct: number
+  members: [string, string, number, number?][]
+}
+
+const BUSY_PIECES_PER_BRUCH = 20
+
+function busyGroupLines(bakeDate: string, g: BusyGroup): BackzettelLine[] {
+  return g.members.map(([itemId, name, total, preorders = 0]) =>
+    v2Line({
+      itemId,
+      name,
+      bakeDate,
+      base: total - preorders,
+      preorders,
+      total,
+      bruch: { group: g.group, perProduct: g.perProduct },
+    })
+  )
+}
+
+function busyGroup(bakeDate: string, g: BusyGroup): BruchGroup {
+  const pieces = g.members.reduce((n, m) => n + m[2] * g.perProduct, 0)
+  const brueche = Math.ceil(pieces / BUSY_PIECES_PER_BRUCH)
+  const spare = brueche * BUSY_PIECES_PER_BRUCH - pieces
+  const kg = g.g === null ? null : (brueche * g.g) / 1000
+  const missing: MissingPart[] =
+    g.g === null
+      ? [
+          {
+            itemId: g.members[0][0],
+            name: g.name,
+            field: 'bruch.g',
+            code: 'bruch_g_unknown',
+            message: `„${g.name}“: Bruchgewicht ist noch offen.`,
+          },
+        ]
+      : []
+  return {
+    key: `${bakeDate}|${g.group}`,
+    group: g.group,
+    name: g.name,
+    doughId: g.doughId,
+    bakeDate,
+    g: g.g,
+    piecesPerBruch: BUSY_PIECES_PER_BRUCH,
+    pieces,
+    brueche,
+    kg,
+    spare,
+    spareProducts: Math.floor(spare / g.perProduct),
+    perProduct: g.perProduct,
+    piecesKnown: pieces,
+    bruecheKnown: brueche,
+    kgKnown: kg,
+    split: g.members.map(([itemId, name, total]) => ({
+      key: `${itemId}|@${bakeDate}`,
+      itemId,
+      name,
+      variant: null,
+      total,
+      perProduct: g.perProduct,
+      doughPieces: total * g.perProduct,
+    })),
+    complete: g.g !== null,
+    missing,
+  }
+}
+
+/** Einzelstücke: [itemId, Name, Stück, g je Stück, Teigstücke je Produkt]. */
+type BusySingle = [string, string, number, number | null, number | null]
+
+function busySingle(bakeDate: string, s: BusySingle): SingleRow {
+  const [itemId, name, total, pieceG, pieces] = s
+  const kg =
+    pieceG === null || pieces === null ? null : (total * pieceG * pieces) / 1000
+  return {
+    key: bakeDate === SAT ? `${itemId}|` : `${itemId}|@${bakeDate}`,
+    itemId,
+    name,
+    variant: null,
+    total,
+    baseUnset: false,
+    piece_g: pieceG,
+    pieces,
+    kg,
+  }
+}
+
+const BUSY_ROLLS: {
+  bakeDate: string
+  label: string
+  groups: BusyGroup[]
+  singles: BusySingle[]
+}[] = [
+  {
+    bakeDate: SUN,
+    label: 'für Sonntag',
+    groups: [
+      {
+        group: 'test-doppel',
+        name: 'Testdoppel',
+        doughId: 'test-weck-teig',
+        g: 1250,
+        perProduct: 2,
+        members: [['test-doppel', 'Testdoppel', 70, 6]],
+      },
+      {
+        group: 'test-gemischt',
+        name: 'Teststern + Testkäse + Testmohn',
+        doughId: 'test-weck-teig',
+        g: 1300,
+        perProduct: 1,
+        members: [
+          ['test-stern', 'Teststern', 16],
+          ['test-kaese', 'Testkäse', 10, 2],
+          ['test-mohn', 'Testmohn', 12],
+        ],
+      },
+      {
+        group: 'test-kornweck',
+        name: 'Testkornweck',
+        doughId: 'test-weck-teig',
+        g: 1450,
+        perProduct: 1,
+        members: [['test-kornweck', 'Testkornweck', 30]],
+      },
+      {
+        group: 'test-dinkelweck',
+        name: 'Testdinkelweck',
+        doughId: 'test-dinkelweck-teig',
+        g: 1350,
+        perProduct: 1,
+        members: [['test-dinkelweck', 'Testdinkelweck', 24]],
+      },
+      {
+        group: 'test-flitweck',
+        name: 'Testflitweck',
+        doughId: 'test-flit-teig',
+        g: 1180,
+        perProduct: 1,
+        members: [['test-flitweck', 'Testflitweck', 18]],
+      },
+      {
+        group: 'test-roggenweck',
+        name: 'Testroggenweck',
+        doughId: 'test-roggen-teig',
+        g: 1550,
+        perProduct: 1,
+        members: [['test-roggenweck', 'Testroggenweck', 20]],
+      },
+    ],
+    singles: [['test-flit-klein', 'Testflit klein', 10, 300, 1]],
+  },
+  {
+    bakeDate: V2_TUE,
+    label: 'für Dienstag',
+    groups: [
+      {
+        group: 'test-doppel',
+        name: 'Testdoppel',
+        doughId: 'test-weck-teig',
+        g: 1250,
+        perProduct: 2,
+        members: [['test-doppel', 'Testdoppel', 44, 4]],
+      },
+      {
+        group: 'test-gemischt',
+        name: 'Teststern + Testkäse',
+        doughId: 'test-weck-teig',
+        g: 1300,
+        perProduct: 1,
+        members: [
+          ['test-stern', 'Teststern', 8],
+          ['test-kaese', 'Testkäse', 6],
+        ],
+      },
+      {
+        group: 'test-kornweck',
+        name: 'Testkornweck',
+        doughId: 'test-weck-teig',
+        g: 1450,
+        perProduct: 1,
+        members: [['test-kornweck', 'Testkornweck', 20]],
+      },
+      {
+        group: 'test-flitweck',
+        name: 'Testflitweck',
+        doughId: 'test-flit-teig',
+        g: null,
+        perProduct: 1,
+        members: [['test-flitweck', 'Testflitweck', 20]],
+      },
+    ],
+    singles: [['test-party', 'Testparty', 5, 250, null]],
+  },
+  {
+    bakeDate: SAT,
+    label: 'heute',
+    groups: [],
+    singles: [
+      ['test-weck-hell', 'Testweck hell', 20, 80, 1],
+      ['test-stange', 'Teststange', 6, 250, 1],
+    ],
+  },
+]
+
+function busyRollLines(): BackzettelLine[] {
+  const out: BackzettelLine[] = []
+  for (const block of BUSY_ROLLS) {
+    for (const g of block.groups) out.push(...busyGroupLines(block.bakeDate, g))
+    for (const [itemId, name, total] of block.singles) {
+      out.push(v2Line({ itemId, name, bakeDate: block.bakeDate, total }))
+    }
+  }
+  return out
+}
+
+function busyRolls(): RollsBlock[] {
+  return BUSY_ROLLS.map((block) => ({
+    bakeDate: block.bakeDate,
+    label: block.label,
+    groups: block.groups.map((g) => busyGroup(block.bakeDate, g)),
+    singles: block.singles.map((s) => busySingle(block.bakeDate, s)),
+  }))
+}
+
+/** Übrige Abschnitte: [itemId, Name, Stück, Extras]. */
+const BUSY_OTHERS: {
+  id: string
+  label: string
+  lines: [string, string, number, Partial<BackzettelLine>?][]
+}[] = [
+  {
+    id: 'laugen',
+    label: 'Laugen',
+    lines: [
+      ['test-brezel', 'Testbrezel', 24, { preorders: 6, base: 18 }],
+      ['test-laugenweck', 'Testlaugenweck', 14],
+      ['test-laugenstange', 'Testlaugenstange', 10],
+    ],
+  },
+  {
+    // Mehr als KEEP_SECTION_LINES Zeilen: darf auf die zweite Spalte umbrechen.
+    id: 'kaffeestueckchen',
+    label: 'Kaffeestückchen',
+    lines: [
+      ['test-croissant', 'Testcroissant', 24, { tray: 'Blech 1-2' }],
+      ['test-plunder', 'Testplunder', 20, { tray: 'Blech 3' }],
+      ['test-plunder-vanille', 'Testplunder Vanille', 10],
+      ['test-berliner', 'Testberliner', 20, { tray: 'Blech 4' }],
+      ['test-schnecke-nuss', 'Testschnecke Nuss', 12],
+      ['test-schnecke-rosine', 'Testschnecke Rosine', 10],
+      ['test-tasche-quark', 'Testtasche Quark', 8],
+      ['test-tasche-kirsch', 'Testtasche Kirsch', 8, { preorders: 3, base: 5 }],
+      ['test-ecke', 'Testecke', 6],
+    ],
+  },
+  {
+    id: 'kuchen',
+    label: 'Kuchen',
+    lines: [
+      ['test-marmor', 'Testmarmor', 3],
+      ['test-apfel', 'Testapfel', 2, { unit: 'Blech' }],
+      ['test-streusel', 'Teststreusel', 2, { unit: 'Blech' }],
+      [
+        'test-zwetschge',
+        'Testzwetschge',
+        0,
+        { unit: 'Blech', baseUnset: true, base: 0 },
+      ],
+    ],
+  },
+]
+
+function busyOtherSections(): BackzettelDay['sections'] {
+  return BUSY_OTHERS.map((sec) => ({
+    id: sec.id,
+    label: sec.label,
+    lines: sec.lines.map(([itemId, name, total, extra = {}]) =>
+      v2Line({ itemId, name, section: sec.id, total, ...extra })
+    ),
+  }))
+}
+
+function busyHefeLine(
+  itemId: string,
+  name: string,
+  total: number,
+  extra: Partial<BackzettelLine> = {}
+): BackzettelLine {
+  return v2Line({ itemId, name, section: 'hefeteig', total, ...extra })
+}
+
+function busyFilled(
+  itemId: string,
+  name: string,
+  variant: string,
+  label: string,
+  total: number,
+  extra: Partial<BackzettelLine> = {}
+): BackzettelLine {
+  return busyHefeLine(itemId, name, total, {
+    variant,
+    variantKind: 'filling',
+    variantLabel: label,
+    ...extra,
+  })
+}
+
+function busyHefeteigLines(): BackzettelLine[] {
+  return [
+    busyFilled('test-zopf', 'Testzopf gefüllt', 'nuss', 'Testnussfüllung', 4),
+    busyFilled('test-zopf', 'Testzopf gefüllt', 'mohn', 'Testmohnfüllung', 2),
+    busyFilled(
+      'test-zopf',
+      'Testzopf gefüllt',
+      'apfel',
+      'Testapfelfüllung',
+      2,
+      {
+        baseUnset: true,
+        base: 0,
+        preorders: 2,
+      }
+    ),
+    busyFilled(
+      'test-kranz-gefuellt',
+      'Testkranz gefüllt',
+      'nuss',
+      'Testnussfüllung',
+      3
+    ),
+    busyFilled(
+      'test-kranz-gefuellt',
+      'Testkranz gefüllt',
+      'mohn',
+      'Testmohnfüllung',
+      1
+    ),
+    busyHefeLine('test-kranz', 'Testkranz', 3),
+    busyHefeLine('test-hefezopf', 'Testhefezopf', 4),
+    busyHefeLine('test-schnecke-gross', 'Testschnecke groß', 6),
+  ]
+}
+
+/** Ein Maschinen-Kasten; Teig-Zusammenfassung dazu über `busyDough`. */
+function busyBox(
+  id: string,
+  name: string,
+  kg: number | null,
+  kgKnown: number,
+  liters: {
+    exact: number | null
+    rounded: number | null
+    reason: string | null
+  },
+  extra: Partial<MachineBox> = {}
+): MachineBox {
+  return {
+    id,
+    name,
+    doughIds: [id],
+    kg,
+    kgKnown,
+    complete: kg !== null,
+    liters,
+    batches: null,
+    batch_max_kg: null,
+    addons: [],
+    section: 'brot',
+    ...extra,
+  }
+}
+
+function busyMachine(): MachineBox[] {
+  return [
+    busyBox(
+      'test-korn-teig',
+      'Korn + Holz',
+      23.6,
+      23.6,
+      { exact: 11.8, rounded: 12, reason: null },
+      {
+        doughIds: ['test-korn-teig', 'test-holz-teig'],
+        addons: [
+          {
+            id: 'test-sauer',
+            name: 'Testsauer',
+            doughId: 'test-holz-teig',
+            g_per_liter: 10,
+            grams: { exact: 36, rounded: 40 },
+            reason: null,
+          },
+        ],
+      }
+    ),
+    busyBox(
+      'test-misch-teig',
+      'Misch + Dinkel',
+      31.5,
+      31.5,
+      { exact: 16.9, rounded: 17, reason: null },
+      {
+        doughIds: ['test-misch-teig', 'test-dinkel-teig'],
+        addons: [
+          {
+            id: 'test-dunkel',
+            name: 'Testdunkel',
+            doughId: 'test-dinkel-teig',
+            g_per_liter: null,
+            grams: null,
+            reason: 'g_per_liter_unknown',
+          },
+        ],
+      }
+    ),
+    busyBox('test-roggen-teig', 'Testroggen', null, 44.5, {
+      exact: null,
+      rounded: null,
+      reason: 'dough_incomplete',
+    }),
+    busyBox(
+      'test-weck-teig',
+      'Testweck',
+      52.1,
+      52.1,
+      { exact: 30.65, rounded: null, reason: 'rounding_unknown' },
+      {
+        batches: 2,
+        batch_max_kg: 40,
+        section: 'broetchen',
+      }
+    ),
+    busyBox(
+      'test-flit-teig',
+      'Testflit',
+      null,
+      9.7,
+      { exact: null, rounded: null, reason: 'kg_per_liter_unknown' },
+      {
+        section: 'broetchen',
+      }
+    ),
+    busyBox(
+      'test-dinkelweck-teig',
+      'Testdinkelweck',
+      8.1,
+      8.1,
+      { exact: 4.5, rounded: 4.5, reason: null },
+      {
+        section: 'broetchen',
+      }
+    ),
+    busyBox(
+      'test-hefe',
+      'Testhefe',
+      13.8,
+      13.8,
+      { exact: 2.76, rounded: 3, reason: null },
+      {
+        batches: 2,
+        batch_max_kg: 10,
+        section: 'hefeteig',
+      }
+    ),
+  ]
+}
+
+const BUSY_OPEN = [
+  {
+    path: 'doughs[2].batch_max_kg',
+    code: 'batch_max_kg_unknown',
+    message:
+      'Teig „Testroggen“: Chargengröße ist noch offen – Chargen werden nicht berechnet.',
+  },
+  {
+    path: 'doughs[4].kg_per_liter',
+    code: 'kg_per_liter_unknown',
+    message:
+      'Teig „Testflit“: kg je Liter ist noch offen – der Zettel zeigt nur kg.',
+  },
+  {
+    path: 'doughs[3].liter_rounding',
+    code: 'rounding_unknown',
+    message: 'Teig „Testweck“: Rundung der Liter ist noch offen.',
+  },
+  {
+    path: 'doughs[1].addons[0].g_per_liter',
+    code: 'g_per_liter_unknown',
+    message: 'Teig „Testdinkel“: Testdunkel g je Liter ist noch offen.',
+  },
+  {
+    path: 'items[20].bruch.g.2',
+    code: 'bruch_g_unknown',
+    message: '„Testflitweck“: Bruchgewicht für Dienstag ist noch offen.',
+  },
+]
+
+function busyDoughs(): DoughSummary[] {
+  return busyMachine().map((box) => ({
+    id: box.id,
+    name: box.name,
+    kg: box.kg,
+    kgKnown: box.kgKnown,
+    complete: box.complete,
+    missing:
+      box.id === 'test-roggen-teig'
+        ? [
+            {
+              itemId: 'test-roggen',
+              name: 'Testroggen',
+              field: 'base',
+              code: 'base_unset',
+              message:
+                '„Testroggen“ (Kasten): Grundmenge offen – Teig nur „mindestens“.',
+            },
+          ]
+        : [],
+    liters: box.liters,
+    batches: box.batches,
+    batch_max_kg: box.batch_max_kg,
+    addons: box.addons,
+    parts: [],
+    extras: [],
+    combinedWith: null,
+  }))
+}
+
+/**
+ * Voller Samstag als Teigtag (Entwurf): 60 Zeilen (Brot 19, Brötchen 17,
+ * Hefeteig 8, Laugen/Kaffeestückchen/Kuchen 16), sechs Teige an der Maschine.
+ * Der größte Teigtag-Zettel der Specs - er muss auf eine A4-Seite passen.
+ */
+export function busySaturdayV2Draft(
+  overrides: Partial<BackzettelDay> = {}
+): BackzettelDay {
+  const base = saturdayV2Draft()
+  const others = busyOtherSections()
+  return {
+    ...base,
+    sections: [
+      { id: 'brot', label: 'Brot', lines: busyBreadLines() },
+      { id: 'broetchen', label: 'Brötchen', lines: busyRollLines() },
+      ...others.slice(0, 1),
+      ...others.slice(1),
+      { id: 'hefeteig', label: 'Hefeteig', lines: busyHefeteigLines() },
+    ],
+    hefeteig: {
+      ...base.hefeteig,
+      doughs: (base.hefeteig?.doughs ?? []).map((d) => ({
+        ...d,
+        pieces: 31,
+        dough_g: 13800,
+        kg: 13.8,
+        kgKnown: 13.8,
+        batches: 2,
+        batch_max_kg: 10,
+        liters: { exact: 2.76, rounded: 3, reason: null },
+      })),
+      pieces: 31,
+      dough_g: 13800,
+      complete: true,
+    },
+    doughs: busyDoughs(),
+    machine: busyMachine(),
+    bread: { sizes: BUSY_SIZES, rows: busyBreadRows() },
+    rolls: busyRolls(),
+    warnings: [
+      {
+        code: 'base_unset',
+        message:
+          'Grundmenge für Samstag noch nicht festgelegt: Testroggen (Kasten), Testzwetschge, Testzopf gefüllt (Testapfelfüllung).',
+      },
+      {
+        code: 'unmapped_product',
+        message:
+          'Vorbestelltes Produkt „Testtorte Probe“ (1 Stück) gehört zu keinem Backzettel-Posten.',
+      },
+    ],
+    openMasterData: BUSY_OPEN,
+    ...overrides,
+  }
+}
+
+/** Erfundene Nachträge nach der Freigabe: [Schlüssel, Name, Backtag, Menge]. */
+const BUSY_DELTAS: [string, string, string, number][] = [
+  [`test-doppel|@${V2_TUE}`, 'Testdoppel', V2_TUE, 6],
+  [`test-kornweck|@${V2_TUE}`, 'Testkornweck', V2_TUE, 4],
+  [`test-stern|@${SUN}`, 'Teststern', SUN, 5],
+  [`test-flit-klein|@${SUN}`, 'Testflit klein', SUN, -2],
+  ['test-brezel|', 'Testbrezel', SAT, 8],
+  ['test-tasche-kirsch|', 'Testtasche Kirsch', SAT, 3],
+]
+
+/**
+ * Derselbe volle Samstag freigegeben, danach sechs Nachträge (Brötchen für
+ * So + Di, Laugen, Kaffeestückchen) mit dem, was sie für Teig und
+ * Teilmaschine heißen.
+ */
+export function busySaturdayV2Confirmed(
+  overrides: Partial<BackzettelDay> = {}
+): BackzettelDay {
+  const draft = busySaturdayV2Draft()
+  const byKey = new Map(BUSY_DELTAS.map((d) => [d[0], d[3]]))
+  let id = 401
+  const deltas: BackzettelDeltaEntry[] = BUSY_DELTAS.map(
+    ([key, name, bakeDate, qty], i) => ({
+      id: 61 + i,
+      key,
+      bakeDate,
+      itemId: key.split('|')[0],
+      name,
+      unit: 'Stück',
+      variant: null,
+      qty,
+      kind: qty > 0 ? 'added' : 'changed',
+      preorderId: 71 + i,
+      preorderCode: `LA-${bakeDate}-${String(i + 11).padStart(2, '0')}`,
+      createdAt: '2026-11-28T15:00:00.000Z',
+      acknowledgedAt: null,
+      acknowledgedBy: null,
+    })
+  )
+  return {
+    ...draft,
+    status: 'confirmed',
+    confirmedBy: { id: 2, displayName: 'Test Backstube' },
+    confirmedAt: '2026-11-27T13:00:00.000Z',
+    sections: draft.sections.map((s) => ({
+      ...s,
+      lines: s.lines.map((l) => {
+        const qty = byKey.get(l.key)
+        return {
+          ...l,
+          id: id++,
+          delta:
+            qty === undefined
+              ? null
+              : {
+                  qty,
+                  open: 1,
+                  count: 1,
+                  openQty: qty,
+                  bake: qty,
+                  bakeOpen: qty,
+                },
+        }
+      }),
+    })),
+    deltas,
+    deltaBruch: [
+      {
+        key: `${V2_TUE}|test-doppel`,
+        group: 'test-doppel',
+        name: 'Testdoppel',
+        bakeDate: V2_TUE,
+        piecesBefore: 88,
+        pieces: 100,
+        piecesDelta: 12,
+        bruecheBefore: 5,
+        brueche: 5,
+        bruecheDelta: 0,
+        spareBefore: 12,
+        spare: 0,
+        spareProductsBefore: 6,
+        spareProducts: 0,
+        complete: true,
+      },
+      {
+        key: `${V2_TUE}|test-kornweck`,
+        group: 'test-kornweck',
+        name: 'Testkornweck',
+        bakeDate: V2_TUE,
+        piecesBefore: 20,
+        pieces: 24,
+        piecesDelta: 4,
+        bruecheBefore: 1,
+        brueche: 2,
+        bruecheDelta: 1,
+        spareBefore: 0,
+        spare: 16,
+        spareProductsBefore: 0,
+        spareProducts: 16,
+        complete: true,
+      },
+      {
+        key: `${SUN}|test-gemischt`,
+        group: 'test-gemischt',
+        name: 'Teststern + Testkäse + Testmohn',
+        bakeDate: SUN,
+        piecesBefore: 38,
+        pieces: 43,
+        piecesDelta: 5,
+        bruecheBefore: 2,
+        brueche: 3,
+        bruecheDelta: 1,
+        spareBefore: 2,
+        spare: 17,
+        spareProductsBefore: 2,
+        spareProducts: 17,
+        complete: true,
+      },
+    ],
+    deltaMachine: [
+      {
+        id: 'test-weck-teig',
+        name: 'Testweck',
+        doughIds: ['test-weck-teig'],
+        kgBefore: 52.1,
+        kg: 54.9,
+        kgDelta: 2.8,
+        complete: true,
+        litersBefore: {
+          exact: 30.65,
+          rounded: null,
+          reason: 'rounding_unknown',
+        },
+        liters: { exact: 32.35, rounded: null, reason: 'rounding_unknown' },
+        batchesBefore: 2,
+        batches: 2,
+      },
+      {
+        id: 'test-flit-teig',
+        name: 'Testflit',
+        doughIds: ['test-flit-teig'],
+        kgBefore: null,
+        kg: null,
+        kgDelta: -0.6,
+        complete: false,
+        litersBefore: {
+          exact: null,
+          rounded: null,
+          reason: 'kg_per_liter_unknown',
+        },
+        liters: { exact: null, rounded: null, reason: 'kg_per_liter_unknown' },
+        batchesBefore: null,
+        batches: null,
+      },
+    ],
+    configChangedSinceConfirm: false,
+    deltasPending: false,
     ...overrides,
   }
 }
