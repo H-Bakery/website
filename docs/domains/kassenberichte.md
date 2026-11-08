@@ -43,6 +43,9 @@ Pfad: `HQ_REPORTS_DIR`, sonst `<website>/../hq/data/reports`.
   Routen lehnen längere Anfragen mit `range_too_large` ab, die Archivseite kürzt `?from=&to=` mit
   `clampRange` (das Ende bleibt, der Anfang rückt nach) und sagt es an. Ohne die Kappung liefert
   `?from=2000-01-01` jede Tagesdatei aus - ein Tippfehler im Jahr genügt.
+- **Das Archiv zeigt den neuesten Tag zuerst** (`newestFirst` in `ReportsArchiveClient.tsx`). Loader
+  und `/api/reports/daily` liefern weiter aufsteigend - Diagramme und der Vertrag lesen so; umgedreht
+  wird nur die Anzeige.
 - Kategorie-Aufschlüsselungen sind leer, weil `convert_reports.js` in `hq` `group_name` verwirft.
 
 ## Endpunkte

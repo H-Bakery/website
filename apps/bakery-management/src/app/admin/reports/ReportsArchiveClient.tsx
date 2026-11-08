@@ -76,6 +76,18 @@ interface Props {
 type OkDay = Extract<DailyReportSummary, { status: 'ok' }>
 type ListDay = DailyReportList['days'][number]
 
+/**
+ * Neuester Tag zuerst. Der Loader (`listDailyReports`) und `/api/reports/daily`
+ * liefern aufsteigend - das bleibt so, Diagramme und der Vertrag lesen es in
+ * dieser Reihenfolge. Umgedreht wird nur die Anzeige im Archiv: gesucht wird
+ * fast immer der letzte Kassentag.
+ */
+export function newestFirst<T extends { date: string }>(
+  days: readonly T[]
+): T[] {
+  return [...days].sort((a, b) => b.date.localeCompare(a.date))
+}
+
 function plural(count: number, one: string, many: string) {
   return `${count} ${count === 1 ? one : many}`
 }
@@ -328,7 +340,9 @@ export default function ReportsArchiveClient({
 
   const anchor = latestDate ?? list.to
   const summary = list.summary
-  const days = hideGaps ? list.days.filter((d) => d.status === 'ok') : list.days
+  const days = newestFirst(
+    hideGaps ? list.days.filter((d) => d.status === 'ok') : list.days
+  )
   const gapCount = list.days.filter((d) => d.status === 'no-data').length
 
   return (
