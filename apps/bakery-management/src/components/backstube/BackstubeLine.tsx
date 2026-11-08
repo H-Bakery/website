@@ -8,34 +8,18 @@ import type {
   BackzettelLine,
 } from '../../lib/backzettelApi'
 import {
-  formatNumber,
   deltaBadgeText,
-  formatQty,
-  formatSigned,
+  formatNumber,
   formatTimestamp,
+  lineBreakdown,
   lineLabel,
+  minQtyText,
   previouslyDoneText,
 } from '../../lib/backzettelFormat'
 import { useBackstubeColors } from './backstubeColors'
 
-/** Zusammensetzung in Kurzform, nur Bestandteile ≠ 0: „Basis 60 · CAP 10 · Korr. −5“. */
-export function lineBreakdown(line: BackzettelLine): string {
-  const parts: string[] = []
-  parts.push(
-    line.baseUnset ? 'Basis offen' : `Basis ${formatNumber(line.base)}`
-  )
-  if (line.seasonal) parts.push(`Saison ${formatSigned(line.seasonal)}`)
-  if (line.preorders) parts.push(`Vorb. ${formatNumber(line.preorders)}`)
-  if (line.cap) parts.push(`CAP ${formatNumber(line.cap)}`)
-  if (line.correction) {
-    parts.push(
-      `Korr. ${formatSigned(line.correction)}${
-        line.correctionReason ? ` (${line.correctionReason})` : ''
-      }`
-    )
-  }
-  return parts.join(' · ')
-}
+// Seit Review Z10 Runde 2 in backzettelFormat.ts (auch die Planung braucht sie).
+export { lineBreakdown }
 
 export interface BackstubeLineProps {
   line: BackzettelLine
@@ -188,7 +172,7 @@ export function BackstubeLine({
             color: draft || done ? 'text.secondary' : 'text.primary',
           }}
         >
-          {formatQty(line.total, line.unit)}
+          {minQtyText(line, line.unit)}
         </Typography>
         {line.loavesEstimate !== undefined && (
           <Typography

@@ -20,11 +20,19 @@ API-Details (Endpunkte, Fehlercodes, Tabelle `rest_counts`): [`docs/api/rest.md`
   Backzettel rechnet in Liter/Blech, im Laden liegen Stücke. Ein Posten mit `products` wird je
   Produkt in Stück gezählt und mit dessen `factor` umgerechnet (Marmorkuchen ganz = 1 Blech,
   1 Stück = ¼), ein Liter-Posten ohne Produkte mit `pieces_per_liter` in Stück (Faktor 1/ppl),
-  sonst in seiner eigenen Einheit. Der Faktor wird beim Zählen mitgespeichert. Ein Posten mit Sorten
-  wird je Sorte gezählt (400 `variant_required`, wie bei Vorbestellungen).
+  sonst in seiner eigenen Einheit. Der Faktor wird beim Zählen mitgespeichert. Liter stehen wie im
+  Backzettel als „L“ („gebacken 4 L“, `formatQtyUnit`). Ein Posten mit Sorten
+  wird je Sorte gezählt (400 `variant_required`, wie bei Vorbestellungen). **Brot je Laibgröße**
+  (Backzettel v2, Z10) wird je Größe gezählt, nur mit den Produkten dieser Größe
+  (`products[].size`); ein Produkt einer anderen Größe ist 400 `unknown_product`.
 - **Restquote = Rest ÷ (gebacken − CAP).** Gebacken = Gesamt des **freigegebenen** Backzettels plus
   quittierte Nachträge; CAP-Ware verlässt den Laden und kann dort nicht übrig sein. Ohne Freigabe
   zeigt die Zählliste „geplant" und die Auswertung zählt den Tag nicht.
+- **Gezählt wird am Backtag (Z10).** Gebacken kommt aus der Backliste des Tages
+  (`getBakeLines`): Dienstags-Brötchen stehen auf dem Zettel vom Samstag, das Dienstags-Brot auf dem
+  vom Dienstag - beide zählen am Dienstag. Freigegeben ist der Tag erst, wenn **jeder** dieser
+  Zettel freigegeben ist. Überzählige Stücke eines aufgerundeten Bruchs („+n frei") zählen nie als
+  gebacken.
 - **Ein Tag ohne vollständige Zählung ist eine Lücke, keine 0** (`partial` / `not_counted`,
   gestrichelt im Verlauf, `uncountedDates` je Posten) - nicht wegoptimieren, sonst liest sich eine
   vergessene Zählung wie „alles verkauft".

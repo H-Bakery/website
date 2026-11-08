@@ -10,6 +10,19 @@
 // verweist mit einem Faktor auf hq-Produkte (ein Viertel = 0.25), hat optional
 // Varianten (Fuellungen), ein Teigstueck, Fuellungsgramm, eine Blechposition
 // und Grundmengen je ISO-Wochentag (1 = Montag ... 7 = Sonntag).
+//
+// Backzettel v2 (Z10, docs/backzettel-v2.md §2) ergaenzt - additiv, `version`
+// bleibt 1 - Teigtage (`dough_days`, `items[].lead`), Teige als Stammdaten
+// (`kg_per_liter`, `liter_rounding`, `combined_with`, `addons`), Brot je
+// Laibgroesse (`sizes`, `products[].size`, `from_dough`) und Broetchen in
+// Bruch (`bruch`, `bruch_pieces`). Eine Konfiguration ohne diese Schluessel
+// ergibt dieselben Fehler und Warnungen wie vorher.
+//
+// Offene Stammdaten: `null` heisst „unbekannt“. Ein ausdrueckliches `null` auf
+// einem offenen Feld ist weder Fehler noch Warnung, sondern steht in der
+// dritten Liste `open` (`{ path, code, message }`); ein fehlender Schluessel
+// gilt ebenso als unbekannt, mit Warnung. Die Normalisierung laesst den Wert
+// `null` - nichts wird geschaetzt oder mit einem Standardwert gefuellt.
 
 const SECTIONS = [
   'vorbereitung',
@@ -46,10 +59,21 @@ const WEEKDAY_NAMES = {
 }
 
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+/**
+ * Groessen-IDs beginnen mit einem Buchstaben (`g500`, nicht `500`): sonst
+ * macht YAML eine Zahl daraus, und in URLs liest sich die ID schlecht.
+ */
+const SIZE_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
+
+/** Hoechstens so viele Teigtage vor dem Backtag (Teiglinge zwei Tage voraus). */
+const MAX_LEAD = 3
+const ROUNDING_MODES = ['up', 'nearest', 'down']
 
 const TOP_LEVEL_KEYS = new Set([
   'version',
   'days',
+  'dough_days',
+  'bruch_pieces',
   'sections',
   'items',
   'doughs',
@@ -64,13 +88,31 @@ const ITEM_KEYS = new Set([
   'products',
   'plu',
   'variants',
+  'sizes',
   'dough',
   'filling_g',
   'tray',
   'base',
   'pieces_per_liter',
   'note',
+  'lead',
+  'bruch',
+  'from_dough',
 ])
+const SIZE_KEYS = new Set(['id', 'label', 'dough_g', 'plu'])
+const BRUCH_KEYS = new Set(['g', 'per_product', 'pieces', 'group'])
+const FROM_DOUGH_KEYS = new Set(['id', 'mode', 'dough_kg', 'extras'])
+const FROM_DOUGH_MODES = ['fixed', 'per_dough']
+const ADDON_KEYS = new Set(['id', 'name', 'g_per_liter', 'rounding'])
+/** Schluessel eines Teigs, die es erst seit Z10 gibt. */
+const V2_DOUGH_KEYS = [
+  'kg_per_liter',
+  'liter_rounding',
+  'combined_with',
+  'combined_name',
+  'addons',
+]
+const V2_ITEM_KEYS = ['lead', 'sizes', 'bruch', 'from_dough']
 const PREP_KEYS = new Set([
   'id',
   'name',
@@ -99,6 +141,23 @@ function isPositiveNumber(value) {
 
 function isNonNegativeNumber(value) {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
+}
+
+function hasOwn(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj, key)
+}
+
+/** Schluessel vorhanden und nicht `undefined` (JS-Objekte aus Tests). */
+function isSet(obj, key) {
+  return isPlainObject(obj) && hasOwn(obj, key) && obj[key] !== undefined
+}
+
+function isSizeId(value) {
+  return typeof value === 'string' && SIZE_ID.test(value)
+}
+
+function isText(value) {
+  return typeof value === 'string' && value.trim() !== ''
 }
 
 /** Rezepte liegen in hq unter diesem Verzeichnis; nur dort wird gelesen. */
@@ -139,25 +198,396 @@ function catalogIndex(products) {
   return index
 }
 
+function isLead(value) {
+  return Number.isInteger(value) && value >= 0 && value <= MAX_LEAD
+}
+
+function warnUnknownKeys(obj, allowed, path, warn) {
+  for (const key of Object.keys(obj)) {
+    if (!allowed.has(key))
+      warn(`${path}.${key}`, `Unbekannter Schlüssel „${key}“ wird ignoriert.`)
+  }
+}
+
+/** `{ step > 0, mode: up|nearest|down }` - Liter- bzw. Gramm-Rundung (Z10). */
+function validateRounding(path, value, err, warn) {
+  if (!isPlainObject(value)) {
+    err(path, 'Rundung muss { step, mode } oder null sein.')
+    return
+  }
+  warnUnknownKeys(value, new Set(['step', 'mode']), path, warn)
+  if (!isPositiveNumber(value.step))
+    err(`${path}.step`, 'step (Rundungsschritt) muss eine Zahl größer 0 sein.')
+  if (!ROUNDING_MODES.includes(value.mode))
+    err(
+      `${path}.mode`,
+      `mode muss ${ROUNDING_MODES.join(
+        ', '
+      )} sein (aufrunden, kaufmännisch, abrunden).`
+    )
+}
+
+/**
+ * `lead` in fester Form: `{ default, <ISO-Wochentag des Backtags>: n }`.
+ * Ohne Angabe 0 (Teig am Backtag); eine Zahl gilt fuer alle Backtage.
+ */
+function normalizeLead(raw) {
+  if (Number.isInteger(raw)) return { default: raw }
+  const out = { default: 0 }
+  if (!isPlainObject(raw)) return out
+  if (Number.isInteger(raw.default)) out.default = raw.default
+  for (const [key, v] of Object.entries(raw)) {
+    if (key === 'default') continue
+    const wd = weekdayKey(key)
+    if (wd !== null && Number.isInteger(v)) out[wd] = v
+  }
+  return out
+}
+
+/**
+ * Bruchgewicht in fester Form: `{ default, <ISO-Wochentag des Backtags>: g }`,
+ * jeder Wert Gramm oder `null` (unbekannt). Eine Zahl gilt fuer alle Backtage,
+ * ein fehlendes `default` ist `null` - nie ein Schaetzwert.
+ */
+function normalizeBruchG(raw) {
+  if (isPositiveNumber(raw)) return { default: raw }
+  const out = { default: null }
+  if (!isPlainObject(raw)) return out
+  if (isPositiveNumber(raw.default)) out.default = raw.default
+  for (const [key, v] of Object.entries(raw)) {
+    if (key === 'default') continue
+    const wd = weekdayKey(key)
+    if (wd !== null) out[wd] = isPositiveNumber(v) ? v : null
+  }
+  return out
+}
+
+function validateBruchG(b, path, label, daySet, r) {
+  const { err, warn, markOpen } = r
+  if (!isSet(b, 'g')) {
+    warn(
+      `${path}.g`,
+      `Posten „${label}“: Bruchgewicht (bruch.g) fehlt; die kg dieses Teigs bleiben unbekannt.`
+    )
+  } else if (b.g === null) {
+    markOpen(
+      `${path}.g`,
+      'bruch_g_unknown',
+      `Posten „${label}“: Bruchgewicht ist noch offen.`
+    )
+  } else if (isPlainObject(b.g)) {
+    for (const [key, g] of Object.entries(b.g)) {
+      const gp = `${path}.g.${key}`
+      let wd = null
+      if (key !== 'default') {
+        wd = weekdayKey(key)
+        if (wd === null || !daySet.has(wd)) {
+          err(gp, `„${key}“ ist kein Backtag (days) und nicht „default“.`)
+          continue
+        }
+      }
+      if (g === null) {
+        markOpen(
+          gp,
+          'bruch_g_unknown',
+          wd === null
+            ? `Posten „${label}“: Bruchgewicht (übrige Backtage) ist noch offen.`
+            : `Posten „${label}“: Bruchgewicht am ${WEEKDAY_NAMES[wd]} ist noch offen.`
+        )
+      } else if (!isPositiveNumber(g)) {
+        err(
+          gp,
+          'Bruchgewicht muss eine Zahl größer 0 (Gramm je Bruch) oder null sein.'
+        )
+      }
+    }
+    if (!hasOwn(b.g, 'default'))
+      warn(
+        `${path}.g.default`,
+        `Posten „${label}“: Bruchgewicht ohne default; an den übrigen Backtagen bleibt es unbekannt.`
+      )
+  } else if (!isPositiveNumber(b.g)) {
+    err(
+      `${path}.g`,
+      'bruch.g muss eine Zahl größer 0 (Gramm je Bruch), eine Zuordnung je Backtag oder null sein.'
+    )
+  }
+}
+
+function validateFromDough(f, path, label, r) {
+  const { hasSizes, doughIds, err, warn, markOpen } = r
+  if (!isPlainObject(f)) {
+    err(path, 'from_dough muss { id, mode, dough_kg, extras? } sein.')
+    return
+  }
+  warnUnknownKeys(f, FROM_DOUGH_KEYS, path, warn)
+  if (!hasSizes)
+    err(
+      path,
+      `Posten „${label}“ hat from_dough, aber keine sizes; einen Anteil an einem Teig gibt es nur für Brot je Laib.`
+    )
+  if (typeof f.id !== 'string' || !doughIds.has(f.id))
+    err(`${path}.id`, `Teig ${JSON.stringify(f.id)} steht nicht in doughs.`)
+  const from = typeof f.id === 'string' ? f.id : '?'
+  if (!isSet(f, 'mode')) {
+    warn(
+      `${path}.mode`,
+      `Posten „${label}“: from_dough.mode fehlt; der Teig „${from}“ bleibt unvollständig.`
+    )
+  } else if (f.mode === null) {
+    markOpen(
+      `${path}.mode`,
+      'from_dough_mode_unknown',
+      `Posten „${label}“: Anteil am Teig „${from}“ (fest je Ansatz oder je Teig) ist noch offen – der Teig bleibt unvollständig.`
+    )
+  } else if (!FROM_DOUGH_MODES.includes(f.mode)) {
+    err(
+      `${path}.mode`,
+      `mode muss ${FROM_DOUGH_MODES.join(' oder ')} sein (oder null).`
+    )
+  }
+  if (!isSet(f, 'dough_kg')) {
+    warn(
+      `${path}.dough_kg`,
+      `Posten „${label}“: from_dough.dough_kg fehlt; der Anteil am Teig „${from}“ bleibt unbekannt.`
+    )
+  } else if (f.dough_kg === null) {
+    markOpen(
+      `${path}.dough_kg`,
+      'from_dough_kg_unknown',
+      `Posten „${label}“: kg Teig „${from}“ je Ansatz sind noch offen.`
+    )
+  } else if (!isPositiveNumber(f.dough_kg)) {
+    err(`${path}.dough_kg`, 'dough_kg muss eine Zahl größer 0 oder null sein.')
+  }
+  if (isSet(f, 'extras') && f.extras !== null) {
+    if (!Array.isArray(f.extras)) {
+      err(`${path}.extras`, 'extras muss eine Liste von { name, kg } sein.')
+      return
+    }
+    f.extras.forEach((x, j) => {
+      const xp = `${path}.extras[${j}]`
+      if (!isPlainObject(x))
+        return err(xp, 'Eine Zugabe muss { name, kg } sein.')
+      warnUnknownKeys(x, new Set(['name', 'kg']), xp, warn)
+      if (!isText(x.name))
+        err(`${xp}.name`, 'name muss ein nicht-leerer Text sein.')
+      const xName = isText(x.name) ? x.name : xp
+      if (!isSet(x, 'kg')) {
+        warn(
+          `${xp}.kg`,
+          `Posten „${label}“: kg für „${xName}“ fehlen; die Zugabe bleibt unbekannt.`
+        )
+      } else if (x.kg === null) {
+        markOpen(
+          `${xp}.kg`,
+          'extra_kg_unknown',
+          `Posten „${label}“: kg „${xName}“ sind noch offen.`
+        )
+      } else if (!isPositiveNumber(x.kg)) {
+        err(`${xp}.kg`, 'kg muss eine Zahl größer 0 oder null sein.')
+      }
+    })
+  }
+}
+
+/**
+ * Z10-Teigfelder (docs/backzettel-v2.md §2.3): kg je Liter, Literrundung,
+ * zusammengelegte Teige und Zugaben. `usesV2`: nur dann warnt ein fehlender
+ * neuer Schluessel - eine v1-Datei bleibt ohne neue Warnungen.
+ */
+function validateDoughsV2(doughs, doughIds, usesV2, r) {
+  const { err, warn, markOpen } = r
+  const byId = new Map()
+  for (const d of doughs) {
+    if (isPlainObject(d) && isSlug(d.id) && !byId.has(d.id)) byId.set(d.id, d)
+  }
+  doughs.forEach((d, i) => {
+    if (!isPlainObject(d)) return
+    const p = `doughs[${i}]`
+    const label = isSlug(d.id) ? d.id : p
+
+    // kg_per_liter
+    if (!isSet(d, 'kg_per_liter')) {
+      if (usesV2)
+        warn(
+          `${p}.kg_per_liter`,
+          `Teig „${label}“ hat kein kg_per_liter; Liter werden nicht berechnet (der Zettel zeigt nur kg).`
+        )
+    } else if (d.kg_per_liter === null) {
+      markOpen(
+        `${p}.kg_per_liter`,
+        'kg_per_liter_unknown',
+        `Teig „${label}“: kg je Liter ist noch offen – der Zettel zeigt nur kg.`
+      )
+    } else if (!isPositiveNumber(d.kg_per_liter)) {
+      err(
+        `${p}.kg_per_liter`,
+        'kg_per_liter (kg fertiger Teig je Rezept-Liter) muss eine Zahl größer 0 oder null sein.'
+      )
+    }
+
+    // combined_with: eine Literzahl an der Maschine fuer mehrere Teige
+    let member = false
+    if (isSet(d, 'combined_with') && d.combined_with !== null) {
+      const target = d.combined_with
+      if (typeof target !== 'string' || !doughIds.has(target)) {
+        err(
+          `${p}.combined_with`,
+          `Teig ${JSON.stringify(target)} steht nicht in doughs.`
+        )
+      } else if (target === d.id) {
+        err(
+          `${p}.combined_with`,
+          `Teig „${label}“ kann nicht mit sich selbst zusammengelegt werden.`
+        )
+      } else {
+        member = true
+        const head = byId.get(target)
+        if (head && isSet(head, 'combined_with') && head.combined_with !== null)
+          err(
+            `${p}.combined_with`,
+            `Teig „${target}“ ist selbst mit ${JSON.stringify(
+              head.combined_with
+            )} zusammengelegt; combined_with muss auf den Kopf der Gruppe zeigen (keine Kette).`
+          )
+      }
+    }
+
+    // liter_rounding: gilt am Kopf der Gruppe (bzw. am einzelnen Teig)
+    if (member) {
+      if (isSet(d, 'liter_rounding') && d.liter_rounding !== null)
+        warn(
+          `${p}.liter_rounding`,
+          `Teig „${label}“ ist mit „${d.combined_with}“ zusammengelegt; gerundet wird nach dem Kopf der Gruppe, diese Rundung wird ignoriert.`
+        )
+    } else if (!isSet(d, 'liter_rounding')) {
+      if (usesV2)
+        warn(
+          `${p}.liter_rounding`,
+          `Teig „${label}“ hat keine Literrundung (liter_rounding); der Zettel zeigt die genauen Liter.`
+        )
+    } else if (d.liter_rounding === null) {
+      markOpen(
+        `${p}.liter_rounding`,
+        'liter_rounding_unknown',
+        `Teig „${label}“: Literrundung ist noch offen – der Zettel zeigt die genauen Liter.`
+      )
+    } else {
+      validateRounding(`${p}.liter_rounding`, d.liter_rounding, err, warn)
+    }
+
+    // combined_name
+    if (isSet(d, 'combined_name') && d.combined_name !== null) {
+      if (!isText(d.combined_name))
+        err(`${p}.combined_name`, 'combined_name muss ein Text sein.')
+      else if (member)
+        warn(
+          `${p}.combined_name`,
+          `combined_name gilt nur am Kopf der Gruppe („${d.combined_with}“) und wird hier ignoriert.`
+        )
+    }
+
+    // addons (Dunkelsauer-Muster): Gramm je Liter dieses Teigs
+    if (isSet(d, 'addons') && d.addons !== null) {
+      if (!Array.isArray(d.addons)) {
+        err(
+          `${p}.addons`,
+          'addons muss eine Liste von { id, name, g_per_liter, rounding } sein.'
+        )
+        return
+      }
+      const seen = new Set()
+      d.addons.forEach((a, j) => {
+        const ap = `${p}.addons[${j}]`
+        if (!isPlainObject(a))
+          return err(
+            ap,
+            'Eine Zugabe muss { id, name, g_per_liter, rounding } sein.'
+          )
+        warnUnknownKeys(a, ADDON_KEYS, ap, warn)
+        if (!isSlug(a.id)) err(`${ap}.id`, 'Zugabe-ID muss ein Slug sein.')
+        else if (seen.has(a.id))
+          err(`${ap}.id`, `Zugabe-ID „${a.id}“ ist doppelt.`)
+        else seen.add(a.id)
+        if (a.name !== undefined && !isText(a.name))
+          err(`${ap}.name`, 'name muss ein nicht-leerer Text sein.')
+        const aLabel = isText(a.name) ? a.name : isSlug(a.id) ? a.id : ap
+        if (!isSet(a, 'g_per_liter')) {
+          warn(
+            `${ap}.g_per_liter`,
+            `Teig „${label}“, Zugabe „${aLabel}“: g_per_liter fehlt; die Zugabe wird nicht berechnet.`
+          )
+        } else if (a.g_per_liter === null) {
+          markOpen(
+            `${ap}.g_per_liter`,
+            'addon_unknown',
+            `Teig „${label}“, Zugabe „${aLabel}“: Gramm je Liter sind noch offen.`
+          )
+        } else if (!isPositiveNumber(a.g_per_liter)) {
+          err(
+            `${ap}.g_per_liter`,
+            'g_per_liter muss eine Zahl größer 0 oder null sein.'
+          )
+        }
+        if (!isSet(a, 'rounding')) {
+          warn(
+            `${ap}.rounding`,
+            `Teig „${label}“, Zugabe „${aLabel}“: Rundung fehlt; es stehen die genauen Gramm da.`
+          )
+        } else if (a.rounding === null) {
+          markOpen(
+            `${ap}.rounding`,
+            'addon_rounding_unknown',
+            `Teig „${label}“, Zugabe „${aLabel}“: Rundung ist noch offen – es stehen die genauen Gramm da.`
+          )
+        } else {
+          validateRounding(`${ap}.rounding`, a.rounding, err, warn)
+        }
+      })
+    }
+  })
+}
+
 /**
  * Prueft die Backzettel-Stammdaten.
  *
  * @param {object} obj das geparste YAML.
  * @param {{products?: Array<string|{id:string, available?:boolean}>}} [options]
  *   `products`: der hq-Katalog; ohne ihn werden Produkt-IDs nicht geprueft.
- * @returns {{ok: boolean, errors: {path:string, message:string}[], warnings: {path:string, message:string}[]}}
+ * @returns {{ok: boolean, errors: {path:string, message:string}[], warnings: {path:string, message:string}[], open: {path:string, code:string, message:string}[]}}
+ *   `open`: je ausdruecklichem `null` auf einem offenen Stammdatenfeld ein
+ *   Eintrag („offen“) - kein Fehler, keine Warnung (docs/backzettel-v2.md §3).
+ *   Eine offene Grundmenge (`base`) steht nicht darin.
  */
 function validateBackzettelConfig(obj, options) {
   const errors = []
   const warnings = []
+  const open = []
   const err = (path, message) => errors.push({ path, message })
   const warn = (path, message) => warnings.push({ path, message })
+  const markOpen = (path, code, message) => open.push({ path, code, message })
   const catalog = catalogIndex(options && options.products)
 
   if (!isPlainObject(obj)) {
     err('', 'Die Konfiguration muss ein Objekt (YAML-Mapping) sein.')
-    return { ok: false, errors, warnings }
+    return { ok: false, errors, warnings, open }
   }
+
+  // Z10: Fehlende neue Schluessel (kg_per_liter, liter_rounding) warnen nur,
+  // wenn die Datei schon v2-Schluessel benutzt - eine v1-Datei bleibt ohne
+  // neue Warnungen.
+  const usesV2 =
+    isSet(obj, 'dough_days') ||
+    isSet(obj, 'bruch_pieces') ||
+    (Array.isArray(obj.items) &&
+      obj.items.some(
+        (it) => isPlainObject(it) && V2_ITEM_KEYS.some((k) => isSet(it, k))
+      )) ||
+    (Array.isArray(obj.doughs) &&
+      obj.doughs.some(
+        (d) => isPlainObject(d) && V2_DOUGH_KEYS.some((k) => isSet(d, k))
+      ))
 
   for (const key of Object.keys(obj)) {
     if (!TOP_LEVEL_KEYS.has(key))
@@ -194,6 +624,53 @@ function validateBackzettelConfig(obj, options) {
     days = [...seen]
   }
   const daySet = new Set(days)
+
+  // --- dough_days (Z10) ---------------------------------------------------
+  if (isSet(obj, 'dough_days') && obj.dough_days !== null) {
+    if (!Array.isArray(obj.dough_days) || obj.dough_days.length === 0) {
+      err(
+        'dough_days',
+        'dough_days muss eine nicht-leere Liste von Wochentagen aus days sein.'
+      )
+    } else {
+      const seen = new Set()
+      obj.dough_days.forEach((d, i) => {
+        if (!Number.isInteger(d) || d < 1 || d > 7) {
+          err(
+            `dough_days[${i}]`,
+            `Ungültiger Teigtag ${JSON.stringify(
+              d
+            )}; erlaubt sind 1 (Montag) bis 7 (Sonntag).`
+          )
+        } else if (seen.has(d)) {
+          err(`dough_days[${i}]`, `Teigtag ${d} steht doppelt in dough_days.`)
+        } else {
+          seen.add(d)
+          if (days.length > 0 && !daySet.has(d))
+            err(
+              `dough_days[${i}]`,
+              `${WEEKDAY_NAMES[d]} (${d}) ist kein Produktionstag (days); Teigtage müssen in days stehen.`
+            )
+        }
+      })
+    }
+  }
+
+  // --- bruch_pieces (Z10) -------------------------------------------------
+  if (isSet(obj, 'bruch_pieces')) {
+    if (obj.bruch_pieces === null) {
+      markOpen(
+        'bruch_pieces',
+        'bruch_pieces_unknown',
+        'Stück je Bruch (bruch_pieces) sind noch offen – Brüche werden nicht berechnet.'
+      )
+    } else if (!isPositiveInt(obj.bruch_pieces)) {
+      err(
+        'bruch_pieces',
+        'bruch_pieces (Teigstücke je Druck der Teigteilmaschine) muss eine positive ganze Zahl oder null sein.'
+      )
+    }
+  }
 
   // --- sections -----------------------------------------------------------
   let sections = []
@@ -251,15 +728,23 @@ function validateBackzettelConfig(obj, options) {
             'batch_max_kg muss eine positive Zahl oder null sein.'
           )
         }
-        if (d.batch_max_kg === undefined || d.batch_max_kg === null) {
+        if (d.batch_max_kg === undefined) {
           warn(
             `${p}.batch_max_kg`,
             `Teig „${d.id}“ hat keine Chargengröße; Chargen werden nicht berechnet.`
+          )
+        } else if (d.batch_max_kg === null) {
+          // Z10: ausdruecklich offen (O9) - „Chargen: unbekannt“.
+          markOpen(
+            `${p}.batch_max_kg`,
+            'batch_max_kg_unknown',
+            `Teig „${d.id}“: Chargengröße ist noch offen – Chargen werden nicht berechnet.`
           )
         }
         if (d.name !== undefined && typeof d.name !== 'string')
           err(`${p}.name`, 'name muss ein Text sein.')
       })
+      validateDoughsV2(obj.doughs, doughIds, usesV2, { err, warn, markOpen })
     }
   }
 
@@ -315,6 +800,9 @@ function validateBackzettelConfig(obj, options) {
   const productOwner = new Map()
   const pluOwner = new Map()
   const trayOwner = new Map()
+  const bruchMembers = []
+  let anyLead = false
+  let needsTopLevelPieces = false
   if (!Array.isArray(obj.items)) {
     err('items', 'items muss eine Liste sein.')
   } else {
@@ -384,7 +872,79 @@ function validateBackzettelConfig(obj, options) {
           variants = [...seen]
         }
       }
-      const variantSet = new Set(variants)
+
+      // sizes (Z10): Laibgroessen sind die Varianten eines Brot-Postens
+      const hasSizes = isSet(item, 'sizes') && item.sizes !== null
+      let sizeIds = []
+      if (hasSizes) {
+        if (!Array.isArray(item.sizes) || item.sizes.length === 0) {
+          err(
+            `${p}.sizes`,
+            'sizes muss eine nicht-leere Liste von { id, label, dough_g } sein.'
+          )
+        } else {
+          if (isSet(item, 'variants') && item.variants !== null)
+            err(
+              `${p}.sizes`,
+              `Posten „${label}“ hat sizes und variants; Größen sind die Varianten eines Brots – bitte nur eines davon.`
+            )
+          const seen = new Set()
+          item.sizes.forEach((size, j) => {
+            const sp = `${p}.sizes[${j}]`
+            if (!isPlainObject(size))
+              return err(sp, 'Eine Größe muss { id, label, dough_g } sein.')
+            warnUnknownKeys(size, SIZE_KEYS, sp, warn)
+            if (!isSizeId(size.id))
+              err(
+                `${sp}.id`,
+                `Größen-ID ${JSON.stringify(
+                  size.id
+                )} muss ein Slug sein, der mit einem Buchstaben beginnt (z. B. g500).`
+              )
+            else if (seen.has(size.id))
+              err(`${sp}.id`, `Größe „${size.id}“ ist doppelt.`)
+            else seen.add(size.id)
+            if (!isText(size.label)) {
+              // `{ label: 1,5 kg }` liest YAML als `label: 1` plus einen
+              // Schlüssel „5 kg“: das Komma trennt in `{ }` die Einträge.
+              const commaSplit =
+                typeof size.label === 'number' &&
+                Object.keys(size).some((k) => !SIZE_KEYS.has(k))
+              err(
+                `${sp}.label`,
+                commaSplit
+                  ? 'label (Anzeigename der Größe) ist keine Text-Angabe: ein Komma im Namen trennt in { } die Einträge – bitte in Anführungszeichen setzen, z. B. label: "1,5 kg".'
+                  : 'label (Anzeigename der Größe, z. B. „500 g“) muss ein nicht-leerer Text sein.'
+              )
+            }
+            const sizeLabel = isSizeId(size.id) ? size.id : sp
+            if (!isSet(size, 'dough_g')) {
+              warn(
+                `${sp}.dough_g`,
+                `Posten „${label}“, Größe „${sizeLabel}“: dough_g (Teig je Laib) fehlt; das Teiggewicht bleibt unbekannt.`
+              )
+            } else if (size.dough_g === null) {
+              markOpen(
+                `${sp}.dough_g`,
+                'dough_g_unknown',
+                `Posten „${label}“, Größe „${sizeLabel}“: Teig je Laib ist noch offen.`
+              )
+            } else if (!isPositiveNumber(size.dough_g)) {
+              err(
+                `${sp}.dough_g`,
+                'dough_g (Gramm Teig je Laib) muss eine Zahl größer 0 oder null sein.'
+              )
+            }
+          })
+          sizeIds = [...seen]
+        }
+      }
+      const isSizeItem = sizeIds.length > 0
+      const sizeSet = new Set(sizeIds)
+      const variantSet = isSizeItem ? sizeSet : new Set(variants)
+      const variantWord = isSizeItem
+        ? { one: 'Größe', list: 'sizes' }
+        : { one: 'Variante', list: 'variants' }
 
       // products
       if (item.products !== undefined && item.products !== null) {
@@ -434,6 +994,27 @@ function validateBackzettelConfig(obj, options) {
             const factor = prod.factor === undefined ? 1 : prod.factor
             if (!isPositiveNumber(factor))
               err(`${pp}.factor`, 'factor muss eine Zahl größer 0 sein.')
+            // Z10: ein Produkt eines Brots je Groesse nennt seine Groesse
+            const size = isSet(prod, 'size') ? prod.size : null
+            if (isSizeItem) {
+              if (size === null)
+                err(
+                  `${pp}.size`,
+                  `Posten „${label}“ hat Größen; jedes Produkt braucht size (eine von ${sizeIds.join(
+                    ', '
+                  )}).`
+                )
+              else if (!sizeSet.has(size))
+                err(
+                  `${pp}.size`,
+                  `Größe ${JSON.stringify(size)} steht nicht in sizes.`
+                )
+            } else if (!hasSizes && size !== null) {
+              err(
+                `${pp}.size`,
+                `Posten „${label}“ hat keine sizes; size ist hier nicht erlaubt.`
+              )
+            }
           })
         }
       }
@@ -462,47 +1043,260 @@ function validateBackzettelConfig(obj, options) {
         }
       }
 
+      // sizes[].plu (Z10, docs/backzettel-v2.md §9 Punkt 10): Kassennummern
+      // je Laibgroesse fuer den Median je Groesse. Ein Teil der Kassennummern
+      // des Postens, jede Kassennummer bei genau einer Groesse; fehlt oder
+      // null = unbekannt (Median je Groesse „unbekannt“).
+      if (isSizeItem) {
+        const itemPlu = new Set(
+          Array.isArray(item.plu) ? item.plu.filter(isPositiveInt) : []
+        )
+        const sizeOfPlu = new Map()
+        item.sizes.forEach((size, j) => {
+          if (!isPlainObject(size) || !isSet(size, 'plu')) return
+          const sp = `${p}.sizes[${j}].plu`
+          const sizeLabel = isSizeId(size.id) ? size.id : `${p}.sizes[${j}]`
+          if (size.plu === null) {
+            markOpen(
+              sp,
+              'size_plu_unknown',
+              `Posten „${label}“, Größe „${sizeLabel}“: Kassennummer der Größe ist noch offen; der Median steht nur für den ganzen Posten.`
+            )
+            return
+          }
+          if (!Array.isArray(size.plu) || size.plu.length === 0) {
+            err(
+              sp,
+              'plu einer Größe muss eine nicht-leere Liste von Kassennummern sein (null = noch offen).'
+            )
+            return
+          }
+          size.plu.forEach((plu, k) => {
+            const pp = `${sp}[${k}]`
+            if (!isPositiveInt(plu)) {
+              err(
+                pp,
+                `PLU ${JSON.stringify(plu)} muss eine positive ganze Zahl sein.`
+              )
+              return
+            }
+            const other = sizeOfPlu.get(plu)
+            if (other !== undefined) {
+              err(
+                pp,
+                other === sizeLabel
+                  ? `PLU ${plu} steht doppelt in Größe „${sizeLabel}“.`
+                  : `PLU ${plu} ist schon Größe „${other}“ zugeordnet; eine Kassennummer gehört zu genau einer Größe.`
+              )
+              return
+            }
+            sizeOfPlu.set(plu, sizeLabel)
+            if (!itemPlu.has(plu))
+              err(
+                pp,
+                `PLU ${plu} steht nicht in plu des Postens „${label}“; die Kassennummern einer Größe sind ein Teil der Kassennummern des Postens.`
+              )
+          })
+        })
+      }
+
       // dough
+      const hasBruch = isSet(item, 'bruch') && item.bruch !== null
       if (item.dough !== undefined && item.dough !== null) {
         const d = item.dough
         if (!isPlainObject(d)) {
           err(`${p}.dough`, 'dough muss {id, piece_g, pieces} sein.')
         } else {
-          if (!doughIds.has(d.id))
+          if (!isSet(d, 'id')) {
+            warn(
+              `${p}.dough.id`,
+              `Posten „${label}“: dough ohne id – der Teig bleibt unbekannt („Teig offen“).`
+            )
+          } else if (d.id === null) {
+            markOpen(
+              `${p}.dough.id`,
+              'dough_unknown',
+              `Posten „${label}“: Teig ist noch offen – die kg stehen unter „Teig offen“.`
+            )
+          } else if (!doughIds.has(d.id)) {
             err(
               `${p}.dough.id`,
               `Teig ${JSON.stringify(d.id)} steht nicht in doughs.`
             )
-          if (!isPositiveNumber(d.piece_g))
+          }
+          if (hasSizes || hasBruch) {
+            // Das Gewicht steht an der Groesse bzw. am Bruch.
+            if (isSet(d, 'piece_g'))
+              err(
+                `${p}.dough.piece_g`,
+                `Posten „${label}“ hat ${
+                  hasBruch ? 'bruch' : 'sizes'
+                }; das Gewicht steht dort – piece_g bitte weglassen.`
+              )
+          } else if (d.piece_g === null) {
+            markOpen(
+              `${p}.dough.piece_g`,
+              'piece_g_unknown',
+              `Posten „${label}“: Gramm je Teigstück sind noch offen.`
+            )
+          } else if (!isPositiveNumber(d.piece_g)) {
             err(
               `${p}.dough.piece_g`,
               'piece_g (Gramm je Teigstück) muss größer 0 sein.'
             )
-          const pieces = d.pieces === undefined ? 1 : d.pieces
-          if (!isPositiveInt(pieces))
-            err(
+          }
+          if (isSet(d, 'pieces') && d.pieces === null) {
+            markOpen(
               `${p}.dough.pieces`,
-              'pieces (Teigstücke je Produkt) muss eine positive ganze Zahl sein.'
+              'pieces_unknown',
+              `Posten „${label}“: Teigstücke je Produkt sind noch offen – das Teiggewicht bleibt unbekannt.`
             )
+          } else {
+            const pieces = d.pieces === undefined ? 1 : d.pieces
+            if (!isPositiveInt(pieces))
+              err(
+                `${p}.dough.pieces`,
+                'pieces (Teigstücke je Produkt) muss eine positive ganze Zahl sein.'
+              )
+          }
         }
       }
 
-      // filling_g
-      if (item.filling_g !== undefined && item.filling_g !== null) {
+      // lead (Z10): Teigtage vor dem Backtag
+      if (isSet(item, 'lead')) {
+        const leadMsg = `lead muss eine ganze Zahl von 0 bis ${MAX_LEAD} sein (Teigtage vor dem Backtag).`
+        const l = item.lead
+        if (l === null) {
+          err(
+            `${p}.lead`,
+            'lead darf nicht null sein; ohne lead gilt 0 (Teig am Backtag).'
+          )
+        } else if (isPlainObject(l)) {
+          for (const [key, v] of Object.entries(l)) {
+            const lp = `${p}.lead.${key}`
+            if (key !== 'default') {
+              const wd = weekdayKey(key)
+              if (wd === null || !daySet.has(wd)) {
+                err(lp, `„${key}“ ist kein Backtag (days) und nicht „default“.`)
+                continue
+              }
+            }
+            if (!isLead(v)) err(lp, leadMsg)
+            else if (v > 0) anyLead = true
+          }
+        } else if (!isLead(l)) {
+          err(`${p}.lead`, leadMsg)
+        } else if (l > 0) {
+          anyLead = true
+        }
+      }
+
+      // bruch (Z10): Broetchen je Druck der Teigteilmaschine
+      if (hasBruch) {
+        const b = item.bruch
+        if (!isPlainObject(b)) {
+          err(
+            `${p}.bruch`,
+            'bruch muss { g, per_product?, pieces?, group? } sein.'
+          )
+        } else {
+          warnUnknownKeys(b, BRUCH_KEYS, `${p}.bruch`, warn)
+          if (hasSizes)
+            err(
+              `${p}.bruch`,
+              `Posten „${label}“ hat sizes und bruch; Brot wird je Laib, Brötchen je Bruch gerechnet – bitte nur eines davon.`
+            )
+          if (item.dough === undefined || item.dough === null)
+            err(
+              `${p}.bruch`,
+              `Posten „${label}“ hat bruch, aber keinen dough; ein Bruch kommt immer aus einem Teig (dough: { id }, die id darf null sein).`
+            )
+          validateBruchG(b, `${p}.bruch`, label, daySet, {
+            err,
+            warn,
+            markOpen,
+          })
+          if (isSet(b, 'per_product') && !isPositiveInt(b.per_product))
+            err(
+              `${p}.bruch.per_product`,
+              'per_product (Teigstücke je Brötchen) muss eine positive ganze Zahl sein.'
+            )
+          if (isSet(b, 'pieces')) {
+            if (b.pieces === null)
+              markOpen(
+                `${p}.bruch.pieces`,
+                'bruch_pieces_unknown',
+                `Posten „${label}“: Stück je Bruch sind noch offen – Brüche werden nicht berechnet.`
+              )
+            else if (!isPositiveInt(b.pieces))
+              err(
+                `${p}.bruch.pieces`,
+                'bruch.pieces (Teigstücke je Druck) muss eine positive ganze Zahl oder null sein.'
+              )
+          } else {
+            needsTopLevelPieces = true
+          }
+          if (isSet(b, 'group') && b.group !== null && !isSlug(b.group))
+            err(`${p}.bruch.group`, 'group muss ein Slug sein.')
+          const ownPieces = isSet(b, 'pieces') ? b.pieces : obj.bruch_pieces
+          bruchMembers.push({
+            p,
+            label,
+            group: isSlug(b.group) ? b.group : label,
+            dough:
+              isPlainObject(item.dough) && typeof item.dough.id === 'string'
+                ? item.dough.id
+                : null,
+            g: JSON.stringify(normalizeBruchG(b.g)),
+            pieces: isPositiveInt(ownPieces) ? ownPieces : null,
+            lead: JSON.stringify(normalizeLead(item.lead)),
+            section: item.section,
+          })
+        }
+      }
+
+      // from_dough (Z10): Anteil an einem anderen Teig (Kerbricher-Muster)
+      if (isSet(item, 'from_dough') && item.from_dough !== null) {
+        validateFromDough(item.from_dough, `${p}.from_dough`, label, {
+          hasSizes,
+          doughIds,
+          err,
+          warn,
+          markOpen,
+        })
+      }
+
+      // filling_g - Z10: schon der Schluessel macht den Posten gefuellt;
+      // `null` (ganz oder je Variante) heisst „Gramm unbekannt“.
+      const hasFilling = isSet(item, 'filling_g')
+      if (hasFilling) {
         if (variants.length === 0) {
           err(
             `${p}.filling_g`,
             `Posten „${label}“ hat filling_g, aber keine variants (Füllungen).`
           )
         }
-        if (isPlainObject(item.filling_g)) {
+        if (item.filling_g === null) {
+          markOpen(
+            `${p}.filling_g`,
+            'filling_g_unknown',
+            `Posten „${label}“: Füllungsgramm ist noch offen – der Füllungsbedarf steht nur in Stück.`
+          )
+        } else if (isPlainObject(item.filling_g)) {
           for (const [v, g] of Object.entries(item.filling_g)) {
             if (!variantSet.has(v))
               err(
                 `${p}.filling_g.${v}`,
                 `Variante „${v}“ steht nicht in variants.`
               )
-            if (g !== null && !isPositiveNumber(g))
+            if (g === null) {
+              if (variantSet.has(v))
+                markOpen(
+                  `${p}.filling_g.${v}`,
+                  'filling_g_unknown',
+                  `Posten „${label}“, Sorte „${v}“: Füllungsgramm ist noch offen.`
+                )
+            } else if (!isPositiveNumber(g))
               err(`${p}.filling_g.${v}`, 'Füllungsgramm muss größer 0 sein.')
           }
         } else if (!isPositiveNumber(item.filling_g)) {
@@ -590,7 +1384,6 @@ function validateBackzettelConfig(obj, options) {
           )
         }
       }
-      const hasFilling = item.filling_g !== undefined && item.filling_g !== null
       if (item.base !== undefined && item.base !== null) {
         if (!isPlainObject(item.base)) {
           err(`${p}.base`, 'base muss eine Zuordnung Wochentag → Menge sein.')
@@ -610,7 +1403,7 @@ function validateBackzettelConfig(obj, options) {
             }
             if (value === null) continue
             if (isPlainObject(value)) {
-              if (variants.length === 0) {
+              if (variantSet.size === 0) {
                 err(
                   bp,
                   `Posten „${label}“ hat keine variants; base braucht hier eine Zahl.`
@@ -619,10 +1412,21 @@ function validateBackzettelConfig(obj, options) {
               }
               for (const [v, q] of Object.entries(value)) {
                 if (!variantSet.has(v))
-                  err(`${bp}.${v}`, `Variante „${v}“ steht nicht in variants.`)
+                  err(
+                    `${bp}.${v}`,
+                    `${variantWord.one} „${v}“ steht nicht in ${variantWord.list}.`
+                  )
                 if (q !== null) checkQty(`${bp}.${v}`, q)
               }
             } else {
+              if (isSizeItem) {
+                // Sonst landet die Tagesmenge auf einer Zeile ohne Groesse.
+                err(
+                  bp,
+                  `Posten „${label}“ hat Größen (sizes); die Grundmenge braucht eine Menge je Größe, z. B. { ${sizeIds[0]}: ${value} }.`
+                )
+                continue
+              }
               if (hasFilling) {
                 // Sonst landet die ganze Tagesmenge auf der Zeile ohne
                 // Variante und faellt aus dem Fuellungsbedarf.
@@ -651,6 +1455,46 @@ function validateBackzettelConfig(obj, options) {
         )
       }
     })
+  }
+
+  // --- Z10: Teigtage, Stück je Bruch, Bruch-Gruppen ----------------------
+  const hasDoughDays = isSet(obj, 'dough_days') && obj.dough_days !== null
+  if (anyLead && !hasDoughDays) {
+    warn(
+      'dough_days',
+      'Teigtage (dough_days) fehlen; es gelten alle Produktionstage (days) als Teigtage.'
+    )
+  }
+  if (needsTopLevelPieces && !isSet(obj, 'bruch_pieces')) {
+    warn(
+      'bruch_pieces',
+      'bruch_pieces (Teigstücke je Druck der Teigteilmaschine) fehlt; Brüche werden nicht berechnet.'
+    )
+  }
+  const groups = new Map()
+  for (const m of bruchMembers) {
+    if (!groups.has(m.group)) groups.set(m.group, [])
+    groups.get(m.group).push(m)
+  }
+  for (const [group, members] of groups) {
+    const first = members[0]
+    for (const m of members.slice(1)) {
+      const diff = []
+      if (m.dough !== first.dough) diff.push('Teig')
+      if (m.g !== first.g) diff.push('Bruchgewicht')
+      if (m.pieces !== first.pieces) diff.push('Stück je Bruch')
+      if (m.lead !== first.lead) diff.push('lead')
+      if (m.section !== first.section) diff.push('Abschnitt')
+      if (diff.length > 0)
+        err(
+          `${m.p}.bruch.group`,
+          `Posten „${m.label}“ teilt die Bruch-Gruppe „${group}“ mit „${
+            first.label
+          }“, weicht aber ab bei: ${diff.join(
+            ', '
+          )}. Eine Gruppe teilt sich Brüche nur mit gleichem Teig, Bruchgewicht, Stück je Bruch, lead und Abschnitt.`
+        )
+    }
   }
 
   // --- prep ---------------------------------------------------------------
@@ -758,7 +1602,7 @@ function validateBackzettelConfig(obj, options) {
     }
   }
 
-  return { ok: errors.length === 0, errors, warnings }
+  return { ok: errors.length === 0, errors, warnings, open }
 }
 
 function toWeekdayMap(value, mapValue) {
@@ -772,22 +1616,66 @@ function toWeekdayMap(value, mapValue) {
   return out
 }
 
+function normalizeRounding(value) {
+  return isPlainObject(value) &&
+    isPositiveNumber(value.step) &&
+    ROUNDING_MODES.includes(value.mode)
+    ? { step: value.step, mode: value.mode }
+    : null
+}
+
+function positiveOrNull(value) {
+  return isPositiveNumber(value) ? value : null
+}
+
 /**
  * Bringt eine (gepruefte) Konfiguration in eine feste Form: Standardwerte
  * gesetzt, Wochentage als Zahl-Schluessel, Listen statt `undefined`.
  * Idempotent - `normalizeConfig(normalizeConfig(x))` ist gleich.
+ *
+ * Z10 (docs/backzettel-v2.md §2): `dough_days` (ohne Angabe = `days`),
+ * `bruch_pieces`; je Teig `kg_per_liter`, `liter_rounding`, `combined_with`,
+ * `combined_name`, `addons`; je Posten `sizes` (`[]` ohne; je Groesse
+ * `{ id, label, dough_g, plu }`, `plu` `null` = unbekannt), `variantKind`
+ * (`'size'` | `'filling'` | `null`), `lead` (`{ default, <Wochentag>: n }`),
+ * `bruch` (`{ g: { default, <Wochentag>: g }, per_product, group,
+ * piecesPerBruch }` oder `null`), `from_dough` und `products[].size`. Bei
+ * einem Posten mit Groessen sind `variants` die Groessen-IDs. Offene Werte
+ * bleiben `null`.
+ *
+ * `filling_g`: in der YAML macht schon der Schluessel den Posten gefuellt
+ * (`null` = Gramm unbekannt → je Variante `null`). In der normalisierten
+ * Form heisst `filling_g: null` dagegen „nicht gefuellt“; sie erkennt man am
+ * Feld `variantKind`, das nur die Normalisierung setzt.
  */
 function normalizeConfig(obj) {
   const src = isPlainObject(obj) ? obj : {}
   const sections = Array.isArray(src.sections)
     ? src.sections.filter((s) => SECTIONS.includes(s))
     : []
+  const days = Array.isArray(src.days) ? [...src.days] : []
+  const bruchPieces = isPositiveInt(src.bruch_pieces) ? src.bruch_pieces : null
   const doughs = (Array.isArray(src.doughs) ? src.doughs : [])
     .filter(isPlainObject)
     .map((d) => ({
       id: d.id,
       name: typeof d.name === 'string' && d.name.trim() ? d.name : d.id,
       batch_max_kg: isPositiveNumber(d.batch_max_kg) ? d.batch_max_kg : null,
+      kg_per_liter: positiveOrNull(d.kg_per_liter),
+      liter_rounding: normalizeRounding(d.liter_rounding),
+      combined_with:
+        typeof d.combined_with === 'string' && d.combined_with !== d.id
+          ? d.combined_with
+          : null,
+      combined_name: isText(d.combined_name) ? d.combined_name : null,
+      addons: (Array.isArray(d.addons) ? d.addons : [])
+        .filter(isPlainObject)
+        .map((a) => ({
+          id: a.id,
+          name: isText(a.name) ? a.name : a.id,
+          g_per_liter: positiveOrNull(a.g_per_liter),
+          rounding: normalizeRounding(a.rounding),
+        })),
     }))
   const fillings = (Array.isArray(src.fillings) ? src.fillings : [])
     .filter(isPlainObject)
@@ -801,17 +1689,68 @@ function normalizeConfig(obj) {
   const items = (Array.isArray(src.items) ? src.items : [])
     .filter(isPlainObject)
     .map((item) => {
-      const variants = Array.isArray(item.variants) ? [...item.variants] : []
+      const normalizedInput = hasOwn(item, 'variantKind')
+      const sizes = (Array.isArray(item.sizes) ? item.sizes : [])
+        .filter((s) => isPlainObject(s) && isSizeId(s.id))
+        .map((s) => ({
+          id: s.id,
+          label: isText(s.label) ? s.label : s.id,
+          dough_g: positiveOrNull(s.dough_g),
+          // Z10 §9 Punkt 10: Kassennummern der Groesse, `null` = unbekannt
+          plu: Array.isArray(s.plu) ? s.plu.filter(isPositiveInt) : null,
+        }))
+      const variants =
+        sizes.length > 0
+          ? sizes.map((s) => s.id)
+          : Array.isArray(item.variants)
+          ? [...item.variants]
+          : []
+      const variantKind =
+        sizes.length > 0 ? 'size' : variants.length > 0 ? 'filling' : null
+      const filled = normalizedInput
+        ? isPlainObject(item.filling_g)
+        : isSet(item, 'filling_g')
       let fillingG = null
-      if (isPlainObject(item.filling_g)) {
+      if (filled) {
         fillingG = {}
         for (const v of variants) {
-          const g = item.filling_g[v]
+          const g = isPlainObject(item.filling_g)
+            ? item.filling_g[v]
+            : item.filling_g
           fillingG[v] = isPositiveNumber(g) ? g : null
         }
-      } else if (isPositiveNumber(item.filling_g)) {
-        fillingG = {}
-        for (const v of variants) fillingG[v] = item.filling_g
+      }
+      let bruch = null
+      if (isPlainObject(item.bruch)) {
+        const b = item.bruch
+        // eigenes `pieces` (YAML) bzw. `piecesPerBruch` (schon normalisiert)
+        // vor dem `bruch_pieces` der Datei
+        const pieces = hasOwn(b, 'pieces')
+          ? b.pieces
+          : hasOwn(b, 'piecesPerBruch')
+          ? b.piecesPerBruch
+          : bruchPieces
+        bruch = {
+          g: normalizeBruchG(b.g),
+          per_product: isPositiveInt(b.per_product) ? b.per_product : 1,
+          group: isSlug(b.group) ? b.group : item.id,
+          piecesPerBruch: isPositiveInt(pieces) ? pieces : null,
+        }
+      }
+      let fromDough = null
+      if (isPlainObject(item.from_dough)) {
+        const f = item.from_dough
+        fromDough = {
+          id: typeof f.id === 'string' ? f.id : null,
+          mode: FROM_DOUGH_MODES.includes(f.mode) ? f.mode : null,
+          dough_kg: positiveOrNull(f.dough_kg),
+          extras: (Array.isArray(f.extras) ? f.extras : [])
+            .filter(isPlainObject)
+            .map((x) => ({
+              name: isText(x.name) ? x.name : '',
+              kg: positiveOrNull(x.kg),
+            })),
+        }
       }
       let tray = null
       if (isPlainObject(item.tray)) {
@@ -838,14 +1777,20 @@ function normalizeConfig(obj) {
           .map((p) => ({
             id: p.id,
             factor: p.factor === undefined ? 1 : p.factor,
+            size: typeof p.size === 'string' ? p.size : null,
           })),
         plu: Array.isArray(item.plu) ? [...item.plu] : [],
         variants,
         dough: isPlainObject(item.dough)
           ? {
-              id: item.dough.id,
-              piece_g: item.dough.piece_g,
-              pieces: item.dough.pieces === undefined ? 1 : item.dough.pieces,
+              id: typeof item.dough.id === 'string' ? item.dough.id : null,
+              piece_g: positiveOrNull(item.dough.piece_g),
+              pieces:
+                item.dough.pieces === undefined
+                  ? 1
+                  : isPositiveInt(item.dough.pieces)
+                  ? item.dough.pieces
+                  : null,
             }
           : null,
         filling_g: fillingG,
@@ -855,6 +1800,11 @@ function normalizeConfig(obj) {
           ? item.pieces_per_liter
           : null,
         note: typeof item.note === 'string' ? item.note : null,
+        sizes,
+        variantKind,
+        lead: normalizeLead(item.lead),
+        bruch,
+        from_dough: fromDough,
       }
     })
   const prep = (Array.isArray(src.prep) ? src.prep : [])
@@ -890,13 +1840,32 @@ function normalizeConfig(obj) {
     })
   return {
     version: src.version,
-    days: Array.isArray(src.days) ? [...src.days] : [],
+    days,
     sections,
     items,
     doughs,
     fillings,
     prep,
+    dough_days: Array.isArray(src.dough_days) ? [...src.dough_days] : [...days],
+    bruch_pieces: bruchPieces,
   }
+}
+
+/**
+ * Anzeigename einer Variante: Groesse (`sizes[].label`, „500 g“) → Fuellung
+ * (`fillings[].name`, „Nussfüllung“) → ID mit grossem Anfangsbuchstaben.
+ * `null` fuer „keine Variante“. Fuer alle, die eine Zeile beschriften.
+ */
+function variantDisplayName(cfg, item, variant) {
+  if (variant === null || variant === undefined || variant === '') return null
+  const sizes = item && Array.isArray(item.sizes) ? item.sizes : []
+  const size = sizes.find((s) => isPlainObject(s) && s.id === variant)
+  if (size) return isText(size.label) ? size.label : size.id
+  const fillings = cfg && Array.isArray(cfg.fillings) ? cfg.fillings : []
+  const filling = fillings.find((f) => isPlainObject(f) && f.id === variant)
+  if (filling && isText(filling.name)) return filling.name
+  const text = String(variant)
+  return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
 module.exports = {
@@ -906,8 +1875,15 @@ module.exports = {
   INTEGER_UNITS,
   WEEKDAY_NAMES,
   RECIPE_DIR,
+  MAX_LEAD,
+  ROUNDING_MODES,
+  FROM_DOUGH_MODES,
   isSlug,
+  isSizeId,
   isSafeRecipePath,
   validateBackzettelConfig,
   normalizeConfig,
+  normalizeLead,
+  normalizeBruchG,
+  variantDisplayName,
 }

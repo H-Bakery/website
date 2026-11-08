@@ -25,6 +25,11 @@ export interface CorrectionEditorProps {
   onCancel: () => void
   /** Eindeutiger Präfix, weil Tabelle und Kartenliste beide gerendert sind. */
   idPrefix: string
+  /**
+   * Vorbelegung statt der gespeicherten Korrektur (Z10: „+1 Bruch“ trägt
+   * die Korrektur + ein Bruch ein; der Grund bleibt Pflicht).
+   */
+  initialCorrection?: number
 }
 
 /**
@@ -39,10 +44,13 @@ export function CorrectionEditor({
   onSave,
   onCancel,
   idPrefix,
+  initialCorrection,
 }: CorrectionEditorProps) {
-  const [value, setValue] = React.useState(
-    line.correction ? formatNumber(line.correction) : ''
-  )
+  const [value, setValue] = React.useState(() => {
+    const start =
+      initialCorrection !== undefined ? initialCorrection : line.correction
+    return start ? formatNumber(start).replace(/\./g, '') : ''
+  })
   const [reason, setReason] = React.useState(line.correctionReason ?? '')
   const [error, setError] = React.useState<string | null>(null)
   const [saving, setSaving] = React.useState(false)

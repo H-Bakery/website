@@ -31,11 +31,11 @@ configChangedSinceConfirm }` (`configChangedSinceConfirm` only on confirmed days
 `null` without valid master data). `prepDateProvisional` is `true` when d−1 is not a production
 day (Tuesday after the Monday Ruhetag, Q-B2 open), `null` without master data. A line is the core
 line plus `id` (row id, or null in a draft without a stored row), `correctionBy`, `doneAt`,
-`doneBy`, `previouslyDone`, `delta { qty, open, count } | null`. `variant` is `null` for "none" in
+`doneBy`, `previouslyDone`, `bakedAt`, `bakedBy`, `previouslyBaked` (O5, Z10 section), `delta { qty, open, count } | null`. `variant` is `null` for "none" in
 JSON, `''` in the tables and in the URL (omit the segment).
 
 **Errors:** 400 `invalid_date` / `validation` / `reason_required` / `date_out_of_range`, 404
-`unknown_item` / `unknown_variant` / `not_found`, 409 `ruhetag` (weekday not in `config.days`),
+`unknown_item` / `unknown_variant` / `not_found` / `not_on_bake_list` (O5, bake ticks), 409 `ruhetag` (weekday not in `config.days`),
 `no_config` (with `reasons`), `confirmed`, `not_confirmed`, `season_changed`,
 `correction_changed`, `line_changed`.
 
@@ -79,7 +79,9 @@ screen showed, and the server refuses instead of overwriting:
   `{preorderId, productId, variant, qty}`) and `computed_snapshot`
   (`{ hefeteig, fillings, prep, warnings, unsetKeys, preordersExact }` exactly as the core computed
   them; `unsetKeys` = line keys with `baseUnset`, which `frozenSections` restores so a confirmed
-  line with an unset base still reads „offen", not 0), discards old deltas. **Ticks** survive a
+  line with an unset base still reads „offen", not 0), discards old deltas. Dough-day lines
+  (draft and confirmed) carry `totalIsMinimum` (base open, no correction: `total` is only the
+  known part - preorders, CAP); so do `bread` cells, `rolls` singles and Bruch `split` members. **Ticks** survive a
   re-confirm when the line's `base/seasonal/preorders/cap/total` are unchanged
   (`frozenQtyChanged`) or the new total is not larger (`tickStillValid`: baked 14, now 12 needed is
   done); otherwise `doneAt`/`doneBy` are cleared and listed as `clearedTicks` in the confirm audit
@@ -127,8 +129,8 @@ screen showed, and the server refuses instead of overwriting:
   keeps them), corrections and ticks stay (see Confirm for stale ticks). Confirm and reopen also
   trigger the hq snapshot writer (see [hq-products.md](hq-products.md), Z9).
 - **Audit** (`audit_log`): `season`, `correction`, `confirm`, `reopen`, `deltas_recorded` on
-  `backzettel_day`/date; `line_done`/`line_undone` on `backzettel_line`; `delta_ack` on
-  `backzettel_delta`. No-op writes (same value, already ticked/acked) are not audited.
+  `backzettel_day`/date; `line_done`/`line_undone`, `line_baked`/`line_unbaked` (O5) on
+  `backzettel_line`; `delta_ack`, `delta_baked`/`delta_unbaked` (O5) on `backzettel_delta`. No-op writes (same value, already ticked/acked) are not audited.
 - Migration `20261112000000-backzettel-z3.js` (additive): `backzettel_days.preorder_snapshot`,
   `backzettel_days.computed_snapshot`, `backzettel_lines.name/section/unit`,
   `backzettel_deltas.kind/acknowledged_at/acknowledged_by`.
@@ -140,16 +142,164 @@ for the delta tests, written through `POST/PATCH /api/preorders`, cancel and bul
 edit/move/cancel after confirm, parallel GETs record nothing, idempotent reconcile, broken config →
 reconcile after repair).
 
+## Dough-day sheets and bake list (Z10, slice S3)
+
+Consumers (S5/S6): the management app renders a `sheetVersion: 2` day as the one-page dough-day print
+(`DoughDayPrint.tsx`) and `GET /:date/bake-list` as the bake-list print (`BakeListPrint.tsx`); both
+show the server's numbers as they are (`null` stays "–", nothing is summed in the app). Rules:
+[`docs/domains/backzettel.md`](../domains/backzettel.md), „Tagesplanung und Druck".
+
+Design: [../backzettel-v2.md](../backzettel-v2.md) §5. A day is now the **sheet of a dough day D**
+(`core.computeDoughDay`): the lead-0 lines baked on D plus the lines whose dough is made on D for a
+later bake day (Saturday: Sunday's and Tuesday's rolls). With today's hq file (no `lead`, no
+`dough_days`) every line has `bakeDate === date` and the answer is the v1 day plus additive fields.
+
+| Endpoint                                           | Who                | Change                                                                                                                                                                                                                                                                                                                                        |
+| -------------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /config`                                      | any session        | + `open` and `working.open`: open master data `[{ path, code, message }]` (explicit `null`s, §3)                                                                                                                                                                                                                                              |
+| `GET /:date`                                       | any session        | + `sheetVersion` (2; 1 = confirmed before Z10), `isDoughDay`, `bakeDates[{ date, weekday, weekdayName, label, lineCount }]`, `plan`, `doughs`, `machine`, `bread`, `rolls`, `openMasterData`; lines + `bakeDate`, `doughDate`, `lead`, `variantKind`, `variantLabel`, `bruch?`; deltas + `bakeDate`; confirmed + `deltaMachine`, `deltaBruch` |
+| `GET /:date/bake-list`                             | any session        | **new**: `{ date, weekday, weekdayName, status: ok \| no-config \| ruhetag, sources[{ doughDate, status: draft \| confirmed, confirmedAt, lineCount }], sections, rolls, deltas, deltasPending, warnings }` - no dough figures                                                                                                                |
+| `PUT /:date/lines/:itemId[/:variant]/correction`   | inhaber, backstube | + optional `bakeDate` (default `date`): must be a bake day of the sheet on which the item is made from this sheet's dough → else 400 `invalid_bake_date`; a pair another confirmed sheet holds → 409 `owned_elsewhere` (`sheetDate`)                                                                                                          |
+| `POST /:date/lines/:lineId/done`, `…/deltas/…/ack` | inhaber, backstube | answers + `bakeDate`; on a lead > 0 line "done" means **made** - baked is its own tick on the bake list (next rows, O5)                                                                                                                                                                                                                       |
+| `POST /:date/bake/:lineId/baked` / `/unbaked`      | inhaber, backstube | **new (O5, 2026-11-08)**: „gebacken“ for one row of the bake list of `:date` (row id as for done); `{ expectedTotal? }` → `{ id, date, bakeDate, itemId, variant, bakedAt, bakedBy }`                                                                                                                                                         |
+| `POST /:date/bake/deltas/baked` / `/unbaked`       | inhaber, backstube | **new (O5)**: „gebacken“ for Nachträge `{ ids: [...] }` (1-500, all or nothing) → the deltas with `bakedAt`, `bakedBy`, `acknowledgedAt`, `acknowledgedBy`; baked also acknowledges                                                                                                                                                           |
+
+- **Line keys:** `itemId|variant` when `bakeDate === date` (all v1 keys stay valid), else
+  `itemId|variant@bakeDate`. Rows are looked up by (sheet date, bake date, item, variant).
+- **Inputs per bake day:** preorders with `pickup_date` in `bakeDatesFor(D)` (status ≠ storniert;
+  snapshot entries carry `pickupDate`), CAP templates of each bake day's weekday, D's season factor
+  and the corrections with their `bakeDate`.
+- **Confirm** freezes the rows per (bake date × item × variant), `computed_snapshot` v2
+  (`sheetVersion: 2`, `plan`, `bakeDates`, `doughs`, `machine`, `bread`, `rolls`,
+  `openMasterData` besides the v1 fields) and the preorder snapshot of the plan's bake days. Tick
+  rules unchanged, per row.
+- **Confirmed view:** v2 parts come from the snapshot. A snapshot **without `plan`** is a day
+  confirmed before Z10: `sheetVersion: 1`, `plan = legacyPlan(date)` (every item of that date),
+  no `doughs`/`machine`/`bread`/`rolls`, lines with `lead: 0` - the screens keep the v1 layout.
+  `configChangedSinceConfirm` recomputes the way the day was computed (`sheetParts` for v2, v1
+  `computeHefeteig` for old days) and compares it with the snapshot (`snapshotDiffers`, key-order
+  independent `stableJson`): v1 days Hefeteig, fillings and prep as before; v2 sheets also
+  `doughs`, `machine`, `bread`, `rolls`, `openMasterData` and the plan (`planDrift`: the bake days
+  the dough day feeds, frozen pairs whose dough day moved via `lead`/`dough_days` or whose item
+  is gone (adopted items excepted), and pairs the master data now _newly_ put on this dough day
+  (`added`)). `added` leaves out pairs another confirmed sheet holds now (`ownedPairs` - a
+  recompute would skip them too), pairs another sheet held at confirm (`owned_elsewhere` in the
+  snapshot - reopening that sheet changes ownership, not master data) and items added to hq after
+  the confirm (not in `knownItems`; `planCovers` already gives them to the sheet). So
+  `kg_per_liter`, liter rounding, add-ons, `combined_with`, Bruch weight/pieces, size `dough_g`,
+  `from_dough`, a swap back to v1 master data and a `lead` that moves an item onto the sheet all
+  show.
+  `deltaExtras` keeps its v1 shape; `deltaMachine` lists the machine boxes a Nachtrag changes (v2 only, `machineDeltaExtras`), `deltaBruch` the Bruch groups
+  whose dough pieces change (`bruchDeltaExtras`: pieces, Brüche and free pieces before/after,
+  `bruecheDelta` `null` while Stück je Bruch or a base is open) - "1 Bruch mehr" or "passt in die
+  freien Stücke". Planning screen, tablet and print show both as one note under the Nachträge.
+- **Ownership (§5.4):** a (bake date, item) pair belongs to the confirmed sheet whose frozen plan
+  holds it (`ownedPairs`, confirmed sheets within ±14 days). A draft never recomputes such a pair
+  (core warning `owned_elsewhere`); a correction on it is 409 `owned_elsewhere`. Reopen clears the
+  plan, the pairs are free again. So a Tuesday confirmed before hq moves the rolls to `lead: 1`
+  keeps them and the Saturday draft does not count them twice. A v2 plan also freezes
+  `knownItems` (the item ids at confirm): an item added to hq later whose dough day is that sheet
+  is covered by it (`planCovers`), so its preorders become Nachträge there, as in v1.
+- **Orphans (transition, `core.transitionFor`):** a (bake date B, item) whose dough day per the
+  current master data is a confirmed sheet that does not hold it, and that no other confirmed plan
+  holds (`planCore.orphanedItems`), would be on no sheet - e.g. a legacy Tuesday reopened after
+  Saturday's v2 confirm, or hq switched to `lead: 1` after Saturday was confirmed. **B's own
+  draft adopts it**: the line stands on B's sheet with `doughDate = B`, `lead: 0`,
+  `adopted: true`, warning `adopted_orphans` (names the dough-day sheet, says to reopen it if the
+  dough should be made there); corrections stored on B count; confirming B freezes it into B's
+  plan. The confirmed dough-day sheet says `moved_to_bake_day`. If B's sheet is confirmed too, the
+  pair is on no sheet: `not_on_confirmed_sheet` on both sheets (`GET /:date`) and on the bake list.
+  A stored correction for a pair the sheet no longer holds is warned (`correction_not_on_sheet`,
+  „fällt beim Freigeben weg"), never dropped silently.
+- **Deltas by dough day:** the preorder write hook records on every confirmed sheet whose frozen
+  plan bakes on a touched pickup day (`confirmedSheetsFor`), each reconciled with **its own** plan
+  (`reconcileDeltas({ plan })`, `legacyPlan` for old days, so an old Tuesday still sees its rolls).
+  A Tuesday-roll preorder after Saturday's confirm is a delta row `date = Saturday`,
+  `bake_date = Tuesday`, none on Tuesday's sheet; `preorderMovedTo` compares with the delta's bake
+  day. `reconcileConfirmedDays({ from })` also covers sheets up to 14 days before `from` whose plan
+  bakes on or after it. `deltasPending` and the background catch-up work per plan as before.
+- **Bake list** (`getBakeList`): sources = confirmed sheets whose plan bakes on B (lines from the
+  rows, with ticks = made, baked ticks and Nachträge) + the dough days of the current master data that are still
+  drafts (live, without owned pairs; a draft without a line for B is not listed). Lines carry
+  `doughDate`, `sheetStatus` and `madeOn` („Teig vom Samstag" / „Teig von heute"). Orphans
+  (above) come from B's own draft, which is then a source even if no item is lead 0 on B; if B is
+  confirmed too, warning `not_on_confirmed_sheet` - never silently dropped. Ruhetag answers
+  `status: 'ruhetag'` (200) with empty lists. `configStatus: 'ok'`. **Without loadable master
+  data** the bake list is built from the confirmed sheets whose frozen plan bakes on B (lines and
+  frozen `rolls`), `configStatus: 'no-config'`, `deltasPending: null`, warning `no_config`
+  („Was noch im Entwurf ist, fehlt hier"); with no such sheet it stays `status: 'no-config'`.
+- **„gebacken“ tick (owner decision O5, 2026-11-08):** the bake list has its own tick per row,
+  stored apart from „done“ (`backzettel_lines.baked_at/_by`; on a lead > 0 line „done“ stays
+  **made** on the dough-day sheet). Every line view (sheet and bake list) carries `bakedAt`,
+  `bakedBy {id, displayName}` and, confirmed only, `previouslyBaked { qty, at, by }`; a draft shows
+  a baked tick only while `tickStillValid` holds, like done. Rules of `POST /:date/bake/:lineId/baked`
+  (`:date` = the bake day, the list the tablet shows):
+  - malformed date 400 `invalid_date`, malformed id 400 `validation`, unknown row 404 `not_found`
+    (re-confirmed meanwhile - the tablet reloads);
+  - the row is baked on another day: 404 `not_on_bake_list` (+ `bakeDate`);
+  - its sheet (the dough day, `row.date`) is not confirmed: 409 `not_confirmed` (+ `doughDate`,
+    message names the sheet) - a draft line can still change, as for done;
+  - `expectedTotal` lower than the row's total now: 409 `line_changed` (same as done);
+  - independent of „done“: neither tick sets or needs the other. Idempotent; no-ops not audited.
+    **Nachträge** are ticked on their own (`backzettel_deltas.baked_at/_by`), never through their
+    line: `POST /:date/bake/deltas/baked { ids }` (the tablet sends one line's Nachträge at once);
+    a gone id is 404 `not_found` (`DELTA_GONE_MESSAGE`), one for another bake day 404
+    `not_on_bake_list`, nothing changes then. Nachträge exist only on confirmed sheets, so there is
+    no draft case. Baked implies seen: an unacknowledged Nachtrag is acknowledged in the same write
+    (`dayCore.deltaBakedUpdate`, audit `acknowledged: true`); unbaked keeps „Gesehen“. Per line,
+    `delta` gains `baked` (count), `bakedQty` and `bakeUnbaked` (the oven figure of the Nachträge not
+    yet ticked, rounded like `bakeOpen`). **Survival** follows the done rules per row
+    (`dayCore.ticksAfterConfirm` = `tickStillValid` for both ticks, each on its own): a re-confirm
+    that asks for more clears the baked tick and lists it as `clearedBakedTicks` in the confirm
+    audit (→ `previouslyBaked`); a deleted row takes its tick along; reopen and re-confirm discard
+    the Nachträge (they are folded into the lines), but not what was baked of them: reopen stores
+    per line the oven figure of the Nachträge ticked baked (audit `bakedDeltas` - `deltaBakeExtras`
+    of the baked quantity, never below 0 - and `baked` on each `discardedDeltas` entry); the draft
+    view and the next confirm read the latest reopen audit and count it as baked
+    (`dayCore.bakedAfterConfirm`: the row's own tick at its old total plus that figure). Enough for
+    the new total: the tick stays, or is set from the Nachträge (confirm audit `bakedFromDeltas`);
+    otherwise `clearedBakedTicks` gets `from` = all that was baked (`fromDeltas` = the Nachträge'
+    part) → `previouslyBaked`. The draft view carries `previouslyBaked` for such lines too. **Z9 snapshots** carry neither
+    tick (written at confirm, who ticked is personal - D13): `schema_version` stays 2.
+- **`getBakeLines(B, { light })`** (service only, for Rest am Abend, S4): the bake-list lines as one
+  day view `{ date, status, sources, sections, deltas, deltaTotals }`; `status: 'confirmed'` only
+  when every source with lines for B is confirmed; `deltaTotals` keyed `itemId|variant` (summed
+  when two sheets hold Nachträge for the same item on B); `null` without master data or on a
+  Ruhetag. Rest am Abend reads it since S4; `getBakeLinesRange(dates, { light })` does the same
+  for many days with the confirmed sheets loaded once (summary, averages) and returns only days
+  that some confirmed sheet bakes on. `getConfirmedLines` (the day's own sheet) is left for the
+  case without master data.
+- **Migration** `20270201000000-backzettel-dough-day.js`: `backzettel_lines.bake_date` and
+  `backzettel_deltas.bake_date` (DATEONLY NOT NULL DEFAULT `''`, backfilled `= date`), unique index
+  `backzettel_lines_date_bake_item_variant (date, bake_date, item_id, variant)` instead of
+  `backzettel_lines_date_item_variant`, indexes on `bake_date`. `down()` restores the old index and
+  refuses while a line has `bake_date <> date`. Models: `BackzettelLine.bakeDate`,
+  `BackzettelDelta.bakeDate` (always written by the service).
+- **Migration** `20270210000000-backzettel-baked.js` (O5): `baked_at` DATE and `baked_by` (FK
+  `users`, ON DELETE SET NULL) on `backzettel_lines` and `backzettel_deltas`, nullable, nothing
+  backfilled; `down()` drops them in place. Models: `bakedAt`, `bakedBy`.
+- **Preorders:** `preorder-variants.ts` passes the size of a size product (`variants: []` +
+  `size`); the entry form asks for no Sorte, the preorder stores `variant: ''`, the core puts it on
+  its size.
+
+Tests: `tests/integration/backzettelV2.test.ts` (synthetic hq from `configV2()`: Saturday sheet with
+Sunday/Tuesday rolls, Sunday without dough, Monday 409, bake lists, corrections with `bakeDate`,
+Tuesday-roll delta on Saturday shown on Tuesday's bake list, transition from a Tuesday and a
+Saturday confirmed before Z10, roles, `getBakeLines`), `tests/integration/backzettelBaked.test.ts`
+(O5: baked ticks on rows and Nachträge, errors, roles, survival on reopen/re-confirm),
+`tests/migrations/pilotBaseline.test.ts` (backfill, index, a v1-confirmed day reads as before,
+idempotent, down; baked columns), `tests/unit/preorderVariants.test.ts`.
+
 ## Grundmengen (Z4): base write + reference
 
 Two additions to `/api/backzettel` (registered **before** `/:date`, which would otherwise read
 `reference` as a date). Both serve the management screen `/admin/backzettel/grundmengen`.
 
-| Endpoint                          | Who                | Body / answer                                                                                                                                                                                          |
-| --------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /config` (extended)          | any session        | Z3's answer (approved = what the day computes with) **plus** `pendingApproval`, `writable`, `writeIssue`, `working { status, config, errors, warnings }` (the write-worktree version a save builds on) |
-| `PUT /config/base`                | inhaber, backstube | `{ itemId, weekday, value }` or `{ itemId, weekday, variants: { <slug>: n \| null } }` → the `/config` view + `pending`, `changed`                                                                     |
-| `GET /reference?weekday=&weeks=6` | inhaber, backstube | `{ status, available, today, weeks, basis, weekdays: [{ weekday, weekdayName, weeks, dates, skippedDates, items: [{ itemId, plu, median, samples, status: ok \| no_plu \| no_data, converted }] }] }`  |
+| Endpoint                          | Who                | Body / answer                                                                                                                                                                                                 |
+| --------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /config` (extended)          | any session        | Z3's answer (approved = what the day computes with) **plus** `pendingApproval`, `writable`, `writeIssue`, `working { status, config, errors, warnings }` (the write-worktree version a save builds on)        |
+| `PUT /config/base`                | inhaber, backstube | `{ itemId, weekday, value }` or `{ itemId, weekday, variants: { <slug>: n \| null } }` → the `/config` view + `pending`, `changed`                                                                            |
+| `GET /reference?weekday=&weeks=6` | inhaber, backstube | `{ status, available, today, weeks, basis, weekdays: [{ weekday, weekdayName, weeks, dates, skippedDates, items: [{ itemId, plu, median, samples, status: ok \| no_plu \| no_data, converted, sizes? }] }] }` |
 
 Errors (`sendError`): 400 `validation` (with `errors` for new config errors), `invalid_weekday`
 (also a weekday not in `days`), `invalid_quantity` (negative, > 10000, not a number; `"1,5"` is
@@ -202,6 +352,13 @@ edit)`): `yaml.parseDocument` only to find node ranges, then a **splice** of the
   a product is `converted: true` and the median (2 decimals) in the item's unit; otherwise it stays
   pieces sold at the register (`converted: false`, 1 decimal) and the UI says "St.". Info only:
   nothing ever writes it into the config.
+- **Median per loaf size** (Z10, `docs/backzettel-v2.md` §9 point 10): an item with `sizes` also
+  gets `sizes: [{ sizeId, plu, median, samples, status, converted }]`, the same formula
+  (`soldReference`) over the size's own register numbers `sizes[].plu`. `status: unknown` when the
+  size has no PLU (missing or `null` in hq) - median `null`, never 0 and never a share of the
+  item; `no_data` / `ok` as for the item. The validator only accepts size PLUs that are in the
+  item's `plu` and each in one size, so the sizes never count anything the item does not. Items
+  without `sizes` have no `sizes` key (v1 answers unchanged).
 - **Bundling:** `yaml` ^2 is a root `dependency` and external like every other runtime package;
   `build.mjs` fails when the hoisted `yaml` is not 2.x.
 - The Z1 validator formats a fractional quantity with a decimal comma in its message

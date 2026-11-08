@@ -22,12 +22,15 @@ import {
   fetchBackzettelConfig,
   fetchBackzettelDay,
   isBackzettelDay,
+  isDoughDaySheet,
   type BackzettelConfigResponse,
+  type BackzettelDay,
   type BackzettelDayResult,
 } from '../../../lib/backzettelApi'
 import {
   describeProductionDays,
   formatDateLong,
+  formatDateShort,
   formatTimestamp,
   isIsoDate,
   nextProductionDay,
@@ -49,6 +52,32 @@ type DayEntry =
 
 function messageOf(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
+}
+
+/**
+ * Z10: für welche Backtage an diesem Tag Teig gemacht wird
+ * („Teig für heute, Sonntag, Dienstag“) - oder dass nur gebacken wird.
+ */
+export function doughForText(day: BackzettelDay): string | null {
+  if (!isDoughDaySheet(day)) return null
+  if (day.isDoughDay === false) {
+    // Kein Teigtag - aber Posten mit lead 0 werden trotzdem heute gemacht
+    // (Maschinen-Kästen vom Server). „Kein Teig“ nur, wenn es keine gibt.
+    const boxes = day.machine ?? []
+    if (boxes.length === 0) return 'Kein Teig – nur backen (Backliste)'
+    return `Teig für heute (${boxes
+      .map((b) => b.name)
+      .join(', ')}) – sonst nur backen (Backliste)`
+  }
+  const dates = (day.bakeDates ?? []).filter((b) => b.lineCount > 0)
+  if (dates.length === 0) return null
+  return `Teig für ${dates
+    .map((b) =>
+      b.date === day.date
+        ? 'heute'
+        : `${b.weekdayName || formatDateShort(b.date)}`
+    )
+    .join(', ')}`
 }
 
 function DaySummary({ entry }: { entry: DayEntry }) {
@@ -78,6 +107,7 @@ function DaySummary({ entry }: { entry: DayEntry }) {
   }
   const open = openDeltas(result).length
   const preorderLines = linesWithPreorders(result)
+  const doughFor = doughForText(result)
   return (
     <Stack spacing={0.5}>
       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -103,6 +133,11 @@ function DaySummary({ entry }: { entry: DayEntry }) {
           <Chip size="small" variant="outlined" label="Hefeteig" />
         )}
       </Stack>
+      {doughFor && (
+        <Typography variant="body2" data-testid={`dough-for-${result.date}`}>
+          {doughFor}
+        </Typography>
+      )}
       <Typography variant="body2" color="text.secondary">
         {preorderLines > 0
           ? `Vorbestellungen in ${preorderLines} ${
@@ -375,6 +410,21 @@ export default function BackzettelOverviewClient({
                   <DaySummary entry={entry} />
                 </Stack>
               </CardActionArea>
+              {entry.state === 'loaded' &&
+                isBackzettelDay(entry.result) &&
+                isDoughDaySheet(entry.result) && (
+                  <Box sx={{ px: 2, pb: 1.5 }}>
+                    <Button
+                      component={Link}
+                      href={`/admin/backzettel/${entry.date}/backen`}
+                      variant="text"
+                      aria-label={`Backliste ${formatDateLong(entry.date)}`}
+                      sx={{ minHeight: 44 }}
+                    >
+                      Backliste
+                    </Button>
+                  </Box>
+                )}
             </Card>
           ))}
         </Stack>

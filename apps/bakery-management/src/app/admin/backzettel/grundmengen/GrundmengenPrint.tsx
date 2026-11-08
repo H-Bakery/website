@@ -6,7 +6,7 @@ import {
   displayValue,
   groupBySection,
   isPerVariant,
-  referenceFor,
+  cellReference,
   variantLabel,
   WEEKDAY_SHORT,
   type GrundmengenConfig,
@@ -98,6 +98,7 @@ export default function GrundmengenPrint({
   const days = [...config.days].sort((a, b) => a - b)
   const sections = groupBySection(config)
   let anyChanged = false
+  let anyUnknown = false
   const showReference = Boolean(reference && reference.status === 'ok')
 
   const dayCells = (item: GrundmengenItem, variant: string | null) =>
@@ -111,10 +112,12 @@ export default function GrundmengenPrint({
         ? null
         : approvedValue(approved, item, wd, variant, value)
       if (was) anyChanged = true
-      const ref =
-        variant === null && showReference
-          ? referenceFor(reference, wd, item.id)
-          : null
+      // Z10: Laibgrößen-Zeilen mit dem Median der Größe (§9 Punkt 10)
+      const ref = showReference
+        ? cellReference(reference, wd, item, variant)
+        : null
+      if (ref?.status === 'unknown') anyUnknown = true
+      const refKey = `${item.id}${variant ? `-${variant}` : ''}-${wd}`
       return (
         <td key={wd} style={{ ...cellSx, textAlign: 'right' }}>
           {hidden ? (
@@ -132,11 +135,26 @@ export default function GrundmengenPrint({
               {was ? ` * (${printValue(was.value)})` : ''}
             </span>
           )}
-          {ref && ref.median !== null && (
-            <div style={{ fontSize: '7.5pt' }}>
-              ≈ {displayValue(ref.median)}
-              {item.unit === 'Stück' || ref.converted ? '' : ' St.'}
+          {ref && ref.status === 'unknown' ? (
+            // Größe ohne eigene Kassennummer: unbekannt, nie leer oder 0
+            // (wie am Bildschirm).
+            <div
+              style={{ fontSize: '7.5pt', fontStyle: 'italic' }}
+              data-testid={`print-reference-${refKey}`}
+            >
+              ≈ unbekannt
             </div>
+          ) : (
+            ref &&
+            ref.median !== null && (
+              <div
+                style={{ fontSize: '7.5pt' }}
+                data-testid={`print-reference-${refKey}`}
+              >
+                ≈ {displayValue(ref.median)}
+                {item.unit === 'Stück' || ref.converted ? '' : ' St.'}
+              </div>
+            )
           )}
         </td>
       )
@@ -170,7 +188,7 @@ export default function GrundmengenPrint({
           {item.variants.map((variant) => (
             <tr key={variant} style={{ breakInside: 'avoid' }}>
               <td style={{ ...cellSx, paddingLeft: '6mm' }}>
-                {variantLabel(config, variant)}
+                {variantLabel(config, variant, item)}
               </td>
               <td style={cellSx}>{item.unit}</td>
               {dayCells(item, variant)}
@@ -227,6 +245,9 @@ export default function GrundmengenPrint({
           '* geändert, wartet auf Freigabe in hq - in Klammern der freigegebene Wert, mit dem der Backzettel bis dahin rechnet. '}
         {showReference &&
           '≈ Median verkauft, letzte 6 gleiche Wochentage (in der Einheit des Postens, sonst „St.“ = Stück laut Kasse) - nur zur Information.'}
+        {showReference &&
+          anyUnknown &&
+          ' „≈ unbekannt“ = für diese Größe ist keine eigene Kassennummer hinterlegt (in den Stammdaten offen).'}
       </div>
     </div>
   )

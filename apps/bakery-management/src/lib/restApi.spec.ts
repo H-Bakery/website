@@ -1,6 +1,7 @@
 import {
   draftChanges,
   draftConflicts,
+  formatQtyUnit,
   formatRate,
   isIsoDate,
   loadDraft,
@@ -14,6 +15,7 @@ import {
   storeDraft,
   type RestDay,
 } from './restApi'
+import { formatQty } from './backzettelFormat'
 import { useMemoryStorage } from './testing/memoryStorage'
 
 const day: Pick<RestDay, 'lines'> = {
@@ -157,6 +159,13 @@ describe('restApi helpers', () => {
     expect(parsePadInput('1,5', false)).toBe(1.5)
     expect(parsePadInput('1,555', false)).toBeNaN()
     expect(parsePadInput('20000', true)).toBeNaN()
+  })
+
+  it('writes litres like the Backzettel („4,5 L“)', () => {
+    expect(formatQtyUnit(4.5, 'Liter')).toBe('4,5 L')
+    expect(formatQtyUnit(4.5, 'Liter')).toBe(formatQty(4.5, 'Liter'))
+    expect(formatQtyUnit(3, 'Stück')).toBe('3 St.')
+    expect(formatQtyUnit(null, 'Liter')).toBe('–')
   })
 
   it('formats German and checks dates', () => {

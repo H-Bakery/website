@@ -34,6 +34,26 @@ export interface GrundmengenItem {
   plu: number[]
   /** ISO-Wochentag → Wert; ein fehlender Tag heißt 0. */
   base: Record<string, BaseDayValue>
+  /** Z10: Laibgrößen - dann sind `variants` die Größen-IDs. */
+  sizes?: {
+    id: string
+    label: string
+    dough_g?: number | null
+    /** Kassennummern der Größe (Median je Größe); `null` = unbekannt. */
+    plu?: number[] | null
+  }[]
+  variantKind?: 'size' | 'filling' | null
+  /**
+   * Z10: Bruch-Posten (Brötchen aus der Teilmaschine). Grundmenge in Stück
+   * am **Backtag**; `piecesPerBruch` `null` = Stück je Bruch noch offen.
+   */
+  bruch?: {
+    per_product?: number
+    group?: string
+    piecesPerBruch: number | null
+  } | null
+  /** Z10: Teigtage vor dem Backtag je Wochentag (`default` + Ausnahmen). */
+  lead?: Record<string, number>
 }
 
 export interface GrundmengenConfig {
@@ -52,6 +72,15 @@ export interface WorkingConfig {
   config: GrundmengenConfig | null
   errors: ConfigReason[]
   warnings: ConfigReason[]
+  /** Z10: offene Stammdaten (`null` in der YAML), nur zur Information. */
+  open?: OpenMasterDataEntry[]
+}
+
+/** Eine offene Angabe der Stammdaten (`null` = unbekannt, Z10). */
+export interface OpenMasterDataEntry {
+  path: string
+  code: string
+  message: string
 }
 
 export interface BackzettelConfigView {
@@ -68,6 +97,8 @@ export interface BackzettelConfigView {
   writeIssue?: { error: string; message: string } | null
   /** Stand, auf dem ein Speichern aufbaut (inkl. wartender Änderungen). */
   working: WorkingConfig
+  /** Z10: offene Stammdaten des freigegebenen Stands. */
+  open?: OpenMasterDataEntry[]
 }
 
 export interface SaveResult extends BackzettelConfigView {
@@ -77,10 +108,16 @@ export interface SaveResult extends BackzettelConfigView {
 
 export interface ReferenceItem {
   itemId: string
+  /** Gesetzt, wenn die Referenz eine Laibgröße ist (`cellReference`). */
+  sizeId?: string
   plu: number[]
   median: number | null
   samples: number[]
-  status: 'ok' | 'no_plu' | 'no_data'
+  /**
+   * `unknown` nur bei einer Laibgröße ohne eigene Kassennummer
+   * (`sizes[].plu` offen): der Median der Größe ist unbekannt.
+   */
+  status: 'ok' | 'no_plu' | 'no_data' | 'unknown'
   /**
    * W4-Verifikation Runde 6: `true` = mit dem Faktor des Backzettels in die
    * Einheit des Postens umgerechnet (Stück Kuchen → Kuchen, 500-g-Laib →
@@ -94,6 +131,21 @@ export interface ReferenceItem {
    */
   restMean?: number | null
   restDays?: number
+  /**
+   * Z10 (docs/backzettel-v2.md §9 Punkt 10): Median je Laibgröße, nur bei
+   * Posten mit `sizes`. Ältere Server: fehlt.
+   */
+  sizes?: ReferenceSize[]
+}
+
+/** Median einer Laibgröße (über `sizes[].plu`). */
+export interface ReferenceSize {
+  sizeId: string
+  plu: number[]
+  median: number | null
+  samples: number[]
+  status: 'ok' | 'no_data' | 'unknown'
+  converted?: boolean
 }
 
 export interface ReferenceWeekday {
@@ -297,6 +349,27 @@ export function referenceFor(
   return day ? day.items.find((i) => i.itemId === itemId) ?? null : null
 }
 
+/**
+ * Referenz einer Zeile der Grundmengen: die Postenzeile (`variant` null) den
+ * Median des Postens, eine Laibgrößen-Zeile (Z10) den Median der Größe -
+ * aber nur, wenn der Posten selbst Kassennummern hat (sonst steht auch an
+ * der Postenzeile nichts). Füllungs-Zeilen: keine Referenz.
+ */
+export function cellReference(
+  reference: ReferenceResponse | null,
+  weekday: number,
+  item: Pick<GrundmengenItem, 'id' | 'variantKind'>,
+  variant: string | null
+): ReferenceItem | null {
+  const ref = referenceFor(reference, weekday, item.id)
+  if (variant === null) return ref
+  if (item.variantKind !== 'size' || !ref || ref.status === 'no_plu') {
+    return null
+  }
+  const size = ref.sizes?.find((sz) => sz.sizeId === variant)
+  return size ? { itemId: item.id, ...size } : null
+}
+
 /** Posten nach Abschnitt, in der Reihenfolge von `sections`. */
 export function groupBySection(
   config: GrundmengenConfig
@@ -318,11 +391,46 @@ export function groupBySection(
     .filter((s) => s.items.length > 0)
 }
 
-/** Anzeigename einer Sorte (Füllung) - sonst die ID. */
+/**
+ * Anzeigename einer Sorte: Laibgröße des Postens („500 g“, Z10), sonst
+ * Füllung - sonst die ID.
+ */
 export function variantLabel(
   config: GrundmengenConfig,
-  variant: string
+  variant: string,
+  item?: Pick<GrundmengenItem, 'sizes'> | null
 ): string {
+  const size = item?.sizes?.find((sz) => sz.id === variant)
+  if (size?.label) return size.label
   const filling = (config.fillings ?? []).find((f) => f.id === variant)
   return filling?.name ?? variant
+}
+
+/** Posten aus der Teilmaschine (Brötchen in Bruch, Z10)? */
+export function isBruchItem(item: Pick<GrundmengenItem, 'bruch'>): boolean {
+  return !!item.bruch
+}
+
+/**
+ * Grauer Hinweis neben einer Bruch-Grundmenge (Z10): wie viele Brüche das
+ * ungefähr sind - Stück × Teigstücke je Brötchen ÷ Stück je Bruch, eine
+ * Nachkommastelle. Reine Anzeige der Stammdaten; gerechnet wird der Zettel
+ * auf dem Server (dort je Gruppe und aufgerundet). `null`, wenn die Menge
+ * offen ist oder die Stück je Bruch unbekannt sind - dann kein Hinweis.
+ */
+export function bruchHint(
+  value: number | null | undefined,
+  item: Pick<GrundmengenItem, 'bruch'>
+): number | null {
+  const per = item.bruch?.piecesPerBruch
+  if (typeof value !== 'number' || !per || per <= 0) return null
+  const perProduct = item.bruch?.per_product ?? 1
+  return Math.round(((value * perProduct) / per) * 10) / 10
+}
+
+/** Hat ein Posten an irgendeinem Wochentag einen Vorlauf (Teig am Vortag)? */
+export function hasLead(item: Pick<GrundmengenItem, 'lead'>): boolean {
+  return Object.values(item.lead ?? {}).some(
+    (n) => typeof n === 'number' && n > 0
+  )
 }

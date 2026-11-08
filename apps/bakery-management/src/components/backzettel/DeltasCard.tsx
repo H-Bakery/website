@@ -30,6 +30,11 @@ export interface DeltasCardProps {
   canAck: boolean
   ackingId: number | null
   onAck: (delta: BackzettelDeltaEntry) => void
+  /**
+   * Z10: Datum des Zettels - Nachträge für einen anderen Backtag (Brötchen
+   * für Dienstag auf dem Samstags-Zettel) heißen dann „· für Di 01.12.“.
+   */
+  sheetDate?: string
 }
 
 /**
@@ -43,6 +48,7 @@ export function DeltasCard({
   canAck,
   ackingId,
   onAck,
+  sheetDate,
 }: DeltasCardProps) {
   if (deltas.length === 0) return null
   const open = deltas.filter((d) => !d.acknowledgedAt).length
@@ -100,7 +106,13 @@ export function DeltasCard({
                 <Box sx={{ flex: 1, minWidth: 160 }}>
                   <Typography fontWeight={600}>
                     {lineLabel(
-                      { name: d.name, variant: d.variant, itemId: d.itemId },
+                      {
+                        name: d.name,
+                        variant: d.variant,
+                        itemId: d.itemId,
+                        bakeDate: d.bakeDate,
+                        doughDate: sheetDate,
+                      },
                       config
                     )}
                   </Typography>

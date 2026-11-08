@@ -150,17 +150,22 @@ describe('Backzettel confirm → hq', () => {
     const json = JSON.parse(
       originFile(remote, 'main', rel(SAT, 'json')) as string
     )
+    // Z10: a day confirmed from now on is a dough-day sheet (sheetVersion
+    // 2), also with v1 master data - schema 2, additive.
     expect(json).toMatchObject({
-      schema_version: 1,
+      schema_version: 2,
       kind: 'backzettel',
       date: SAT,
       weekdayName: 'Samstag',
       confirmed: { role: 'backstube' },
+      sheetVersion: 2,
+      bakeDates: [expect.objectContaining({ date: SAT })],
     })
     const weck = json.sections
       .flatMap((s: any) => s.lines)
       .find((l: any) => l.itemId === 'weck')
     expect(weck.preorders).toBe(6)
+    expect(weck).toMatchObject({ bakeDate: SAT, doughDate: SAT })
     expect(json.hefeteig.doughs.length).toBeGreaterThan(0)
 
     const md = originFile(remote, 'main', rel(SAT, 'md')) as string

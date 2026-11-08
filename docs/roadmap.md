@@ -645,9 +645,16 @@ Exit criteria:
 - [x] **Z6** (`feat/Z6-backstube-tablet`) Backstube tablet view (M, → Z3).
 - [x] **Z7** (`feat/Z5-Z7-backzettel-day`) Print, 3 pages (S, → Z5).
 - [ ] **Z8** Fill the CAP delivery templates Tue–Sat (S, owner).
-- [ ] **Z10** Backzettel v2 - the sheet the bakers actually work from (L, → Z1-Z7, Q-L answers).
-      Domain reference (private, with real reference values): `hq/notes/procedures/backliste.md`;
-      baker questionnaire `hq/notes/procedures/backliste-fragebogen.md`. Scope:
+- [~] **Z10** (`feat/Z10-backzettel-v2`, slices S1–S6 committed, **unmerged**; the v2 hq YAML only after
+  deployment, open values stay `null` in hq until the bakers answer) Backzettel v2 - the sheet the bakers actually work from (L, → Z1-Z7, Q-L answers).
+  Progress: S1 schema/validator, S2 core (plan, doughs, sheet, bake list, deltas), S3 API + migration,
+  S4 Rest am Abend + Z9 snapshot v2, S5 screens (planning, Backliste, tablet tabs Zettel/Backen,
+  Grundmengen), S6 one-page print per dough day + bake-list print + optional weighing sheet, Hilfe,
+  docs (`docs/domains/backzettel.md`); owner decision O5 (2026-11-08): own „gebacken" tick per
+  bake-list row and Nachtrag on the tablet's Backen tab (API + migration `20270210000000`).
+  Design record: `docs/backzettel-v2.md`.
+  Domain reference (private, with real reference values): `hq/notes/procedures/backliste.md`;
+  baker questionnaire `hq/notes/procedures/backliste-fragebogen.md`. Scope:
   - **Doughs as master data** (`doughs[]`: `kg_per_liter` - the bakers' "Liter" is the recipe
     unit, 1 L water + flour + rest -, `liter_rounding`, `batch_max_kg`, shared doughs, add-ons
     such as Dunkelsauer per litre). Litres are computed, never estimated: without `kg_per_liter`

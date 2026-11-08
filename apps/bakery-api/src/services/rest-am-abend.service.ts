@@ -4,9 +4,10 @@
  * `rest-am-abend.core.js`; this file only reads and writes:
  *
  *   - the counts (`rest_counts`, serialised write transaction, `audit_log`),
- *   - the Backzettel day through the Z3 service (`getDay` - the same view the
- *     screens show, so „gebacken“ is exactly the frozen Gesamt plus the
- *     acknowledged Nachträge),
+ *   - „gebacken“ through the Backzettel service: the bake lines of the day
+ *     (`getBakeLines`, Z10 - every sheet whose dough is made for this bake
+ *     day, so Tuesday's rolls from Saturday's sheet count on Tuesday), the
+ *     frozen Gesamt plus the acknowledged Nachträge,
  *   - the cash-register reports through `reports-files.core.js` (the same
  *     reader as the archive and the Z4 reference).
  *
@@ -151,13 +152,23 @@ export function createRestService(
     return date
   }
 
-  /** The Backzettel day view, or `null` (Ruhetag, no master data). */
-  async function backzettelDay(date: string): Promise<RestDayView | null> {
+  /**
+   * What is baked on `date` (Z10, docs/backzettel-v2.md §5.5): the bake
+   * lines from every sheet that makes dough for this day, `confirmed` only
+   * when all of them are, else `draft` (planned only). Light form (lines,
+   * deltas and their oven figures). `null` on a Ruhetag.
+   *
+   * Without loadable master data there is no plan, so no bake list: then
+   * the day's own confirmed sheet, as before Z10. Of a v2 sheet only the
+   * lines baked on this day count (`backzettelLines` skips other bake
+   * days); this day's lines on other sheets are missing until the master
+   * data is back.
+   */
+  async function bakeLines(date: string): Promise<RestDayView | null> {
     try {
-      const day = await backzettel.getDay(date)
-      return day && (day.status === 'confirmed' || day.status === 'draft')
-        ? day
-        : null
+      const day = await backzettel.getBakeLines(date, { light: true })
+      if (day) return day
+      return source.load().ok ? null : await backzettel.getConfirmedLines(date)
     } catch (error) {
       if (error instanceof BackzettelError) return null
       throw error
@@ -165,17 +176,34 @@ export function createRestService(
   }
 
   /**
-   * The confirmed Backzettel day in the light form (lines, deltas and their
-   * oven figures only) - for evaluations over many days, where the full
-   * screen view per day would be ~340 heavy reads for a year.
+   * The confirmed bake days among `dates` (light form) - for evaluations
+   * over many days: the confirmed sheets are read once for the range
+   * instead of ~340 day views for a year. Only confirmed days are returned.
    */
-  async function confirmedLines(date: string): Promise<RestDayView | null> {
-    try {
-      return await backzettel.getConfirmedLines(date)
-    } catch (error) {
-      if (error instanceof BackzettelError) return null
-      throw error
+  async function confirmedBakeLines(
+    dates: string[]
+  ): Promise<Record<string, RestDayView>> {
+    const out: Record<string, RestDayView> = {}
+    if (!source.load().ok) {
+      const confirmed = await BackzettelDay.findAll({
+        where: { date: { [Op.in]: dates }, status: 'confirmed' },
+        attributes: ['date'],
+      })
+      for (const d of confirmed) {
+        try {
+          const day = await backzettel.getConfirmedLines(d.date)
+          if (day) out[d.date] = day
+        } catch (error) {
+          if (!(error instanceof BackzettelError)) throw error
+        }
+      }
+      return out
     }
+    const all = await backzettel.getBakeLinesRange(dates, { light: true })
+    for (const [date, day] of Object.entries(all)) {
+      if (day && day.status === 'confirmed') out[date] = day
+    }
+    return out
   }
 
   async function view(date: string): Promise<RestDayView> {
@@ -187,7 +215,7 @@ export function createRestService(
       config: loaded.ok ? loaded.config : null,
       reasons: loaded.ok ? undefined : loaded.reasons,
       catalog: loaded.catalog,
-      backzettel: await backzettelDay(date),
+      backzettel: await bakeLines(date),
       rows,
     })
   }
@@ -255,7 +283,7 @@ export function createRestService(
     )
     const emptyVariantItems =
       candidates.size > 0
-        ? core.emptyVariantLines(await backzettelDay(date), loaded.config)
+        ? core.emptyVariantLines(await bakeLines(date), loaded.config)
         : undefined
     const parsed = core.validateBatch(body, {
       config: loaded.config,
@@ -361,7 +389,7 @@ export function createRestService(
         if (!item) continue
         const lineRows = JSON.stringify(
           core
-            .countRowsForItem(item, loaded.catalog)
+            .countRowsForItem(item, loaded.catalog, variant)
             .map((r: { productId: string }) => r.productId)
         )
         await RestCount.update(
@@ -403,13 +431,9 @@ export function createRestService(
     const rows = await loadRows({
       businessDate: { [Op.between]: [range.from, range.to] },
     })
-    const confirmed = await BackzettelDay.findAll({
-      where: {
-        date: { [Op.between]: [range.from, range.to] },
-        status: 'confirmed',
-      },
-      attributes: ['date'],
-    })
+    const confirmed = await confirmedBakeLines(
+      core.listDates(range.from, range.to)
+    )
     const available = files.reportsAvailable(reportsDir, options.log)
     const reportDates = new Set<string>(
       available ? files.listReportDates(reportsDir, options.log) : []
@@ -423,11 +447,11 @@ export function createRestService(
       return days[date]
     }
     for (const r of rows) ensure(r.businessDate).rows.push(r)
-    for (const d of confirmed) {
-      const entry = ensure(d.date)
-      entry.backzettel = await confirmedLines(d.date)
-      if (reportDates.has(d.date)) {
-        entry.report = files.readDailyReport(reportsDir, d.date, options.log)
+    for (const [date, day] of Object.entries(confirmed)) {
+      const entry = ensure(date)
+      entry.backzettel = day
+      if (reportDates.has(date)) {
+        entry.report = files.readDailyReport(reportsDir, date, options.log)
       }
     }
     return core.summarize({
@@ -478,17 +502,7 @@ export function createRestService(
     for (const r of rows) (rowsByDate[r.businessDate] ||= []).push(r)
     // Only days with a confirmed Backzettel count (as in the evaluation);
     // only days with counts need reading.
-    const confirmed = await BackzettelDay.findAll({
-      where: {
-        date: { [Op.in]: Object.keys(rowsByDate) },
-        status: 'confirmed',
-      },
-      attributes: ['date'],
-    })
-    const backzettelByDate: Record<string, unknown> = {}
-    for (const d of confirmed) {
-      backzettelByDate[d.date] = await confirmedLines(d.date)
-    }
+    const backzettelByDate = await confirmedBakeLines(Object.keys(rowsByDate))
     return {
       status: 'ok',
       today: day,

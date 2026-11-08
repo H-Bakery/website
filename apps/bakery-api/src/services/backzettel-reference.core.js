@@ -26,6 +26,11 @@
 // Produkt zugeordnet ist (`converted: true`), steht der Wert in der Einheit
 // des Postens; sonst bleiben es Stück laut Kasse (`converted: false`), und
 // die Oberfläche sagt das dazu.
+//
+// Z10 (docs/backzettel-v2.md §9 Punkt 10): ein Brot mit Laibgrößen bekommt
+// zusätzlich den Median **je Größe** (`sizes[]`), über die Kassennummern der
+// Größe (`sizes[].plu` der Stammdaten) - dieselbe Rechnung wie für den
+// Posten. Ohne Kassennummer der Größe ist der Wert unbekannt (`unknown`).
 
 'use strict'
 
@@ -253,6 +258,93 @@ function soldOnDay(info, map) {
   )
 }
 
+/**
+ * Kassennummern einer Laibgröße (Z10, docs/backzettel-v2.md §9 Punkt 10):
+ * `sizes[].plu` der Stammdaten - ein Teil der Kassennummern des Postens
+ * (der Validator lässt nichts anderes zu). Faktoren und `converted` wie beim
+ * Posten (`itemSoldInfo`), nur über diese Kassennummern. `null`, wenn die
+ * Größe keine eigene Kassennummer hat (fehlt oder `null` = unbekannt).
+ *
+ * @returns {{plu: string[], factors: Map<string, number|null>, converted: boolean} | null}
+ */
+function sizeSoldInfo(info, size) {
+  const plu = (size && Array.isArray(size.plu) ? size.plu : [])
+    .map((p) => String(p).trim())
+    .filter(Boolean)
+  if (plu.length === 0) return null
+  const factors = new Map(
+    plu.map((key) => [key, info.factors.get(key) ?? null])
+  )
+  const converted = plu.every((key) => factors.get(key) !== null)
+  return { plu, factors, converted }
+}
+
+/**
+ * Median verkauft über die Kassennummern von `info` (`itemSoldInfo` oder
+ * `sizeSoldInfo`) - die eine Rechnung für Posten und Laibgröße. Ohne Bericht
+ * im Zeitraum `no_data`; Rundung 0,01 bei `converted`, sonst 0,1 Stück.
+ */
+function soldReference(info, sold) {
+  const plu = info.plu.map(Number)
+  if (sold.length === 0) {
+    return {
+      plu,
+      median: null,
+      samples: [],
+      status: 'no_data',
+      converted: info.converted,
+    }
+  }
+  const round = info.converted ? round2 : round1
+  const samples = sold.map((map) => soldOnDay(info, map))
+  const m = median(samples)
+  return {
+    plu,
+    median: m === null ? null : round(m),
+    samples,
+    status: 'ok',
+    converted: info.converted,
+  }
+}
+
+/**
+ * Median je Laibgröße eines Postens mit `sizes` (Z10): `soldReference` über
+ * die Kassennummern der Größe. Status je Größe `ok`, `no_data` oder
+ * `unknown` (keine Kassennummer für die Größe - der Median ist unbekannt,
+ * nie 0 und nie ein Anteil am Posten).
+ */
+function sizeReferences(item, info, sold) {
+  return item.sizes.map((size) => {
+    const sizeInfo = sizeSoldInfo(info, size)
+    if (!sizeInfo) {
+      return {
+        sizeId: size.id,
+        plu: [],
+        median: null,
+        samples: [],
+        status: 'unknown',
+        converted: false,
+      }
+    }
+    return { sizeId: size.id, ...soldReference(sizeInfo, sold) }
+  })
+}
+
+/** Referenzwert eines Postens über alle seine Kassennummern. */
+function itemReference(item, info, sold) {
+  if (info.plu.length === 0) {
+    return {
+      itemId: item.id,
+      plu: [],
+      median: null,
+      samples: [],
+      status: 'no_plu',
+      converted: false,
+    }
+  }
+  return { itemId: item.id, ...soldReference(info, sold) }
+}
+
 /** Produkt-Auflöser für die Umrechnung; `null`, wenn er nicht zu bauen ist. */
 function soldResolver(cfg, catalog) {
   try {
@@ -271,8 +363,11 @@ function soldResolver(cfg, catalog) {
  *   `config`: normalisierte Stammdaten (`normalizeConfig`); `reports`:
  *   Datum → aggregierter Tagesbericht (`aggregateDay`).
  * @returns {object} `{ weekday, weekdayName, weeks, dates, skippedDates, items[] }`;
- *   je Posten `{ itemId, plu, median, samples, status }` mit `status`
- *   `ok` | `no_plu` (keine Kassennummer) | `no_data` (kein Bericht im Zeitraum).
+ *   je Posten `{ itemId, plu, median, samples, status, converted }` mit
+ *   `status` `ok` | `no_plu` (keine Kassennummer) | `no_data` (kein Bericht
+ *   im Zeitraum); Posten mit Laibgrößen zusätzlich `sizes[]`
+ *   `{ sizeId, plu, median, samples, status, converted }` (`status` auch
+ *   `unknown`: Größe ohne eigene Kassennummer).
  */
 function computeWeekdayReference(a) {
   const cfg = a.config || {}
@@ -287,38 +382,12 @@ function computeWeekdayReference(a) {
   const resolve = soldResolver(cfg, a.catalog)
   const items = (Array.isArray(cfg.items) ? cfg.items : []).map((item) => {
     const info = itemSoldInfo(item, resolve)
-    const { plu, converted } = info
-    if (plu.length === 0) {
-      return {
-        itemId: item.id,
-        plu: [],
-        median: null,
-        samples: [],
-        status: 'no_plu',
-        converted: false,
-      }
-    }
-    if (dates.length === 0) {
-      return {
-        itemId: item.id,
-        plu: plu.map(Number),
-        median: null,
-        samples: [],
-        status: 'no_data',
-        converted,
-      }
-    }
-    const round = converted ? round2 : round1
-    const samples = sold.map((map) => soldOnDay(info, map))
-    const m = median(samples)
-    return {
-      itemId: item.id,
-      plu: plu.map(Number),
-      median: m === null ? null : round(m),
-      samples,
-      status: 'ok',
-      converted,
-    }
+    const ref = itemReference(item, info, sold)
+    // Z10: Posten mit Laibgrößen bekommen den Median je Größe dazu; Posten
+    // ohne `sizes` (jede v1-Datei) bleiben Byte für Byte wie bisher.
+    return Array.isArray(item.sizes) && item.sizes.length > 0
+      ? { ...ref, sizes: sizeReferences(item, info, sold) }
+      : ref
   })
   return {
     weekday: a.weekday,
@@ -346,6 +415,7 @@ module.exports = {
   soldByPlu,
   itemSoldInfo,
   soldOnDay,
+  sizeSoldInfo,
   soldResolver,
   computeWeekdayReference,
 }

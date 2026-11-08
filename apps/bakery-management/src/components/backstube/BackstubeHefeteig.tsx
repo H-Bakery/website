@@ -10,8 +10,16 @@ import type {
 } from '../../lib/backzettelApi'
 import { DeltaExtrasNote } from '../backzettel/DeltaExtrasNote'
 import {
-  formatGrams,
+  fillingGramsText,
+  fillingOpenNote,
+  formatKnown,
+  weighingItemsText,
+  weighingPiecesText,
   formatNumber,
+  hefeteigDoughText,
+  hefeteigPiecesText,
+  litersHint,
+  litersFigure,
   ingredientAmount,
   recipeHeading,
   recipeIncompleteNote,
@@ -60,14 +68,28 @@ function Dough({ dough, muted }: { dough: HefeteigDough; muted: boolean }) {
       <Stack direction="row" flexWrap="wrap" sx={{ gap: 3, mt: 1 }}>
         <Figure
           label="Teigstücke"
-          value={formatNumber(dough.pieces)}
+          value={hefeteigPiecesText(dough)}
           muted={muted}
         />
         <Figure
           label="Teig gesamt"
-          value={formatGrams(dough.dough_g)}
+          value={hefeteigDoughText(dough)}
           muted={muted}
         />
+        {dough.liters && (
+          <Box>
+            <Figure
+              label="Wasser"
+              value={litersFigure(dough.liters)}
+              muted={muted}
+            />
+            {litersHint(dough.liters) && (
+              <Typography sx={{ fontSize: SMALL, color: 'text.secondary' }}>
+                {litersHint(dough.liters)}
+              </Typography>
+            )}
+          </Box>
+        )}
         <Box>
           <Figure
             label="Chargen"
@@ -88,8 +110,8 @@ function Dough({ dough, muted }: { dough: HefeteigDough; muted: boolean }) {
       <Stack spacing={1}>
         {dough.weighing.map((w) => (
           <Box
-            key={w.piece_g}
-            data-testid={`bs-weigh-${dough.id}-${w.piece_g}`}
+            key={w.piece_g ?? 'offen'}
+            data-testid={`bs-weigh-${dough.id}-${w.piece_g ?? 'offen'}`}
             sx={{
               display: 'flex',
               alignItems: 'baseline',
@@ -109,18 +131,10 @@ function Dough({ dough, muted }: { dough: HefeteigDough; muted: boolean }) {
                 color: muted ? 'text.secondary' : 'text.primary',
               }}
             >
-              {formatNumber(w.pieces)} × {formatNumber(w.piece_g)} g
+              {weighingPiecesText(w)} × {formatKnown(w.piece_g)} g
             </Typography>
             <Typography sx={{ fontSize: SMALL, color: 'text.secondary' }}>
-              {w.items
-                .map((i) =>
-                  i.piecesPerProduct === 1
-                    ? `${i.name} ${formatNumber(i.products)}`
-                    : `${i.name} ${formatNumber(i.products)} × ${
-                        i.piecesPerProduct
-                      }`
-                )
-                .join(', ')}
+              {weighingItemsText(w.items)}
             </Typography>
           </Box>
         ))}
@@ -160,7 +174,7 @@ function Filling({ filling, muted }: { filling: FillingNeed; muted: boolean }) {
             color: muted ? 'text.secondary' : 'text.primary',
           }}
         >
-          {formatGrams(filling.grams)}
+          {fillingGramsText(filling)}
         </Typography>
       </Box>
       <Typography sx={{ fontSize: SMALL, color: 'text.secondary' }}>
@@ -173,10 +187,15 @@ function Filling({ filling, muted }: { filling: FillingNeed; muted: boolean }) {
           )
           .join(', ')}
       </Typography>
+      {fillingOpenNote(filling) && (
+        <Typography sx={{ fontSize: SMALL, fontWeight: 700, mt: 0.5 }}>
+          Achtung: {fillingOpenNote(filling)}
+        </Typography>
+      )}
       {filling.missingFillingG && (
         <Typography sx={{ fontSize: SMALL, fontWeight: 700, mt: 0.5 }}>
-          Achtung: Für mindestens einen Posten fehlt das Füllungsgewicht – die
-          Menge ist zu klein.
+          Achtung: Für mindestens einen Posten ist das Füllungsgewicht noch
+          offen – die Menge fehlt bzw. ist zu klein.
         </Typography>
       )}
       {filling.recipe ? (

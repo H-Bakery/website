@@ -83,7 +83,7 @@ describe('Backzettel-Tagesplanung', () => {
     expect(
       table('hefeteig').getByText('Testzopf gefüllt – Testnussfüllung')
     ).toBeInTheDocument()
-    expect(table('brot').getByText('2,25 l')).toBeInTheDocument()
+    expect(table('brot').getByText('2,25 L')).toBeInTheDocument()
     expect(table('brot').getByText(/≈ 5 Laibe/)).toBeInTheDocument()
     // offene Grundmenge ist kein 0
     const mohn = within(screen.getByTestId('line-row-test-zopf|mohn'))

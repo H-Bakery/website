@@ -36,9 +36,12 @@ import {
   inputProblem,
   labelledMessage,
   parseInput,
-  referenceFor,
+  cellReference,
   saveGrundmenge,
   variantLabel,
+  bruchHint,
+  hasLead,
+  isBruchItem,
   WEEKDAY_LONG,
   WEEKDAY_SHORT,
   withRestAverages,
@@ -51,6 +54,7 @@ import {
 } from '../../../../lib/grundmengenApi'
 import { fetchRestAverages, type RestAverages } from '../../../../lib/restApi'
 import GrundmengenPrint, { grundmengenPrintStyles } from './GrundmengenPrint'
+import { OpenMasterDataNote } from '../../../../components/backzettel/OpenMasterDataNote'
 
 /** Wer Grundmengen ändern darf (wie `PUT /config/base`). */
 const EDIT_ROLES = ['inhaber', 'backstube']
@@ -100,16 +104,19 @@ function ReferenceHint({
 }) {
   if (!reference || reference.status === 'no_plu') return null
   const pieces = !reference.converted && unit !== 'Stück'
-  const text =
-    reference.median === null
-      ? '–'
-      : `${formatQty(reference.median)}${pieces ? ' St.' : ''}`
-  const detail =
-    reference.status === 'no_data'
-      ? 'Kein Kassenbericht für diesen Wochentag.'
-      : `Verkauft: ${reference.samples.map(formatQty).join(' · ')}${
-          pieces ? ' (Stück laut Kasse, nicht ' + unit + ')' : ''
-        }`
+  const unknown = reference.status === 'unknown'
+  const text = unknown
+    ? 'unbekannt'
+    : reference.median === null
+    ? '–'
+    : `${formatQty(reference.median)}${pieces ? ' St.' : ''}`
+  const detail = unknown
+    ? 'Für diese Größe ist keine eigene Kassennummer hinterlegt (in den Stammdaten offen) - der Median steht nur für den ganzen Posten.'
+    : reference.status === 'no_data'
+    ? 'Kein Kassenbericht für diesen Wochentag.'
+    : `Verkauft: ${reference.samples.map(formatQty).join(' · ')}${
+        pieces ? ' (Stück laut Kasse, nicht ' + unit + ')' : ''
+      }`
   return (
     <Tooltip
       title={
@@ -117,7 +124,13 @@ function ReferenceHint({
           {REFERENCE_TOOLTIP}
           <br />
           {detail}
-          {reference.converted ? (
+          {unknown ? null : reference.sizeId ? (
+            <>
+              <br />
+              PLU {reference.plu.join(', ')} (Kassennummern dieser Größe)
+              {reference.converted ? ', mit dem Faktor des Backzettels' : ''}.
+            </>
+          ) : reference.converted ? (
             <>
               <br />
               PLU {reference.plu.join(', ')} mit dem Faktor des Backzettels
@@ -160,7 +173,7 @@ function ReferenceHint({
           cursor: 'help',
         }}
       >
-        ≈ {text}
+        {unknown ? text : `≈ ${text}`}
       </Typography>
     </Tooltip>
   )
@@ -176,7 +189,8 @@ function ReferenceSlot(props: {
   return (
     <Box
       sx={{
-        width: REFERENCE_SLOT,
+        // „unbekannt“ (Größe ohne Kassennummer) darf etwas breiter sein
+        minWidth: REFERENCE_SLOT,
         flexShrink: 0,
         textAlign: 'left',
       }}
@@ -389,6 +403,62 @@ function approvedCell(
 const UNIT_COLUMN = { display: { xs: 'none', sm: 'table-cell' } } as const
 const UNIT_INLINE = { display: { xs: 'inline', sm: 'none' } } as const
 
+/**
+ * Z10: grauer Hinweis „≈ 2,5 Bruch“ unter einer Bruch-Grundmenge - nur
+ * Information aus den Stammdaten; der Zettel rechnet je Gruppe auf dem Server.
+ */
+function BruchCellHint({
+  item,
+  value,
+  wd,
+}: {
+  item: GrundmengenItem
+  value: number | null | undefined
+  wd: number
+}) {
+  if (!isBruchItem(item)) return null
+  const bruch = bruchHint(value, item)
+  if (bruch === null) return null
+  return (
+    <Typography
+      variant="caption"
+      component="div"
+      data-testid={`bruch-hint-${item.id}-${wd}`}
+      sx={{ color: 'text.secondary', textAlign: 'right', pr: 0.5 }}
+    >
+      ≈ {formatQty(bruch)} Bruch
+    </Typography>
+  )
+}
+
+/** Z10: Laibgrößen, Bruch und Vorlauf eines Postens unter dem Namen. */
+function ItemV2Note({ item }: { item: GrundmengenItem }) {
+  const parts: string[] = []
+  if (item.variantKind === 'size' && (item.sizes?.length ?? 0) > 0) {
+    parts.push('Laibe je Größe')
+  }
+  if (isBruchItem(item)) {
+    const per = item.bruch?.piecesPerBruch
+    parts.push(
+      per
+        ? `Stück, ${formatQty(per)} Teigstücke je Bruch`
+        : 'Stück, Bruch: Stück je Bruch unbekannt'
+    )
+  }
+  if (hasLead(item)) parts.push('Teig am Teigtag davor')
+  if (parts.length === 0) return null
+  return (
+    <Typography
+      variant="caption"
+      component="div"
+      data-testid={`v2-note-${item.id}`}
+      sx={{ color: 'text.secondary' }}
+    >
+      {parts.join(' · ')}
+    </Typography>
+  )
+}
+
 function GrundmengenGrid(props: GridProps) {
   const { config, reference, editable, onSave, onInvalid } = props
   // W4-verify r2: bei 1280 px passt der Sonntag nicht mehr; macOS blendet
@@ -408,7 +478,7 @@ function GrundmengenGrid(props: GridProps) {
 
   const dayCells = (item: GrundmengenItem, variant: string | null) =>
     days.map((wd) => {
-      const ref = variant === null ? referenceFor(reference, wd, item.id) : null
+      const ref = cellReference(reference, wd, item, variant)
       const hasVariants = item.variants.length > 0
       // Posten mit Sorten: die Postenzeile ist nur editierbar, wenn am Tag
       // eine Gesamtzahl (oder gar nichts mit Sorten) steht - sonst die Sorten.
@@ -418,7 +488,7 @@ function GrundmengenGrid(props: GridProps) {
         ? !isPerVariant(item, wd) && typeof value === 'number' && value > 0
         : true
       const label = `${item.name}${
-        variant ? ` (${variantLabel(config, variant)})` : ''
+        variant ? ` (${variantLabel(config, variant, item)})` : ''
       }, ${WEEKDAY_LONG[wd]}`
       return (
         <TableCell key={wd} align="right" sx={{ px: 1, py: 0.5 }}>
@@ -453,6 +523,7 @@ function GrundmengenGrid(props: GridProps) {
               )}
             </Stack>
           )}
+          {showInput && <BruchCellHint item={item} value={value} wd={wd} />}
         </TableCell>
       )
     })
@@ -561,6 +632,7 @@ function GrundmengenGrid(props: GridProps) {
                           {item.plu.length > 0 ? ' · ' : ''}
                           {item.unit}
                         </Typography>
+                        <ItemV2Note item={item} />
                       </TableCell>
                       <TableCell
                         sx={{ color: 'text.secondary', ...UNIT_COLUMN }}
@@ -585,7 +657,7 @@ function GrundmengenGrid(props: GridProps) {
                           }}
                         >
                           <Typography variant="body2">
-                            {variantLabel(config, variant)}
+                            {variantLabel(config, variant, item)}
                           </Typography>
                         </TableCell>
                         <TableCell
@@ -861,6 +933,21 @@ export default function GrundmengenClient() {
               ? ' Für diese Wochentage gibt es noch keine Berichte.'
               : null}
           </Typography>
+          {config.items.some((i) => isBruchItem(i) || hasLead(i)) && (
+            <Typography
+              variant="body2"
+              component="p"
+              className="grundmengen-screen-only"
+              data-testid="bake-day-note"
+              sx={{ mb: 1 }}
+            >
+              Brötchen: Menge am Backtag, Teig am Teigtag davor. Bruch-Posten in
+              Stück - die Brüche rechnet der Backzettel.
+            </Typography>
+          )}
+          <Box className="grundmengen-screen-only">
+            <OpenMasterDataNote open={working?.open} id="grundmengen-open" />
+          </Box>
           <GrundmengenGrid
             config={config}
             approved={view?.status === 'ok' ? view.config : null}
