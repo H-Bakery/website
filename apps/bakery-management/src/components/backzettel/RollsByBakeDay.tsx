@@ -11,12 +11,7 @@ import {
   Typography,
 } from '@mui/material'
 import EditIcon from '@mui/icons-material/Edit'
-import type {
-  BackzettelLine,
-  BruchGroup,
-  RollsBlock,
-  SingleRow,
-} from '../../lib/backzettelApi'
+import type { BruchGroup, RollsBlock, SingleRow } from '../../lib/backzettelApi'
 import {
   bakeDayLabel,
   bruchGroupText,
@@ -25,6 +20,8 @@ import {
   formatNumber,
   formatSigned,
   lineLabel,
+  linesByKey,
+  v2CoveredKeys,
 } from '../../lib/backzettelFormat'
 import { CorrectionEditor } from './CorrectionEditor'
 import type { V2EditProps } from './BreadTable'
@@ -272,33 +269,7 @@ export function RollsByBakeDay(props: RollsByBakeDayProps) {
   )
 }
 
-/** Schlüssel aller Zeilen, die Brot-Tabelle und Brötchen-Blöcke zeigen. */
-export function v2CoveredKeys(day: {
-  bread?: {
-    rows: {
-      cells: Record<string, { key: string } | null>
-      single: { key: string } | null
-    }[]
-  } | null
-  rolls?: RollsBlock[] | null
-}): Set<string> {
-  const keys = new Set<string>()
-  for (const row of day.bread?.rows ?? []) {
-    if (row.single) keys.add(row.single.key)
-    for (const c of Object.values(row.cells)) if (c) keys.add(c.key)
-  }
-  for (const block of day.rolls ?? []) {
-    for (const g of block.groups) for (const s of g.split) keys.add(s.key)
-    for (const s of block.singles) keys.add(s.key)
-  }
-  return keys
-}
-
-/** Für Specs und andere Ansichten: die Zeile zu einem Schlüssel. */
-export function linesByKey(
-  sections: { lines: BackzettelLine[] }[]
-): Map<string, BackzettelLine> {
-  return new Map(sections.flatMap((s) => s.lines).map((l) => [l.key, l]))
-}
+// Seit S6 in backzettelFormat.ts (auch der Druck braucht sie).
+export { linesByKey, v2CoveredKeys }
 
 export default RollsByBakeDay

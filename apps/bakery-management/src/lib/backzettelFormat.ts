@@ -18,6 +18,7 @@ import type {
   DoughLiters,
   FillingNeed,
   MachineBox,
+  RollsBlock,
   ScaledIngredient,
   ScaledRecipe,
 } from './backzettelApi'
@@ -883,4 +884,33 @@ export function bakeSourceText(
       ? 'Teig von heute'
       : `Teig vom ${source.weekdayName || formatDateShort(source.doughDate)}`
   return `${day} · ${source.status === 'confirmed' ? 'freigegeben' : 'Entwurf'}`
+}
+
+/** Schlüssel aller Zeilen, die Brot-Tabelle und Brötchen-Blöcke zeigen. */
+export function v2CoveredKeys(day: {
+  bread?: {
+    rows: {
+      cells: Record<string, { key: string } | null>
+      single: { key: string } | null
+    }[]
+  } | null
+  rolls?: RollsBlock[] | null
+}): Set<string> {
+  const keys = new Set<string>()
+  for (const row of day.bread?.rows ?? []) {
+    if (row.single) keys.add(row.single.key)
+    for (const c of Object.values(row.cells)) if (c) keys.add(c.key)
+  }
+  for (const block of day.rolls ?? []) {
+    for (const g of block.groups) for (const s of g.split) keys.add(s.key)
+    for (const s of block.singles) keys.add(s.key)
+  }
+  return keys
+}
+
+/** Für Specs und andere Ansichten: die Zeile zu einem Schlüssel. */
+export function linesByKey(
+  sections: { lines: BackzettelLine[] }[]
+): Map<string, BackzettelLine> {
+  return new Map(sections.flatMap((s) => s.lines).map((l) => [l.key, l]))
 }

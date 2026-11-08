@@ -7,12 +7,14 @@ import {
   AlertTitle,
   Box,
   Button,
+  Checkbox,
   CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogContentText,
   DialogTitle,
+  FormControlLabel,
   IconButton,
   Paper,
   Snackbar,
@@ -76,6 +78,30 @@ import {
   BackzettelPrint,
   backzettelPrintStyles,
 } from '../../../../components/backzettel/BackzettelPrint'
+import { DoughDayPrint } from '../../../../components/backzettel/DoughDayPrint'
+import { hasPrintExtras } from '../../../../components/backzettel/BackzettelPrintExtras'
+
+/**
+ * Gerätespeicher (nur Bequemlichkeit): ob beim Teigtag-Zettel Abwiegeliste,
+ * Rezepte und Vorbereitung mitgedruckt werden. Vorgabe aus (O8: eine Seite).
+ */
+export const PRINT_EXTRAS_KEY = 'bakery-backzettel-print-extras'
+
+function readPrintExtras(): boolean {
+  try {
+    return window.localStorage.getItem(PRINT_EXTRAS_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function writePrintExtras(value: boolean): void {
+  try {
+    window.localStorage.setItem(PRINT_EXTRAS_KEY, value ? '1' : '0')
+  } catch {
+    // Privates Fenster o. ä.: dann gilt die Wahl nur bis zum Neuladen.
+  }
+}
 
 const MIN_TOUCH = { minHeight: 44 }
 
@@ -111,7 +137,8 @@ export interface BackzettelDayClientProps {
 
 /**
  * Tagesplanung eines Produktionstags (Z5, roadmap §5.5 Nr. 2) mit Druckbild
- * (Z7). Zeigt, was `/api/backzettel/:datum` liefert - gerechnet wird nur auf
+ * (Z7; ein Teigtag-Zettel druckt seit Z10 eine Seite, `DoughDayPrint`).
+ * Zeigt, was `/api/backzettel/:datum` liefert - gerechnet wird nur auf
  * dem Server. Planen (Saisonfaktor, Korrekturen, Freigeben) dürfen Inhaber und
  * Backstube; Wieder öffnen nur der Inhaber; alle anderen sehen den Zettel nur.
  */
@@ -147,6 +174,12 @@ export default function BackzettelDayClient({
   const [confirmChanges, setConfirmChanges] = React.useState<
     ChangedTotal[] | null
   >(null)
+  const [printExtras, setPrintExtras] = React.useState(false)
+  React.useEffect(() => setPrintExtras(readPrintExtras()), [])
+  const togglePrintExtras = (value: boolean) => {
+    setPrintExtras(value)
+    writePrintExtras(value)
+  }
 
   const applyDay = React.useCallback((day: BackzettelDayResult) => {
     setResult(day)
@@ -451,6 +484,19 @@ export default function BackzettelDayClient({
           >
             Drucken
           </Button>
+        )}
+        {day && isDoughDaySheet(day) && hasPrintExtras(day) && (
+          <FormControlLabel
+            sx={{ ...MIN_TOUCH, mr: 0 }}
+            control={
+              <Checkbox
+                checked={printExtras}
+                onChange={(e) => togglePrintExtras(e.target.checked)}
+                sx={{ width: 44, height: 44 }}
+              />
+            }
+            label="Abwiegeliste & Rezepte mitdrucken"
+          />
         )}
       </Stack>
     </Stack>
@@ -858,7 +904,12 @@ export default function BackzettelDayClient({
         {header}
         {body}
       </Box>
-      {day && <BackzettelPrint day={day} config={config} />}
+      {day &&
+        (isDoughDaySheet(day) ? (
+          <DoughDayPrint day={day} config={config} withExtras={printExtras} />
+        ) : (
+          <BackzettelPrint day={day} config={config} />
+        ))}
       <Snackbar
         open={!!notice}
         autoHideDuration={3000}

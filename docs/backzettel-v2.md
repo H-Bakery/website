@@ -1,6 +1,7 @@
 # Backzettel v2 (Z10) – design
 
-Status: design for implementation, 08.11.2026. Branch `feat/Z10-backzettel-v2`.
+Status: design record, 08.11.2026. Branch `feat/Z10-backzettel-v2`: slices S1–S6 built (see §10);
+the rules as built are in `docs/domains/backzettel.md` and `docs/api/backzettel.md`.
 Scope: roadmap Z10 (on `docs/claude-md-cleanup`), domain reference `hq/notes/procedures/backliste.md`
 (private). **Every number in this document is invented.** Real quantities, the reference values of
 Anhang A and the kg/L table derived from the paper sheets stay in `hq`.
@@ -809,7 +810,24 @@ Each slice leaves the branch green: `npx jest -c apps/bakery-api/jest.config.js`
   `bakeDate`; tablet default tab rule; Grundmengen size rows and Bruch hint.
 - Tests: `npx nx test bakery-management`, `npm run type-check`, `npx nx lint bakery-management`.
 
-### S6 - Print, Hilfe, docs
+### S6 - Print, Hilfe, docs (built)
+
+Built as designed, with these differences:
+
+- Other sections print compact without the Basis/Saison/Vorb./CAP/Korr. columns; what those columns
+  say (base unset, preorders, CAP, tray, correction reason, already done, delta) stands inline.
+- Hefeteig rows list the count per variant without a row total (the app never sums).
+- `dayPrintLayout` has five density steps (down to 7 pt) and a 10 mm page margin. If the densest
+  step still does not fit, the other sections move to sheet 2 with a note on page 1 (§9.3), whether
+  or not the extras box is ticked.
+- The bake-list print has no Bruch groups (the bake list carries pieces per product only).
+- `v2CoveredKeys`/`linesByKey` moved from `RollsByBakeDay.tsx` to `backzettelFormat.ts` (re-exported)
+  so the print and the layout share them.
+- The root `CLAUDE.md` only points to `docs/domains/*.md`; the rules went there.
+- `page.pdf()` check (synthetic busy Saturday, 56 lines, 6 Nachträge after confirm): draft and
+  confirmed sheet 1 page each, bake lists 1 page each.
+
+Original plan:
 
 - Files: new `components/backzettel/{DoughDayPrint,BackzettelPrintExtras,BakeListPrint}.tsx`,
   `src/lib/dayPrintLayout.ts` (+ spec), `BackzettelPrint.tsx` (legacy path only), wiring in

@@ -9,7 +9,6 @@ import {
   Button,
   Chip,
   CircularProgress,
-  GlobalStyles,
   IconButton,
   Paper,
   Stack,
@@ -43,37 +42,16 @@ import {
 } from '../../../../../lib/backzettelFormat'
 import { useOptionalSession } from '../../../../../lib/session'
 import { DeltasCard } from '../../../../../components/backzettel/DeltasCard'
+import {
+  BakeListPrint,
+  bakeListPrintStyles,
+} from '../../../../../components/backzettel/BakeListPrint'
 
 const MIN_TOUCH = { minHeight: 44 }
 
 function messageOf(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
 }
-
-/**
- * Druck der Backliste (Z10 S5): nur die Liste, schwarz auf weiß, ohne
- * App-Hülle und Knöpfe. Das eigene Druckbild (BakeListPrint) kommt mit S6.
- */
-export const bakeListPrintStyles = (
-  <GlobalStyles
-    styles={{
-      '@media print': {
-        '.MuiAppBar-root, nav, .MuiDrawer-root, [aria-label="Pfad"], main > .MuiToolbar-root, [data-print="hide"]':
-          { display: 'none !important' },
-        'body, section': { animation: 'none !important' },
-        '.bake-list, .bake-list *': {
-          color: '#000 !important',
-          backgroundColor: 'transparent !important',
-          boxShadow: 'none !important',
-        },
-        '.bake-list .MuiPaper-root': {
-          borderColor: '#000 !important',
-          breakInside: 'avoid',
-        },
-      },
-    }}
-  />
-)
 
 /** Offene Nachträge der Zeile: Rand + leichte Warnfarbe (wie der Zettel). */
 function deltaSx(line: BackzettelLine) {
@@ -475,8 +453,13 @@ export default function BakeListClient({ date }: BakeListClientProps) {
   return (
     <Box sx={{ maxWidth: 960, mx: 'auto' }}>
       {bakeListPrintStyles}
-      {header}
-      {body}
+      <Box className="bl-screen" data-testid="bl-screen">
+        {header}
+        {body}
+      </Box>
+      {list && list.status === 'ok' && (
+        <BakeListPrint list={list} config={config} />
+      )}
     </Box>
   )
 }

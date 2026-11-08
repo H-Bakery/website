@@ -1,0 +1,791 @@
+'use client'
+
+import React from 'react'
+import { GlobalStyles } from '@mui/material'
+import {
+  deltaTotalsByKey,
+  type BackzettelConfigData,
+  type BackzettelDay,
+  type BackzettelLine,
+  type BreadRow,
+  type DoughLiters,
+  type MachineBox,
+  type RollsBlock,
+} from '../../lib/backzettelApi'
+import {
+  addonText,
+  bakeDayLabel,
+  doughsTodayText,
+  formatDateLong,
+  formatFactor,
+  formatKnown,
+  formatKnownGrams,
+  formatNumber,
+  formatQty,
+  formatSignedQty,
+  formatTimestamp,
+  kgText,
+  lineLabel,
+  linesByKey,
+  litersLabel,
+  previouslyDoneText,
+  variantLabel,
+} from '../../lib/backzettelFormat'
+import {
+  NOTE_LINES,
+  NOTE_LINE_MM,
+  PAGE_MARGIN_MM,
+  dayPrintLayout,
+  dayPrintParts,
+  type HefeteigPrintRow,
+} from '../../lib/dayPrintLayout'
+import {
+  groupDeltasForPrint,
+  initials,
+  printDeltaFigure,
+  printLineDeltaNote,
+} from './BackzettelPrint'
+import { BackzettelPrintExtras } from './BackzettelPrintExtras'
+
+/**
+ * Druckregeln des Teigtag-Zettels. Ergänzen `backzettelPrintStyles` (die
+ * blenden App-Hülle und `.bz-screen` aus und `.bz-print` ein); Schrift und
+ * Zeilenhöhe kommen als CSS-Variablen aus `dayPrintLayout`.
+ */
+const doughDayPrintStyles = (
+  <GlobalStyles
+    styles={{
+      '@media print': {
+        // Etwas schmaler als der alte Tagesdruck (12 mm): ein Blatt.
+        '@page': { size: 'A4', margin: `${PAGE_MARGIN_MM}mm` },
+        '.dd-print': {
+          fontSize: 'var(--dd-font) !important',
+          lineHeight: '1.2 !important',
+        },
+        '.dd-print h1': { fontSize: 'calc(var(--dd-font) * 1.5)', margin: 0 },
+        '.dd-print h2': {
+          fontSize: 'calc(var(--dd-font) * 1.1)',
+          margin: '1.8mm 0 0.6mm',
+          borderBottom: '1.2pt solid #000',
+          breakAfter: 'avoid',
+        },
+        '.dd-print h3': {
+          fontSize: 'var(--dd-font)',
+          margin: '0 0 0.5mm',
+          fontWeight: 700,
+        },
+        '.dd-print .dd-head': {
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: '4mm',
+        },
+        '.dd-print .dd-stamp': {
+          border: '2pt solid #000',
+          padding: '1mm 3mm',
+          fontWeight: 700,
+          fontSize: 'calc(var(--dd-font) * 1.2)',
+          whiteSpace: 'nowrap',
+        },
+        '.dd-print .dd-stamp.draft': { borderStyle: 'dashed' },
+        '.dd-print .meta': { margin: '0.5mm 0' },
+        '.dd-print .small': { fontSize: 'calc(var(--dd-font) * 0.85)' },
+        '.dd-print .muted': { fontStyle: 'italic' },
+        '.dd-print table': {
+          width: 'calc(100% - 1pt)',
+          borderCollapse: 'collapse',
+        },
+        '.dd-print th, .dd-print td': {
+          borderBottom: '0.5pt solid #777',
+          padding: '0 1.2mm',
+          height: 'var(--dd-row)',
+          textAlign: 'left',
+          verticalAlign: 'middle',
+        },
+        '.dd-print th': { fontSize: 'calc(var(--dd-font) * 0.85)' },
+        '.dd-print .num': { textAlign: 'right', whiteSpace: 'nowrap' },
+        '.dd-print .total': {
+          fontSize: 'calc(var(--dd-font) * 1.25)',
+          fontWeight: 700,
+        },
+        '.dd-print td.tick, .dd-print th.tick': {
+          width: '7mm',
+          textAlign: 'center',
+        },
+        '.dd-print .box': {
+          display: 'inline-block',
+          width: '4mm',
+          height: '4mm',
+          border: '1pt solid #000',
+          verticalAlign: 'middle',
+          lineHeight: '4mm',
+          textAlign: 'center',
+          fontWeight: 700,
+        },
+        // Maschine: ein Kasten je Teig, die Literzahl groß.
+        '.dd-print .dd-machine': {
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+          gap: '2mm',
+          margin: '1.5mm 0',
+        },
+        '.dd-print .dd-box': {
+          border: '1.5pt solid #000',
+          padding: '1mm 1.5mm',
+          breakInside: 'avoid',
+        },
+        '.dd-print .dd-box.incomplete': { borderStyle: 'dashed' },
+        '.dd-print .dd-big': {
+          fontSize: 'var(--dd-big)',
+          fontWeight: 800,
+          lineHeight: 1.1,
+        },
+        // Brötchen: je Backtag eine Spalte.
+        '.dd-print .dd-rolls': {
+          display: 'grid',
+          gridTemplateColumns: 'repeat(var(--dd-roll-cols), minmax(0, 1fr))',
+          gap: '3mm',
+        },
+        '.dd-print .dd-roll-col.today': {
+          fontSize: 'calc(var(--dd-font) * 0.85)',
+        },
+        '.dd-print .dd-group': { borderBottom: '0.5pt solid #777' },
+        '.dd-print .dd-group-row': {
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '1.5mm',
+          minHeight: 'var(--dd-row)',
+        },
+        // Hefeteig und übrige Abschnitte: zwei Spalten.
+        '.dd-print .dd-two': {
+          columnCount: 2,
+          columnGap: '5mm',
+        },
+        '.dd-print .dd-others': { marginTop: '1.8mm' },
+        '.dd-print .dd-section-head': {
+          margin: '1mm 0 0',
+          borderBottom: '1.2pt solid #000',
+          breakAfter: 'avoid',
+        },
+        '.dd-print .dd-section-head:first-child': { marginTop: 0 },
+        '.dd-print .dd-row': {
+          display: 'flex',
+          alignItems: 'center',
+          gap: '1.5mm',
+          minHeight: 'var(--dd-row)',
+          borderBottom: '0.5pt solid #777',
+          breakInside: 'avoid',
+        },
+        '.dd-print .dd-name': { flex: '1 1 auto', minWidth: 0 },
+        '.dd-print .dd-detail': { marginLeft: '1.5mm' },
+        '.dd-print .dd-single': { textAlign: 'center', whiteSpace: 'nowrap' },
+        '.dd-print .dd-initials': { display: 'block', lineHeight: 1 },
+        '.dd-print .dd-counts': { fontWeight: 700, textAlign: 'right' },
+        '.dd-print .dd-delta-qty': {
+          flex: '0 0 auto',
+          minWidth: '12mm',
+          textAlign: 'right',
+          whiteSpace: 'nowrap',
+        },
+        '.dd-print .dd-row .tick': {
+          flex: '0 0 6mm',
+          textAlign: 'center',
+        },
+        '.dd-print .dd-note-line': {
+          borderBottom: '0.5pt solid #000',
+          height: `${NOTE_LINE_MM}mm`,
+        },
+        '.dd-print .bz-break': { breakBefore: 'page' },
+      },
+    }}
+  />
+)
+
+/** Liter im Druck: unbekannt ist „–“, ohne Rundung die genauen Liter. */
+export function printLiters(liters: DoughLiters | null | undefined): {
+  text: string
+  hint: string | null
+} {
+  if (!liters || liters.exact === null) {
+    return {
+      text: '–',
+      hint:
+        liters?.reason === 'kg_per_liter_unknown'
+          ? 'Liter unbekannt (kg je Liter fehlt)'
+          : liters?.reason === 'dough_incomplete'
+          ? 'Liter unbekannt (Teig unvollständig)'
+          : 'Liter unbekannt',
+    }
+  }
+  if (liters.rounded === null) {
+    return { text: `${formatNumber(liters.exact)} L`, hint: 'Rundung offen' }
+  }
+  return { text: `${formatNumber(liters.rounded)} L`, hint: null }
+}
+
+/** kg im Druck: „12,4 kg“, „≥ 12,4 kg“ oder „– kg“. */
+export function printKg(d: Parameters<typeof kgText>[0]): string {
+  const text = kgText(d)
+  return text === 'unbekannt' ? '– kg' : text
+}
+
+function Tick({ lines }: { lines: (BackzettelLine | undefined)[] }) {
+  const relevant = lines.filter((l): l is BackzettelLine => !!l)
+  const done = relevant.length > 0 && relevant.every((l) => !!l.doneAt)
+  if (!done) return <span className="box" />
+  const by = relevant.find((l) => l.doneBy)?.doneBy
+  // Kürzel unter dem Kästchen, nicht darin (4 mm).
+  return (
+    <span data-testid="dd-done">
+      <span className="box">✓</span>
+      {by ? (
+        <span className="small dd-initials">{initials(by.displayName)}</span>
+      ) : null}
+    </span>
+  )
+}
+
+function MachineBoxPrint({ box }: { box: MachineBox }) {
+  const liters = printLiters(box.liters)
+  const batches =
+    box.batches === null || box.batches === undefined
+      ? 'Chargen –'
+      : `${formatNumber(box.batches)} ${
+          box.batches === 1 ? 'Charge' : 'Chargen'
+        }`
+  return (
+    <div
+      className={box.complete ? 'dd-box' : 'dd-box incomplete'}
+      data-testid={`dd-machine-${box.id ?? 'offen'}`}
+    >
+      <h3>{box.name}</h3>
+      <div>
+        <span className="small">{litersLabel(box)} </span>
+        <span className="dd-big" data-testid={`dd-liters-${box.id ?? 'offen'}`}>
+          {liters.text}
+        </span>
+      </div>
+      <div>
+        {printKg(box)} · {batches}
+      </div>
+      {box.addons.map((addon) => {
+        const a = addonText(addon)
+        return (
+          <div key={addon.id}>
+            {a.text.replace(': unbekannt', ' –')}
+            {a.hint ? <span className="small"> ({a.hint})</span> : null}
+          </div>
+        )
+      })}
+      {liters.hint && <div className="small">{liters.hint}</div>}
+    </div>
+  )
+}
+
+/** Alte Posten ohne Größen in der Brot-Tabelle: immer mit Einheit („16 Stück“). */
+function singleQty(total: number, unit: string): string {
+  const text = formatQty(total, unit)
+  return text === formatNumber(total) ? `${text} ${unit || 'Stück'}` : text
+}
+
+function BreadPrint({
+  day,
+  lineByKey,
+}: {
+  day: BackzettelDay
+  lineByKey: Map<string, BackzettelLine>
+}) {
+  const bread = day.bread
+  if (!bread || bread.rows.length === 0) return null
+  const sizes = bread.sizes
+  const cellLines = (row: BreadRow) =>
+    [row.single, ...sizes.map((sz) => row.cells[sz.id] ?? null)]
+      .filter((c): c is NonNullable<typeof c> => !!c)
+      .filter((c) => c.total > 0)
+      .map((c) => lineByKey.get(c.key))
+  return (
+    <div data-testid="dd-bread">
+      <h2>Brot</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Brot</th>
+            {sizes.map((sz) => (
+              <th key={sz.id} className="num">
+                {sz.label}
+              </th>
+            ))}
+            <th className="num">Teig</th>
+            <th className="tick">✓</th>
+          </tr>
+        </thead>
+        <tbody>
+          {bread.rows.map((row) => (
+            <tr key={`${row.itemId}|${row.bakeDate}`}>
+              <td>
+                <strong>{row.name}</strong>
+                {row.note && (
+                  <span className="small dd-detail">{row.note}</span>
+                )}
+              </td>
+              {row.single ? (
+                <td
+                  className="dd-single total"
+                  colSpan={Math.max(1, sizes.length)}
+                  data-testid={`dd-bread-${row.single.key}`}
+                >
+                  {row.single.baseUnset && row.single.total === 0
+                    ? 'offen'
+                    : singleQty(row.single.total, row.single.unit)}
+                </td>
+              ) : (
+                sizes.map((sz) => {
+                  const cell = row.cells[sz.id]
+                  return (
+                    <td
+                      key={sz.id}
+                      className="num total"
+                      data-testid={cell ? `dd-bread-${cell.key}` : undefined}
+                    >
+                      {!cell
+                        ? ''
+                        : cell.baseUnset && cell.total === 0
+                        ? 'offen'
+                        : formatNumber(cell.total)}
+                    </td>
+                  )
+                })
+              )}
+              {!row.single && sizes.length === 0 ? <td /> : null}
+              <td className="num">
+                {row.complete && row.kg === null ? '' : printKg(row)}
+              </td>
+              <td className="tick">
+                <Tick lines={cellLines(row)} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function RollsPrint({
+  rolls,
+  sheetDate,
+  lineByKey,
+}: {
+  rolls: RollsBlock[]
+  sheetDate: string
+  lineByKey: Map<string, BackzettelLine>
+}) {
+  if (rolls.length === 0) return null
+  // Später gebackene zuerst, „heute backen“ klein am Ende.
+  const ordered = [
+    ...rolls.filter((b) => b.bakeDate !== sheetDate),
+    ...rolls.filter((b) => b.bakeDate === sheetDate),
+  ]
+  const cols = Math.min(3, ordered.length)
+  return (
+    <div data-testid="dd-rolls">
+      <h2>Brötchen</h2>
+      <div
+        className="dd-rolls"
+        style={{ ['--dd-roll-cols' as string]: String(cols) }}
+      >
+        {ordered.map((block) => (
+          <div
+            key={block.bakeDate}
+            className={
+              block.bakeDate === sheetDate ? 'dd-roll-col today' : 'dd-roll-col'
+            }
+            data-testid={`dd-rolls-${block.bakeDate}`}
+          >
+            <h3>{bakeDayLabel(block.bakeDate, sheetDate)}</h3>
+            {block.groups.map((g) => (
+              <div
+                key={g.key}
+                className="dd-group dd-group-row"
+                data-testid={`dd-bruch-${g.key}`}
+              >
+                <span>
+                  <strong className="total">
+                    {g.brueche === null
+                      ? '? Bruch'
+                      : `${formatNumber(g.brueche)} Bruch`}
+                  </strong>{' '}
+                  × {g.g === null ? '– g' : `${formatNumber(g.g)} g`}
+                  <span className="small">
+                    {' – '}
+                    {g.split
+                      .map((s) => `${formatNumber(s.total)} ${s.name}`)
+                      .join(', ')}
+                    {g.spare !== null && g.spare > 0
+                      ? ` · +${formatNumber(g.spare)} frei`
+                      : ''}
+                  </span>
+                </span>
+                <Tick lines={g.split.map((s) => lineByKey.get(s.key))} />
+              </div>
+            ))}
+            {block.singles.map((s) => (
+              <div key={s.key} className="dd-group dd-group-row">
+                <span>
+                  <strong className="total">{formatNumber(s.total)}</strong>{' '}
+                  {s.name}
+                  <span className="small">
+                    {s.piece_g === null
+                      ? ' (g offen)'
+                      : ` (je ${formatNumber(s.piece_g)} g)`}
+                    {s.pieces === null ? ' · Teigstücke offen' : ''}
+                    {s.baseUnset ? ' · Grundmenge offen' : ''}
+                  </span>
+                </span>
+                <Tick lines={[lineByKey.get(s.key)]} />
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function hefeteigCounts(
+  row: HefeteigPrintRow,
+  config: BackzettelConfigData | null
+): string {
+  const qty = (l: BackzettelLine) =>
+    l.baseUnset && l.total === 0 ? 'offen' : formatQty(l.total, l.unit)
+  if (row.lines.length === 1 && !row.lines[0].variant) {
+    return qty(row.lines[0])
+  }
+  return row.lines
+    .map(
+      (l) =>
+        `${
+          l.variant
+            ? l.variantLabel || variantLabel(l.variant, config, l.itemId)
+            : 'ohne Füllung'
+        } ${qty(l)}`
+    )
+    .join(' · ')
+}
+
+function HefeteigPrint({
+  day,
+  rows,
+  config,
+}: {
+  day: BackzettelDay
+  rows: HefeteigPrintRow[]
+  config: BackzettelConfigData | null
+}) {
+  if (rows.length === 0) return null
+  const doughs = day.hefeteig?.doughs ?? []
+  return (
+    <div data-testid="dd-hefeteig">
+      <h2>
+        Hefeteig
+        {doughs.length > 0 && (
+          <span className="small dd-detail" style={{ fontWeight: 400 }}>
+            {doughs
+              .map(
+                (d) =>
+                  `${d.name}: ${formatKnown(d.pieces)} Teigstücke · ${
+                    d.kg !== undefined
+                      ? printKg({ kg: d.kg, kgKnown: d.kgKnown })
+                      : formatKnownGrams(d.dough_g)
+                  }`
+              )
+              .join(' · ')}
+          </span>
+        )}
+      </h2>
+      <div className="dd-two">
+        {rows.map((row) => (
+          <div
+            key={row.itemId}
+            className="dd-row"
+            data-testid={`dd-hefe-${row.itemId}`}
+          >
+            <span className="dd-name">
+              <strong>{row.name}</strong>
+            </span>
+            <span className="dd-counts">{hefeteigCounts(row, config)}</span>
+            <span className="tick">
+              <Tick lines={row.lines.filter((l) => l.total > 0)} />
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function lineDetail(line: BackzettelLine): string {
+  return [
+    line.baseUnset ? 'Grundmenge offen' : null,
+    line.preorders > 0
+      ? `inkl. ${formatNumber(line.preorders)} vorbestellt`
+      : null,
+    line.cap > 0 ? `inkl. ${formatNumber(line.cap)} CAP` : null,
+    line.tray,
+    line.correctionReason ? `Korrektur: ${line.correctionReason}` : null,
+    previouslyDoneText(line),
+    line.delta && line.delta.count > 0
+      ? printLineDeltaNote(line.delta, line.unit)
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+function SectionsPrint({
+  sections,
+  config,
+}: {
+  sections: BackzettelDay['sections']
+  config: BackzettelConfigData | null
+}) {
+  return (
+    <div className="dd-two dd-others" data-testid="dd-others">
+      {sections.map((section) => (
+        <React.Fragment key={section.id}>
+          <h3 className="dd-section-head">{section.label}</h3>
+          {section.lines.map((line) => {
+            const detail = lineDetail(line)
+            return (
+              <div
+                key={line.key}
+                className="dd-row"
+                data-testid={`dd-line-${line.key}`}
+              >
+                <span className="dd-name">
+                  {lineLabel(line, config)}
+                  {detail && <span className="small dd-detail">{detail}</span>}
+                </span>
+                <span className="num total">
+                  {formatQty(line.total, line.unit)}
+                </span>
+                <span className="tick">
+                  <Tick lines={[line]} />
+                </span>
+              </div>
+            )
+          })}
+        </React.Fragment>
+      ))}
+    </div>
+  )
+}
+
+function DeltasPrint({
+  day,
+  config,
+}: {
+  day: BackzettelDay
+  config: BackzettelConfigData | null
+}) {
+  const deltas = day.deltas ?? []
+  if (deltas.length === 0) return null
+  const groups = groupDeltasForPrint(deltas, deltaTotalsByKey(day))
+  return (
+    <div data-testid="print-deltas">
+      <h2>Nachträge seit der Freigabe (nicht in den Mengen oben)</h2>
+      <div className="dd-two">
+        {groups.map((g) => {
+          const { shown, done, seen } = printDeltaFigure(g)
+          return (
+            <div
+              key={g.key}
+              className="dd-row"
+              data-testid={`print-delta-${g.key}`}
+            >
+              <span className="total dd-delta-qty">
+                {shown === 0 ? '±0' : formatSignedQty(shown, g.first.unit)}
+              </span>
+              <span className="dd-name">
+                {lineLabel(
+                  {
+                    name: g.first.name,
+                    variant: g.first.variant,
+                    itemId: g.first.itemId,
+                    bakeDate: g.first.bakeDate,
+                    doughDate: day.date,
+                  },
+                  config
+                )}
+                <span className="small">
+                  {seen !== null
+                    ? ` · noch offen, ${formatQty(
+                        Math.abs(seen),
+                        g.first.unit
+                      )} schon gesehen`
+                    : ''}
+                  {g.open === 0 ? ' · quittiert' : ''}
+                </span>
+              </span>
+              <span className="tick">
+                {done ? (
+                  <span
+                    className="box"
+                    data-testid={`print-delta-done-${g.key}`}
+                  >
+                    ✓
+                  </span>
+                ) : (
+                  <span className="box" />
+                )}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+export interface DoughDayPrintProps {
+  day: BackzettelDay
+  config: BackzettelConfigData | null
+  /** Abwiegeliste, Rezepte und Vorbereitung auf weiteren Blättern (O8). */
+  withExtras?: boolean
+}
+
+/**
+ * Druckbild eines Teigtag-Zettels (Z10, docs/backzettel-v2.md §7.5): EINE
+ * A4-Seite hoch, schwarz auf weiß. Kopf mit Stempel Entwurf/Freigegeben,
+ * Maschinen-Leiste (Liter groß, „–“ für unbekannt), Brot (Größen als
+ * Spalten), Brötchen je Backtag (Brüche × Gewicht, Aufteilung, „+n frei“),
+ * Hefeteig in zwei Spalten, übrige Abschnitte knapp in zwei Spalten,
+ * Nachträge, Hinweise, „Offen: …“ und Notizzeilen. Alle Zahlen kommen vom
+ * Server; `dayPrintLayout` wählt nur die Dichte. Passt es selbst knapp
+ * gesetzt nicht, stehen die übrigen Abschnitte auf Blatt 2 - nie weggelassen.
+ */
+export function DoughDayPrint({
+  day,
+  config,
+  withExtras = false,
+}: DoughDayPrintProps) {
+  const layout = dayPrintLayout(day)
+  const parts = dayPrintParts(day)
+  const lineByKey = linesByKey(day.sections)
+  const confirmed = day.status === 'confirmed'
+  const doughs = doughsTodayText(day)
+  const others = parts.others.length > 0 && (
+    <SectionsPrint sections={parts.others} config={config} />
+  )
+  const style = {
+    '--dd-font': `${layout.fontPt}pt`,
+    '--dd-row': `${layout.rowMm}mm`,
+    '--dd-big': `${layout.bigPt}pt`,
+  } as React.CSSProperties
+
+  return (
+    <div
+      className="bz-print dd-print"
+      data-testid="bz-print"
+      data-print-step={layout.step}
+      data-print-estimate={layout.estimatedMm}
+      aria-hidden="true"
+      style={style}
+    >
+      {doughDayPrintStyles}
+      <section className="bz-page" data-testid="print-page-1">
+        <div className="dd-head">
+          <div>
+            <h1>Backzettel {formatDateLong(day.date)}</h1>
+            {doughs && <p className="meta">{doughs}</p>}
+            <p className="meta small">
+              {confirmed
+                ? `Freigegeben${
+                    day.confirmedBy ? ` von ${day.confirmedBy.displayName}` : ''
+                  }${
+                    day.confirmedAt
+                      ? ` am ${formatTimestamp(day.confirmedAt)}`
+                      : ''
+                  } · `
+                : ''}
+              Saisonfaktor {formatFactor(day.seasonFactor)}
+            </p>
+          </div>
+          <div
+            className={confirmed ? 'dd-stamp' : 'dd-stamp draft'}
+            data-testid="dd-stamp"
+          >
+            {confirmed ? 'FREIGEGEBEN' : 'ENTWURF – noch nicht freigegeben'}
+          </div>
+        </div>
+
+        {(day.machine ?? []).length > 0 && (
+          <div className="dd-machine" data-testid="dd-machine">
+            {(day.machine ?? []).map((box) => (
+              <MachineBoxPrint key={box.id ?? 'offen'} box={box} />
+            ))}
+          </div>
+        )}
+
+        <BreadPrint day={day} lineByKey={lineByKey} />
+        <RollsPrint
+          rolls={day.rolls ?? []}
+          sheetDate={day.date}
+          lineByKey={lineByKey}
+        />
+        <HefeteigPrint day={day} rows={parts.hefeteig} config={config} />
+
+        {layout.othersOnSecondSheet ? (
+          <p className="small" data-testid="dd-others-next">
+            <strong>Weitere Posten auf Blatt 2</strong> (
+            {parts.others.map((s) => s.label).join(', ')}).
+          </p>
+        ) : (
+          others
+        )}
+
+        {day.sections.length === 0 && (
+          <p data-testid="dd-empty">
+            Heute wird kein Teig gemacht – was gebacken wird, steht auf der
+            Backliste.
+          </p>
+        )}
+
+        <DeltasPrint day={day} config={config} />
+
+        {parts.hints.length > 0 && (
+          <p className="small" data-testid="dd-hints">
+            <strong>Hinweise:</strong> {parts.hints.join('; ')}.
+          </p>
+        )}
+        {parts.open.length > 0 && (
+          <p className="small" data-testid="dd-open">
+            <strong>Offen:</strong> {parts.open.join('; ')}.
+          </p>
+        )}
+
+        <div data-testid="dd-notes">
+          <h3>Notizen</h3>
+          {Array.from({ length: NOTE_LINES }, (_, i) => (
+            <div key={i} className="dd-note-line" />
+          ))}
+        </div>
+      </section>
+
+      {layout.othersOnSecondSheet && others && (
+        <section className="bz-page bz-break" data-testid="print-dd-others">
+          <h1>Backzettel {formatDateLong(day.date)} – Blatt 2</h1>
+          {!confirmed && (
+            <p className="banner">ENTWURF – noch nicht freigegeben</p>
+          )}
+          {others}
+        </section>
+      )}
+
+      {withExtras && <BackzettelPrintExtras day={day} />}
+    </div>
+  )
+}
+
+export default DoughDayPrint

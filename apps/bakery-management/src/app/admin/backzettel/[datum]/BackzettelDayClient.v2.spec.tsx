@@ -6,7 +6,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
-import BackzettelDayClient from './BackzettelDayClient'
+import BackzettelDayClient, { PRINT_EXTRAS_KEY } from './BackzettelDayClient'
 import { fakeSession, WithSession } from '../../../../lib/testing/fakeSession'
 import * as api from '../../../../lib/backzettelApi'
 import {
@@ -299,5 +299,59 @@ describe('Backzettel-Tagesplanung - Teigtag-Zettel (Z10)', () => {
     expect(
       screen.queryByRole('link', { name: /Backliste/ })
     ).not.toBeInTheDocument()
+  })
+
+  describe('Druck (S6)', () => {
+    const storage = window.localStorage as unknown as {
+      getItem: jest.Mock
+      setItem: jest.Mock
+    }
+    afterEach(() => storage.getItem.mockImplementation(() => undefined))
+
+    it('druckt den Teigtag-Zettel auf einer Seite, Abwiegeliste nur auf Wunsch', async () => {
+      renderDay()
+      const sheet = within(await screen.findByTestId('bz-print'))
+      expect(sheet.getByTestId('dd-stamp')).toHaveTextContent('ENTWURF')
+      expect(sheet.getByTestId('dd-machine')).toBeInTheDocument()
+      expect(sheet.queryByTestId('print-page-2')).not.toBeInTheDocument()
+
+      const box = screen.getByRole('checkbox', {
+        name: 'Abwiegeliste & Rezepte mitdrucken',
+      })
+      expect(box).not.toBeChecked()
+      fireEvent.click(box)
+      expect(box).toBeChecked()
+      expect(storage.setItem).toHaveBeenCalledWith(PRINT_EXTRAS_KEY, '1')
+      expect(sheet.getByTestId('print-page-2')).toHaveClass('bz-break')
+      expect(sheet.getByTestId('print-page-3')).toBeInTheDocument()
+    })
+
+    it('merkt sich „mitdrucken“ auf dem Gerät', async () => {
+      storage.getItem.mockImplementation((key: string) =>
+        key === PRINT_EXTRAS_KEY ? '1' : null
+      )
+      renderDay()
+      const sheet = within(await screen.findByTestId('bz-print'))
+      expect(sheet.getByTestId('print-page-2')).toBeInTheDocument()
+      expect(
+        screen.getByRole('checkbox', {
+          name: 'Abwiegeliste & Rezepte mitdrucken',
+        })
+      ).toBeChecked()
+    })
+
+    it('ein Tag von vor Z10 druckt wie bisher, ohne Auswahl', async () => {
+      mocked.fetchBackzettelConfig.mockResolvedValue(CONFIG_RESPONSE)
+      mocked.fetchBackzettelDay.mockResolvedValue(saturdayDraft())
+      renderDay()
+      const sheet = within(await screen.findByTestId('bz-print'))
+      expect(sheet.queryByTestId('dd-stamp')).not.toBeInTheDocument()
+      expect(sheet.getByTestId('print-page-2')).toBeInTheDocument()
+      expect(
+        screen.queryByRole('checkbox', {
+          name: 'Abwiegeliste & Rezepte mitdrucken',
+        })
+      ).not.toBeInTheDocument()
+    })
   })
 })

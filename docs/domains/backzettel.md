@@ -120,8 +120,9 @@ die Überarbeitung „Backzettel v2" (Z10) ist dort geplant - dieses Dokument be
 ## Teigtag ≠ Backtag auf der API (Z10)
 
 Entwurf: [`docs/backzettel-v2.md`](../backzettel-v2.md); Endpunkte: [`docs/api/backzettel.md`](../api/backzettel.md),
-Abschnitt „Dough-day sheets and bake list". Stand: Stammdaten-Prüfung (S1), Kern (S2) und API (S3)
-sind fertig, die Bildschirme (S5) und der Druck (S6) folgen.
+Abschnitt „Dough-day sheets and bake list". Stand: Stammdaten-Prüfung (S1), Kern (S2), API (S3),
+Rest am Abend/Schnappschuss (S4), Bildschirme (S5) und Druck (S6) sind auf dem Zweig
+`feat/Z10-backzettel-v2` gebaut; die neue hq-Datei kommt erst, wenn der Zweig auf der Box läuft.
 
 - **Ein Tag ist der Zettel eines Teigtags** (`computeDoughDay`): was an D gebacken wird (`lead` 0)
   und was an D für einen späteren Backtag angesetzt wird (`lead` ≥ 1 - Samstag macht die Brötchen
@@ -215,7 +216,38 @@ erweitertes `GET /api/backzettel/config`.
   `line-card-<key>`). Offene Nachträge: Zeile mit Warnrand + Chip, Karte „Nachträge seit der Freigabe"
   mit „Gesehen". `configChangedSinceConfirm` und `prepDateProvisional` stehen als Hinweise da.
   Bedienelemente ≥ 44 px.
-- **Druck (Z7):** `components/backzettel/BackzettelPrint.tsx`, eigenes schlichtes HTML, auf dem
+- **Druck eines Teigtag-Zettels (Z10 S6, `sheetVersion: 2`):** `components/backzettel/DoughDayPrint.tsx`,
+  **eine A4-Seite** je Teigtag, schwarz auf weiß: Kopf mit Stempel „FREIGEGEBEN" bzw. „ENTWURF – noch
+  nicht freigegeben" und „Teige heute", Maschinen-Leiste (Liter groß, kg, Chargen, Zugaben), Brot
+  (Größen als Spalten), Brötchen je Backtag (spätere Backtage zuerst, `n Bruch × g – Aufteilung`,
+  „+n frei" nur als Hinweis), Hefeteig (gefüllte Posten in einer Zeile mit den Sorten), die übrigen
+  Abschnitte knapp in zwei Spalten (Basis/Saison/Vorb./CAP stehen nur als Text dabei, wenn sie etwas
+  sagen), Nachträge (nie in den Mengen), „Hinweise", „Offen: …" (offene Stammdaten und fehlende
+  Teig-Angaben, je einmal) und vier Notizzeilen. **Unbekanntes bleibt unbekannt:** Liter ohne
+  `kg_per_liter` sind „–" mit Grund („Liter unbekannt (kg je Liter fehlt)"), ohne Rundung stehen die
+  genauen Liter mit „Rundung offen", kg mit fehlendem Teil „≥ n kg", ganz unbekannt „– kg"; die
+  Seite summiert nichts (`printLiters`, `printKg`).
+  **Dichte:** `src/lib/dayPrintLayout.ts` schätzt die Höhe je Block in mm (wie `notfallLayout`) und
+  wählt die erste von fünf Stufen (10 pt … 7 pt, `DAY_PRINT_STEPS`), die auf 268 mm passt (A4, Rand
+  10 mm). Passt auch die dichteste nicht, kommen die **übrigen Abschnitte auf Blatt 2** mit Hinweis
+  „Weitere Posten auf Blatt 2 (…)" auf Seite 1 - weggelassen wird nie etwas. Die Stufe steht als
+  `data-print-step` am Druckbild. **Abwiegeliste, skalierte Rezepte und Vorbereitung** stehen in
+  `BackzettelPrintExtras.tsx` und kommen nur mit Haken bei „Abwiegeliste & Rezepte mitdrucken"
+  (`localStorage` `bakery-backzettel-print-extras`, Vorgabe aus, O8) auf eigene Blätter. Mit der
+  heutigen hq-Datei (ohne `lead`) liefert die API für Entwürfe und neue Freigaben schon
+  `sheetVersion: 2` - gedruckt wird also ab jetzt der Einseiter; alles außer Brot-Litern und Hefeteig
+  steht dann bei den übrigen Abschnitten.
+- **Druck der Backliste (Z10 S6):** `components/backzettel/BakeListPrint.tsx` auf
+  `/admin/backzettel/[datum]/backen`, eine Seite je Backtag: Posten, Stück, aus welchem Teig, Kästchen;
+  Banner, wenn eine Quelle noch Entwurf ist; Nachträge getrennt unten (an der Zeile nur „Nachtrag +n
+  (unten, nicht in der Zahl)"); **keine Teigzahlen**. Lange Listen gehen auf zwei Spalten
+  (`bakeListPrintLayout`), nicht auf ein zweites Blatt.
+- **Geprüft wird mit `page.pdf()`, nie mit einem Screenshot:** Seite im Browser laden,
+  `emulateMedia({ media: 'print' })` nur zum Messen, vor `page.pdf({ format: 'A4' })` mit
+  `media: null` zurücksetzen, Seiten zählen. Stand S6 (erfundener voller Samstag: 56 Zeilen, 40
+  Vorbestellungen, nach der Freigabe 6 Nachträge): Entwurf und freigegebener Zettel mit Nachträgen je
+  1 Seite (Stufe 3 bzw. 4), Backliste Sonntag/Dienstag/Samstag je 1 Seite; mit Abwiegeliste 4 Blätter.
+- **Druck eines Tages von vor Z10 (Z7, `sheetVersion: 1`):** `components/backzettel/BackzettelPrint.tsx`, eigenes schlichtes HTML, auf dem
   Bildschirm unsichtbar; im Druck verschwinden `.bz-screen` und die App-Hülle. S. 1 Backzettel (alle
   Abschnitte, Gesamt groß, Kästchen, Nachträge, Hinweise; Entwurf mit Banner; knapp gesetzt, bricht nur
   zwischen Abschnitten um - `.bz-section`), S. 2 nur mit Hefeteig/Füllungen (Abwiegeliste + skalierte
@@ -274,7 +306,8 @@ zu den Namenskacheln). Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhabe
 - **Kontrast:** feste Farbpaare je Modus in `components/backstube/backstubeColors.ts` (Banner,
   Nachtrag, Haken ≥ 7:1), keine MUI-`*.main`-Texte. Die Seite schaltet das `section`-Einblenden aus
   `global.css` ab, sonst stünde der Zettel nach jedem Tageswechsel 0,8 s blass da.
-- **Kein eigener Druck:** gedruckt wird über „Planung & Druck" (`/admin/backzettel/[datum]`). Strg+P
+- **Kein eigener Druck:** gedruckt wird über „Planung & Druck" (`/admin/backzettel/[datum]`, dort
+  „Backliste" für die Backliste). Strg+P
   blendet Umschalter, Knöpfe und Reiter (`data-print="hide"`) aus und druckt schwarz auf weiß.
 - **„Zur Verwaltung"** (→ `/admin`) nur mit persönlicher Sitzung; das Tablet an der Station braucht ihn
   nicht.
@@ -292,6 +325,8 @@ zu den Namenskacheln). Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhabe
   `admin/backzettel/BackzettelOverviewClient.spec.tsx`,
   `admin/backzettel/[datum]/BackzettelDayClient.spec.tsx`,
   `admin/backzettel/grundmengen/GrundmengenClient.spec.tsx`,
-  `components/backzettel/BackzettelPrint.spec.tsx`, `app/backstube/BackstubeClient.spec.tsx`,
+  `components/backzettel/BackzettelPrint.spec.tsx`, Z10-Druck: `src/lib/dayPrintLayout.spec.ts`,
+  `components/backzettel/{DoughDayPrint,BakeListPrint}.spec.tsx`, Druck-Auswahl in
+  `admin/backzettel/[datum]/BackzettelDayClient.v2.spec.tsx`; `app/backstube/BackstubeClient.spec.tsx`,
   `components/backstube/backstubeColors.spec.ts`. Fixtures erfunden: `src/lib/backzettelFixtures.ts`
   (eindeutige Zeilen-IDs je Zeile), `src/lib/grundmengenFixtures.ts`.

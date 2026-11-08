@@ -142,6 +142,11 @@ reconcile after repair).
 
 ## Dough-day sheets and bake list (Z10, slice S3)
 
+Consumers (S5/S6): the management app renders a `sheetVersion: 2` day as the one-page dough-day print
+(`DoughDayPrint.tsx`) and `GET /:date/bake-list` as the bake-list print (`BakeListPrint.tsx`); both
+show the server's numbers as they are (`null` stays "–", nothing is summed in the app). Rules:
+[`docs/domains/backzettel.md`](../domains/backzettel.md), „Tagesplanung und Druck".
+
 Design: [../backzettel-v2.md](../backzettel-v2.md) §5. A day is now the **sheet of a dough day D**
 (`core.computeDoughDay`): the lead-0 lines baked on D plus the lines whose dough is made on D for a
 later bake day (Saturday: Sunday's and Tuesday's rolls). With today's hq file (no `lead`, no
