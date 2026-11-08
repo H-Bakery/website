@@ -52,7 +52,8 @@ npx nx lint bakery-partybrezel   # eigenes lint-Target, damit `nx affected:lint`
 
 CI baut die App in der Build-Matrix von `.github/workflows/ci.yml` mit. Tests: Kern in
 `src/lib/*.spec.ts`, der Durchklick aller Schritte (auch unter React StrictMode) in
-`src/components/PartybrezelDesigner.spec.tsx`.
+`src/components/PartybrezelDesigner.spec.tsx`, die 2D/3D-Vorschau in
+`src/components/PretzelView.spec.tsx`.
 
 Gebaut wird mit **webpack** (`next build --webpack`) - Turbopack ist in Worktrees mit verlinktem
 `node_modules` unzuverlässig. `out/` und `.next/` sind über die Root-`.gitignore` ausgeschlossen.
@@ -114,6 +115,42 @@ Ein ungültiger Wert (ohne führendes `/`, Sonderzeichen) bricht den Build ab.
   Im Modus „ein Belag je Brezel“ wird eine gemischt belegte Brezel nicht still vereinheitlicht,
   sondern als offen gemeldet. In der Oberfläche heißt es immer „Belag“; „Sorte“ ist das Wort der
   API (`variant`) und steht nur bei Abbildung B.
+
+## 3D-Ansicht
+
+Im Schritt **Belag** schaltet „Vorschau 2D | 3D“ zwischen der SVG-Vorschau und einer drehbaren
+3D-Brezel um. Sie ist eine **schematische Darstellung, kein Produktfoto**: eine Laugenbrezel mit
+dickem Bauch, dünneren Armen, Kreuzung, Salz und hellem Ausbund, waagerecht aufgeschnitten, die
+Füllung in der Farbe des Belags, die Teile mit kleiner Fuge und denselben Nummern wie in 2D
+(1 linke Schlaufe, 2 rechte Schlaufe, 3 die Arme). „klein“ ist um ∛(300/400) kleiner - die
+Skalierung kommt aus `gramsPerPart`, nicht aus festen Zahlen.
+
+- **Aufbau:** `src/lib/pretzel3d.ts` rechnet ohne three.js Mittellinie, Radius-Verlauf, Teilung,
+  Netze (Unterteil, Füllung, Oberteil, Schnittflächen), Salzkörner, Nummern-Orte und den
+  `aria-label` - getestet in `pretzel3d.spec.ts`. `src/components/PretzelPreview3D.tsx` macht
+  daraus nur Szene, Licht, Materialien und Bedienung (`three`, `OrbitControls`).
+- **Nachgeladen:** `PretzelView` lädt die Komponente per `next/dynamic` (`ssr: false`) erst,
+  wenn 3D gezeigt wird; three ist nicht im ersten Bundle (erstes Laden von `/` ≈ +2 kB gzip für
+  Umschalter und Lader, der 3D-Teil ≈ 160 kB gzip kommt erst bei Bedarf).
+- **Vorgabe und Rückfall:** 3D, wenn das Gerät WebGL kann (geprüft erst im Browser; Export und
+  erster Render zeigen 2D). Ohne WebGL, wenn der Kontext nicht entsteht oder verloren geht:
+  2D mit dem Hinweis „3D-Ansicht ist auf diesem Gerät nicht verfügbar“. Die Wahl merkt sich
+  `localStorage` (`bakery-partybrezel-view-v1`, try/catch, nur Komfort).
+- **Mehrere Brezeln:** nur **eine** 3D-Ansicht (ein WebGL-Kontext) - die zuletzt bearbeitete
+  Brezel, sonst die erste; die übrigen Karten zeigen 2D und „In 3D ansehen“.
+- **Bedienung:** ziehen dreht (seitlich; senkrecht wischen scrollt auf dem Handy die Seite),
+  Zoom begrenzt und nur mit Strg/⌘ + Mausrad bzw. Trackpad-Pinch (sonst scrollt das Rad die
+  Seite), kein Verschieben, nie von unten. Langsame Auto-Drehung bis zur ersten Bedienung, unter
+  `prefers-reduced-motion` keine. Knöpfe „Nach links drehen“, „Nach rechts drehen“, „Ansicht
+  zurücksetzen“. Das Canvas hat `role="img"` und einen Text mit Größe und Belag je Teil; die
+  Legende bleibt darunter.
+- **Ressourcen:** Größe per `ResizeObserver`, Pixeldichte ≤ 2, gerendert wird nur bei Bewegung;
+  außerhalb des Bildes (`IntersectionObserver`) und im Hintergrund-Tab ruht die Schleife. Beim
+  Abbauen wird alles freigegeben (Renderer, Geometrien, Materialien, Controls, Listener); jedes
+  Mounten hat ein eigenes Canvas (StrictMode). Belag- oder Größenwechsel baut nur die Brezel neu,
+  nicht den Renderer.
+- **Tests:** jsdom hat kein WebGL - `test-setup.ts` lässt `getContext` `null` liefern, Specs
+  mocken `PretzelPreview3D` (three wird in jest nie geladen; `PretzelView.spec.tsx`).
 
 ## Die Vorbestellung: zwei Abbildungen
 

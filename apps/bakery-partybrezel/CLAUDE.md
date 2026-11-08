@@ -23,6 +23,9 @@ Regeln, die am meisten beißen:
   wird als offen gemeldet, nie still vereinheitlicht.
 - **Steuerzeichen** prüft `src/lib/validation.ts` mit einer Kopie der API-Regel
   (`apps/bakery-api/src/services/control-chars.core.js`) - bei Änderungen dort nachziehen.
+- **3D-Ansicht** (Schritt Belag): Geometrie rein in `src/lib/pretzel3d.ts`, three.js nur in
+  `PretzelPreview3D.tsx`, nachgeladen über `PretzelView` (`next/dynamic`) - three nie statisch
+  importieren. Ohne WebGL 2D mit Hinweis; in jest wird die Komponente gemockt.
 - **Unterpfad:** `PARTYBREZEL_BASE_PATH=/partybrezel` beim Build setzt `basePath`/`assetPrefix`;
   Hosting ist nicht umgesetzt, der Deploy-Workflow bleibt unverändert.
 
