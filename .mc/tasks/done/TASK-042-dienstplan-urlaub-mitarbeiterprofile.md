@@ -147,6 +147,8 @@ Antworten des Inhabers:
    Zeiten je Schicht änderbar.
 2. Schichten **nur für den Verkauf** (API lehnt Schichten für andere Bereiche ab). Backstube/Fahrer/
    Büro nur mit Abwesenheiten. Keine Schichten über Mitternacht (Ende > Beginn am selben Tag).
+   **Nachtrag 2026-11-08:** aufgehoben - Schichten in allen Bereichen; „Verkauf besetzt“ und die
+   Besetzung über die Öffnungszeit zählen weiter nur den Verkauf (`docs/domains/dienstplan.md`).
 3. Urlaub in **Arbeitstagen, Halbtage möglich** (halber Tag = 0,5).
 4. **Kein „krank“**: Abwesenheitsarten `urlaub|frei|abwesend` - neutral, kein Gesundheitsdatum.
 5. Übertrag verfällt am **31.03. des Folgejahres**: Urlaub bis 31.03. verbraucht zuerst den Übertrag;
