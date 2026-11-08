@@ -24,9 +24,11 @@ import {
   acknowledgeDeltas,
   fetchBackzettelConfig,
   fetchBackzettelDay,
+  fetchBakeList,
   fetchPrep,
   deltaTotalsByKey,
   isBackzettelDay,
+  isDoughDaySheet,
   setLineDone,
   type BackzettelConfigData,
   type BackzettelDay,
@@ -34,10 +36,15 @@ import {
   type BackzettelDeltaEntry,
   type BackzettelLine,
   type BackzettelNoConfig,
+  type BackzettelSection,
+  type BakeList,
   type PrepView,
 } from '../../lib/backzettelApi'
 import {
   allLines,
+  bakeDayLabel,
+  bruchGroupText,
+  doughsTodayText,
   formatDateLong,
   formatDateShort,
   formatTimestamp,
@@ -50,6 +57,10 @@ import {
   type BackstubeChoice,
 } from '../../lib/backstubeDay'
 import { describeBackstubeError } from '../../lib/backstubeErrors'
+import {
+  defaultBackstubeTab,
+  type BackstubeTabId,
+} from '../../lib/backstubeTab'
 import { useSession } from '../../lib/session'
 import { isPathAllowedForRole } from '../../lib/roles'
 import LogoutButton from '../../components/auth/LogoutButton'
@@ -57,9 +68,11 @@ import { BackstubeLine } from '../../components/backstube/BackstubeLine'
 import { BackstubeHefeteig } from '../../components/backstube/BackstubeHefeteig'
 import { BackstubeDeltas } from '../../components/backstube/BackstubeDeltas'
 import { BackstubePrep } from '../../components/backstube/BackstubePrep'
+import { BackstubeBakeList } from '../../components/backstube/BackstubeBakeList'
 import { useBackstubeColors } from '../../components/backstube/backstubeColors'
+import { MachineStrip } from '../../components/backzettel/MachineStrip'
 
-type TabId = 'zettel' | 'vorbereitung'
+type TabId = BackstubeTabId
 
 type PrepResult =
   | PrepView
@@ -154,6 +167,37 @@ function patchLines(
   }
 }
 
+/**
+ * Z10: die Abschnitte eines Teigtag-Zettels je Backtag - erst der Tag selbst,
+ * dann „für Sonntag“, „für Dienstag“. Zeilen ohne `bakeDate` gehören dem
+ * Zettel-Tag. Reihenfolge der Backtage wie `bakeDates` vom Server.
+ */
+export function sectionsByBakeDay(
+  day: Pick<BackzettelDay, 'date' | 'sections' | 'bakeDates'>
+): { bakeDate: string; sections: BackzettelSection[] }[] {
+  const order = [
+    day.date,
+    ...(day.bakeDates ?? []).map((b) => b.date).filter((d) => d !== day.date),
+  ]
+  for (const s of day.sections) {
+    for (const l of s.lines) {
+      const d = l.bakeDate ?? day.date
+      if (!order.includes(d)) order.push(d)
+    }
+  }
+  return order
+    .map((bakeDate) => ({
+      bakeDate,
+      sections: day.sections
+        .map((s) => ({
+          ...s,
+          lines: s.lines.filter((l) => (l.bakeDate ?? day.date) === bakeDate),
+        }))
+        .filter((s) => s.lines.length > 0),
+    }))
+    .filter((g) => g.sections.length > 0)
+}
+
 function timeOf(date: Date): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(
     date.getMinutes()
@@ -194,7 +238,15 @@ export default function BackstubeClient({
     value: BackstubeChoice
     rule: string
   } | null>(null)
-  const [tab, setTab] = React.useState<TabId>('zettel')
+  /**
+   * Gewählter Reiter. „Zettel“/„Backen“ gelten nur für den Tag, an dem sie
+   * gewählt wurden (Z10: der nächste Tag startet wieder mit seiner Vorgabe);
+   * „Vorbereitung heute“ bleibt.
+   */
+  const [tabChoice, setTabChoice] = React.useState<{
+    tab: TabId
+    date: string
+  } | null>(null)
 
   const [result, setResult] = React.useState<BackzettelDayResult | null>(null)
   const [loadedAt, setLoadedAt] = React.useState<Date | null>(null)
@@ -220,6 +272,13 @@ export default function BackstubeClient({
 
   const [prep, setPrep] = React.useState<PrepResult | null>(null)
   const [prepError, setPrepError] = React.useState<string | null>(null)
+
+  const [bake, setBake] = React.useState<BakeList | null>(null)
+  const [bakeError, setBakeError] = React.useState<{
+    text: string
+    offline: boolean
+  } | null>(null)
+  const [bakeLoadedAt, setBakeLoadedAt] = React.useState<Date | null>(null)
 
   const dates = React.useMemo(
     () => backstubeDates(now, config?.days),
@@ -332,6 +391,25 @@ export default function BackstubeClient({
     }
   }, [])
 
+  const loadBake = React.useCallback(async () => {
+    const target = dateRef.current
+    try {
+      const res = await fetchBakeList(target)
+      if (dateRef.current !== target) return
+      setBake(res)
+      setBakeLoadedAt(clockRef.current())
+      setBakeError(null)
+    } catch (error) {
+      if (dateRef.current !== target) return
+      setBakeError(
+        describeBackstubeError(
+          error,
+          'Die Backliste konnte nicht geladen werden.'
+        )
+      )
+    }
+  }, [])
+
   // Erster Lauf und Tageswechsel: erst die Stammdaten (Produktionstage),
   // damit nicht kurz ein falscher Tag geladen wird.
   React.useEffect(() => {
@@ -339,19 +417,14 @@ export default function BackstubeClient({
     void loadDay()
   }, [configTried, date, loadDay])
 
-  React.useEffect(() => {
-    if (!configTried || tab !== 'vorbereitung') return
-    void loadPrep()
-  }, [configTried, tab, prepDate, loadPrep])
-
-  const tabRef = React.useRef(tab)
-  tabRef.current = tab
+  const tabRef = React.useRef<TabId>('zettel')
   const refresh = React.useCallback(() => {
     setNow(clockRef.current())
     if (!configLoadedRef.current) void loadConfig()
     if (!loadingRef.current) void loadDay()
     if (tabRef.current === 'vorbereitung') void loadPrep()
-  }, [loadConfig, loadDay, loadPrep])
+    if (tabRef.current === 'backen') void loadBake()
+  }, [loadBake, loadConfig, loadDay, loadPrep])
 
   // Alle 60 s und beim Zurückkommen ins Bild neu laden.
   React.useEffect(() => {
@@ -370,6 +443,11 @@ export default function BackstubeClient({
   }, [refresh])
 
   const shown = result && result.date === date ? result : null
+  const tab: TabId =
+    tabChoice && (tabChoice.tab === 'vorbereitung' || tabChoice.date === date)
+      ? tabChoice.tab
+      : defaultBackstubeTab(shown)
+  tabRef.current = tab
 
   // Freigegebener Tag mit noch nicht erfassten Änderungen an Vorbestellungen:
   // die API trägt sie im Hintergrund nach - nach kurzer Zeit noch einmal
@@ -392,6 +470,18 @@ export default function BackstubeClient({
     }, DELTAS_PENDING_RELOAD_MS)
     return () => window.clearTimeout(timer)
   }, [deltasPending, result, loadDay])
+  React.useEffect(() => {
+    if (!configTried || tab !== 'vorbereitung') return
+    void loadPrep()
+  }, [configTried, tab, prepDate, loadPrep])
+
+  // Die Backliste nur laden, wenn sie gezeigt wird (auch beim Neuladen).
+  React.useEffect(() => {
+    if (!configTried || tab !== 'backen') return
+    void loadBake()
+  }, [configTried, tab, date, loadBake])
+  const bakeShown = bake && bake.date === date ? bake : null
+
   const prepShown = prep && prep.date === prepDate ? prep : null
   const day = isBackzettelDay(shown) ? shown : null
 
@@ -552,6 +642,34 @@ export default function BackstubeClient({
     }
   }
 
+  /**
+   * „Gesehen“ auf der Backliste (Z10): jeder Nachtrag gehört zum Zettel
+   * seines Teigtags - je Teigtag quittieren, danach die Liste neu laden.
+   */
+  const ackBake = async (group: BackzettelDeltaEntry[], groupKey: string) => {
+    if (!bakeShown || group.length === 0) return
+    setAckingKey(groupKey)
+    showActionError(null)
+    const byDough = new Map<string, number[]>()
+    for (const d of group) {
+      const dough = d.doughDate ?? bakeShown.date
+      byDough.set(dough, [...(byDough.get(dough) ?? []), d.id])
+    }
+    try {
+      for (const [dough, ids] of Array.from(byDough)) {
+        if (ids.length === 1) await acknowledgeDelta(dough, ids[0])
+        else await acknowledgeDeltas(dough, ids)
+      }
+    } catch (error) {
+      showActionError(
+        messageOf(error, 'Der Nachtrag konnte nicht quittiert werden.')
+      )
+    } finally {
+      setAckingKey(null)
+    }
+    await loadBake()
+  }
+
   const planPath = `/admin/backzettel/${date}`
   const mayPlan =
     !!role && isPathAllowedForRole(planPath, role, session.sessionKind)
@@ -566,6 +684,49 @@ export default function BackstubeClient({
   const doneCount = lines.filter((l) => l.doneAt).length
   const draft = day?.status === 'draft'
   const isSaturday = day?.weekday === 6
+
+  const v2 = isDoughDaySheet(day)
+
+  const renderSection = (
+    section: BackzettelSection,
+    id: string,
+    stripBakeDate: boolean
+  ) =>
+    section.lines.length === 0 ? null : (
+      <Box
+        component="section"
+        key={id}
+        data-testid={`bs-section-${id}`}
+        aria-labelledby={`bs-section-title-${id}`}
+      >
+        <Typography
+          id={`bs-section-title-${id}`}
+          component={stripBakeDate ? 'h3' : 'h2'}
+          sx={{
+            fontSize: { xs: '1.5rem', sm: '1.9rem' },
+            fontWeight: 800,
+            mt: 1,
+            mb: 1,
+          }}
+        >
+          {section.label}
+        </Typography>
+        <Stack spacing={1}>
+          {section.lines.map((line) => (
+            <BackstubeLine
+              key={line.key}
+              // Unter der Backtag-Überschrift kein „· für …“ am Namen.
+              line={stripBakeDate ? { ...line, bakeDate: undefined } : line}
+              config={config}
+              draft={draft}
+              canTick={canWork}
+              pending={line.id !== null && pendingIds.has(line.id)}
+              onToggle={toggleLine}
+            />
+          ))}
+        </Stack>
+      </Box>
+    )
 
   const hefeteig = day ? (
     <BackstubeHefeteig
@@ -649,13 +810,13 @@ export default function BackstubeClient({
                 lineHeight: 1.15,
               }}
             >
-              {tab === 'zettel'
+              {tab !== 'vorbereitung'
                 ? formatDateLong(date)
                 : `Heute, ${formatDateLong(dates.today)}`}
             </Typography>
           </Box>
           {/* Die Vorbereitung gilt immer dem nächsten Backtag - dort kein Umschalter. */}
-          {tab === 'zettel' && (
+          {tab !== 'vorbereitung' && (
             <ToggleButtonGroup
               data-print="hide"
               exclusive
@@ -760,7 +921,7 @@ export default function BackstubeClient({
         <Tabs
           value={tab}
           onChange={(_, value: TabId) => {
-            setTab(value)
+            setTabChoice({ tab: value, date })
             showActionError(null)
           }}
           aria-label="Ansicht"
@@ -777,7 +938,8 @@ export default function BackstubeClient({
             },
           }}
         >
-          <Tab value="zettel" label="Backzettel" />
+          <Tab value="zettel" label="Zettel" />
+          <Tab value="backen" label="Backen" />
           <Tab value="vorbereitung" label="Vorbereitung heute" />
         </Tabs>
       </Box>
@@ -793,7 +955,83 @@ export default function BackstubeClient({
           </Alert>
         )}
 
-        {tab === 'zettel' ? (
+        {tab === 'backen' ? (
+          <Stack spacing={2}>
+            {bakeError && bakeShown && (
+              <Alert severity="warning" sx={{ fontSize: '1.1rem' }}>
+                {bakeError.offline
+                  ? bakeError.text
+                  : `Neu laden fehlgeschlagen: ${bakeError.text}`}{' '}
+                Angezeigt wird der Stand von{' '}
+                {bakeLoadedAt ? timeOf(bakeLoadedAt) : '–'}.
+              </Alert>
+            )}
+            {!bakeShown && bakeError && (
+              <Alert
+                severity="error"
+                sx={{ fontSize: '1.15rem', alignItems: 'center' }}
+                action={
+                  <Button
+                    color="inherit"
+                    onClick={refresh}
+                    sx={{ minHeight: 48, fontSize: '1.05rem' }}
+                  >
+                    Erneut versuchen
+                  </Button>
+                }
+              >
+                {bakeError.text}
+              </Alert>
+            )}
+            {!bakeShown && !bakeError && (
+              <Box sx={{ py: 8, textAlign: 'center' }}>
+                <CircularProgress aria-label="Backliste wird geladen" />
+              </Box>
+            )}
+            {bakeShown?.status === 'ruhetag' && (
+              <Box
+                data-testid="bs-bake-ruhetag"
+                sx={{ py: 6, textAlign: 'center' }}
+              >
+                <Typography sx={{ fontSize: '2.25rem', fontWeight: 800 }}>
+                  Ruhetag
+                </Typography>
+                <Typography
+                  sx={{ fontSize: '1.25rem', color: 'text.secondary' }}
+                >
+                  An diesem Tag wird nicht gebacken.
+                </Typography>
+              </Box>
+            )}
+            {bakeShown?.status === 'no-config' && (
+              <Alert
+                severity="warning"
+                data-testid="bs-bake-no-config"
+                sx={{ fontSize: '1.2rem' }}
+              >
+                Keine Backliste: Die Stammdaten (backzettel.yaml) fehlen oder
+                sind ungültig. Bitte im Büro Bescheid geben.
+              </Alert>
+            )}
+            {bakeShown?.status === 'ok' && (
+              <BackstubeBakeList
+                list={bakeShown}
+                config={config}
+                canAck={canWork}
+                ackingKey={ackingKey}
+                onAck={(group, key) => void ackBake(group, key)}
+              />
+            )}
+            <Typography
+              data-print="hide"
+              sx={{ fontSize: '1rem', color: 'text.secondary', pt: 1 }}
+            >
+              {bakeLoadedAt
+                ? `Stand ${timeOf(bakeLoadedAt)} · lädt jede Minute neu`
+                : ''}
+            </Typography>
+          </Stack>
+        ) : tab === 'zettel' ? (
           <Stack spacing={2}>
             {loadError && shown && (
               <Alert severity="warning" sx={{ fontSize: '1.1rem' }}>
@@ -938,7 +1176,30 @@ export default function BackstubeClient({
                   </Alert>
                 )}
 
+                {v2 && (
+                  <>
+                    <Typography
+                      data-testid="bs-doughs-today"
+                      sx={{
+                        fontSize: { xs: '1.15rem', sm: '1.35rem' },
+                        fontWeight: 700,
+                      }}
+                    >
+                      {day.isDoughDay === false
+                        ? 'Heute kein Teig – was gebacken wird, steht unter „Backen“.'
+                        : doughsTodayText(day)}
+                    </Typography>
+                    <MachineStrip
+                      machine={day.machine ?? []}
+                      doughs={day.doughs}
+                      large
+                      muted={draft}
+                    />
+                  </>
+                )}
+
                 <BackstubeDeltas
+                  sheetDate={day.date}
                   deltas={day.deltas}
                   bakeByKey={Object.fromEntries(
                     Object.entries(deltaTotalsByKey(day)).map(([key, d]) => [
@@ -954,44 +1215,66 @@ export default function BackstubeClient({
 
                 {isSaturday && hefeteig}
 
-                {day.sections.map((section) =>
-                  section.lines.length === 0 ? null : (
-                    <Box
-                      component="section"
-                      key={section.id}
-                      data-testid={`bs-section-${section.id}`}
-                      aria-labelledby={`bs-section-title-${section.id}`}
-                    >
-                      <Typography
-                        id={`bs-section-title-${section.id}`}
-                        component="h2"
-                        sx={{
-                          fontSize: { xs: '1.5rem', sm: '1.9rem' },
-                          fontWeight: 800,
-                          mt: 1,
-                          mb: 1,
-                        }}
-                      >
-                        {section.label}
-                      </Typography>
-                      <Stack spacing={1}>
-                        {section.lines.map((line) => (
-                          <BackstubeLine
-                            key={line.key}
-                            line={line}
-                            config={config}
-                            draft={draft}
-                            canTick={canWork}
-                            pending={
-                              line.id !== null && pendingIds.has(line.id)
-                            }
-                            onToggle={toggleLine}
-                          />
-                        ))}
-                      </Stack>
-                    </Box>
-                  )
-                )}
+                {v2
+                  ? sectionsByBakeDay(day).map((group) => {
+                      const rolls = (day.rolls ?? []).find(
+                        (r) => r.bakeDate === group.bakeDate
+                      )
+                      return (
+                        <Box
+                          key={group.bakeDate}
+                          data-testid={`bs-bakeday-${group.bakeDate}`}
+                        >
+                          <Typography
+                            component="h2"
+                            sx={{
+                              fontSize: { xs: '1.6rem', sm: '2.1rem' },
+                              fontWeight: 800,
+                              mt: 1,
+                              pb: 0.5,
+                              borderBottom: '3px solid',
+                              borderColor: 'text.primary',
+                            }}
+                          >
+                            {group.bakeDate === day.date
+                              ? 'Heute backen'
+                              : `Teig ${bakeDayLabel(
+                                  group.bakeDate,
+                                  day.date
+                                )}`}
+                          </Typography>
+                          {rolls && rolls.groups.length > 0 && (
+                            <Box
+                              component="ul"
+                              data-testid={`bs-bruch-${group.bakeDate}`}
+                              sx={{
+                                m: 0,
+                                mt: 1,
+                                pl: 3,
+                                fontSize: { xs: '1.15rem', sm: '1.35rem' },
+                                fontWeight: 700,
+                              }}
+                            >
+                              {rolls.groups.map((g) => (
+                                <li key={g.key}>
+                                  {g.name}: {bruchGroupText(g)}
+                                </li>
+                              ))}
+                            </Box>
+                          )}
+                          {group.sections.map((section) =>
+                            renderSection(
+                              section,
+                              `${group.bakeDate}-${section.id}`,
+                              true
+                            )
+                          )}
+                        </Box>
+                      )
+                    })
+                  : day.sections.map((section) =>
+                      renderSection(section, section.id, false)
+                    )}
 
                 {lines.length === 0 && (
                   <Typography sx={{ fontSize: '1.4rem', py: 4 }}>

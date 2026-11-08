@@ -60,6 +60,8 @@ export interface BackstubeDeltasProps {
    * große Zahl ist das, nicht die Viertelsumme (+6,5 Kranz = 7 backen).
    */
   bakeByKey?: Record<string, number | undefined>
+  /** Z10: Datum des Zettels (Nachträge für einen anderen Backtag: „· für Di“). */
+  sheetDate?: string
 }
 
 /** Große Zahl einer Gruppe: zu backen, sonst (ältere Server) die Summe. */
@@ -124,6 +126,7 @@ export function BackstubeDeltas({
   ackingKey,
   onAck,
   bakeByKey,
+  sheetDate,
 }: BackstubeDeltasProps) {
   const colors = useBackstubeColors()
   const groups = groupOpenDeltas(deltas)
@@ -200,7 +203,13 @@ export function BackstubeDeltas({
         {groups.map((g) => {
           const d = g.deltas[0]
           const label = lineLabel(
-            { name: d.name, variant: d.variant, itemId: d.itemId },
+            {
+              name: d.name,
+              variant: d.variant,
+              itemId: d.itemId,
+              bakeDate: d.bakeDate,
+              doughDate: sheetDate,
+            },
             config
           )
           const headline = groupHeadline(g, bakeByKey?.[g.key], d.unit)

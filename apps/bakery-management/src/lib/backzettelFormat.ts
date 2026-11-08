@@ -12,7 +12,12 @@ import type {
   BackzettelLine,
   BackzettelLineDelta,
   BackzettelUnit,
+  BruchGroup,
   DeltaExtras,
+  DoughAddon,
+  DoughLiters,
+  FillingNeed,
+  MachineBox,
   ScaledIngredient,
   ScaledRecipe,
 } from './backzettelApi'
@@ -424,15 +429,25 @@ export function isIntegerUnit(unit: BackzettelUnit | null): boolean {
 }
 
 /**
- * Name einer Sorte: der Füllungsname aus den Stammdaten („Nussfüllung“),
- * sonst die ID mit großem Anfangsbuchstaben. `null` an einem Posten mit
- * Sorten heißt: Vorbestellung ohne Füllungsangabe.
+ * Name einer Sorte: die Laibgröße („500 g“, Z10) bzw. der Füllungsname aus
+ * den Stammdaten („Nussfüllung“), sonst die ID mit großem Anfangsbuchstaben.
+ * `null` an einem Posten mit Sorten heißt: Vorbestellung ohne Füllungsangabe.
+ * `itemId` braucht es nur für Größen (die gehören einem Posten).
  */
 export function variantLabel(
   variant: string | null,
-  config?: Pick<BackzettelConfigData, 'fillings'> | null
+  config?:
+    | (Pick<BackzettelConfigData, 'fillings'> &
+        Partial<Pick<BackzettelConfigData, 'items'>>)
+    | null,
+  itemId?: string
 ): string | null {
   if (!variant) return null
+  if (itemId) {
+    const item = config?.items?.find((i) => i.id === itemId)
+    const size = item?.sizes?.find((sz) => sz.id === variant)
+    if (size?.label) return size.label
+  }
   const filling = config?.fillings?.find((f) => f.id === variant)
   if (filling?.name) return filling.name
   return variant.charAt(0).toUpperCase() + variant.slice(1)
@@ -447,16 +462,43 @@ export function itemHasVariants(
   return !!item && Array.isArray(item.variants) && item.variants.length > 0
 }
 
-/** Zeilenname mit Sorte: „Zopf gefüllt – Nussfüllung“. */
+/** Posten mit Laibgrößen (Z10). */
+function itemHasSizes(
+  itemId: string,
+  config?: Pick<BackzettelConfigData, 'items'> | null
+): boolean {
+  const item = config?.items?.find((i) => i.id === itemId)
+  return !!item && Array.isArray(item.sizes) && item.sizes.length > 0
+}
+
+/**
+ * Zeilenname mit Sorte: „Zopf gefüllt – Nussfüllung“, „Testkorn – 500 g“.
+ * Steht die Zeile auf dem Zettel eines anderen Tages als ihrem Backtag
+ * (Z10: Teig heute, gebacken später), mit „· für Di 01.12.“.
+ */
 export function lineLabel(
-  line: Pick<BackzettelLine, 'name' | 'variant' | 'itemId'>,
+  line: Pick<BackzettelLine, 'name' | 'variant' | 'itemId'> &
+    Partial<
+      Pick<
+        BackzettelLine,
+        'variantLabel' | 'variantKind' | 'bakeDate' | 'doughDate'
+      >
+    >,
   config?: Pick<BackzettelConfigData, 'fillings' | 'items'> | null
 ): string {
-  const v = variantLabel(line.variant, config)
-  if (v) return `${line.name} – ${v}`
-  if (itemHasVariants(line.itemId, config))
-    return `${line.name} – ohne Füllungsangabe`
-  return line.name
+  const v = line.variant
+    ? line.variantLabel || variantLabel(line.variant, config, line.itemId)
+    : null
+  const base = v
+    ? `${line.name} – ${v}`
+    : line.variantKind === 'size' || itemHasSizes(line.itemId, config)
+    ? `${line.name} – ohne Größe`
+    : itemHasVariants(line.itemId, config)
+    ? `${line.name} – ohne Füllungsangabe`
+    : line.name
+  return line.bakeDate && line.doughDate && line.bakeDate !== line.doughDate
+    ? `${base} · für ${formatDateShort(line.bakeDate)}`
+    : base
 }
 
 export const DELTA_KIND_LABELS: Record<string, string> = {
@@ -623,4 +665,222 @@ export function ingredientAmount(
         : `${ing.raw} (nicht skaliert)`,
     scaled: false,
   }
+}
+
+// ------------------------------------------------------------ Z10 (v2)
+
+/**
+ * Eine Zahl, die unbekannt sein kann (Stammdaten offen): „–“ für `null`,
+ * sonst deutsch mit Einheit. Nie 0 für unbekannt (docs/backzettel-v2.md §3).
+ */
+export function formatKnown(
+  value: number | null | undefined,
+  unit?: string | null
+): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return '–'
+  }
+  return unit ? `${formatNumber(value)} ${unit}` : formatNumber(value)
+}
+
+/** Gramm, die unbekannt sein können: „–“ für `null`. */
+export function formatKnownGrams(value: number | null | undefined): string {
+  return value === null || value === undefined ? '–' : formatGrams(value)
+}
+
+/**
+ * Liter an der Maschine: „6,5 L“, ohne Rundung „6,47 L (Rundung offen)“,
+ * ohne kg je Liter oder bei unvollständigem Teig „unbekannt“.
+ */
+export function litersText(liters: DoughLiters | null | undefined): string {
+  if (!liters || liters.exact === null) return 'unbekannt'
+  if (liters.rounded === null) {
+    return `${formatNumber(liters.exact)} L (Rundung offen)`
+  }
+  return `${formatNumber(liters.rounded)} L`
+}
+
+/** Warum die Liter fehlen oder ungerundet sind - `null`, wenn alles bekannt ist. */
+export function litersHint(
+  liters: DoughLiters | null | undefined
+): string | null {
+  if (!liters) return 'Liter: unbekannt'
+  switch (liters.reason) {
+    case 'kg_per_liter_unknown':
+      return 'Liter: unbekannt (kg je Liter fehlt)'
+    case 'dough_incomplete':
+      return 'Liter: unbekannt (Teig unvollständig – ein Gewicht fehlt)'
+    case 'rounding_unknown':
+      return 'Rundung offen – angezeigt sind die genauen Liter'
+    default:
+      return liters.exact === null ? 'Liter: unbekannt' : null
+  }
+}
+
+/**
+ * kg eines Teigs: „12,4 kg“; unvollständig „≥ 12,4 kg“ (nur wenn schon
+ * etwas bekannt ist), sonst „unbekannt“.
+ */
+export function kgText(d: {
+  kg: number | null
+  kgKnown?: number | null
+  complete?: boolean
+}): string {
+  if (d.kg !== null && d.kg !== undefined) return `${formatNumber(d.kg)} kg`
+  if (d.kgKnown && d.kgKnown > 0) return `≥ ${formatNumber(d.kgKnown)} kg`
+  return 'unbekannt'
+}
+
+/** Chargen: Zahl, sonst „unbekannt“ mit Grund. */
+export function batchesText(
+  box: Pick<MachineBox, 'batches' | 'batch_max_kg'>
+): {
+  text: string
+  hint: string | null
+} {
+  if (box.batches !== null && box.batches !== undefined) {
+    return {
+      text: `${formatNumber(box.batches)} ${
+        box.batches === 1 ? 'Charge' : 'Chargen'
+      }`,
+      hint:
+        box.batch_max_kg !== null && box.batch_max_kg !== undefined
+          ? `je max. ${formatNumber(box.batch_max_kg)} kg`
+          : null,
+    }
+  }
+  return {
+    text: 'Chargen: unbekannt',
+    hint:
+      box.batch_max_kg === null || box.batch_max_kg === undefined
+        ? 'Chargengröße offen'
+        : 'Teiggewicht unbekannt',
+  }
+}
+
+/** Bezeichnung der Literzahl: Hefeteig „Wasser“, sonst nur „Liter“. */
+export function litersLabel(box: Pick<MachineBox, 'section'>): string {
+  return box.section === 'hefeteig' ? 'Wasser' : 'Liter'
+}
+
+/** Zugabe (z. B. Sauer): „Testsauer 20 g“ bzw. „Testsauer: unbekannt“. */
+export function addonText(addon: DoughAddon): {
+  text: string
+  hint: string | null
+} {
+  if (!addon.grams) {
+    return {
+      text: `${addon.name}: unbekannt`,
+      hint:
+        addon.reason === 'g_per_liter_unknown'
+          ? 'Gramm je Liter offen'
+          : 'Liter des Teigs unbekannt',
+    }
+  }
+  if (addon.grams.rounded === null) {
+    return {
+      text: `${addon.name} ${formatNumber(addon.grams.exact)} g`,
+      hint: 'Rundung offen – genaue Gramm',
+    }
+  }
+  return {
+    text: `${addon.name} ${formatNumber(addon.grams.rounded)} g`,
+    hint: null,
+  }
+}
+
+/** Backtag für eine Überschrift: „heute backen“ bzw. „für Sonntag, 29.11.“. */
+export function bakeDayLabel(bakeDate: string, sheetDate: string): string {
+  if (bakeDate === sheetDate) return 'heute backen'
+  return `für ${WEEKDAY_NAMES[isoWeekday(bakeDate)]}, ${formatDate(
+    bakeDate
+  ).slice(0, 6)}`
+}
+
+/**
+ * Bruch-Gruppe in einer Zeile: „7 Bruch × 1150 g – 12 Teststern, 8 Testkäse
+ * · +8 frei“. Unbekanntes bleibt sichtbar („? Bruch“, „g unbekannt“).
+ */
+export function bruchGroupText(group: BruchGroup): string {
+  const brueche =
+    group.brueche === null ? '? Bruch' : `${formatNumber(group.brueche)} Bruch`
+  const weight = group.g === null ? 'g unbekannt' : `${formatNumber(group.g)} g`
+  const split = group.split
+    .map((s) => `${formatNumber(s.total)} ${s.name}`)
+    .join(', ')
+  const spare =
+    group.spare === null ? '' : ` · +${formatNumber(group.spare)} frei`
+  return `${brueche} × ${weight} – ${split}${spare}`
+}
+
+/**
+ * Stück für „+1 Bruch“: so viele Brötchen ergibt ein Druck der Teilmaschine
+ * (Stück je Bruch ÷ Teigstücke je Brötchen). `null`, wenn die Stückzahl je
+ * Bruch offen ist oder es nicht aufgeht - dann gibt es den Knopf nicht.
+ */
+export function bruchStep(
+  piecesPerBruch: number | null | undefined,
+  perProduct: number | null | undefined
+): number | null {
+  if (!piecesPerBruch || !perProduct) return null
+  const step = piecesPerBruch / perProduct
+  return Number.isInteger(step) ? step : null
+}
+
+/**
+ * Kopfzeile eines Teigtag-Zettels: „Teige heute: Korn + Holz · Testweck für
+ * So + Di · Testhefe“ - aus `machine` und den Teilen der Teige (Server).
+ */
+export function doughsTodayText(
+  day: Pick<BackzettelDay, 'date' | 'machine' | 'doughs'>
+): string | null {
+  const boxes = day.machine ?? []
+  if (boxes.length === 0) return null
+  const names = boxes.map((box) => {
+    const dates = new Set<string>()
+    for (const d of day.doughs ?? []) {
+      if (!box.doughIds.includes(d.id)) continue
+      for (const p of d.parts) if (p.bakeDate) dates.add(p.bakeDate)
+    }
+    const later = Array.from(dates)
+      .filter((d) => d !== day.date)
+      .sort()
+    if (later.length === 0) return box.name
+    const days = later.map((d) => WEEKDAY_SHORT[isoWeekday(d)])
+    if (dates.has(day.date)) days.unshift('heute')
+    return `${box.name} für ${days.join(' + ')}`
+  })
+  return `Teige heute: ${names.join(' · ')}`
+}
+
+/**
+ * Füllungsbedarf mit offenen Gramm (Z10, Regel 7): „Gramm unbekannt“, wenn
+ * kein Posten Gramm hat; „≥ 1,2 kg“, wenn nur ein Teil bekannt ist.
+ */
+export function fillingGramsText(
+  filling: Pick<FillingNeed, 'grams' | 'missingFillingG' | 'items'>
+): string {
+  if (!filling.missingFillingG) return formatGrams(filling.grams)
+  const known = filling.items.some((i) => i.grams !== null)
+  if (!known || !filling.grams) return 'Gramm unbekannt'
+  return `≥ ${formatGrams(filling.grams)}`
+}
+
+/**
+ * Quelle einer Backliste (Z10): „Teig von heute · Entwurf“,
+ * „Teig vom Samstag · freigegeben“.
+ */
+export function bakeSourceText(
+  source: {
+    doughDate: string
+    weekdayName?: string | null
+    status: 'draft' | 'confirmed'
+  },
+  date: string
+): string {
+  const day =
+    source.doughDate === date
+      ? 'Teig von heute'
+      : `Teig vom ${source.weekdayName || formatDateShort(source.doughDate)}`
+  return `${day} · ${source.status === 'confirmed' ? 'freigegeben' : 'Entwurf'}`
 }

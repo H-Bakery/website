@@ -22,9 +22,14 @@ import type {
   HefeteigDough,
 } from '../../lib/backzettelApi'
 import {
-  formatGrams,
+  fillingGramsText,
+  formatKnown,
+  formatKnownGrams,
   formatNumber,
+  formatGrams,
   ingredientAmount,
+  litersHint,
+  litersText,
   recipeHeading,
   recipeIncompleteNote,
 } from '../../lib/backzettelFormat'
@@ -64,11 +69,21 @@ function DoughBlock({ dough }: { dough: HefeteigDough }) {
       </Typography>
       <Grid container spacing={2} sx={{ mt: 0 }}>
         <Grid item xs={6} sm={3}>
-          <Figure label="Teigstücke" value={formatNumber(dough.pieces)} />
+          <Figure label="Teigstücke" value={formatKnown(dough.pieces)} />
         </Grid>
         <Grid item xs={6} sm={3}>
-          <Figure label="Teig gesamt" value={formatGrams(dough.dough_g)} />
+          <Figure label="Teig gesamt" value={formatKnownGrams(dough.dough_g)} />
         </Grid>
+        {dough.liters && (
+          <Grid item xs={6} sm={3}>
+            <Figure label="Wasser" value={litersText(dough.liters)} />
+            {litersHint(dough.liters) && (
+              <Typography variant="caption" color="text.secondary">
+                {litersHint(dough.liters)}
+              </Typography>
+            )}
+          </Grid>
+        )}
         <Grid item xs={12} sm={6}>
           <Figure
             label="Chargen"
@@ -79,6 +94,22 @@ function DoughBlock({ dough }: { dough: HefeteigDough }) {
           </Typography>
         </Grid>
       </Grid>
+      {(dough.missing ?? []).length > 0 && (
+        <Box
+          component="ul"
+          sx={{
+            m: 0,
+            mt: 1,
+            pl: 2.5,
+            typography: 'body2',
+            color: 'text.secondary',
+          }}
+        >
+          {(dough.missing ?? []).map((m) => (
+            <li key={`${m.code}-${m.itemId}`}>{m.message}</li>
+          ))}
+        </Box>
+      )}
       <Typography variant="subtitle2" sx={{ mt: 2 }}>
         Abwiegeliste
       </Typography>
@@ -93,13 +124,13 @@ function DoughBlock({ dough }: { dough: HefeteigDough }) {
           </TableHead>
           <TableBody>
             {dough.weighing.map((w) => (
-              <TableRow key={w.piece_g}>
+              <TableRow key={w.piece_g ?? 'offen'}>
                 <TableCell sx={{ whiteSpace: 'nowrap', fontWeight: 600 }}>
-                  {formatNumber(w.piece_g)} g
+                  {formatKnown(w.piece_g, 'g')}
                 </TableCell>
                 <TableCell sx={NUM}>
                   <Typography component="span" fontWeight={700}>
-                    {formatNumber(w.pieces)}
+                    {formatKnown(w.pieces)}
                   </Typography>
                 </TableCell>
                 <TableCell>
@@ -108,7 +139,7 @@ function DoughBlock({ dough }: { dough: HefeteigDough }) {
                       i.piecesPerProduct === 1
                         ? `${i.name} ${formatNumber(i.products)}`
                         : `${i.name} ${formatNumber(i.products)} × ${
-                            i.piecesPerProduct
+                            i.piecesPerProduct ?? '?'
                           }`
                     )
                     .join(', ')}
@@ -135,7 +166,7 @@ export function FillingBlock({ filling }: { filling: FillingNeed }) {
           {filling.name}
         </Typography>
         <Typography variant="h6" component="div" fontWeight={700}>
-          {formatGrams(filling.grams)}
+          {fillingGramsText(filling)}
         </Typography>
       </Stack>
       <Typography variant="body2" color="text.secondary">
@@ -150,8 +181,9 @@ export function FillingBlock({ filling }: { filling: FillingNeed }) {
       </Typography>
       {filling.missingFillingG && (
         <Alert severity="warning" sx={{ mt: 1 }}>
-          Für mindestens einen Posten ist kein Füllungsgewicht hinterlegt – die
-          Menge oben ist zu klein.
+          Für mindestens einen Posten ist das Füllungsgewicht noch offen – die
+          Menge oben fehlt bzw. ist zu klein, das Rezept wird nicht
+          hochgerechnet.
         </Alert>
       )}
       {filling.recipe ? (

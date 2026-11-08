@@ -55,7 +55,7 @@ export function notfallSections(
         .flatMap((item) =>
           item.variants && item.variants.length > 0
             ? item.variants.map(
-                (v) => `${item.name} – ${variantLabel(v, config) ?? v}`
+                (v) => `${item.name} – ${variantLabel(v, config, item.id) ?? v}`
               )
             : [item.name]
         )

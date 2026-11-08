@@ -14,9 +14,12 @@ import {
   deltaCodeText,
   deltaBadgeText,
   deltaExtrasLines,
+  fillingGramsText,
   formatDateLong,
   formatFactor,
   formatGrams,
+  formatKnown,
+  formatKnownGrams,
   formatNumber,
   formatOrDash,
   formatQty,
@@ -569,10 +572,10 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
               <h2>{dough.name}</h2>
               <div className="figures">
                 <span>
-                  Teigstücke <strong>{formatNumber(dough.pieces)}</strong>
+                  Teigstücke <strong>{formatKnown(dough.pieces)}</strong>
                 </span>
                 <span>
-                  Teig <strong>{formatGrams(dough.dough_g)}</strong>
+                  Teig <strong>{formatKnownGrams(dough.dough_g)}</strong>
                 </span>
                 <span>{batchText(dough)}</span>
               </div>
@@ -588,9 +591,9 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
                 </thead>
                 <tbody>
                   {dough.weighing.map((w) => (
-                    <tr key={w.piece_g}>
-                      <td className="total">{formatNumber(w.piece_g)} g</td>
-                      <td className="num total">{formatNumber(w.pieces)}</td>
+                    <tr key={w.piece_g ?? 'offen'}>
+                      <td className="total">{formatKnown(w.piece_g, 'g')}</td>
+                      <td className="num total">{formatKnown(w.pieces)}</td>
                       <td>
                         {w.items
                           .map((i) =>
@@ -615,7 +618,7 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
           {fillings.map((f) => (
             <div key={f.id} className="avoid">
               <h3>
-                {f.name}: {formatGrams(f.grams)}
+                {f.name}: {fillingGramsText(f)}
               </h3>
               <p className="small">
                 {f.items

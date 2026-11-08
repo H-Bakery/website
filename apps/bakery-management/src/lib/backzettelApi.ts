@@ -121,6 +121,23 @@ export interface BackzettelLine {
     by: BackzettelUserRef | null
   } | null
   delta: BackzettelLineDelta | null
+  // ---- Z10 (Backzettel v2), additiv; ältere Server und alte Tage: fehlen
+  /** Backtag der Zeile; ≠ `date` des Zettels = Teig heute, gebacken später. */
+  bakeDate?: string
+  /** Teigtag (= Datum des Zettels, auf dem die Zeile steht). */
+  doughDate?: string
+  /** Teigtage vor dem Backtag (0 = am Backtag selbst). */
+  lead?: number
+  /** `size` = Laibgröße, `filling` = Füllung/Sorte, `null` = keine. */
+  variantKind?: 'size' | 'filling' | null
+  /** Anzeigename der Variante vom Server (Größe „500 g“, Füllungsname). */
+  variantLabel?: string | null
+  /** Nur Bruch-Posten (Brötchen aus der Teilmaschine). */
+  bruch?: { group: string; perProduct: number }
+  /** Nur Backliste: Status des Zettels, von dem die Zeile kommt. */
+  sheetStatus?: 'draft' | 'confirmed'
+  /** Nur Backliste: „Teig vom Samstag“ / „Teig von heute“. */
+  madeOn?: string
 }
 
 export interface BackzettelSection {
@@ -134,13 +151,15 @@ export interface HefeteigWeighingItem {
   name: string
   /** Zu backende Produkte (Zeilen-Gesamt). */
   products: number
-  piecesPerProduct: number
-  pieces: number
+  /** `null` (Z10): in den Stammdaten offen. */
+  piecesPerProduct: number | null
+  pieces: number | null
 }
 
 export interface HefeteigWeighing {
-  piece_g: number
-  pieces: number
+  /** `null` (Z10): Gramm je Teigstück offen. */
+  piece_g: number | null
+  pieces: number | null
   items: HefeteigWeighingItem[]
 }
 
@@ -148,17 +167,26 @@ export interface HefeteigDough {
   id: string
   name: string
   batch_max_kg: number | null
-  pieces: number
-  dough_g: number
+  /** `null` (Z10): Teigstücke je Produkt in den Stammdaten offen. */
+  pieces: number | null
+  /** `null` (Z10): ein Teil des Teigs hat kein bekanntes Gewicht. */
+  dough_g: number | null
   /** `null`, wenn die Chargengröße nicht festgelegt ist. */
   batches: number | null
   weighing: HefeteigWeighing[]
+  // ---- Z10: nur Teigtag-Zettel
+  kg?: number | null
+  kgKnown?: number
+  complete?: boolean
+  missing?: MissingPart[]
+  liters?: DoughLiters
 }
 
 export interface Hefeteig {
   doughs: HefeteigDough[]
-  pieces: number
-  dough_g: number
+  pieces: number | null
+  dough_g: number | null
+  complete?: boolean
 }
 
 export interface ScaledIngredient {
@@ -244,6 +272,10 @@ export interface BackzettelDeltaEntry {
   createdAt: string
   acknowledgedAt: string | null
   acknowledgedBy: BackzettelUserRef | null
+  /** Z10: Backtag des Nachtrags (fehlt bei älteren Servern = Datum des Zettels). */
+  bakeDate?: string
+  /** Z10, nur Backliste: Zettel (Teigtag), auf dem der Nachtrag quittiert wird. */
+  doughDate?: string
 }
 
 export interface ConfigReason {
@@ -288,6 +320,220 @@ export interface BackzettelDay {
    */
   deltasPending?: boolean | null
   configReasons?: ConfigReason[]
+  // ---- Z10 (Backzettel v2): Teigtag-Zettel. Fehlen an Tagen, die vor Z10
+  // freigegeben wurden (`sheetVersion: 1`) - dann die alte Ansicht.
+  /** 2 = Teigtag-Zettel mit Teigen/Maschine/Brot/Brötchen; 1 = alter Tag. */
+  sheetVersion?: 1 | 2
+  /** Wird an diesem Tag Teig gemacht (`dough_days`)? */
+  isDoughDay?: boolean
+  bakeDates?: SheetBakeDate[]
+  plan?: BackzettelPlan
+  doughs?: DoughSummary[]
+  machine?: MachineBox[]
+  bread?: BreadView
+  rolls?: RollsBlock[]
+  /** Stammdaten, die für diesen Zettel noch offen sind (null = unbekannt). */
+  openMasterData?: OpenMasterData[]
+  /** Nur freigegeben (v2): Maschinen-Kästen, die Nachträge verändern. */
+  deltaMachine?: unknown[]
+}
+
+// ---------------------------------------------------------------- Z10 (v2)
+
+/** Liter eines Teigs (§3): `null` + Grund, nie geschätzt. */
+export interface DoughLiters {
+  exact: number | null
+  rounded: number | null
+  /** `kg_per_liter_unknown` | `dough_incomplete` | `rounding_unknown` | null */
+  reason: string | null
+}
+
+/** Ein Teil eines Teigs ohne bekanntes Gewicht. */
+export interface MissingPart {
+  itemId: string | null
+  name: string
+  field?: string
+  code: string
+  message: string
+}
+
+export interface DoughAddon {
+  id: string
+  name: string
+  doughId: string
+  g_per_liter: number | null
+  grams: { exact: number; rounded: number | null } | null
+  /** `g_per_liter_unknown` | `liters_unknown` | `rounding_unknown` | null */
+  reason: string | null
+}
+
+export interface DoughSummary {
+  /** `null` = „Teig offen“ (Posten ohne Teig-ID). */
+  id: string | null
+  name: string
+  kg: number | null
+  kgKnown: number
+  complete: boolean
+  missing: MissingPart[]
+  liters: DoughLiters
+  batches: number | null
+  batch_max_kg: number | null
+  addons: DoughAddon[]
+  parts: {
+    kind: 'sizes' | 'bruch' | 'pieces' | 'from_dough' | string
+    itemId: string
+    name: string
+    bakeDate: string
+    kg: number | null
+  }[]
+  extras: { name: string; kg: number | null; itemId: string }[]
+  combinedWith: string | null
+}
+
+/** Ein Kasten an der Knetmaschine: ein Teig oder eine gemeinsame Gruppe. */
+export interface MachineBox {
+  id: string | null
+  name: string
+  doughIds: (string | null)[]
+  kg: number | null
+  kgKnown: number
+  complete: boolean
+  liters: DoughLiters
+  batches: number | null
+  batch_max_kg: number | null
+  addons: DoughAddon[]
+  /** Gemeinsamer Abschnitt der Teile (`hefeteig` → „Wasser … L“). */
+  section?: string | null
+}
+
+export interface BreadCell {
+  key: string
+  variant: string | null
+  total: number
+  baseUnset: boolean
+}
+
+export interface BreadRow {
+  itemId: string
+  name: string
+  bakeDate: string
+  doughId: string | null
+  unit: BackzettelUnit
+  /** Je Größe der Tabelle; `null` = Posten hat diese Größe nicht. */
+  cells: Record<string, BreadCell | null>
+  /** Alte Liter-Posten (und Zeilen ohne Größe): eine Zelle. */
+  single: (BreadCell & { unit: BackzettelUnit }) | null
+  kg: number | null
+  kgKnown?: number
+  complete: boolean
+  /** Gemeinsamer Teig, Anteil aus anderem Teig (vom Server formuliert). */
+  note: string | null
+}
+
+export interface BreadView {
+  sizes: { id: string; label: string }[]
+  rows: BreadRow[]
+}
+
+export interface BruchSplit {
+  key: string
+  itemId: string
+  name: string
+  variant: string | null
+  total: number
+  perProduct: number
+  doughPieces: number
+}
+
+export interface BruchGroup {
+  key: string
+  group: string
+  name: string
+  doughId: string | null
+  bakeDate: string
+  g: number | null
+  piecesPerBruch: number | null
+  pieces: number
+  brueche: number | null
+  kg: number | null
+  /** Freie Stücke durch das Aufrunden (nur Anzeige, nie in den Zeilen). */
+  spare: number | null
+  split: BruchSplit[]
+  complete: boolean
+  missing: MissingPart[]
+}
+
+export interface SingleRow {
+  key: string
+  itemId: string
+  name: string
+  variant: string | null
+  total: number
+  baseUnset: boolean
+  piece_g: number | null
+  pieces: number | null
+  kg: number | null
+}
+
+export interface RollsBlock {
+  bakeDate: string
+  /** „heute“ | „für Sonntag“ */
+  label: string
+  groups: BruchGroup[]
+  singles: SingleRow[]
+}
+
+export interface SheetBakeDate {
+  date: string
+  weekday: number
+  weekdayName: string
+  label: string
+  lineCount: number
+}
+
+export interface BackzettelPlan {
+  version: number
+  doughDate: string
+  bakeDates: { date: string; itemIds: string[] | null }[]
+}
+
+export interface OpenMasterData {
+  path: string
+  code: string
+  message: string
+}
+
+/** Quelle einer Backliste: ein Teigtag-Zettel. */
+export interface BakeListSource {
+  doughDate: string
+  weekday?: number
+  weekdayName?: string
+  status: 'draft' | 'confirmed'
+  confirmedAt: string | null
+  lineCount?: number
+}
+
+/** `GET /api/backzettel/:datum/bake-list` - was am Backtag gebacken wird. */
+export interface BakeList {
+  date: string
+  weekday: number | null
+  weekdayName: string | null
+  status: 'ok' | 'no-config' | 'ruhetag'
+  message?: string
+  reasons?: ConfigReason[]
+  sources: BakeListSource[]
+  sections: BackzettelSection[]
+  rolls: RollsBlock[]
+  deltas: BackzettelDeltaEntry[]
+  deltasPending: boolean | null
+  warnings: BackzettelWarning[]
+}
+
+/** Ein Teigtag-Zettel (Z10) - nicht ein Tag, der vor Z10 freigegeben wurde. */
+export function isDoughDaySheet(
+  day: Pick<BackzettelDay, 'sheetVersion'> | null | undefined
+): boolean {
+  return !!day && day.sheetVersion === 2
 }
 
 export interface BackzettelNoConfig {
@@ -324,6 +570,9 @@ export interface BackzettelConfigItem {
   section: string
   unit: BackzettelUnit
   variants: string[]
+  /** Z10: Laibgrößen (dann sind `variants` die Größen-IDs). */
+  sizes?: { id: string; label: string; dough_g?: number | null }[]
+  variantKind?: 'size' | 'filling' | null
   [key: string]: unknown
 }
 
@@ -347,6 +596,8 @@ export interface BackzettelConfigResponse {
   warnings: ConfigReason[]
   recipesMissing: { id: string; message: string }[]
   catalogSize: number | null
+  /** Z10: offene Stammdaten (`null` in der YAML). */
+  open?: OpenMasterData[]
 }
 
 export interface PrepView {
@@ -449,6 +700,9 @@ export async function setSeasonFactor(
  * Korrektur einer Zeile; ≠ 0 braucht einen Grund, 0 löscht sie. Nur im
  * Entwurf. `expected` ist der Stand, auf dem der Editor geöffnet wurde -
  * weicht der gespeicherte ab, 409 `correction_changed` (W4-verify r4).
+ * `options.bakeDate` (Z10): Backtag der Zeile, wenn er nicht der Tag des
+ * Zettels ist (Brötchen für Dienstag auf dem Samstags-Zettel); sonst 400
+ * `invalid_bake_date` bzw. 409 `owned_elsewhere` mit deutscher Meldung.
  */
 export async function setCorrection(
   date: string,
@@ -456,15 +710,26 @@ export async function setCorrection(
   variant: string | null,
   correction: number,
   reason: string | null,
-  expected?: { correction: number; reason: string | null }
+  expected?: { correction: number; reason: string | null },
+  options?: { bakeDate?: string | null }
 ): Promise<BackzettelDay> {
   return unwrap(
     await apiClient.put<BackzettelDay>(correctionPath(date, itemId, variant), {
       correction,
       reason: correction === 0 ? null : reason,
       ...(expected ? { expected } : {}),
+      ...(options?.bakeDate ? { bakeDate: options.bakeDate } : {}),
     })
   )
+}
+
+/**
+ * Backliste eines Backtags (Z10): alle Zeilen, die an `date` gebacken
+ * werden - auch die, deren Teig an einem früheren Tag gemacht wurde.
+ * Ruhetag und fehlende Stammdaten sind Zustände (`status`), kein Fehler.
+ */
+export async function fetchBakeList(date: string): Promise<BakeList> {
+  return unwrap(await apiClient.get<BakeList>(`${datePath(date)}/bake-list`))
 }
 
 export async function confirmDay(date: string): Promise<BackzettelDay> {

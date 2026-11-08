@@ -170,7 +170,7 @@ export default function GrundmengenPrint({
           {item.variants.map((variant) => (
             <tr key={variant} style={{ breakInside: 'avoid' }}>
               <td style={{ ...cellSx, paddingLeft: '6mm' }}>
-                {variantLabel(config, variant)}
+                {variantLabel(config, variant, item)}
               </td>
               <td style={cellSx}>{item.unit}</td>
               {dayCells(item, variant)}

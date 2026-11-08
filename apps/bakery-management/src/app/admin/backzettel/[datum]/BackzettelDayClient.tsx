@@ -34,6 +34,7 @@ import {
   fetchBackzettelConfig,
   fetchBackzettelDay,
   isBackzettelDay,
+  isDoughDaySheet,
   reopenDay,
   setCorrection,
   setSeasonFactor,
@@ -44,6 +45,7 @@ import {
 } from '../../../../lib/backzettelApi'
 import {
   changedTotals,
+  doughsTodayText,
   formatQty,
   lineLabel,
   type ChangedTotal,
@@ -61,6 +63,14 @@ import { BackzettelSectionView } from '../../../../components/backzettel/Backzet
 import { HefeteigCard } from '../../../../components/backzettel/HefeteigCard'
 import { PrepCard } from '../../../../components/backzettel/PrepCard'
 import { DeltasCard } from '../../../../components/backzettel/DeltasCard'
+import { MachineStrip } from '../../../../components/backzettel/MachineStrip'
+import { OpenMasterDataNote } from '../../../../components/backzettel/OpenMasterDataNote'
+import { BreadTable } from '../../../../components/backzettel/BreadTable'
+import {
+  RollsByBakeDay,
+  linesByKey,
+  v2CoveredKeys,
+} from '../../../../components/backzettel/RollsByBakeDay'
 import { BackzettelStatusChip } from '../../../../components/backzettel/BackzettelStatusChip'
 import {
   BackzettelPrint,
@@ -121,6 +131,12 @@ export default function BackzettelDayClient({
   const [actionError, setActionError] = React.useState<string | null>(null)
   const [notice, setNotice] = React.useState<string | null>(null)
   const [editingKey, setEditingKey] = React.useState<string | null>(null)
+  /** Vorbelegung des Korrektur-Editors („+1 Bruch“, Z10). */
+  const [prefill, setPrefill] = React.useState<number | null>(null)
+  const editLine = React.useCallback((key: string | null, value?: number) => {
+    setEditingKey(key)
+    setPrefill(value === undefined ? null : value)
+  }, [])
   const [seasonInput, setSeasonInput] = React.useState('')
   const [seasonError, setSeasonError] = React.useState<string | null>(null)
   const [busy, setBusy] = React.useState(false)
@@ -155,10 +171,10 @@ export default function BackzettelDayClient({
   }, [applyDay, date, validDate])
 
   React.useEffect(() => {
-    setEditingKey(null)
+    editLine(null)
     setConfirmChanges(null)
     void load()
-  }, [load])
+  }, [editLine, load])
 
   const days = config?.days ?? null
   const day = isBackzettelDay(result) ? result : null
@@ -214,18 +230,37 @@ export default function BackzettelDayClient({
     // außer der Tag hat sich auf dem Server geändert: dann neu laden.
     let updated: BackzettelDayResult
     try {
-      updated = await setCorrection(
-        date,
-        line.itemId,
-        line.variant,
-        correction,
-        reason,
-        // der Stand, auf dem der Editor geöffnet wurde (W4-verify r4)
-        { correction: line.correction, reason: line.correctionReason }
-      )
+      const expected = {
+        correction: line.correction,
+        reason: line.correctionReason,
+      }
+      // Z10: Brötchen für einen späteren Backtag auf diesem Teigtag-Zettel
+      // tragen ihren Backtag mit, sonst träfe die Korrektur den Zettel-Tag.
+      updated =
+        line.bakeDate && line.bakeDate !== date
+          ? await setCorrection(
+              date,
+              line.itemId,
+              line.variant,
+              correction,
+              reason,
+              expected,
+              { bakeDate: line.bakeDate }
+            )
+          : await setCorrection(
+              date,
+              line.itemId,
+              line.variant,
+              correction,
+              reason,
+              // der Stand, auf dem der Editor geöffnet wurde (W4-verify r4)
+              expected
+            )
     } catch (error) {
       const code = (error as { code?: unknown } | null)?.code
-      if (code === 'correction_changed') {
+      if (code === 'correction_changed' || code === 'owned_elsewhere') {
+        // owned_elsewhere (Z10): die Zeile gehört inzwischen einem anderen,
+        // freigegebenen Zettel - neu laden, der Editor nennt den Grund.
         // Ein anderes Gerät hat gespeichert: den aktuellen Stand laden, der
         // Editor bleibt mit der eigenen Eingabe offen und nennt den neuen
         // Wert - erst ein zweites Speichern ersetzt ihn.
@@ -242,7 +277,7 @@ export default function BackzettelDayClient({
       return
     }
     applyDay(updated)
-    setEditingKey(null)
+    editLine(null)
     setNotice(
       correction === 0 ? 'Korrektur entfernt.' : 'Korrektur gespeichert.'
     )
@@ -353,6 +388,11 @@ export default function BackzettelDayClient({
           </Typography>
           {day && <BackzettelStatusChip status={day.status} size="medium" />}
         </Stack>
+        {day && isDoughDaySheet(day) && doughsTodayText(day) && (
+          <Typography color="text.secondary" data-testid="doughs-today">
+            {doughsTodayText(day)}
+          </Typography>
+        )}
       </Box>
       <Stack
         direction="row"
@@ -384,6 +424,16 @@ export default function BackzettelDayClient({
         <Button component={Link} href="/admin/backzettel" sx={MIN_TOUCH}>
           Übersicht
         </Button>
+        {day && isDoughDaySheet(day) && (
+          <Button
+            component={Link}
+            href={`/admin/backzettel/${date}/backen`}
+            variant="outlined"
+            sx={MIN_TOUCH}
+          >
+            Backliste
+          </Button>
+        )}
         <IconButton
           onClick={() => void load()}
           aria-label="Aktualisieren"
@@ -476,6 +526,26 @@ export default function BackzettelDayClient({
     )
   } else if (day) {
     const openCount = openDeltas(day).length
+    const v2 = isDoughDaySheet(day)
+    const covered = v2 ? v2CoveredKeys(day) : new Set<string>()
+    const otherSections = v2
+      ? day.sections
+          .map((s) => ({
+            ...s,
+            lines: s.lines.filter((l) => !covered.has(l.key)),
+          }))
+          .filter((s) => s.lines.length > 0)
+      : day.sections
+    const v2Props = {
+      config,
+      sheetDate: date,
+      lineByKey: linesByKey(day.sections),
+      editable,
+      editingKey,
+      prefill,
+      onEdit: editLine,
+      onSaveCorrection: saveCorrection,
+    }
     body = (
       <>
         <Stack spacing={1.5} sx={{ mb: 2 }}>
@@ -645,28 +715,51 @@ export default function BackzettelDayClient({
           </Stack>
         </Paper>
 
+        {v2 && (
+          <>
+            <MachineStrip machine={day.machine ?? []} doughs={day.doughs} />
+            <OpenMasterDataNote open={day.openMasterData} />
+          </>
+        )}
+
         <DeltasCard
           deltas={day.deltas}
           config={config}
           canAck={canPlan}
           ackingId={ackingId}
           onAck={(d) => void doAck(d)}
+          sheetDate={date}
         />
 
-        {day.sections.length === 0 ? (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            Für diesen Tag steht nichts auf dem Backzettel – keine Grundmengen,
-            Vorbestellungen oder CAP-Lieferungen.
+        {v2 && day.sections.length === 0 && day.isDoughDay === false && (
+          <Alert severity="info" sx={{ mb: 2 }} data-testid="no-dough-day">
+            {formatDateLong(date)} ist kein Teigtag – gebacken wird aus Teig vom
+            Vortag. Was heute in den Ofen kommt, steht in der{' '}
+            <Link href={`/admin/backzettel/${date}/backen`}>Backliste</Link>.
           </Alert>
+        )}
+        {v2 && (
+          <>
+            <BreadTable bread={day.bread} {...v2Props} />
+            <RollsByBakeDay rolls={day.rolls} {...v2Props} />
+          </>
+        )}
+        {day.sections.length === 0 ? (
+          v2 && day.isDoughDay === false ? null : (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Für diesen Tag steht nichts auf dem Backzettel – keine
+              Grundmengen, Vorbestellungen oder CAP-Lieferungen.
+            </Alert>
+          )
         ) : (
-          day.sections.map((section) => (
+          otherSections.map((section) => (
             <BackzettelSectionView
               key={section.id}
               section={section}
               config={config}
               editable={editable}
               editingKey={editingKey}
-              onEdit={setEditingKey}
+              onEdit={(key) => editLine(key)}
               onSaveCorrection={saveCorrection}
             />
           ))

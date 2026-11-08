@@ -113,3 +113,85 @@ export function syntheticReference(): ReferenceResponse {
     ],
   }
 }
+
+/**
+ * Z10: Laibgrößen, Bruch-Posten (Stück am Backtag, Teig am Vortag) und
+ * offene Stammdaten - erfunden wie oben.
+ */
+export function syntheticConfigV2(
+  overrides: Partial<GrundmengenConfig> = {}
+): GrundmengenConfig {
+  return {
+    days: [2, 3, 4, 5, 6, 7],
+    sections: ['brot', 'broetchen'],
+    items: [
+      {
+        id: 'testkorn',
+        name: 'Testkorn',
+        section: 'brot',
+        unit: 'Laib',
+        variants: ['g500', 'g1000'],
+        variantKind: 'size',
+        sizes: [
+          { id: 'g500', label: '500 g', dough_g: null },
+          { id: 'g1000', label: '1 kg', dough_g: null },
+        ],
+        plu: [911],
+        base: { 6: { g500: 8, g1000: null } },
+      },
+      {
+        id: 'testdoppel',
+        name: 'Testdoppel',
+        section: 'broetchen',
+        unit: 'Stück',
+        variants: [],
+        plu: [913],
+        base: { 2: 30, 6: 25, 7: null },
+        bruch: { per_product: 2, group: 'testdoppel', piecesPerBruch: 20 },
+        lead: { default: 1 },
+      },
+      {
+        id: 'testflitweck',
+        name: 'Testflitweck',
+        section: 'broetchen',
+        unit: 'Stück',
+        variants: [],
+        plu: [915],
+        base: { 2: 20 },
+        bruch: { per_product: 1, group: 'testflitweck', piecesPerBruch: null },
+        lead: { default: 1 },
+      },
+    ],
+    fillings: [],
+    ...overrides,
+  }
+}
+
+export function syntheticViewV2(
+  overrides: Partial<BackzettelConfigView> = {}
+): BackzettelConfigView {
+  const config = syntheticConfigV2()
+  const open = [
+    {
+      path: 'items[2].bruch.pieces',
+      code: 'bruch_pieces_unknown',
+      message: '„Testflitweck“: Stück je Bruch sind noch offen.',
+    },
+    {
+      path: 'doughs[0].kg_per_liter',
+      code: 'kg_per_liter_unknown',
+      message: 'Teig „Testkorn“: kg je Liter ist noch offen.',
+    },
+  ]
+  return {
+    status: 'ok',
+    config,
+    errors: [],
+    warnings: [],
+    pendingApproval: false,
+    writable: true,
+    open,
+    working: { status: 'ok', config, errors: [], warnings: [], open },
+    ...overrides,
+  }
+}
