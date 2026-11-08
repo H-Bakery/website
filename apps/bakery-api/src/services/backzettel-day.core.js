@@ -562,6 +562,44 @@ function tickStillValid(row, values) {
 }
 
 /**
+ * Z10, Inhaber-Entscheidung O5 (2026-11-08): die Backliste hat einen eigenen
+ * „gebacken“-Haken je Zeile (`bakedAt`), getrennt von „erledigt“ auf dem
+ * Zettel des Teigtags (`doneAt`, bei Teig für einen späteren Backtag =
+ * gemacht). Beide Haken folgen derselben Regel `tickStillValid`, je Zeile
+ * und unabhängig voneinander: wer gebacken hat, muss nicht vorher „gemacht“
+ * getippt haben. Diese Funktion sagt, welche Haken eine erneute Freigabe
+ * einer Zeile stehen lässt (`done`/`baked`: `true` = bleibt, `false` = fällt
+ * weg, `null` = war keiner gesetzt).
+ */
+function ticksAfterConfirm(row, values) {
+  const valid = tickStillValid(row, values)
+  const state = (at) =>
+    at === null || at === undefined ? null : valid ? true : false
+  return { done: state(row.doneAt), baked: state(row.bakedAt) }
+}
+
+/**
+ * Z10 O5: was ein „gebacken“-Haken an einem Nachtrag ändert (`null` = nichts,
+ * schon so). Ein Nachtrag wird für sich abgehakt, nie über die Zeile. Gebacken
+ * heißt auch gesehen: ein noch nicht quittierter Nachtrag wird mit quittiert
+ * (gleiche Zeit, gleiche Person). Zurücknehmen nimmt nur den Haken, das
+ * „Gesehen“ bleibt.
+ */
+function deltaBakedUpdate(delta, baked, at, userId) {
+  const d = delta || {}
+  const isBaked = d.bakedAt !== null && d.bakedAt !== undefined
+  if (!baked) return isBaked ? { bakedAt: null, bakedBy: null } : null
+  if (isBaked) return null
+  const by = userId === undefined ? null : userId
+  const acked = d.acknowledgedAt !== null && d.acknowledgedAt !== undefined
+  return {
+    bakedAt: at,
+    bakedBy: by,
+    ...(acked ? {} : { acknowledgedAt: at, acknowledgedBy: by }),
+  }
+}
+
+/**
  * Was der Core neben den Zeilen bei der Freigabe gerechnet hat; ein
  * freigegebener Tag wird daraus gezeigt, nicht aus der aktuellen YAML.
  */
@@ -1147,6 +1185,8 @@ module.exports = {
   FROZEN_QTY_FIELDS,
   frozenQtyChanged,
   tickStillValid,
+  ticksAfterConfirm,
+  deltaBakedUpdate,
   computedSnapshot,
   deltaBakeExtras,
   linesForDeltas,

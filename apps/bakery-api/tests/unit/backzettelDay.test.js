@@ -535,6 +535,64 @@ describe('Erneute Freigabe und eingefrorene Berechnung', () => {
     expect(day.frozenQtyChanged(null, stored)).toBe(false)
   })
 
+  it('ticksAfterConfirm (O5): erledigt und gebacken nach derselben Regel, je für sich', () => {
+    const at = '2026-11-28T04:00:00.000Z'
+    const both = { ...stored, doneAt: at, bakedAt: at }
+    // Gleiche Menge oder weniger: beide Haken bleiben.
+    expect(day.ticksAfterConfirm(both, { ...stored })).toEqual({
+      done: true,
+      baked: true,
+    })
+    expect(day.ticksAfterConfirm(both, { ...stored, total: 24 })).toEqual({
+      done: true,
+      baked: true,
+    })
+    // Mehr nötig: beide fallen weg.
+    expect(day.ticksAfterConfirm(both, { ...stored, total: 36 })).toEqual({
+      done: false,
+      baked: false,
+    })
+    // Nur gebacken gesetzt (nicht „gemacht“ getippt) - unabhängig.
+    expect(
+      day.ticksAfterConfirm(
+        { ...stored, doneAt: null, bakedAt: at },
+        { ...stored, total: 36 }
+      )
+    ).toEqual({ done: null, baked: false })
+    expect(
+      day.ticksAfterConfirm({ ...stored, doneAt: at }, { ...stored })
+    ).toEqual({ done: true, baked: null })
+  })
+
+  it('deltaBakedUpdate (O5): gebacken heißt auch gesehen, zurücknehmen nur den Haken', () => {
+    const at = new Date('2026-11-29T05:00:00Z')
+    const open = { bakedAt: null, acknowledgedAt: null }
+    expect(day.deltaBakedUpdate(open, true, at, 7)).toEqual({
+      bakedAt: at,
+      bakedBy: 7,
+      acknowledgedAt: at,
+      acknowledgedBy: 7,
+    })
+    const seen = { bakedAt: null, acknowledgedAt: '2026-11-28T10:00:00Z' }
+    expect(day.deltaBakedUpdate(seen, true, at, 7)).toEqual({
+      bakedAt: at,
+      bakedBy: 7,
+    })
+    // Schon gebacken / nicht gebacken: nichts zu tun.
+    const baked = { ...seen, bakedAt: at }
+    expect(day.deltaBakedUpdate(baked, true, at, 7)).toBeNull()
+    expect(day.deltaBakedUpdate(open, false, at, 7)).toBeNull()
+    expect(day.deltaBakedUpdate(baked, false, at, 7)).toEqual({
+      bakedAt: null,
+      bakedBy: null,
+    })
+    // Ohne Person (Skript): null, nie undefined.
+    expect(day.deltaBakedUpdate(seen, true, at, undefined)).toEqual({
+      bakedAt: at,
+      bakedBy: null,
+    })
+  })
+
   it('computedSnapshot: Hefeteig, Füllungen, Vorbereitung und Hinweise als JSON', () => {
     const result = core.computeDay({
       config: cfg,

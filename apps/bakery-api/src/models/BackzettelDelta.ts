@@ -45,6 +45,9 @@ export class BackzettelDelta extends Model<
   declare kind: CreationOptional<BackzettelDeltaKind | null>
   declare acknowledgedAt: CreationOptional<Date | null>
   declare acknowledgedBy: CreationOptional<number | null>
+  /** Z10 O5: der Nachtrag ist gebacken (Backliste), eigener Haken. */
+  declare bakedAt: CreationOptional<Date | null>
+  declare bakedBy: CreationOptional<number | null>
   declare createdAt: CreationOptional<Date>
 
   static initModel(sequelize: Sequelize): typeof BackzettelDelta {
@@ -64,6 +67,8 @@ export class BackzettelDelta extends Model<
         kind: { type: DataTypes.STRING(16), allowNull: true },
         acknowledgedAt: { type: DataTypes.DATE, allowNull: true },
         acknowledgedBy: { type: DataTypes.INTEGER, allowNull: true },
+        bakedAt: { type: DataTypes.DATE, allowNull: true },
+        bakedBy: { type: DataTypes.INTEGER, allowNull: true },
         createdAt: DataTypes.DATE,
       },
       {

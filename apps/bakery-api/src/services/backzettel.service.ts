@@ -558,14 +558,18 @@ export function createBackzettelService(
     const result = computeSheet(loaded, date, inputs, seasonFactor)
     const rowsByKey = new Map(rows.map((r) => [rowKey(r, date), r]))
     const users = await usersById(
-      rows.flatMap((r) => [r.correctionBy, r.doneBy])
+      rows.flatMap((r) => [r.correctionBy, r.doneBy, r.bakedBy])
     )
     const lineView = (line: any) => {
       const row = rowsByKey.get(line.key)
       // After a reopen a tick only shows while the line still asks for the
-      // quantity it was ticked for; confirm clears it otherwise.
-      const ticked =
-        !!row && row.doneAt !== null && dayCore.tickStillValid(row, line)
+      // quantity it was ticked for; confirm clears it otherwise. Same for
+      // the bake-list tick (O5).
+      const ticks = row
+        ? dayCore.ticksAfterConfirm(row, line)
+        : { done: null, baked: null }
+      const ticked = ticks.done === true
+      const baked = ticks.baked === true
       return {
         id: row ? row.id : null,
         ...line,
@@ -575,6 +579,8 @@ export function createBackzettelService(
             : null,
         doneAt: ticked ? row.doneAt : null,
         doneBy: ticked ? userRef(users, row.doneBy) : null,
+        bakedAt: baked ? row.bakedAt : null,
+        bakedBy: baked ? userRef(users, row.bakedBy) : null,
         delta: null,
       }
     }
@@ -641,40 +647,57 @@ export function createBackzettelService(
     // tick (`clearedTicks` in the audit). Without a trace the Backstube saw
     // "78, open" after baking 70 - so the latest cleared tick per line comes
     // back as `previouslyDone` while the line is still unticked.
-    const cleared = new Map<
-      string,
-      { qty: number; doneBy: number | null; doneAt: string | null }
-    >()
-    for (const a of confirmAudits) {
-      const list = (a.data as { clearedTicks?: unknown } | null)?.clearedTicks
-      for (const t of Array.isArray(list) ? list : []) {
-        const tick = t as Record<string, unknown>
-        if (typeof tick['itemId'] !== 'string') continue
-        cleared.set(
-          rowKey(
+    // Z10 O5: the same for the bake-list tick (`clearedBakedTicks`,
+    // `previouslyBaked`).
+    type ClearedTick = { qty: number; by: number | null; at: string | null }
+    const clearedFrom = (field: 'clearedTicks' | 'clearedBakedTicks') => {
+      const out = new Map<string, ClearedTick>()
+      const [byField, atField] =
+        field === 'clearedTicks' ? ['doneBy', 'doneAt'] : ['bakedBy', 'bakedAt']
+      for (const a of confirmAudits) {
+        const list = (a.data as Record<string, unknown> | null)?.[field]
+        for (const t of Array.isArray(list) ? list : []) {
+          const tick = t as Record<string, unknown>
+          if (typeof tick['itemId'] !== 'string') continue
+          out.set(
+            rowKey(
+              {
+                itemId: tick['itemId'],
+                variant: tick['variant'] as string | null,
+                bakeDate:
+                  typeof tick['bakeDate'] === 'string'
+                    ? tick['bakeDate']
+                    : null,
+              },
+              date
+            ),
             {
-              itemId: tick['itemId'],
-              variant: tick['variant'] as string | null,
-              bakeDate:
-                typeof tick['bakeDate'] === 'string' ? tick['bakeDate'] : null,
-            },
-            date
-          ),
-          {
-            qty: toNumber(tick['from'] as number),
-            doneBy: typeof tick['doneBy'] === 'number' ? tick['doneBy'] : null,
-            doneAt: typeof tick['doneAt'] === 'string' ? tick['doneAt'] : null,
-          }
-        )
+              qty: toNumber(tick['from'] as number),
+              by: typeof tick[byField] === 'number' ? tick[byField] : null,
+              at: typeof tick[atField] === 'string' ? tick[atField] : null,
+            } as ClearedTick
+          )
+        }
       }
+      return out
+    }
+    const cleared = clearedFrom('clearedTicks')
+    const clearedBaked = clearedFrom('clearedBakedTicks')
+    const previously = (
+      map: Map<string, ClearedTick>,
+      key: string,
+      at: Date | null
+    ) => {
+      const c = at === null ? map.get(key) : undefined
+      return c ? { qty: c.qty, at: c.at, by: userRef(users, c.by) } : null
     }
     const users = light
       ? new Map<number, UserRef>()
       : await usersById([
           day.confirmedBy,
-          ...rows.flatMap((r) => [r.correctionBy, r.doneBy]),
-          ...deltaRows.map((d) => d.acknowledgedBy),
-          ...[...cleared.values()].map((c) => c.doneBy),
+          ...rows.flatMap((r) => [r.correctionBy, r.doneBy, r.bakedBy]),
+          ...deltaRows.flatMap((d) => [d.acknowledgedBy, d.bakedBy]),
+          ...[...cleared.values(), ...clearedBaked.values()].map((c) => c.by),
         ])
     const preorderIds = [
       ...new Set(
@@ -724,6 +747,9 @@ export function createBackzettelService(
         createdAt: d.createdAt,
         acknowledgedAt: d.acknowledgedAt,
         acknowledgedBy: userRef(users, d.acknowledgedBy),
+        // Z10 O5: a Nachtrag is ticked „gebacken“ on its own.
+        bakedAt: d.bakedAt,
+        bakedBy: userRef(users, d.bakedBy),
       }
     })
     const deltaByKey = new Map<
@@ -737,6 +763,12 @@ export function createBackzettelService(
         openQty: number
         /** Was die noch nicht quittierten zusätzlich zu backen heißen. */
         bakeOpen?: number
+        /** Z10 O5: so viele Nachträge sind als gebacken abgehakt. */
+        baked: number
+        /** Summe der gebacken abgehakten Nachträge. */
+        bakedQty: number
+        /** Was die noch nicht gebackenen zusätzlich zu backen heißen. */
+        bakeUnbaked?: number
       }
     >()
     for (const d of deltas) {
@@ -745,12 +777,18 @@ export function createBackzettelService(
         open: 0,
         count: 0,
         openQty: 0,
+        baked: 0,
+        bakedQty: 0,
       }
       e.qty = Math.round((e.qty + d.qty) * 100) / 100
       e.count += 1
       if (!d.acknowledgedAt) {
         e.open += 1
         e.openQty = Math.round((e.openQty + d.qty) * 100) / 100
+      }
+      if (d.bakedAt) {
+        e.baked += 1
+        e.bakedQty = Math.round((e.bakedQty + d.qty) * 100) / 100
       }
       deltaByKey.set(d.key, e)
     }
@@ -779,17 +817,10 @@ export function createBackzettelService(
               : null,
           doneAt: row.doneAt,
           doneBy: userRef(users, row.doneBy),
-          previouslyDone:
-            row.doneAt === null && cleared.has(line.key)
-              ? (() => {
-                  const c = cleared.get(line.key)!
-                  return {
-                    qty: c.qty,
-                    at: c.doneAt,
-                    by: userRef(users, c.doneBy),
-                  }
-                })()
-              : null,
+          previouslyDone: previously(cleared, line.key, row.doneAt),
+          bakedAt: row.bakedAt,
+          bakedBy: userRef(users, row.bakedBy),
+          previouslyBaked: previously(clearedBaked, line.key, row.bakedAt),
           delta: deltaByKey.get(line.key) ?? null,
         }
       }),
@@ -903,6 +934,20 @@ export function createBackzettelService(
       for (const [key, entry] of deltaByKey) {
         entry.bakeOpen =
           Math.round(((entry.bake ?? 0) - (ackedExtras[key] ?? 0)) * 100) / 100
+      }
+      // Z10 O5: the same for the Nachträge not yet ticked „gebacken“ - the
+      // figure next to the bake list's Nachtrag tick.
+      const bakedExtras = dayCore.deltaBakeExtras(
+        deltaLines,
+        Object.fromEntries(
+          [...deltaByKey].map(([key, e]) => [key, { qty: e.bakedQty }])
+        ),
+        snap?.preordersExact ?? null,
+        snap?.subtotalExact ?? null
+      )
+      for (const [key, entry] of deltaByKey) {
+        entry.bakeUnbaked =
+          Math.round(((entry.bake ?? 0) - (bakedExtras[key] ?? 0)) * 100) / 100
       }
       if (config && recomputed) {
         const adjusted = dayCore.linesWithExtras(deltaLines, extras)
@@ -2055,6 +2100,9 @@ export function createBackzettelService(
       const rowsByKey = new Map(rows.map((r) => [rowKey(r, date), r]))
       const keep = new Set<number>()
       const clearedTicks: Record<string, unknown>[] = []
+      const clearedBakedTicks: Record<string, unknown>[] = []
+      const iso = (at: Date | string | null | undefined) =>
+        at instanceof Date ? at.toISOString() : at ?? null
       for (const raw of dayCore.linesForConfirm(result.lines)) {
         const values = { ...raw, bakeDate: raw.bakeDate || date }
         const key = rowKey(values, date)
@@ -2062,21 +2110,32 @@ export function createBackzettelService(
         if (row) {
           // A tick from the previous confirmation stands if the line still
           // asks for the same quantity or less (W4-verify r3: baked 14, now
-          // 12 needed - done); more needed clears it.
-          const untick =
-            row.doneAt !== null && !dayCore.tickStillValid(row, values)
+          // 12 needed - done); more needed clears it. The bake-list tick
+          // (O5) follows the same rule, on its own.
+          const ticks = dayCore.ticksAfterConfirm(row, values)
+          const untick = ticks.done === false
+          const unbake = ticks.baked === false
+          const where = {
+            itemId: row.itemId,
+            variant: row.variant,
+            ...(row.bakeDate && row.bakeDate !== date
+              ? { bakeDate: row.bakeDate }
+              : {}),
+          }
           if (untick) {
             clearedTicks.push({
-              itemId: row.itemId,
-              variant: row.variant,
-              ...(row.bakeDate && row.bakeDate !== date
-                ? { bakeDate: row.bakeDate }
-                : {}),
+              ...where,
               doneBy: row.doneBy,
-              doneAt:
-                row.doneAt instanceof Date
-                  ? row.doneAt.toISOString()
-                  : row.doneAt ?? null,
+              doneAt: iso(row.doneAt),
+              from: toNumber(row.total),
+              to: values.total,
+            })
+          }
+          if (unbake) {
+            clearedBakedTicks.push({
+              ...where,
+              bakedBy: row.bakedBy,
+              bakedAt: iso(row.bakedAt),
               from: toNumber(row.total),
               to: values.total,
             })
@@ -2086,6 +2145,7 @@ export function createBackzettelService(
               ...values,
               correctionBy: values.correction === 0 ? null : row.correctionBy,
               ...(untick ? { doneAt: null, doneBy: null } : {}),
+              ...(unbake ? { bakedAt: null, bakedBy: null } : {}),
             },
             { transaction }
           )
@@ -2144,6 +2204,7 @@ export function createBackzettelService(
           })),
           discardedDeltas: discarded,
           clearedTicks,
+          clearedBakedTicks,
           warnings: result.warnings.map((w: any) => w.code),
         },
         { transaction }
@@ -2349,6 +2410,223 @@ export function createBackzettelService(
     }
   }
 
+  /**
+   * Z10, owner decision O5 (2026-11-08): „gebacken“ on the bake list of
+   * `bakeDate` for one row, separate from „done“ on the dough-day sheet
+   * (`setDone`, on a lead > 0 line = made). The row is addressed by its id
+   * like a done tick; it must be baked on `bakeDate` (else 404
+   * `not_on_bake_list`) and its sheet - the dough day - must be confirmed
+   * (409 `not_confirmed`, a draft line can still change). `expectedTotal` as
+   * for done: more due now is 409 `line_changed`. Independent of done.
+   */
+  async function setBaked(
+    bakeDate: string,
+    lineIdRaw: string,
+    baked: boolean,
+    req: Request,
+    body: unknown = undefined
+  ) {
+    assertDate(bakeDate)
+    const lineId = Number(lineIdRaw)
+    if (!/^[1-9]\d*$/.test(lineIdRaw) || !Number.isSafeInteger(lineId)) {
+      throw new BackzettelError(400, 'validation', 'Ungültige Zeilen-ID.')
+    }
+    const expectedTotal = optionalExpectedNumber(
+      body && typeof body === 'object'
+        ? (body as Record<string, unknown>)['expectedTotal']
+        : undefined,
+      'expectedTotal'
+    )
+    const row = await getSequelize().transaction(async (transaction) => {
+      const line = await BackzettelLine.findOne({
+        where: { id: lineId },
+        transaction,
+      })
+      if (!line) {
+        throw new BackzettelError(
+          404,
+          'not_found',
+          'Diese Zeile gibt es so nicht mehr - der Backzettel wurde inzwischen neu freigegeben.'
+        )
+      }
+      const lineBakeDate = line.bakeDate || line.date
+      if (lineBakeDate !== bakeDate) {
+        throw new BackzettelError(
+          404,
+          'not_on_bake_list',
+          `Diese Zeile steht nicht auf der Backliste vom ${dayText(
+            bakeDate
+          )} - sie wird am ${dayText(lineBakeDate)} gebacken.`,
+          { bakeDate: lineBakeDate }
+        )
+      }
+      const day = await BackzettelDay.findByPk(line.date, { transaction })
+      if (!day || day.status !== 'confirmed') {
+        throw new BackzettelError(
+          409,
+          'not_confirmed',
+          `Abhaken geht erst, wenn der Backzettel vom ${dayText(
+            line.date
+          )} freigegeben ist.`,
+          { doughDate: line.date }
+        )
+      }
+      const total = toNumber(line.total)
+      if (
+        baked &&
+        expectedTotal !== undefined &&
+        total > expectedTotal + 1e-9
+      ) {
+        throw new BackzettelError(
+          409,
+          'line_changed',
+          `Menge geändert: jetzt ${String(total).replace(
+            '.',
+            ','
+          )} statt ${String(expectedTotal).replace(
+            '.',
+            ','
+          )}. Der Haken wurde nicht gesetzt.`,
+          { total, expectedTotal }
+        )
+      }
+      const isBaked = line.bakedAt !== null
+      if (isBaked === baked) return line
+      await line.update(
+        baked
+          ? { bakedAt: new Date(), bakedBy: req.user?.id ?? null }
+          : { bakedAt: null, bakedBy: null },
+        { transaction }
+      )
+      await audit(
+        req,
+        baked ? 'line_baked' : 'line_unbaked',
+        'backzettel_line',
+        line.id,
+        {
+          date: line.date,
+          bakeDate: lineBakeDate,
+          itemId: line.itemId,
+          variant: line.variant,
+          total,
+        },
+        { transaction }
+      )
+      return line
+    })
+    const users = await usersById([row.bakedBy])
+    return {
+      id: row.id,
+      date: row.date,
+      bakeDate: row.bakeDate || row.date,
+      itemId: row.itemId,
+      variant: dayCore.apiVariant(row.variant),
+      bakedAt: row.bakedAt,
+      bakedBy: userRef(users, row.bakedBy),
+    }
+  }
+
+  /**
+   * Z10 O5: „gebacken“ for Nachträge on the bake list of `bakeDate` - each
+   * Nachtrag on its own (`{ ids }`, the tablet sends one line's at once),
+   * never through its line. All or nothing like the bulk ack: a Nachtrag
+   * that is gone (re-confirmed, reopened) is 404 `not_found`, one for
+   * another bake day 404 `not_on_bake_list`. Baked implies seen
+   * (`dayCore.deltaBakedUpdate`); unticking keeps „Gesehen“. Nachträge only
+   * exist on confirmed sheets, so there is no draft case.
+   */
+  async function setDeltasBaked(
+    bakeDate: string,
+    body: unknown,
+    baked: boolean,
+    req: Request
+  ) {
+    assertDate(bakeDate)
+    const raw =
+      body && typeof body === 'object'
+        ? (body as Record<string, unknown>)['ids']
+        : undefined
+    if (
+      !Array.isArray(raw) ||
+      raw.length === 0 ||
+      raw.length > MAX_ACK_IDS ||
+      !raw.every((x) => Number.isSafeInteger(x) && (x as number) > 0)
+    ) {
+      throw new BackzettelError(
+        400,
+        'validation',
+        `ids muss eine Liste von 1 bis ${MAX_ACK_IDS} Nachtrag-IDs sein.`
+      )
+    }
+    const ids = [...new Set(raw as number[])]
+    const rows = await getSequelize().transaction(async (transaction) => {
+      const deltas = await BackzettelDelta.findAll({
+        where: { id: ids },
+        order: [['id', 'ASC']],
+        transaction,
+      })
+      if (deltas.length !== ids.length) {
+        throw new BackzettelError(404, 'not_found', DELTA_GONE_MESSAGE)
+      }
+      const elsewhere = deltas.find((d) => (d.bakeDate || d.date) !== bakeDate)
+      if (elsewhere) {
+        const other = elsewhere.bakeDate || elsewhere.date
+        throw new BackzettelError(
+          404,
+          'not_on_bake_list',
+          `Dieser Nachtrag steht nicht auf der Backliste vom ${dayText(
+            bakeDate
+          )} - er wird am ${dayText(other)} gebacken.`,
+          { bakeDate: other }
+        )
+      }
+      const at = new Date()
+      for (const delta of deltas) {
+        const change = dayCore.deltaBakedUpdate(
+          delta,
+          baked,
+          at,
+          req.user?.id ?? null
+        )
+        if (!change) continue
+        await delta.update(change, { transaction })
+        await audit(
+          req,
+          baked ? 'delta_baked' : 'delta_unbaked',
+          'backzettel_delta',
+          delta.id,
+          {
+            date: delta.date,
+            bakeDate,
+            itemId: delta.itemId,
+            variant: delta.variant,
+            qty: toNumber(delta.qty),
+            ...('acknowledgedAt' in change ? { acknowledged: true } : {}),
+          },
+          { transaction }
+        )
+      }
+      return deltas
+    })
+    const users = await usersById(
+      rows.flatMap((r) => [r.acknowledgedBy, r.bakedBy])
+    )
+    return rows.map((row) => ({
+      id: row.id,
+      date: row.date,
+      bakeDate: row.bakeDate || row.date,
+      itemId: row.itemId,
+      variant: dayCore.apiVariant(row.variant),
+      qty: toNumber(row.qty),
+      kind: row.kind,
+      preorderId: row.preorderId,
+      acknowledgedAt: row.acknowledgedAt,
+      acknowledgedBy: userRef(users, row.acknowledgedBy),
+      bakedAt: row.bakedAt,
+      bakedBy: userRef(users, row.bakedBy),
+    }))
+  }
+
   async function acknowledgeDelta(date: string, idRaw: string, req: Request) {
     assertDate(date)
     const id = Number(idRaw)
@@ -2481,6 +2759,8 @@ export function createBackzettelService(
     confirm,
     reopen,
     setDone,
+    setBaked,
+    setDeltasBaked,
     acknowledgeDelta,
     acknowledgeDeltas,
     recordPreorderDeltas,

@@ -20,6 +20,7 @@ const preordersMigration = require('../../migrations/20261113000000-preorders-b7
 const deliveriesMigration = require('../../migrations/20270105000000-delivery-tours-b8.js')
 const restMigration = require('../../migrations/20261201000000-rest-am-abend.js')
 const doughDayMigration = require('../../migrations/20270201000000-backzettel-dough-day.js')
+const bakedMigration = require('../../migrations/20270210000000-backzettel-baked.js')
 
 /** The 17 migrations the server ran before B2, now in migrations/archive/. */
 const LEGACY_NAMES = [
@@ -81,7 +82,7 @@ describe('pilot baseline on a fresh database', () => {
   })
   afterAll(() => sequelize.close())
 
-  it('opens the static list, followed by B3 auth, Z3 Backzettel, B7 preorders, M4 rest, B8 tours and Z10', () => {
+  it('opens the static list, followed by B3 auth, Z3 Backzettel, B7 preorders, M4 rest, B8 tours, Z10 and O5', () => {
     expect(MIGRATIONS.map((m) => m.name)).toEqual([
       '20261105000000-pilot-baseline.js',
       '20261106000000-auth-sessions-stations.js',
@@ -93,6 +94,7 @@ describe('pilot baseline on a fresh database', () => {
       '20270105000000-delivery-tours-b8.js',
       '20270106000000-rest-count-line-rows.js',
       '20270201000000-backzettel-dough-day.js',
+      '20270210000000-backzettel-baked.js',
     ])
   })
 
@@ -166,6 +168,8 @@ describe('pilot baseline on a fresh database', () => {
         'total',
         'done_at',
         'done_by',
+        'baked_at',
+        'baked_by',
       ])
     )
   })
@@ -1206,6 +1210,80 @@ describe('Z10 Backzettel dough-day migration (bake_date)', () => {
     expect(await foreignKeyViolations(sequelize)).toEqual([])
     await doughDayMigration.up(qi, Sequelize)
     expect(await indexes(sequelize, 'backzettel_lines')).toEqual(before)
+    await sequelize.close()
+  })
+})
+
+describe('Z10 O5 migration (baked_at/_by)', () => {
+  const BAKED = '20270210000000-backzettel-baked.js'
+
+  async function schema(sequelize: Sequelize) {
+    const out: Record<string, unknown> = {}
+    for (const table of bakedMigration.TABLES as string[]) {
+      out[`${table}:fk`] = await sequelize.query(
+        `PRAGMA foreign_key_list(${table})`,
+        { type: QueryTypes.SELECT }
+      )
+      out[`${table}:indexes`] = await sequelize
+        .getQueryInterface()
+        .showIndex(table)
+      out[`${table}:columns`] = await columns(sequelize, table)
+    }
+    return out
+  }
+
+  it('adds nullable baked_at/baked_by (FK users, SET NULL) to lines and deltas; idempotent; down() restores the schema', async () => {
+    const sequelize = await freshDb()
+    await runMigrations(sequelize, {
+      ...quiet,
+      migrations: MIGRATIONS.filter((m) => m.name !== BAKED),
+    })
+    const before = await schema(sequelize)
+    // A row from before the migration keeps its data and reads unticked.
+    await sequelize.query(
+      `INSERT INTO backzettel_days (date, status, season_factor, created_at, updated_at)
+       VALUES ('2026-11-28', 'draft', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+    )
+    await sequelize.query(
+      `INSERT INTO backzettel_lines (date, bake_date, item_id, total, done_at, created_at, updated_at)
+       VALUES ('2026-11-28', '2026-11-29', 'weck', 12, '2026-11-28 05:00:00', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+    )
+    const result = await runMigrations(sequelize, quiet)
+    expect(result.executed).toEqual([BAKED])
+    for (const table of bakedMigration.TABLES as string[]) {
+      expect(await columns(sequelize, table)).toEqual(
+        expect.arrayContaining(['baked_at', 'baked_by'])
+      )
+      const fks = await sequelize.query<{
+        from: string
+        table: string
+        on_delete: string
+      }>(`PRAGMA foreign_key_list(${table})`, { type: QueryTypes.SELECT })
+      expect(fks.find((f) => f.from === 'baked_by')).toMatchObject({
+        table: 'users',
+        on_delete: 'SET NULL',
+      })
+    }
+    expect(
+      await sequelize.query(
+        'SELECT total, done_at, baked_at, baked_by FROM backzettel_lines',
+        { type: QueryTypes.SELECT }
+      )
+    ).toEqual([
+      {
+        total: 12,
+        done_at: '2026-11-28 05:00:00',
+        baked_at: null,
+        baked_by: null,
+      },
+    ])
+    const qi = sequelize.getQueryInterface()
+    const after = await schema(sequelize)
+    await bakedMigration.up(qi, Sequelize)
+    expect(await schema(sequelize)).toEqual(after)
+    await bakedMigration.down(qi, Sequelize)
+    expect(await schema(sequelize)).toEqual(before)
+    expect(await foreignKeyViolations(sequelize)).toEqual([])
     await sequelize.close()
   })
 })

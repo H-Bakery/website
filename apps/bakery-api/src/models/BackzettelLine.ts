@@ -45,6 +45,9 @@ export class BackzettelLine extends Model<
   declare total: CreationOptional<number>
   declare doneAt: CreationOptional<Date | null>
   declare doneBy: CreationOptional<number | null>
+  /** Z10 O5: „gebacken“ auf der Backliste - getrennt von `doneAt` (gemacht). */
+  declare bakedAt: CreationOptional<Date | null>
+  declare bakedBy: CreationOptional<number | null>
   declare createdAt: CreationOptional<Date>
   declare updatedAt: CreationOptional<Date>
 
@@ -78,6 +81,8 @@ export class BackzettelLine extends Model<
         total: qty(),
         doneAt: { type: DataTypes.DATE, allowNull: true },
         doneBy: { type: DataTypes.INTEGER, allowNull: true },
+        bakedAt: { type: DataTypes.DATE, allowNull: true },
+        bakedBy: { type: DataTypes.INTEGER, allowNull: true },
         createdAt: DataTypes.DATE,
         updatedAt: DataTypes.DATE,
       },

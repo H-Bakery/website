@@ -21,6 +21,11 @@
  *                                                 done takes { expectedTotal } → 409 line_changed if more is due now
  *   POST /:date/deltas/:id/ack                    inhaber, backstube: mark a delta as seen
  *   POST /:date/deltas/ack                        same for { ids: [...] } at once (all or nothing)
+ *   POST /:date/bake/:lineId/baked | /unbaked     inhaber, backstube (Z10 O5): „gebacken“ on the
+ *                                                 bake list of :date (row baked on :date, its sheet
+ *                                                 confirmed); baked takes { expectedTotal }
+ *   POST /:date/bake/deltas/baked | /unbaked      same for Nachträge { ids: [...] } (all or nothing;
+ *                                                 baked also acknowledges)
  *
  * Season and correction PUTs take the value the editor started from
  * (`expectedFactor`, `expected: { correction, reason }`); a different stored
@@ -221,6 +226,45 @@ export function createBackzettel(options: BackzettelRouterOptions = {}): {
     planners,
     handle(async (req) =>
       service.setDone(req.params['date'], req.params['lineId'], false, req)
+    )
+  )
+
+  // Z10 O5 - the deltas route first, `:lineId` would otherwise take "deltas".
+  router.post(
+    '/:date/bake/deltas/baked',
+    planners,
+    handle(async (req) =>
+      service.setDeltasBaked(req.params['date'], req.body, true, req)
+    )
+  )
+
+  router.post(
+    '/:date/bake/deltas/unbaked',
+    planners,
+    handle(async (req) =>
+      service.setDeltasBaked(req.params['date'], req.body, false, req)
+    )
+  )
+
+  router.post(
+    '/:date/bake/:lineId/baked',
+    planners,
+    handle(async (req) =>
+      service.setBaked(
+        req.params['date'],
+        req.params['lineId'],
+        true,
+        req,
+        req.body
+      )
+    )
+  )
+
+  router.post(
+    '/:date/bake/:lineId/unbaked',
+    planners,
+    handle(async (req) =>
+      service.setBaked(req.params['date'], req.params['lineId'], false, req)
     )
   )
 
