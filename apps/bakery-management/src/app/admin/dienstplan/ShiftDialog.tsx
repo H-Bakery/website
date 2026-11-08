@@ -45,6 +45,7 @@ export default function ShiftDialog({
   date,
   shift,
   templates,
+  templatesError = null,
   onClose,
   onDone,
   onDelete,
@@ -53,6 +54,8 @@ export default function ShiftDialog({
   date: string
   shift: Shift | null
   templates: readonly ShiftTemplate[]
+  /** Laden der Vorlagen gescheitert - dann nicht „keine Vorlagen“ sagen. */
+  templatesError?: string | null
   onClose: () => void
   onDone: (warnings: DienstplanWarning[]) => void
   onDelete?: () => void
@@ -142,7 +145,11 @@ export default function ShiftDialog({
               >
                 Schichtvorlage
               </Typography>
-              {templates.length === 0 ? (
+              {templatesError ? (
+                <Typography variant="body2" color="error">
+                  {templatesError}
+                </Typography>
+              ) : templates.length === 0 ? (
                 <Typography variant="body2" color="text.secondary">
                   Keine Schichtvorlagen - Zeiten frei eintragen.
                 </Typography>

@@ -136,6 +136,24 @@ function calendar(
   }
 }
 
+/** Kalender für einen beliebigen Zeitraum (wie die API: `from` = Anfrage). */
+function calendarFor(range: {
+  from: string
+  to: string
+}): dienstplanApi.Calendar {
+  const start = new Date(`${range.from}T00:00:00Z`)
+  const dates = WEEK.map((_, i) =>
+    new Date(start.getTime() + i * 86_400_000).toISOString().slice(0, 10)
+  )
+  const base = calendar({ shifts: [], absences: [] })
+  return {
+    ...base,
+    from: range.from,
+    to: range.to,
+    days: base.days.map((d, i) => ({ ...d, date: dates[i] })),
+  }
+}
+
 const TEMPLATES: dienstplanApi.ShiftTemplate[] = [
   {
     id: 1,
@@ -282,6 +300,9 @@ describe('Dienstplan - Kalender (Woche)', () => {
   })
 
   it('blättert vor und zurück, „Heute“ springt in die Woche der API, URL folgt', async () => {
+    api.fetchCalendar.mockImplementation(async (range) =>
+      range.from === WEEK[0] ? calendar() : calendarFor(range)
+    )
     renderCalendar({ week: '2026-11-20' })
     await ready()
     expect(api.fetchCalendar).toHaveBeenLastCalledWith({
@@ -317,6 +338,77 @@ describe('Dienstplan - Kalender (Woche)', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Heute' })).toBeDisabled()
     )
+  })
+
+  it('beim Blättern nie die alte Woche unter den neuen Tagen; Ladefehler zeigt kein leeres Raster', async () => {
+    renderCalendar()
+    await ready()
+    expect(
+      screen.getAllByRole('button', { name: / anlegen$/ }).length
+    ).toBeGreaterThan(0)
+
+    let fail: (err: Error) => void = () => undefined
+    api.fetchCalendar.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          fail = reject
+        })
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Nächste Woche' }))
+    // Während die neue Woche lädt: kein Raster, kein „anlegen“.
+    expect(
+      screen.getByRole('progressbar', { name: 'Dienstplan wird geladen' })
+    ).toBeInTheDocument()
+    expect(screen.queryByTestId('row-3')).not.toBeInTheDocument()
+    expect(screen.queryAllByRole('button', { name: / anlegen$/ })).toHaveLength(
+      0
+    )
+
+    fail(new Error('Der Dienstplan konnte nicht geladen werden.'))
+    expect(
+      await screen.findByText('Der Dienstplan konnte nicht geladen werden.')
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('progressbar', { name: 'Dienstplan wird geladen' })
+    ).not.toBeInTheDocument()
+    expect(screen.queryByTestId('row-3')).not.toBeInTheDocument()
+    expect(screen.queryAllByRole('button', { name: / anlegen$/ })).toHaveLength(
+      0
+    )
+
+    // Zurück in die geladene Woche: das Raster kommt wieder.
+    api.fetchCalendar.mockResolvedValue(calendar())
+    fireEvent.click(screen.getByRole('button', { name: 'Vorige Woche' }))
+    await ready()
+    expect(
+      screen.queryByText('Der Dienstplan konnte nicht geladen werden.')
+    ).not.toBeInTheDocument()
+  })
+
+  it('folgt neuen Query-Props (weiche Navigation, z. B. Seitenleiste)', async () => {
+    api.fetchCalendar.mockImplementation(async (range) =>
+      range.from === WEEK[0] ? calendar() : calendarFor(range)
+    )
+    const { rerender } = renderCalendar({
+      week: '2026-11-12',
+      area: 'backstube',
+    })
+    await screen.findByTestId('row-4')
+    expect(screen.queryByTestId('row-3')).not.toBeInTheDocument()
+
+    rerender(<DienstplanClient week="2026-11-25" />)
+    await waitFor(() =>
+      expect(api.fetchCalendar).toHaveBeenLastCalledWith({
+        from: '2026-11-23',
+        to: '2026-11-29',
+      })
+    )
+    await ready()
+    expect(screen.getByTestId('row-4')).toBeInTheDocument()
+    expect(screen.getByTestId('week-title')).toHaveTextContent('23.11.')
+
+    rerender(<DienstplanClient week="2026-11-25" view="monat" />)
+    expect(screen.getByText(/Die Monatsansicht folgt/)).toBeInTheDocument()
   })
 
   it('filtert nach Bereich (auch aus der URL)', async () => {
@@ -561,6 +653,28 @@ describe('Dienstplan - Kalender (Woche)', () => {
     expect(
       await screen.findByText('Nur mit persönlicher Anmeldung.')
     ).toBeInTheDocument()
+  })
+
+  it('Schichtvorlagen nicht geladen: der Dialog sagt das, nicht „keine Vorlagen“', async () => {
+    api.fetchShiftTemplates.mockRejectedValue(new Error('Netzwerkfehler'))
+    renderCalendar()
+    await ready()
+    fireEvent.click(
+      within(screen.getByTestId('cell-3-2026-11-11')).getByRole('button', {
+        name: /^Eintrag für Erika Beispiel/,
+      })
+    )
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Schicht anlegen' }))
+    const d = dialog()
+    expect(
+      await d.findByText(
+        'Schichtvorlagen konnten nicht geladen werden - Zeiten frei eintragen.'
+      )
+    ).toBeInTheDocument()
+    expect(
+      d.queryByText('Keine Schichtvorlagen - Zeiten frei eintragen.')
+    ).not.toBeInTheDocument()
+    expect(d.getByLabelText(/^Beginn/)).toBeEnabled()
   })
 
   it('ohne Mitarbeiter: Hinweis auf die Mitarbeiterliste', async () => {

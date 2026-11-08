@@ -156,11 +156,27 @@ export default function DienstplanClient({
   const [error, setError] = React.useState<string | null>(null)
   const [notice, setNotice] = React.useState<Notice | null>(null)
   const [templates, setTemplates] = React.useState<ShiftTemplate[]>([])
+  const [templatesError, setTemplatesError] = React.useState<string | null>(
+    null
+  )
   const [addMenu, setAddMenu] = React.useState<AddMenu | null>(null)
   const [dialog, setDialog] = React.useState<DialogState>(null)
   const requestRef = React.useRef(0)
 
+  // Weiche Navigation auf dieselbe Seite (Seitenleiste, Links mit anderer
+  // Query) ändert nur die Props - der Zustand folgt der URL.
+  React.useEffect(() => {
+    setWeek(parseWeek(weekParam) ?? mondayOf(todayIso()))
+    setView(parseView(viewParam))
+    setArea(parseAreaFilter(areaParam))
+  }, [weekParam, viewParam, areaParam])
+
   const dates = React.useMemo(() => weekDates(week), [week])
+  // Nur die Woche zeigen, für die der Kalender geladen ist: beim Blättern
+  // (oder wenn das Laden scheitert) nie die Zellen der alten Woche mit den
+  // Tagen der neuen - eine nicht geladene Woche ist keine leere Woche.
+  const shownCalendar =
+    calendar !== null && calendar.from === week ? calendar : null
 
   const reload = React.useCallback(async () => {
     if (view !== 'woche') return
@@ -186,13 +202,22 @@ export default function DienstplanClient({
   }, [reload])
 
   // Schichtvorlagen einmal laden; ohne Vorlagen werden Zeiten frei eingetragen.
+  // Scheitert das Laden, sagt der Dialog das - nicht „keine Vorlagen“.
   React.useEffect(() => {
     let cancelled = false
     fetchShiftTemplates().then(
       (list) => {
-        if (!cancelled) setTemplates(list)
+        if (cancelled) return
+        setTemplates(list)
+        setTemplatesError(null)
       },
-      () => undefined
+      () => {
+        if (!cancelled) {
+          setTemplatesError(
+            'Schichtvorlagen konnten nicht geladen werden - Zeiten frei eintragen.'
+          )
+        }
+      }
     )
     return () => {
       cancelled = true
@@ -412,15 +437,15 @@ export default function DienstplanClient({
             folgt. Bis dahin zeigt die Woche alle Einträge.
           </Typography>
         </Paper>
-      ) : calendar === null ? (
-        loadError ? null : (
+      ) : shownCalendar === null ? (
+        loadError && !loading ? null : (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
             <CircularProgress aria-label="Dienstplan wird geladen" />
           </Box>
         )
       ) : (
         <WeekView
-          calendar={calendar}
+          calendar={shownCalendar}
           dates={dates}
           area={area}
           loading={loading}
@@ -475,6 +500,7 @@ export default function DienstplanClient({
           date={dialog.date}
           shift={dialog.shift}
           templates={templates}
+          templatesError={templatesError}
           onClose={() => setDialog(null)}
           onDone={(warnings) =>
             done(
