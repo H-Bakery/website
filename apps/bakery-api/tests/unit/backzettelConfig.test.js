@@ -959,6 +959,80 @@ describe('Z10: validateBackzettelConfig fuer v2', () => {
     })
   })
 
+  describe('sizes[].plu (Median je Größe, §9 Punkt 10)', () => {
+    // Synthetische Kassennummern; Testkorn bekommt plu [971, 972, 973].
+    const withPlu = (sizePlu) =>
+      v2((c) => {
+        const korn = item(c, 'test-korn')
+        korn.plu = [971, 972, 973]
+        sizePlu(korn.sizes)
+      })
+
+    it('fehlt: keine Meldung; null: offen; Liste aus plu des Postens: gültig', () => {
+      expect(withPlu(() => undefined).errors).toEqual([])
+      const r = withPlu((s) => {
+        s[0].plu = [971]
+        s[1].plu = [972, 973]
+        s[2].plu = null
+      })
+      expect(r.errors).toEqual([])
+      expect(r.warnings).toEqual(v2().warnings)
+      expect(openPaths(r)).toContain('items[0].sizes[2].plu')
+      expect(r.open.find((o) => o.path === 'items[0].sizes[2].plu').code).toBe(
+        'size_plu_unknown'
+      )
+      const korn = core
+        .normalizeConfig(
+          (() => {
+            const c = configV2()
+            const k = item(c, 'test-korn')
+            k.plu = [971, 972, 973]
+            k.sizes[0].plu = [971]
+            return c
+          })()
+        )
+        .items.find((i) => i.id === 'test-korn')
+      expect(korn.sizes.map((s) => s.plu)).toEqual([[971], null, null])
+    })
+
+    it('eine Kassennummer gehört zu genau einer Größe', () => {
+      const r = withPlu((s) => {
+        s[0].plu = [971]
+        s[1].plu = [971]
+      })
+      expectOnlyError(r, 'items[0].sizes[1].plu[0]')
+      expect(r.errors[0].message).toContain('schon Größe „g500“')
+      expectOnlyError(
+        withPlu((s) => (s[0].plu = [971, 971])),
+        'items[0].sizes[0].plu[1]'
+      )
+    })
+
+    it('muss in plu des Postens stehen, sonst Fehler', () => {
+      const r = withPlu((s) => (s[0].plu = [979]))
+      expectOnlyError(r, 'items[0].sizes[0].plu[0]')
+      expect(r.errors[0].message).toContain('nicht in plu des Postens')
+      // Posten ganz ohne plu: jede Kassennummer einer Größe ist ein Fehler
+      expectOnlyError(
+        v2((c) => (item(c, 'test-korn').sizes[0].plu = [971])),
+        'items[0].sizes[0].plu[0]'
+      )
+    })
+
+    it('leer, kein Array oder keine positive ganze Zahl: Fehler', () => {
+      for (const bad of [[], 971, '971'])
+        expectOnlyError(
+          withPlu((s) => (s[0].plu = bad)),
+          'items[0].sizes[0].plu'
+        )
+      for (const bad of [0, -1, 1.5, '971'])
+        expectOnlyError(
+          withPlu((s) => (s[0].plu = [bad])),
+          'items[0].sizes[0].plu[0]'
+        )
+    })
+  })
+
   describe('products[].size', () => {
     it('ist bei Groessen Pflicht und muss eine Groesse des Postens sein', () => {
       expectOnlyError(
@@ -1403,9 +1477,9 @@ describe('Z10: normalizeConfig fuer v2', () => {
     expect(korn.variants).toEqual(['g500', 'g1000', 'kasten'])
     expect(korn.variantKind).toBe('size')
     expect(korn.sizes).toEqual([
-      { id: 'g500', label: '500 g', dough_g: 600 },
-      { id: 'g1000', label: '1 kg', dough_g: 1000 },
-      { id: 'kasten', label: 'Kasten', dough_g: null },
+      { id: 'g500', label: '500 g', dough_g: 600, plu: null },
+      { id: 'g1000', label: '1 kg', dough_g: 1000, plu: null },
+      { id: 'kasten', label: 'Kasten', dough_g: null, plu: null },
     ])
     expect(korn.products).toEqual([
       { id: 'test-korn-500', factor: 1, size: 'g500' },

@@ -255,11 +255,11 @@ Saturday confirmed before Z10, roles, `getBakeLines`), `tests/migrations/pilotBa
 Two additions to `/api/backzettel` (registered **before** `/:date`, which would otherwise read
 `reference` as a date). Both serve the management screen `/admin/backzettel/grundmengen`.
 
-| Endpoint                          | Who                | Body / answer                                                                                                                                                                                          |
-| --------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /config` (extended)          | any session        | Z3's answer (approved = what the day computes with) **plus** `pendingApproval`, `writable`, `writeIssue`, `working { status, config, errors, warnings }` (the write-worktree version a save builds on) |
-| `PUT /config/base`                | inhaber, backstube | `{ itemId, weekday, value }` or `{ itemId, weekday, variants: { <slug>: n \| null } }` → the `/config` view + `pending`, `changed`                                                                     |
-| `GET /reference?weekday=&weeks=6` | inhaber, backstube | `{ status, available, today, weeks, basis, weekdays: [{ weekday, weekdayName, weeks, dates, skippedDates, items: [{ itemId, plu, median, samples, status: ok \| no_plu \| no_data, converted }] }] }`  |
+| Endpoint                          | Who                | Body / answer                                                                                                                                                                                                 |
+| --------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /config` (extended)          | any session        | Z3's answer (approved = what the day computes with) **plus** `pendingApproval`, `writable`, `writeIssue`, `working { status, config, errors, warnings }` (the write-worktree version a save builds on)        |
+| `PUT /config/base`                | inhaber, backstube | `{ itemId, weekday, value }` or `{ itemId, weekday, variants: { <slug>: n \| null } }` → the `/config` view + `pending`, `changed`                                                                            |
+| `GET /reference?weekday=&weeks=6` | inhaber, backstube | `{ status, available, today, weeks, basis, weekdays: [{ weekday, weekdayName, weeks, dates, skippedDates, items: [{ itemId, plu, median, samples, status: ok \| no_plu \| no_data, converted, sizes? }] }] }` |
 
 Errors (`sendError`): 400 `validation` (with `errors` for new config errors), `invalid_weekday`
 (also a weekday not in `days`), `invalid_quantity` (negative, > 10000, not a number; `"1,5"` is
@@ -312,6 +312,13 @@ edit)`): `yaml.parseDocument` only to find node ranges, then a **splice** of the
   a product is `converted: true` and the median (2 decimals) in the item's unit; otherwise it stays
   pieces sold at the register (`converted: false`, 1 decimal) and the UI says "St.". Info only:
   nothing ever writes it into the config.
+- **Median per loaf size** (Z10, `docs/backzettel-v2.md` §9 point 10): an item with `sizes` also
+  gets `sizes: [{ sizeId, plu, median, samples, status, converted }]`, the same formula
+  (`soldReference`) over the size's own register numbers `sizes[].plu`. `status: unknown` when the
+  size has no PLU (missing or `null` in hq) - median `null`, never 0 and never a share of the
+  item; `no_data` / `ok` as for the item. The validator only accepts size PLUs that are in the
+  item's `plu` and each in one size, so the sizes never count anything the item does not. Items
+  without `sizes` have no `sizes` key (v1 answers unchanged).
 - **Bundling:** `yaml` ^2 is a root `dependency` and external like every other runtime package;
   `build.mjs` fails when the hoisted `yaml` is not 2.x.
 - The Z1 validator formats a fractional quantity with a decimal comma in its message

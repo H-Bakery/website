@@ -298,6 +298,147 @@ describe('computeWeekdayReference', () => {
   })
 })
 
+describe('Median je Laibgröße (Z10, §9 Punkt 10)', () => {
+  const { configV2, PRODUCTS_V2 } = require('../fixtures/backzettel.synthetic')
+
+  /** Testkorn mit erfundenen Kassennummern: 971 = 500 g, 972 + 973 = 1 kg, Kasten offen. */
+  function sizedConfig() {
+    const raw = configV2()
+    const korn = raw.items.find((i) => i.id === 'test-korn')
+    korn.plu = [971, 972, 973, 974]
+    korn.sizes[0].plu = [971]
+    korn.sizes[1].plu = [972, 973]
+    korn.sizes[2].plu = null
+    expect(configCore.validateBackzettelConfig(raw).errors).toEqual([])
+    return configCore.normalizeConfig(raw)
+  }
+
+  function sizedReference(cfg, weeks = 6, catalog = undefined) {
+    const have = new Set(files.listReportDates(dir, () => undefined))
+    const { dates, skipped } = core.referenceDates({
+      weekday: 6,
+      today: '2026-12-02',
+      weeks,
+      hasReport: (d) => have.has(d),
+    })
+    const reports = {}
+    for (const d of dates) reports[d] = files.readDailyReport(dir, d)
+    return core.computeWeekdayReference({
+      config: cfg,
+      weekday: 6,
+      weeks,
+      dates,
+      skipped,
+      reports,
+      catalog,
+    })
+  }
+
+  it('rechnet den Median je Größe über deren Kassennummern; der Posten bleibt wie bisher', () => {
+    writeDay('2026-11-28', [
+      {
+        items: [
+          [971, 4],
+          [972, 1],
+          [974, 2],
+        ],
+      },
+    ])
+    writeDay('2026-11-21', [
+      {
+        items: [
+          [971, 6],
+          [973, 3],
+        ],
+      },
+    ])
+    writeDay('2026-11-14', [{ items: [[972, 2]] }])
+    const ref = sizedReference(sizedConfig())
+    const korn = item(ref, 'test-korn')
+    // Posten: alle vier Kassennummern, wie vor Z10
+    expect(korn).toMatchObject({
+      plu: [971, 972, 973, 974],
+      samples: [7, 9, 2],
+      median: 7,
+      status: 'ok',
+    })
+    expect(korn.sizes).toEqual([
+      {
+        sizeId: 'g500',
+        plu: [971],
+        median: 4,
+        samples: [4, 6, 0],
+        status: 'ok',
+        converted: false,
+      },
+      {
+        sizeId: 'g1000',
+        plu: [972, 973],
+        median: 2,
+        samples: [1, 3, 2],
+        status: 'ok',
+        converted: false,
+      },
+      // ohne Kassennummer: unbekannt - nie 0, nie ein Anteil am Posten
+      {
+        sizeId: 'kasten',
+        plu: [],
+        median: null,
+        samples: [],
+        status: 'unknown',
+        converted: false,
+      },
+    ])
+  })
+
+  it('ohne Bericht im Zeitraum: no_data je Größe mit Kassennummer', () => {
+    const korn = item(sizedReference(sizedConfig()), 'test-korn')
+    expect(korn.status).toBe('no_data')
+    expect(korn.sizes.map((s) => s.status)).toEqual([
+      'no_data',
+      'no_data',
+      'unknown',
+    ])
+  })
+
+  it('Posten mit Größen ohne sizes[].plu: jede Größe unbekannt', () => {
+    writeDay('2026-11-28', [{ items: [[951, 3]] }])
+    const ref = sizedReference(configCore.normalizeConfig(configV2()))
+    const korn = item(ref, 'test-korn')
+    expect(korn.status).toBe('no_plu')
+    expect(korn.sizes.map((s) => s.status)).toEqual([
+      'unknown',
+      'unknown',
+      'unknown',
+    ])
+    // Posten ohne Größen bekommen kein sizes-Feld (v1 unverändert)
+    expect('sizes' in item(ref, 'test-hafer')).toBe(false)
+  })
+
+  it('rechnet je Größe mit demselben Faktor wie der Posten (converted)', () => {
+    const raw = configV2()
+    const korn = raw.items.find((i) => i.id === 'test-korn')
+    // Kassennummer = numeric_id des Produkts (synthetisch 951/952)
+    korn.plu = [951, 952]
+    korn.sizes[0].plu = [951]
+    korn.sizes[1].plu = [952]
+    writeDay('2026-11-28', [
+      {
+        items: [
+          [951, 5],
+          [952, 2],
+        ],
+      },
+    ])
+    const ref = sizedReference(configCore.normalizeConfig(raw), 6, PRODUCTS_V2)
+    const k = item(ref, 'test-korn')
+    expect(k).toMatchObject({ converted: true, median: 7 })
+    expect(k.sizes[0]).toMatchObject({ converted: true, median: 5 })
+    expect(k.sizes[1]).toMatchObject({ converted: true, median: 2 })
+    expect(k.sizes[2].status).toBe('unknown')
+  })
+})
+
 describe('berlinToday', () => {
   it('nimmt die Berliner Uhr, nicht UTC', () => {
     // 23:30 UTC am 30.11. ist in Berlin schon der 01.12.

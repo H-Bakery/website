@@ -136,7 +136,7 @@ export function syntheticConfigV2(
           { id: 'g500', label: '500 g', dough_g: null },
           { id: 'g1000', label: '1 kg', dough_g: null },
         ],
-        plu: [911],
+        plu: [981],
         base: { 6: { g500: 8, g1000: null } },
       },
       {
@@ -164,6 +164,56 @@ export function syntheticConfigV2(
     ],
     fillings: [],
     ...overrides,
+  }
+}
+
+/**
+ * Z10 §9 Punkt 10: Referenz zu `syntheticConfigV2` - Testkorn mit Median je
+ * Laibgröße (500 g über PLU 981, 1 kg ohne eigene Kassennummer = unbekannt).
+ */
+export function syntheticReferenceV2(): ReferenceResponse {
+  return {
+    status: 'ok',
+    available: true,
+    today: '2026-12-02',
+    weeks: 6,
+    weekdays: [
+      {
+        weekday: 6,
+        weekdayName: 'Samstag',
+        weeks: 6,
+        dates: ['2026-11-28', '2026-11-21'],
+        skippedDates: [],
+        items: [
+          {
+            itemId: 'testkorn',
+            plu: [981, 982],
+            median: 9,
+            samples: [8, 10],
+            status: 'ok',
+            converted: false,
+            sizes: [
+              {
+                sizeId: 'g500',
+                plu: [981],
+                median: 6,
+                samples: [5, 7],
+                status: 'ok',
+                converted: false,
+              },
+              {
+                sizeId: 'g1000',
+                plu: [],
+                median: null,
+                samples: [],
+                status: 'unknown',
+                converted: false,
+              },
+            ],
+          },
+        ],
+      },
+    ],
   }
 }
 

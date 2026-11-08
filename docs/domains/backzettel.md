@@ -207,7 +207,11 @@ erweitertes `GET /api/backzettel/config`.
   Backzettel** (`products[].factor`, Kassennummer = `numeric_id` des hq-Produkts): 1 Stück
   Marmorkuchen = ¼ Kuchen, ein 500-g-Laib = 0,5 l - dann `converted: true` und der Wert steht in der
   Einheit des Postens. Ist eine Kassennummer keinem Produkt des Postens zugeordnet, bleibt es „St."
-  (Stück laut Kasse), der Tooltip sagt das. Im Hinweis steht zusätzlich „Rest am Abend Ø"
+  (Stück laut Kasse), der Tooltip sagt das. **Brot je Laibgröße:** die Postenzeile zeigt den
+  Median des ganzen Postens, jede Größen-Zeile den Median über die Kassennummern der Größe
+  (`sizes[].plu`, ein Teil der `plu` des Postens, jede Kassennummer bei genau einer Größe). Ohne
+  Kassennummer der Größe (fehlt oder `null` = offen) steht „unbekannt“ - nie 0, nie ein Anteil;
+  hat der Posten selbst keine `plu`, bleiben auch die Größen-Zeilen leer. Im Hinweis steht zusätzlich „Rest am Abend Ø"
   (`GET /api/rest/averages`, nur Information, siehe [rest-am-abend.md](rest-am-abend.md)).
 - **Drucken:** eigenes Druckbild (`GrundmengenPrint.tsx`, A4 quer, schwarz auf weiß, alle Tage Di–So,
   geänderte Werte mit `*` und dem freigegebenen in Klammern); das Bildschirm-Raster

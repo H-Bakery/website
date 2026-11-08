@@ -6,7 +6,7 @@ import {
   displayValue,
   groupBySection,
   isPerVariant,
-  referenceFor,
+  cellReference,
   variantLabel,
   WEEKDAY_SHORT,
   type GrundmengenConfig,
@@ -111,10 +111,10 @@ export default function GrundmengenPrint({
         ? null
         : approvedValue(approved, item, wd, variant, value)
       if (was) anyChanged = true
-      const ref =
-        variant === null && showReference
-          ? referenceFor(reference, wd, item.id)
-          : null
+      // Z10: Laibgrößen-Zeilen mit dem Median der Größe (§9 Punkt 10)
+      const ref = showReference
+        ? cellReference(reference, wd, item, variant)
+        : null
       return (
         <td key={wd} style={{ ...cellSx, textAlign: 'right' }}>
           {hidden ? (

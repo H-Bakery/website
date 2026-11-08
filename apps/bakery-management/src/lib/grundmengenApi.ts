@@ -35,7 +35,13 @@ export interface GrundmengenItem {
   /** ISO-Wochentag → Wert; ein fehlender Tag heißt 0. */
   base: Record<string, BaseDayValue>
   /** Z10: Laibgrößen - dann sind `variants` die Größen-IDs. */
-  sizes?: { id: string; label: string; dough_g?: number | null }[]
+  sizes?: {
+    id: string
+    label: string
+    dough_g?: number | null
+    /** Kassennummern der Größe (Median je Größe); `null` = unbekannt. */
+    plu?: number[] | null
+  }[]
   variantKind?: 'size' | 'filling' | null
   /**
    * Z10: Bruch-Posten (Brötchen aus der Teilmaschine). Grundmenge in Stück
@@ -102,10 +108,16 @@ export interface SaveResult extends BackzettelConfigView {
 
 export interface ReferenceItem {
   itemId: string
+  /** Gesetzt, wenn die Referenz eine Laibgröße ist (`cellReference`). */
+  sizeId?: string
   plu: number[]
   median: number | null
   samples: number[]
-  status: 'ok' | 'no_plu' | 'no_data'
+  /**
+   * `unknown` nur bei einer Laibgröße ohne eigene Kassennummer
+   * (`sizes[].plu` offen): der Median der Größe ist unbekannt.
+   */
+  status: 'ok' | 'no_plu' | 'no_data' | 'unknown'
   /**
    * W4-Verifikation Runde 6: `true` = mit dem Faktor des Backzettels in die
    * Einheit des Postens umgerechnet (Stück Kuchen → Kuchen, 500-g-Laib →
@@ -119,6 +131,21 @@ export interface ReferenceItem {
    */
   restMean?: number | null
   restDays?: number
+  /**
+   * Z10 (docs/backzettel-v2.md §9 Punkt 10): Median je Laibgröße, nur bei
+   * Posten mit `sizes`. Ältere Server: fehlt.
+   */
+  sizes?: ReferenceSize[]
+}
+
+/** Median einer Laibgröße (über `sizes[].plu`). */
+export interface ReferenceSize {
+  sizeId: string
+  plu: number[]
+  median: number | null
+  samples: number[]
+  status: 'ok' | 'no_data' | 'unknown'
+  converted?: boolean
 }
 
 export interface ReferenceWeekday {
@@ -320,6 +347,27 @@ export function referenceFor(
   if (!reference || reference.status !== 'ok') return null
   const day = reference.weekdays.find((w) => w.weekday === weekday)
   return day ? day.items.find((i) => i.itemId === itemId) ?? null : null
+}
+
+/**
+ * Referenz einer Zeile der Grundmengen: die Postenzeile (`variant` null) den
+ * Median des Postens, eine Laibgrößen-Zeile (Z10) den Median der Größe -
+ * aber nur, wenn der Posten selbst Kassennummern hat (sonst steht auch an
+ * der Postenzeile nichts). Füllungs-Zeilen: keine Referenz.
+ */
+export function cellReference(
+  reference: ReferenceResponse | null,
+  weekday: number,
+  item: Pick<GrundmengenItem, 'id' | 'variantKind'>,
+  variant: string | null
+): ReferenceItem | null {
+  const ref = referenceFor(reference, weekday, item.id)
+  if (variant === null) return ref
+  if (item.variantKind !== 'size' || !ref || ref.status === 'no_plu') {
+    return null
+  }
+  const size = ref.sizes?.find((sz) => sz.sizeId === variant)
+  return size ? { itemId: item.id, ...size } : null
 }
 
 /** Posten nach Abschnitt, in der Reihenfolge von `sections`. */

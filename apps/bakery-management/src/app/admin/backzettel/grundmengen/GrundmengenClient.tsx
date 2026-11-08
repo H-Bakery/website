@@ -36,7 +36,7 @@ import {
   inputProblem,
   labelledMessage,
   parseInput,
-  referenceFor,
+  cellReference,
   saveGrundmenge,
   variantLabel,
   bruchHint,
@@ -104,16 +104,19 @@ function ReferenceHint({
 }) {
   if (!reference || reference.status === 'no_plu') return null
   const pieces = !reference.converted && unit !== 'Stück'
-  const text =
-    reference.median === null
-      ? '–'
-      : `${formatQty(reference.median)}${pieces ? ' St.' : ''}`
-  const detail =
-    reference.status === 'no_data'
-      ? 'Kein Kassenbericht für diesen Wochentag.'
-      : `Verkauft: ${reference.samples.map(formatQty).join(' · ')}${
-          pieces ? ' (Stück laut Kasse, nicht ' + unit + ')' : ''
-        }`
+  const unknown = reference.status === 'unknown'
+  const text = unknown
+    ? 'unbekannt'
+    : reference.median === null
+    ? '–'
+    : `${formatQty(reference.median)}${pieces ? ' St.' : ''}`
+  const detail = unknown
+    ? 'Für diese Größe ist keine eigene Kassennummer hinterlegt (in den Stammdaten offen) - der Median steht nur für den ganzen Posten.'
+    : reference.status === 'no_data'
+    ? 'Kein Kassenbericht für diesen Wochentag.'
+    : `Verkauft: ${reference.samples.map(formatQty).join(' · ')}${
+        pieces ? ' (Stück laut Kasse, nicht ' + unit + ')' : ''
+      }`
   return (
     <Tooltip
       title={
@@ -121,7 +124,13 @@ function ReferenceHint({
           {REFERENCE_TOOLTIP}
           <br />
           {detail}
-          {reference.converted ? (
+          {unknown ? null : reference.sizeId ? (
+            <>
+              <br />
+              PLU {reference.plu.join(', ')} (Kassennummern dieser Größe)
+              {reference.converted ? ', mit dem Faktor des Backzettels' : ''}.
+            </>
+          ) : reference.converted ? (
             <>
               <br />
               PLU {reference.plu.join(', ')} mit dem Faktor des Backzettels
@@ -164,7 +173,7 @@ function ReferenceHint({
           cursor: 'help',
         }}
       >
-        ≈ {text}
+        {unknown ? text : `≈ ${text}`}
       </Typography>
     </Tooltip>
   )
@@ -180,7 +189,8 @@ function ReferenceSlot(props: {
   return (
     <Box
       sx={{
-        width: REFERENCE_SLOT,
+        // „unbekannt“ (Größe ohne Kassennummer) darf etwas breiter sein
+        minWidth: REFERENCE_SLOT,
         flexShrink: 0,
         textAlign: 'left',
       }}
@@ -468,7 +478,7 @@ function GrundmengenGrid(props: GridProps) {
 
   const dayCells = (item: GrundmengenItem, variant: string | null) =>
     days.map((wd) => {
-      const ref = variant === null ? referenceFor(reference, wd, item.id) : null
+      const ref = cellReference(reference, wd, item, variant)
       const hasVariants = item.variants.length > 0
       // Posten mit Sorten: die Postenzeile ist nur editierbar, wenn am Tag
       // eine Gesamtzahl (oder gar nichts mit Sorten) steht - sonst die Sorten.

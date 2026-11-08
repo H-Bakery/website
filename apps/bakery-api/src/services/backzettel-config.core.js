@@ -99,7 +99,7 @@ const ITEM_KEYS = new Set([
   'bruch',
   'from_dough',
 ])
-const SIZE_KEYS = new Set(['id', 'label', 'dough_g'])
+const SIZE_KEYS = new Set(['id', 'label', 'dough_g', 'plu'])
 const BRUCH_KEYS = new Set(['g', 'per_product', 'pieces', 'group'])
 const FROM_DOUGH_KEYS = new Set(['id', 'mode', 'dough_kg', 'extras'])
 const FROM_DOUGH_MODES = ['fixed', 'per_dough']
@@ -1043,6 +1043,63 @@ function validateBackzettelConfig(obj, options) {
         }
       }
 
+      // sizes[].plu (Z10, docs/backzettel-v2.md §9 Punkt 10): Kassennummern
+      // je Laibgroesse fuer den Median je Groesse. Ein Teil der Kassennummern
+      // des Postens, jede Kassennummer bei genau einer Groesse; fehlt oder
+      // null = unbekannt (Median je Groesse „unbekannt“).
+      if (isSizeItem) {
+        const itemPlu = new Set(
+          Array.isArray(item.plu) ? item.plu.filter(isPositiveInt) : []
+        )
+        const sizeOfPlu = new Map()
+        item.sizes.forEach((size, j) => {
+          if (!isPlainObject(size) || !isSet(size, 'plu')) return
+          const sp = `${p}.sizes[${j}].plu`
+          const sizeLabel = isSizeId(size.id) ? size.id : `${p}.sizes[${j}]`
+          if (size.plu === null) {
+            markOpen(
+              sp,
+              'size_plu_unknown',
+              `Posten „${label}“, Größe „${sizeLabel}“: Kassennummer der Größe ist noch offen; der Median steht nur für den ganzen Posten.`
+            )
+            return
+          }
+          if (!Array.isArray(size.plu) || size.plu.length === 0) {
+            err(
+              sp,
+              'plu einer Größe muss eine nicht-leere Liste von Kassennummern sein (null = noch offen).'
+            )
+            return
+          }
+          size.plu.forEach((plu, k) => {
+            const pp = `${sp}[${k}]`
+            if (!isPositiveInt(plu)) {
+              err(
+                pp,
+                `PLU ${JSON.stringify(plu)} muss eine positive ganze Zahl sein.`
+              )
+              return
+            }
+            const other = sizeOfPlu.get(plu)
+            if (other !== undefined) {
+              err(
+                pp,
+                other === sizeLabel
+                  ? `PLU ${plu} steht doppelt in Größe „${sizeLabel}“.`
+                  : `PLU ${plu} ist schon Größe „${other}“ zugeordnet; eine Kassennummer gehört zu genau einer Größe.`
+              )
+              return
+            }
+            sizeOfPlu.set(plu, sizeLabel)
+            if (!itemPlu.has(plu))
+              err(
+                pp,
+                `PLU ${plu} steht nicht in plu des Postens „${label}“; die Kassennummern einer Größe sind ein Teil der Kassennummern des Postens.`
+              )
+          })
+        })
+      }
+
       // dough
       const hasBruch = isSet(item, 'bruch') && item.bruch !== null
       if (item.dough !== undefined && item.dough !== null) {
@@ -1578,7 +1635,8 @@ function positiveOrNull(value) {
  *
  * Z10 (docs/backzettel-v2.md §2): `dough_days` (ohne Angabe = `days`),
  * `bruch_pieces`; je Teig `kg_per_liter`, `liter_rounding`, `combined_with`,
- * `combined_name`, `addons`; je Posten `sizes` (`[]` ohne), `variantKind`
+ * `combined_name`, `addons`; je Posten `sizes` (`[]` ohne; je Groesse
+ * `{ id, label, dough_g, plu }`, `plu` `null` = unbekannt), `variantKind`
  * (`'size'` | `'filling'` | `null`), `lead` (`{ default, <Wochentag>: n }`),
  * `bruch` (`{ g: { default, <Wochentag>: g }, per_product, group,
  * piecesPerBruch }` oder `null`), `from_dough` und `products[].size`. Bei
@@ -1638,6 +1696,8 @@ function normalizeConfig(obj) {
           id: s.id,
           label: isText(s.label) ? s.label : s.id,
           dough_g: positiveOrNull(s.dough_g),
+          // Z10 §9 Punkt 10: Kassennummern der Groesse, `null` = unbekannt
+          plu: Array.isArray(s.plu) ? s.plu.filter(isPositiveInt) : null,
         }))
       const variants =
         sizes.length > 0
