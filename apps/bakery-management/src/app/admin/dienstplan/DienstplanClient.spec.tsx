@@ -1292,7 +1292,7 @@ describe('Dienstplan - Kalender (Monat und Jahr)', () => {
       'min-width': '44px',
     })
     expect(touchStyle(screen.getByRole('table'))).toMatchObject({
-      'min-width': `${170 + 30 * (44 + 2 * 2 + 1) + 128}px`,
+      'min-width': `${170 + 30 * (44 + 2 * 2 + 1) + 112}px`,
     })
     // Stunden des Monats ganz rechts, Differenz mit Vorzeichen.
     expect(screen.getByTestId('hours-header')).toHaveTextContent('Monat')

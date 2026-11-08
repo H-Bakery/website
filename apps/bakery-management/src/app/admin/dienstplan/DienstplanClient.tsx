@@ -212,7 +212,7 @@ const AREA_FILTERS: AreaFilter[] = ['alle', ...AREAS]
  * Breite einer Tagesspalte der Woche (px): Handy schmaler, damit neben der
  * stehenbleibenden Namensspalte noch ein Tag sichtbar ist.
  */
-const DAY_COLUMN_MIN_WIDTH = { xs: 112, sm: 128 } as const
+const DAY_COLUMN_MIN_WIDTH = { xs: 112, sm: 116 } as const
 
 /** Beschriftung der Navigation je Ansicht. */
 const PERIOD_NAV: Record<

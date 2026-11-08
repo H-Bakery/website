@@ -215,7 +215,7 @@ function LegendItem({
  * Raster vorne bleibt; am Handy steht die Differenz zusätzlich unter dem
  * Namen (`PhoneHours`).
  */
-export const HOURS_COLUMN_WIDTH = 128
+export const HOURS_COLUMN_WIDTH = 112
 
 /** Kopf der Stundenspalte. */
 export function HoursHeaderCell({ periodLabel }: { periodLabel: string }) {
