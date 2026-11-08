@@ -1515,7 +1515,9 @@ webpack), ausgeliefert auf 4231 (`npm run serve:partybrezel`). Details:
 `docs/partybrezel-prototyp.md`. Fünf Dinge, die man wissen muss:
 
 - **Fest ist nur:** Flitteig, klein 3 × 300 g, groß 3 × 400 g, Teig am Vortag, Abholung am
-  Backtag, Montag Ruhetag. Alles andere (Q-P1 … Q-P7: Zähleinheit, Personen, Beläge, wer belegt,
+  Backtag, Montag Ruhetag. Für eine Abholung am **Dienstag** widersprechen sich die beiden letzten
+  Regeln: `doughOnRuhetag` markiert den Tag, die Seite nennt dann keinen Teigtag, sondern die
+  offene Frage (Q-P4/Q-P7) - kein „Teig am Montag ansetzen“ erfinden. Alles andere (Q-P1 … Q-P7: Zähleinheit, Personen, Beläge, wer belegt,
   Vorlauf, Preise, Tage) ist offen und steht als `// PLATZHALTER Q-P…` **nur** in
   `src/config/partybrezel.config.ts` - Komponenten haben keine eigenen Werte. Preise und
   Produkt-IDs sind erfunden; echte Werte nie hierher kopieren (Repo öffentlich).
@@ -1525,7 +1527,9 @@ webpack), ausgeliefert auf 4231 (`npm run serve:partybrezel`). Details:
 - **Nichts wird gesendet.** Die Übersicht zeigt den Body für `POST /api/preorders` in zwei
   Abbildungen: A „Produkt je Größe“ (Beläge in der Anmerkung) und B „Teile mit Sorte“ (Belag als
   `variant`, Menge = Teile). Keine Preisfelder - der Server nimmt den Preis aus hq, Belag-Aufpreise
-  sind über die API heute nicht abbildbar; die Seite sagt das. Gekürzte Anmerkung = Warnung.
+  sind über die API heute nicht abbildbar; die Seite sagt das. Die Belagsliste steht in der
+  Anmerkung (API: 500 Zeichen samt Text der Kundschaft) - was nicht passt, lehnt die Prüfung ab
+  (`validateNoteFits`), statt zu kürzen; gekürzt wird nur im Notfall und mit Warnung.
 - **Belag-Modus** (`per-part` / `per-pretzel`) ist Config-Vorgabe und in den
   „Prototyp-Einstellungen“ umschaltbar; im Modus je Brezel wird eine gemischt belegte Brezel als
   offen gemeldet, nie still vereinheitlicht.
@@ -1533,8 +1537,11 @@ webpack), ausgeliefert auf 4231 (`npm run serve:partybrezel`). Details:
   (Hosting unter der Landing Page oder eigener Pages-Seite ist **nicht** umgesetzt, der
   Deploy-Workflow bleibt unverändert). CI baut die App in der Build-Matrix.
 
-Tests: `npx nx test bakery-partybrezel` (Kern: `src/lib/*.spec.ts`, Durchklick:
-`src/components/PartybrezelDesigner.spec.tsx`).
+Steuerzeichen prüft `src/lib/validation.ts` mit einer Kopie der API-Regel
+(`control-chars.core.js`) - bei Änderungen dort nachziehen.
+
+Tests: `npx nx test bakery-partybrezel` (Kern: `src/lib/*.spec.ts`, Durchklick inkl. StrictMode:
+`src/components/PartybrezelDesigner.spec.tsx`), `npx nx lint bakery-partybrezel`.
 
 ## Box-Betrieb (`deploy/`, roadmap O1–O4)
 

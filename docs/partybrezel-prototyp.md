@@ -16,15 +16,22 @@ abgeholt wird am Backtag. **Montag ist Ruhetag.**
 
 Offen - im Prototyp als Platzhalter:
 
-| Frage | Inhalt                                                    | Platzhalter in der Config                                                      |
-| ----- | --------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Q-P1  | Zähleinheit: ganze Brezel oder Teil?                      | `productIds` (beide Abbildungen A/B, siehe unten)                              |
-| Q-P2  | Personen / Stücke je Größe                                | `sizes[].persons` (8 / 12)                                                     |
-| Q-P3  | Welche Beläge, gemischt je Teil oder eine Sorte je Brezel | `toppings` (6 erfundene), `defaultToppingMode: 'per-part'`                     |
-| Q-P4  | Wer belegt wann                                           | nicht abgebildet (nur Hinweis im Dialog)                                       |
-| Q-P5  | Nur Vorbestellung? Vorlauf?                               | `leadTimeDays: 2`, `maxPretzelsPerOrder: 10`, `pickupDaysShown: 14`            |
-| Q-P6  | Preise je Größe und Belag                                 | `sizes[].basePriceCents` (19,90 / 26,90 €), `toppings[].surchargePerPartCents` |
-| Q-P7  | An welchen Tagen                                          | `availableWeekdays: [2..7]` (Di-So; Montag wird nie angeboten)                 |
+| Frage | Inhalt                                                   | Platzhalter in der Config                                                      |
+| ----- | -------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Q-P1  | Zähleinheit: ganze Brezel oder Teil?                     | `productIds` (beide Abbildungen A/B, siehe unten)                              |
+| Q-P2  | Personen / Stücke je Größe                               | `sizes[].persons` (8 / 12)                                                     |
+| Q-P3  | Welche Beläge, gemischt je Teil oder ein Belag je Brezel | `toppings` (6 erfundene), `defaultToppingMode: 'per-part'`                     |
+| Q-P4  | Wer belegt wann                                          | nicht abgebildet (nur Hinweis im Dialog)                                       |
+| Q-P5  | Nur Vorbestellung? Vorlauf?                              | `leadTimeDays: 2`, `maxPretzelsPerOrder: 10`, `pickupDaysShown: 14`            |
+| Q-P6  | Preise je Größe und Belag                                | `sizes[].basePriceCents` (19,90 / 26,90 €), `toppings[].surchargePerPartCents` |
+| Q-P7  | An welchen Tagen                                         | `availableWeekdays: [2..7]` (Di-So; Montag wird nie angeboten)                 |
+
+**Dienstag ist ein Widerspruch der beiden festen Regeln:** der Teig entsteht am Vortag, Montag ist
+Ruhetag. Eine Abholung am Dienstag bräuchte also Teig vom Montag. Der Prototyp bietet Dienstag
+trotzdem an (Platzhalter Di-So), erfindet aber keinen Teigtag: `pickupDates()` markiert solche
+Tage mit `doughOnRuhetag` (`doughDateIsRuhetag()` in `src/lib/dates.ts`), Abholschritt und
+Übersicht sagen „der Vortag ist Ruhetag … offen (Q-P4/Q-P7)“ statt „Teig am Montag ansetzen“.
+Das entspricht `prepDateProvisional` beim Backzettel (Q-B2). Q-P7 im Dialog nennt den Fall.
 
 Alle Preise, Personenzahlen, Beläge und Produkt-IDs sind **erfunden** - dieses Repo ist
 öffentlich, echte Werte gehören nach `hq`. Die Seite zeigt dauerhaft den Hinweis „Prototyp –
@@ -38,11 +45,14 @@ npm run dev:partybrezel          # = nx serve bakery-partybrezel -> next dev --w
 npm run build:partybrezel        # = nx build bakery-partybrezel -> statischer Export nach apps/bakery-partybrezel/out
 npm run serve:partybrezel        # = nx serve-static bakery-partybrezel -> out/ auf http://localhost:4231
 npm run test:unit:partybrezel    # = nx test bakery-partybrezel (jest + RTL)
-npx nx run bakery-partybrezel:eslint:lint
+npx nx lint bakery-partybrezel   # eigenes lint-Target, damit `nx affected:lint` in CI die App mitnimmt
 ```
 
 Gebaut wird mit **webpack** (`next build --webpack`) - Turbopack ist in Worktrees mit verlinktem
 `node_modules` unzuverlässig. `out/` und `.next/` sind über die Root-`.gitignore` ausgeschlossen.
+`next-env.d.ts` ist in der schlichten Fassung eingecheckt (wie `apps/bakery-delivery`); `next
+build` und `next dev` schreiben eine `import`-Zeile auf ihre `.next/…/routes.d.ts` hinein - diese
+Änderung nicht committen (`git checkout apps/bakery-partybrezel/next-env.d.ts`).
 
 **Unterpfad:** `PARTYBREZEL_BASE_PATH=/partybrezel npm run build:partybrezel` setzt `basePath` und
 `assetPrefix`; `out/index.html` lädt dann `/partybrezel/_next/...`, das Icon liegt unter
@@ -65,20 +75,33 @@ Ein ungültiger Wert (ohne führendes `/`, Sonderzeichen) bricht den Build ab.
     UTC-Mitternacht (keine Sommerzeit-Verschiebung); `todayInBerlin(new Date())` ruft nur die
     Oberfläche auf, und zwar im Browser - der Export ist statisch, ein „heute“ zur Build-Zeit
     wäre nach einem Tag falsch.
-  - `validation.ts` - Name Pflicht (≤ 120, keine Steuer-/Bidi-Zeichen), Telefon optional, sonst
-    ≥ 5 Ziffern, mindestens eine Brezel, höchstens `maxPretzelsPerOrder`, jedes Teil (bzw. jede
-    Brezel) belegt, Uhrzeit `HH:MM`, Anmerkung ≤ `maxCustomerNoteLength`.
-  - `payload.ts` - die beiden Abbildungen (unten), `summary.ts` - Teile und Teig (g) je Größe
-    und Teile je Belag für den Hinweis „Für die Backstube“.
+  - `validation.ts` - Name Pflicht (≤ 120), Telefon optional, sonst ≥ 5 Ziffern, mindestens eine
+    Brezel, höchstens `maxPretzelsPerOrder`, jedes Teil (bzw. jede Brezel) belegt, Uhrzeit
+    `HH:MM`, Anmerkung ≤ `maxCustomerNoteLength`. Steuer- und unsichtbare Zeichen prüft eine
+    **Kopie** der API-Regel (`control-chars.core.js`: C0/C1, `\p{Cf}`, Default-Ignorables,
+    > 4 Kombinationszeichen, ZWJ nur zwischen Emoji; Tab/Zeilenumbruch nur in der Anmerkung) -
+    > wer die API-Regel ändert, zieht sie hier nach. **Belagsliste + Anmerkung ≤ 500 Zeichen**
+    > (`validateNoteFits`), siehe unten.
+  - `payload.ts` - die beiden Abbildungen (unten), `note.ts` - die Anmerkung (Belagsliste je
+    Brezel + Text der Kundschaft), `summary.ts` - Teile und Teig (g) je Größe und Teile je Belag
+    für den Hinweis „Für die Backstube“.
   - `orderState.ts` - Reducer (`useReducer`) und `sanitizeOrderState` für den Entwurf im
-    `localStorage` (`bakery-partybrezel-draft-v1`, in try/catch, nur Komfort).
+    `localStorage` (`bakery-partybrezel-draft-v1`, in try/catch, nur Komfort). Neue Brezeln
+    werden **hinten angehängt** - die Nummer einer schon belegten Brezel ändert sich nicht, wenn
+    später eine andere Größe dazukommt. Gespeichert wird erst, nachdem der Entwurf geladen und
+    angewandt ist (sonst überschriebe der leere Anfangszustand ihn unter React StrictMode in
+    `next dev`).
 - **`src/components/`** - eine Seite, vier Schritte (MUI-Stepper), feste Leiste unten mit
-  laufender Summe und Zurück/Weiter, einklappbare **Prototyp-Einstellungen** (Belag je Teil ↔ eine
-  Sorte je Brezel zur Laufzeit, Entwurf verwerfen). Hell/dunkel nach `prefers-color-scheme`
+  laufender Summe und Zurück/Weiter, einklappbare **Prototyp-Einstellungen** (Belag je Teil ↔ ein
+  Belag je Brezel zur Laufzeit, Entwurf verwerfen). Verwerfen und „Neu beginnen“ fragen nach.
+  `scroll-padding` oben/unten (ThemeRegistry) hält fokussierte Elemente aus dem klebenden Hinweis
+  und der festen Leiste heraus. Der Aufpreis am Belag-Chip ist der eines Klicks („je Teil“ bzw.
+  „je Brezel“ = je Teil × Teile). Hell/dunkel nach `prefers-color-scheme`
   (`CssVarsProvider`, Skript vor dem Rendern - kein Aufblitzen), Touch-Ziele ≥ 44 px, die
   Brezel-Vorschau (SVG) trägt Nummern, Legende und Titel - Farbe ist nie der einzige Träger.
-  Im Modus „eine Sorte je Brezel“ wird eine gemischt belegte Brezel nicht still vereinheitlicht,
-  sondern als offen gemeldet.
+  Im Modus „ein Belag je Brezel“ wird eine gemischt belegte Brezel nicht still vereinheitlicht,
+  sondern als offen gemeldet. In der Oberfläche heißt es immer „Belag“; „Sorte“ ist das Wort der
+  API (`variant`) und steht nur bei Abbildung B.
 
 ## Die Vorbestellung: zwei Abbildungen
 
@@ -90,6 +113,18 @@ quantity }]`, `note?`. Grenzen der API, die die Builder einhalten bzw. melden: M
 passt auf `^[a-z0-9]+(?:-[a-z0-9]+)*$` und ist ≤ 64 Zeichen, Anmerkung ≤ 500 Zeichen. Beide
 Builder liefern `{ payload, warnings }`; eine zu lange Anmerkung wird mit `…` gekürzt **und**
 gemeldet, nie still.
+
+**Die 500 Zeichen reichen nicht für jede Bestellung.** Die Anmerkung trägt die Belagsliste
+(„Brezel 1, 2 (groß): Käse, Schinken, Butter; Brezel 3 (klein): 3× Butter“ - gleich belegte
+Brezeln einer Größe stehen in einer Gruppe, die Nummern bleiben) **und** den Text der Kundschaft
+(≤ 300). Eine gemischte Brezel braucht bis zu ~75 Zeichen; bei zehn verschieden gemischten
+Brezeln ist schon die Liste allein länger als 500. Gekürzt ginge in Abbildung B die Zuordnung
+Teil → Brezel verloren. Deshalb lehnt die Prüfung ab, statt zu kürzen (`validateNoteFits`): zu
+lange Liste → Fehler am Schritt Belag („mehr Brezeln gleich belegen oder Bestellung aufteilen“),
+erst mit dem Text zu lang → Fehler an der Anmerkung mit der Zahl der zu kürzenden Zeichen. Was die
+Prüfung durchlässt, kürzt die Vorschau nie (Test in `payload.spec.ts`). Für den echten Bestellweg
+heißt das: die Belagsliste gehört nicht dauerhaft in die Anmerkung - in Abbildung B tragen die
+Positionen die Beläge ohnehin, es fehlt nur die Zuordnung zur Brezel.
 
 |            | A „Produkt je Größe“                                                      | B „Teile mit Sorte“                                                                            |
 | ---------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
