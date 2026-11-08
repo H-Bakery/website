@@ -177,6 +177,12 @@ describe('Dienstplan - Mitarbeiterprofil', () => {
 
     expect(screen.getByText('Di, 10.11.2026, 06:00–12:00')).toBeInTheDocument()
     expect(screen.getByText('5:30 h · 30 min Pause')).toBeInTheDocument()
+
+    // Vom Profil in den Kalender, gefiltert auf den Bereich der Person.
+    expect(screen.getByRole('link', { name: 'Im Kalender' })).toHaveAttribute(
+      'href',
+      '/admin/dienstplan?bereich=verkauf'
+    )
   })
 
   it('ohne Anspruch: „offen“, nie 0 - und blättert ins nächste Jahr', async () => {

@@ -158,6 +158,13 @@ describe('Dienstplan - Mitarbeiterliste', () => {
     ).toBeInTheDocument()
   })
 
+  it('führt zum Kalender', async () => {
+    renderList()
+    expect(
+      await screen.findByRole('link', { name: 'Kalender' })
+    ).toHaveAttribute('href', '/admin/dienstplan')
+  })
+
   it('legt einen Mitarbeiter an (Name Pflicht, Stunden geprüft, Login optional)', async () => {
     api.createEmployee.mockResolvedValue(
       employee({ id: 9, displayName: 'Lena Neu' })

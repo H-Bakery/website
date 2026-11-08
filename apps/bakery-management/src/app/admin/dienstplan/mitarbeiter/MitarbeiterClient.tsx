@@ -17,6 +17,7 @@ import {
 } from '@mui/material'
 import {
   Add as AddIcon,
+  CalendarMonth as CalendarIcon,
   ChevronRight as ChevronRightIcon,
   Badge as StaffIcon,
 } from '@mui/icons-material'
@@ -107,13 +108,23 @@ export default function MitarbeiterClient() {
             Profile, Urlaubsanspruch und Abwesenheiten
           </Typography>
         </Box>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => setDialogOpen(true)}
-        >
-          Neuer Mitarbeiter
-        </Button>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+          <Button
+            component={Link}
+            href="/admin/dienstplan"
+            variant="outlined"
+            startIcon={<CalendarIcon />}
+          >
+            Kalender
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setDialogOpen(true)}
+          >
+            Neuer Mitarbeiter
+          </Button>
+        </Box>
       </Box>
 
       {error && (
