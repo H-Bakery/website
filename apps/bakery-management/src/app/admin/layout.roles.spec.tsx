@@ -139,4 +139,24 @@ describe('AdminLayout mit Rollen (F1)', () => {
     ).toBeInTheDocument()
     expect(screen.queryByText('Seiteninhalt')).not.toBeInTheDocument()
   })
+
+  it('Fahrer: kein „Erfassen“ im Menü und kein „Dashboard“ im Pfad (Review r1)', () => {
+    renderLayout('/admin/preorders/abholliste', fakeSession({ role: 'fahrer' }))
+    const item = desktopNav().getByText('Vorbestellungen').closest('a')
+    expect(item).toHaveTextContent('Liste und Tagesübersicht')
+    expect(item).not.toHaveTextContent('Erfassen')
+    expect(screen.getByLabelText('Pfad').textContent).not.toContain('Dashboard')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Vorbestellungen › Abholliste'
+    )
+  })
+
+  it('Verkauf: Produkte heißen „Sortiment nachschlagen“, nicht Verwaltung', () => {
+    renderLayout('/admin/products', fakeSession({ role: 'verkauf' }))
+    const item = desktopNav().getByText('Produkte').closest('a')
+    expect(item).toHaveTextContent('Sortiment nachschlagen')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Dashboard › Produkte'
+    )
+  })
 })

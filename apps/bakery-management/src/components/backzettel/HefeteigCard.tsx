@@ -4,8 +4,6 @@ import React from 'react'
 import {
   Alert,
   Box,
-  Card,
-  CardContent,
   Divider,
   Grid,
   Stack,
@@ -22,14 +20,24 @@ import type {
   HefeteigDough,
 } from '../../lib/backzettelApi'
 import {
-  formatGrams,
+  fillingGramsText,
+  fillingOpenNote,
+  formatKnown,
+  weighingItemsText,
+  weighingPiecesText,
   formatNumber,
+  formatGrams,
+  hefeteigDoughText,
+  hefeteigPiecesText,
   ingredientAmount,
+  litersHint,
+  litersFigure,
   recipeHeading,
   recipeIncompleteNote,
 } from '../../lib/backzettelFormat'
 import type { DeltaExtras } from '../../lib/backzettelApi'
 import { DeltaExtrasNote } from './DeltaExtrasNote'
+import { PageSection } from '../layout'
 
 const NUM = { textAlign: 'right' as const, whiteSpace: 'nowrap' as const }
 
@@ -39,17 +47,33 @@ function Figure({ label, value }: { label: string; value: string }) {
       <Typography variant="caption" color="text.secondary" component="div">
         {label}
       </Typography>
-      <Typography variant="h5" component="div" fontWeight={700}>
+      <Typography
+        component="div"
+        sx={{
+          fontSize: { xs: '1.25rem', md: '1.5rem' },
+          fontWeight: 700,
+          lineHeight: 1.25,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
         {value}
       </Typography>
     </Box>
   )
 }
 
-/** Chargen-Text; ohne Chargengröße kein geschätzter Wert. */
+/**
+ * Chargen-Text; ohne Chargengröße oder Teiggewicht kein geschätzter Wert -
+ * und es steht da, welche der beiden Zahlen fehlt. Dieselben Wörter wie die
+ * Maschinen-Leiste (`batchesText`): Stammdaten sind „offen“, was sich daraus
+ * nicht rechnen lässt, „unbekannt“.
+ */
 export function batchText(dough: HefeteigDough): string {
-  if (dough.batches === null || !dough.batch_max_kg) {
-    return 'Chargengröße nicht festgelegt'
+  if (!dough.batch_max_kg) return 'Chargengröße offen'
+  if (dough.batches === null) {
+    return `Chargen: unbekannt (Teiggewicht unbekannt) – je max. ${formatNumber(
+      dough.batch_max_kg
+    )} kg`
   }
   return `${dough.batches} ${
     dough.batches === 1 ? 'Charge' : 'Chargen'
@@ -64,11 +88,21 @@ function DoughBlock({ dough }: { dough: HefeteigDough }) {
       </Typography>
       <Grid container spacing={2} sx={{ mt: 0 }}>
         <Grid item xs={6} sm={3}>
-          <Figure label="Teigstücke" value={formatNumber(dough.pieces)} />
+          <Figure label="Teigstücke" value={hefeteigPiecesText(dough)} />
         </Grid>
         <Grid item xs={6} sm={3}>
-          <Figure label="Teig gesamt" value={formatGrams(dough.dough_g)} />
+          <Figure label="Teig gesamt" value={hefeteigDoughText(dough)} />
         </Grid>
+        {dough.liters && (
+          <Grid item xs={6} sm={3}>
+            <Figure label="Wasser" value={litersFigure(dough.liters)} />
+            {litersHint(dough.liters) && (
+              <Typography variant="caption" color="text.secondary">
+                {litersHint(dough.liters)}
+              </Typography>
+            )}
+          </Grid>
+        )}
         <Grid item xs={12} sm={6}>
           <Figure
             label="Chargen"
@@ -79,10 +113,30 @@ function DoughBlock({ dough }: { dough: HefeteigDough }) {
           </Typography>
         </Grid>
       </Grid>
-      <Typography variant="subtitle2" sx={{ mt: 2 }}>
+      {(dough.missing ?? []).length > 0 && (
+        <Box
+          component="ul"
+          sx={{
+            m: 0,
+            mt: 1,
+            pl: 2.5,
+            typography: 'body2',
+            color: 'text.secondary',
+          }}
+        >
+          {(dough.missing ?? []).map((m) => (
+            <li key={`${m.code}-${m.itemId}`}>{m.message}</li>
+          ))}
+        </Box>
+      )}
+      <Typography
+        variant="subtitle2"
+        component="h4"
+        sx={{ mt: 2, mb: 0.5, fontWeight: 600 }}
+      >
         Abwiegeliste
       </Typography>
-      <Box sx={{ overflowX: 'auto' }}>
+      <Box sx={{ overflowX: 'auto', maxWidth: 720 }}>
         <Table size="small" aria-label={`Abwiegeliste ${dough.name}`}>
           <TableHead>
             <TableRow>
@@ -93,26 +147,16 @@ function DoughBlock({ dough }: { dough: HefeteigDough }) {
           </TableHead>
           <TableBody>
             {dough.weighing.map((w) => (
-              <TableRow key={w.piece_g}>
+              <TableRow key={w.piece_g ?? 'offen'}>
                 <TableCell sx={{ whiteSpace: 'nowrap', fontWeight: 600 }}>
-                  {formatNumber(w.piece_g)} g
+                  {formatKnown(w.piece_g, 'g')}
                 </TableCell>
                 <TableCell sx={NUM}>
                   <Typography component="span" fontWeight={700}>
-                    {formatNumber(w.pieces)}
+                    {weighingPiecesText(w)}
                   </Typography>
                 </TableCell>
-                <TableCell>
-                  {w.items
-                    .map((i) =>
-                      i.piecesPerProduct === 1
-                        ? `${i.name} ${formatNumber(i.products)}`
-                        : `${i.name} ${formatNumber(i.products)} × ${
-                            i.piecesPerProduct
-                          }`
-                    )
-                    .join(', ')}
-                </TableCell>
+                <TableCell>{weighingItemsText(w.items)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -134,8 +178,16 @@ export function FillingBlock({ filling }: { filling: FillingNeed }) {
         <Typography variant="subtitle1" component="h3" fontWeight={700}>
           {filling.name}
         </Typography>
-        <Typography variant="h6" component="div" fontWeight={700}>
-          {formatGrams(filling.grams)}
+        <Typography
+          component="div"
+          sx={{
+            fontSize: '1.25rem',
+            fontWeight: 700,
+            fontVariantNumeric: 'tabular-nums',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {fillingGramsText(filling)}
         </Typography>
       </Stack>
       <Typography variant="body2" color="text.secondary">
@@ -148,10 +200,16 @@ export function FillingBlock({ filling }: { filling: FillingNeed }) {
           )
           .join(', ')}
       </Typography>
+      {fillingOpenNote(filling) && (
+        <Alert severity="warning" sx={{ mt: 1 }}>
+          {fillingOpenNote(filling)}
+        </Alert>
+      )}
       {filling.missingFillingG && (
         <Alert severity="warning" sx={{ mt: 1 }}>
-          Für mindestens einen Posten ist kein Füllungsgewicht hinterlegt – die
-          Menge oben ist zu klein.
+          Für mindestens einen Posten ist das Füllungsgewicht noch offen – die
+          Menge oben fehlt bzw. ist zu klein, das Rezept wird nicht
+          hochgerechnet.
         </Alert>
       )}
       {filling.recipe ? (
@@ -223,31 +281,38 @@ export function HefeteigCard({
   const list = fillings ?? []
   if (doughs.length === 0 && list.length === 0 && !deltaExtras) return null
   return (
-    <Card variant="outlined" sx={{ mb: 2 }} data-testid="hefeteig-card">
-      <CardContent>
-        <Typography variant="h6" component="h2" gutterBottom>
-          Hefeteig &amp; Füllungen
-        </Typography>
-        <DeltaExtrasNote extras={deltaExtras} />
-        <Stack spacing={3} divider={<Divider flexItem />} sx={{ mt: 1 }}>
-          {doughs.map((d) => (
-            <DoughBlock key={d.id} dough={d} />
-          ))}
-          {list.length > 0 && (
-            <Box>
-              <Typography variant="subtitle1" component="h3" fontWeight={700}>
-                Füllungen
-              </Typography>
-              <Stack spacing={2} sx={{ mt: 1 }}>
-                {list.map((f) => (
-                  <FillingBlock key={f.id} filling={f} />
-                ))}
-              </Stack>
+    <PageSection title="Hefeteig & Füllungen" data-testid="hefeteig-card">
+      <DeltaExtrasNote extras={deltaExtras} />
+      <Stack spacing={3} divider={<Divider flexItem />} sx={{ mt: 1 }}>
+        {doughs.map((d) => (
+          <DoughBlock key={d.id} dough={d} />
+        ))}
+        {list.length > 0 && (
+          <Box>
+            <Typography variant="subtitle1" component="h3" fontWeight={700}>
+              Füllungen
+            </Typography>
+            {/* Ab großem Bildschirm nebeneinander - jede Füllung ist ein
+                eigener Arbeitsgang mit eigenem Rezept. */}
+            <Box
+              sx={{
+                mt: 1,
+                display: 'grid',
+                gap: { xs: 2, md: 3 },
+                gridTemplateColumns: {
+                  xs: 'minmax(0, 1fr)',
+                  lg: 'repeat(auto-fill, minmax(340px, 1fr))',
+                },
+              }}
+            >
+              {list.map((f) => (
+                <FillingBlock key={f.id} filling={f} />
+              ))}
             </Box>
-          )}
-        </Stack>
-      </CardContent>
-    </Card>
+          </Box>
+        )}
+      </Stack>
+    </PageSection>
   )
 }
 

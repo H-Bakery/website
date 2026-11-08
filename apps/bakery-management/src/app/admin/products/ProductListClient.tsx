@@ -1,45 +1,97 @@
 'use client'
-import React from 'react'
+import React, { useMemo, useState } from 'react'
 import {
   Box,
-  Typography,
-  Grid,
-  Paper,
   Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Chip,
   IconButton,
-  Avatar,
+  InputAdornment,
+  TextField,
+  Typography,
   useMediaQuery,
-  useTheme,
 } from '@mui/material'
+import { useTheme } from '@mui/material/styles'
 import {
-  Inventory as ProductsIcon,
   Add as AddIcon,
   Edit as EditIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material'
 import { useRouter } from 'next/navigation'
 import type { ManagementProduct } from '../../../lib/products'
 import { PENDING_APPROVAL_LABEL } from '../../../lib/products'
 import { useOptionalSession } from '../../../lib/session'
 import { formatCurrency } from '../../../lib/partnerTypes'
+import { TOUCH_MEDIA } from '../../../lib/muiTheme'
+import {
+  EmptyState,
+  PageLayout,
+  PageSection,
+  ResponsiveList,
+  type ResponsiveColumn,
+} from '../../../components/layout'
 
-const categoryColors: Record<
-  string,
-  'primary' | 'secondary' | 'warning' | 'info' | 'success' | 'error'
-> = {
-  brot: 'primary',
-  broetchen: 'primary',
-  baguette: 'primary',
-  teilchen: 'secondary',
-  snacks: 'info',
-  kuchen: 'warning',
-  torten: 'warning',
+/** Titel der Seite - auch für Laden/Fehler in `ProductsPageClient`. */
+export const PRODUCTS_TITLE = 'Produkte'
+
+/**
+ * Filter der Liste. „Verfügbar“ zählt wie die Dashboard-Kachel die
+ * Saisonware mit (beides steht im Shop) - vorher zeigte das Dashboard
+ * „Verfügbar 56“ und diese Seite „Verfügbar 55“ mit derselben Bezeichnung.
+ */
+type StatusFilter = 'all' | 'available' | 'seasonal' | 'unavailable'
+
+const FILTER_LABELS: Record<StatusFilter, string> = {
+  all: 'Alle',
+  available: 'Verfügbar',
+  seasonal: 'Saisonal',
+  unavailable: 'Nicht verfügbar',
+}
+
+function matchesFilter(product: ManagementProduct, filter: StatusFilter) {
+  switch (filter) {
+    case 'available':
+      return product.status !== 'unavailable'
+    case 'seasonal':
+      return product.status === 'seasonal'
+    case 'unavailable':
+      return product.status === 'unavailable'
+    default:
+      return true
+  }
+}
+
+/**
+ * Filter-Chips sind Knöpfe: am Laden-Tablet und Handy mindestens 44 px hoch
+ * wie die übrigen Bedienelemente (das Theme hebt nur Button, IconButton,
+ * ToggleButton … an, nicht Chip - der lag bei 32 px).
+ */
+const STATUS_FILTER_CHIP_SX = {
+  fontVariantNumeric: 'tabular-nums',
+  [TOUCH_MEDIA]: { height: 44, borderRadius: 22, px: 0.5 },
+} as const
+
+/**
+ * Status als Text, nicht als 56 gleiche farbige Chips: nur die Ausnahmen
+ * (saisonal, nicht verfügbar) bekommen einen umrandeten Chip. Die gefüllten
+ * Chips (dunkle Schrift auf getönter Fläche) lagen im Dunkelmodus unter
+ * 4,5:1.
+ */
+function StatusCell({ product }: { product: ManagementProduct }) {
+  if (product.status === 'active') {
+    return (
+      <Typography variant="body2" color="text.secondary" component="span">
+        Verfügbar
+      </Typography>
+    )
+  }
+  return (
+    <Chip
+      size="small"
+      variant="outlined"
+      color={product.status === 'seasonal' ? 'info' : 'error'}
+      label={product.status === 'seasonal' ? 'Saisonal' : 'Nicht verfügbar'}
+    />
+  )
 }
 
 interface ProductListClientProps {
@@ -50,328 +102,256 @@ export default function ProductListClient({
   products,
 }: ProductListClientProps) {
   const router = useRouter()
+  // Dieselbe Grenze wie `ResponsiveList` (Standard `sm`): darunter Karten.
+  const theme = useTheme()
+  const compact = useMediaQuery(theme.breakpoints.down('sm'))
   // F1/F4: Produkte schreibt nur der Inhaber (B5: PUT/POST `inhaber`).
   // Verkauf sieht die Liste lesend - ohne „Neues Produkt“ und Bearbeiten.
   // Ohne Sitzung (Specs) bleibt alles sichtbar; durchgesetzt wird in der API.
   const role = useOptionalSession()?.user?.role
   const canEdit = !role || role === 'inhaber'
+  const [filter, setFilter] = useState<StatusFilter>('all')
+  const [search, setSearch] = useState('')
+
+  const counts = useMemo(() => {
+    const result = {} as Record<StatusFilter, number>
+    for (const key of Object.keys(FILTER_LABELS) as StatusFilter[]) {
+      result[key] = products.filter((p) => matchesFilter(p, key)).length
+    }
+    return result
+  }, [products])
+
   const pendingProducts = products.filter((p) => p.pendingApproval).length
-  const theme = useTheme()
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
-  const activeProducts = products.filter((p) => p.status === 'active').length
-  const seasonalProducts = products.filter(
-    (p) => p.status === 'seasonal'
-  ).length
-  const unavailableProducts = products.filter(
-    (p) => p.status === 'unavailable'
-  ).length
-  const totalProducts = products.length
+  const needle = search.trim().toLocaleLowerCase('de')
+  const visible = products.filter(
+    (p) =>
+      matchesFilter(p, filter) &&
+      (!needle ||
+        p.name.toLocaleLowerCase('de').includes(needle) ||
+        p.category.toLocaleLowerCase('de').includes(needle))
+  )
+  const filtered = filter !== 'all' || needle !== ''
+
+  const columns: ResponsiveColumn<ManagementProduct>[] = [
+    {
+      key: 'name',
+      header: 'Produkt',
+      primary: true,
+      cell: (product) => (
+        <Box sx={{ minWidth: 0 }}>
+          <Typography
+            variant="body2"
+            fontWeight={600}
+            data-testid="product-name"
+            sx={{ overflowWrap: 'anywhere' }}
+          >
+            {product.name}
+          </Typography>
+          {compact && (
+            // Karte am Handy: „Brot · Verfügbar“ und der Preis in einer Zeile
+            // unter dem Namen - vorher liefen Kategorie, Status und Preis
+            // ohne Trenner zusammen, mit großem Abstand unter dem Namen.
+            <Box
+              sx={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                columnGap: 0.75,
+                rowGap: 0.5,
+                mt: 0.25,
+                color: 'text.secondary',
+              }}
+            >
+              <Typography variant="body2" component="span">
+                {product.category}
+              </Typography>
+              <span aria-hidden="true">·</span>
+              <StatusCell product={product} />
+              <span aria-hidden="true">·</span>
+              <Typography
+                variant="body2"
+                component="span"
+                color="text.primary"
+                fontWeight={600}
+                noWrap
+                sx={{ fontVariantNumeric: 'tabular-nums' }}
+              >
+                {formatCurrency(product.price)}
+              </Typography>
+            </Box>
+          )}
+          {product.pendingApproval && (
+            <Chip
+              label={PENDING_APPROVAL_LABEL}
+              size="small"
+              color="info"
+              variant="outlined"
+              title={
+                product.approved
+                  ? 'Geändert - im Shop gilt noch der freigegebene Stand'
+                  : 'Neu angelegt - im Shop erst nach der Freigabe'
+              }
+              sx={{ mt: 0.5 }}
+            />
+          )}
+        </Box>
+      ),
+    },
+    {
+      key: 'category',
+      hideInCard: true,
+      header: 'Kategorie',
+      cell: (product) => (
+        <Typography variant="body2" component="span" color="text.secondary">
+          {product.category}
+        </Typography>
+      ),
+    },
+    {
+      key: 'status',
+      hideInCard: true,
+      header: 'Status',
+      cell: (product) => <StatusCell product={product} />,
+    },
+    {
+      key: 'price',
+      hideInCard: true,
+      header: 'Preis',
+      align: 'right',
+      cell: (product) => (
+        <Typography
+          variant="body2"
+          component="span"
+          fontWeight={600}
+          noWrap
+          sx={{ fontVariantNumeric: 'tabular-nums' }}
+        >
+          {formatCurrency(product.price)}
+        </Typography>
+      ),
+    },
+  ]
 
   return (
-    <Box>
-      {/* Page Header */}
-      <Box
-        sx={{
-          mb: { xs: 2, md: 4 },
-          display: 'flex',
-          flexDirection: { xs: 'column', sm: 'row' },
-          justifyContent: 'space-between',
-          alignItems: { xs: 'stretch', sm: 'center' },
-          gap: { xs: 1.5, sm: 0 },
-        }}
-      >
-        <Box>
-          <Typography
-            variant="h4"
-            component="h1"
-            gutterBottom
-            sx={{ fontSize: { xs: '1.5rem', md: '2.125rem' } }}
-          >
-            <ProductsIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-            Produktverwaltung
-          </Typography>
-          <Typography
-            variant="subtitle1"
-            color="text.secondary"
-            sx={{ display: { xs: 'none', sm: 'block' } }}
-          >
-            {canEdit
-              ? 'Verwaltung und Bearbeitung aller Backwaren und Produkte'
-              : 'Freigegebener Produktkatalog zum Nachschlagen'}
-          </Typography>
-        </Box>
-        {canEdit && (
+    <PageLayout
+      title={PRODUCTS_TITLE}
+      subtitle={
+        canEdit
+          ? 'Sortiment für Laden und Shop - bearbeiten und neu anlegen'
+          : 'Freigegebener Produktkatalog zum Nachschlagen'
+      }
+      width="default"
+      actions={
+        canEdit ? (
           <Button
             variant="contained"
             startIcon={<AddIcon />}
-            size={isMobile ? 'medium' : 'large'}
             onClick={() => router.push('/admin/products/new')}
           >
             Neues Produkt
           </Button>
-        )}
-      </Box>
-
-      {/* Product Statistics */}
-      <Grid
-        container
-        spacing={{ xs: 1.5, md: 3 }}
-        sx={{ mb: { xs: 2, md: 4 } }}
+        ) : undefined
+      }
+    >
+      <PageSection
+        title={`Produktliste (${
+          filtered
+            ? `${visible.length} von ${products.length}`
+            : products.length
+        })`}
+        description={
+          pendingProducts > 0
+            ? `${
+                pendingProducts === 1
+                  ? '1 Änderung wartet auf Freigabe'
+                  : `${pendingProducts} Änderungen warten auf Freigabe`
+              } - im Shop gilt bis dahin der freigegebene Stand.`
+            : undefined
+        }
+        disablePadding
       >
-        <Grid item xs={6} md={3}>
-          <Paper sx={{ p: { xs: 2, md: 3 }, textAlign: 'center' }}>
-            <Typography variant="body2" fontWeight={600} gutterBottom>
-              Gesamt
-            </Typography>
-            <Typography
-              variant="h3"
-              color="primary"
-              sx={{ fontSize: { xs: '2rem', md: '3rem' } }}
-            >
-              {totalProducts}
-            </Typography>
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{ display: { xs: 'none', sm: 'block' } }}
-            >
-              Produkte im Sortiment
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={6} md={3}>
-          <Paper sx={{ p: { xs: 2, md: 3 }, textAlign: 'center' }}>
-            <Typography variant="body2" fontWeight={600} gutterBottom>
-              Verfügbar
-            </Typography>
-            <Typography
-              variant="h3"
-              color="success.main"
-              sx={{ fontSize: { xs: '2rem', md: '3rem' } }}
-            >
-              {activeProducts}
-            </Typography>
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{ display: { xs: 'none', sm: 'block' } }}
-            >
-              Im Verkauf
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={6} md={3}>
-          <Paper sx={{ p: { xs: 2, md: 3 }, textAlign: 'center' }}>
-            <Typography variant="body2" fontWeight={600} gutterBottom>
-              Saisonal
-            </Typography>
-            <Typography
-              variant="h3"
-              color="warning.main"
-              sx={{ fontSize: { xs: '2rem', md: '3rem' } }}
-            >
-              {seasonalProducts}
-            </Typography>
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{ display: { xs: 'none', sm: 'block' } }}
-            >
-              Begrenzt verfügbar
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={6} md={3}>
-          <Paper sx={{ p: { xs: 2, md: 3 }, textAlign: 'center' }}>
-            <Typography variant="body2" fontWeight={600} gutterBottom>
-              Nicht verfügbar
-            </Typography>
-            <Typography
-              variant="h3"
-              color="error.main"
-              sx={{ fontSize: { xs: '2rem', md: '3rem' } }}
-            >
-              {unavailableProducts}
-            </Typography>
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{ display: { xs: 'none', sm: 'block' } }}
-            >
-              Derzeit nicht im Angebot
-            </Typography>
-          </Paper>
-        </Grid>
-      </Grid>
-
-      {/* Product List Table */}
-      <Paper elevation={2}>
-        <Box
-          sx={{
-            p: { xs: 1.5, md: 2 },
-            borderBottom: '1px solid',
-            borderColor: 'divider',
-          }}
-        >
-          <Typography
-            variant="h6"
-            sx={{ fontSize: { xs: '1rem', md: '1.25rem' } }}
-          >
-            Produktliste ({products.length})
-          </Typography>
-          {pendingProducts > 0 && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              {pendingProducts === 1
-                ? '1 Änderung wartet auf Freigabe'
-                : `${pendingProducts} Änderungen warten auf Freigabe`}{' '}
-              - im Shop gilt bis dahin der freigegebene Stand.
-            </Typography>
-          )}
-        </Box>
         {products.length === 0 ? (
-          <Box sx={{ p: 4, textAlign: 'center' }}>
-            <Typography color="text.secondary" gutterBottom>
-              Keine Produkte gefunden.
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Die Produkte kommen über die API aus dem hq-Produktverzeichnis.
-              Ist es auf dem Server nicht eingerichtet (HQ_PRODUCTS_DIR), bleibt
-              die Liste leer.
-            </Typography>
+          <Box sx={{ px: { xs: 2, md: 3 }, pb: { xs: 2, md: 3 } }}>
+            <EmptyState
+              title="Keine Produkte gefunden."
+              description="Die Produkte kommen aus dem hq-Produktverzeichnis. Ist es auf dem Server nicht eingerichtet (HQ_PRODUCTS_DIR), bleibt die Liste leer."
+            />
           </Box>
         ) : (
-          <TableContainer>
-            <Table size={isMobile ? 'small' : 'medium'}>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Produkt</TableCell>
-                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
-                    Kategorie
-                  </TableCell>
-                  <TableCell align="right">Preis</TableCell>
-                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                    Status
-                  </TableCell>
-                  {canEdit && <TableCell align="center">Aktionen</TableCell>}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {products.map((product) => (
-                  <TableRow
-                    key={product.id}
-                    sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
-                  >
-                    <TableCell>
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: { xs: 1, md: 2 },
-                        }}
-                      >
-                        <Avatar
-                          src={product.image || undefined}
-                          alt={product.name}
-                          variant="rounded"
-                          sx={{
-                            width: { xs: 32, md: 40 },
-                            height: { xs: 32, md: 40 },
-                          }}
-                        >
-                          {product.name.charAt(0)}
-                        </Avatar>
-                        <Box sx={{ minWidth: 0 }}>
-                          <Typography
-                            variant="body2"
-                            fontWeight={500}
-                            noWrap
-                            sx={{ maxWidth: { xs: 120, sm: 200, md: 300 } }}
-                          >
-                            {product.name}
-                          </Typography>
-                          {product.pendingApproval && (
-                            <Chip
-                              label={PENDING_APPROVAL_LABEL}
-                              size="small"
-                              color="info"
-                              variant="outlined"
-                              title={
-                                product.approved
-                                  ? 'Geändert - im Shop gilt noch der freigegebene Stand'
-                                  : 'Neu angelegt - im Shop erst nach der Freigabe'
-                              }
-                              sx={{ mt: 0.25, height: 22 }}
-                            />
-                          )}
-                          {/* Show category as subtitle on mobile since column is hidden */}
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            sx={{ display: { xs: 'block', md: 'none' } }}
-                          >
-                            {product.category}
-                          </Typography>
-                        </Box>
-                      </Box>
-                    </TableCell>
-                    <TableCell
-                      sx={{ display: { xs: 'none', md: 'table-cell' } }}
-                    >
-                      <Chip
-                        label={product.category}
-                        size="small"
-                        color={categoryColors[product.categoryKey] || 'default'}
-                      />
-                    </TableCell>
-                    <TableCell align="right">
-                      <Typography variant="body2" fontWeight={500} noWrap>
-                        {formatCurrency(product.price)}
-                      </Typography>
-                    </TableCell>
-                    <TableCell
-                      sx={{ display: { xs: 'none', sm: 'table-cell' } }}
-                    >
-                      <Chip
-                        label={
-                          product.status === 'active'
-                            ? 'Verfügbar'
-                            : product.status === 'seasonal'
-                            ? 'Saisonal'
-                            : 'Nicht verfügbar'
-                        }
-                        color={
-                          product.status === 'active'
-                            ? 'success'
-                            : product.status === 'seasonal'
-                            ? 'warning'
-                            : 'error'
-                        }
-                        size="small"
-                      />
-                    </TableCell>
-                    {canEdit && (
-                      <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
-                        <IconButton
-                          size="small"
-                          color="primary"
-                          // Touch-Ziel am Handy/Tablet mindestens 44 px.
-                          sx={{ minWidth: 44, minHeight: 44 }}
-                          aria-label={`${product.name} bearbeiten`}
-                          onClick={() =>
-                            router.push(`/admin/products/${product.id}`)
-                          }
-                        >
-                          <EditIcon fontSize={isMobile ? 'small' : 'medium'} />
-                        </IconButton>
-                      </TableCell>
-                    )}
-                  </TableRow>
+          <>
+            <Box
+              sx={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                gap: 1.5,
+                px: { xs: 2, md: 3 },
+                pb: 2,
+              }}
+            >
+              <TextField
+                size="small"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Produkt suchen"
+                inputProps={{ 'aria-label': 'Produkt suchen' }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon fontSize="small" />
+                    </InputAdornment>
+                  ),
+                }}
+                sx={{ flex: { xs: '1 1 100%', sm: '0 1 260px' } }}
+              />
+              <Box
+                role="group"
+                aria-label="Nach Status filtern"
+                sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}
+              >
+                {(Object.keys(FILTER_LABELS) as StatusFilter[]).map((key) => (
+                  <Chip
+                    key={key}
+                    clickable
+                    aria-pressed={filter === key}
+                    color={filter === key ? 'primary' : 'default'}
+                    variant={filter === key ? 'filled' : 'outlined'}
+                    onClick={() => setFilter(key)}
+                    label={`${FILTER_LABELS[key]} ${counts[key]}`}
+                    sx={STATUS_FILTER_CHIP_SX}
+                  />
                 ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+              </Box>
+            </Box>
+            <ResponsiveList
+              aria-label="Produkte"
+              rows={visible}
+              columns={columns}
+              rowKey={(product) => product.id}
+              rowTestId={(product) => `product-row-${product.id}`}
+              empty="Kein Produkt passt zu Suche und Filter."
+              actionsHeader="Bearbeiten"
+              actions={
+                canEdit
+                  ? (product) => (
+                      <IconButton
+                        color="primary"
+                        // Touch-Ziel am Handy/Tablet mindestens 44 px.
+                        sx={{ minWidth: 44, minHeight: 44 }}
+                        aria-label={`${product.name} bearbeiten`}
+                        onClick={() =>
+                          router.push(`/admin/products/${product.id}`)
+                        }
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    )
+                  : undefined
+              }
+            />
+          </>
         )}
-      </Paper>
-    </Box>
+      </PageSection>
+    </PageLayout>
   )
 }

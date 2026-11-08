@@ -8,26 +8,28 @@ import {
   AlertTitle,
   Box,
   Button,
-  Card,
-  CardActionArea,
-  CardContent,
   Chip,
   CircularProgress,
+  ListItemButton,
   Stack,
   TextField,
   Typography,
 } from '@mui/material'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
+import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import {
   fetchBackzettelConfig,
   fetchBackzettelDay,
   isBackzettelDay,
+  isDoughDaySheet,
   type BackzettelConfigResponse,
+  type BackzettelDay,
   type BackzettelDayResult,
 } from '../../../lib/backzettelApi'
 import {
   describeProductionDays,
   formatDateLong,
+  formatDateShort,
   formatTimestamp,
   isIsoDate,
   nextProductionDay,
@@ -39,6 +41,13 @@ import {
 import { BackzettelStatusChip } from '../../../components/backzettel/BackzettelStatusChip'
 import { useOptionalSession } from '../../../lib/session'
 import { isPathAllowedForRole } from '../../../lib/roles'
+import { backzettelErrorText } from '../../../lib/backstubeErrors'
+import {
+  ErrorState,
+  LoadingState,
+  PageLayout,
+  PageSection,
+} from '../../../components/layout'
 
 const GRUNDMENGEN_HREF = '/admin/backzettel/grundmengen'
 
@@ -48,18 +57,83 @@ type DayEntry =
   | { date: string; state: 'error'; message: string }
 
 function messageOf(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback
+  return backzettelErrorText(error, fallback)
 }
 
-function DaySummary({ entry }: { entry: DayEntry }) {
+/** Zweite Zeile eines Tages: Vorbestellungen, Hinweise, Hefeteig, Freigabe. */
+function summaryText(result: BackzettelDayResult): string {
+  if (!isBackzettelDay(result)) return ''
+  const preorderLines = linesWithPreorders(result)
+  const parts = [
+    preorderLines > 0
+      ? `Vorbestellungen in ${preorderLines} ${
+          preorderLines === 1 ? 'Zeile' : 'Zeilen'
+        }`
+      : 'keine Vorbestellungen',
+  ]
+  if (result.warnings.length > 0) {
+    parts.push(
+      `${result.warnings.length} ${
+        result.warnings.length === 1 ? 'Hinweis' : 'Hinweise'
+      }`
+    )
+  }
+  if ((result.hefeteig?.doughs?.length ?? 0) > 0) parts.push('Hefeteig')
+  if (result.status === 'confirmed' && result.confirmedBy) {
+    parts.push(
+      `freigegeben von ${result.confirmedBy.displayName}${
+        result.confirmedAt ? ` am ${formatTimestamp(result.confirmedAt)}` : ''
+      }`
+    )
+  }
+  return parts.join(' · ')
+}
+
+/**
+ * Z10: für welche Backtage an diesem Tag Teig gemacht wird
+ * („Teig für heute, Sonntag, Dienstag“) - oder dass nur gebacken wird.
+ */
+export function doughForText(day: BackzettelDay): string | null {
+  if (!isDoughDaySheet(day)) return null
+  if (day.isDoughDay === false) {
+    // Kein Teigtag - aber Posten mit lead 0 werden trotzdem heute gemacht
+    // (Maschinen-Kästen vom Server). „Kein Teig“ nur, wenn es keine gibt.
+    const boxes = day.machine ?? []
+    if (boxes.length === 0) return 'Kein Teig – nur backen (Backliste)'
+    return `Teig für heute (${boxes
+      .map((b) => b.name)
+      .join(', ')}) – sonst nur backen (Backliste)`
+  }
+  const dates = (day.bakeDates ?? []).filter((b) => b.lineCount > 0)
+  if (dates.length === 0) return null
+  return `Teig für ${dates
+    .map((b) =>
+      b.date === day.date
+        ? 'heute'
+        : `${b.weekdayName || formatDateShort(b.date)}`
+    )
+    .join(', ')}`
+}
+
+/**
+ * Status eines Tages: höchstens zwei Chips (Entwurf/Freigegeben und offene
+ * Nachträge) - alles Weitere steht als Text darunter (Layout-Kit: Nebenwerte
+ * als zweite Zeile, nicht als eigener Chip).
+ */
+function DayStatus({ entry }: { entry: DayEntry }) {
   if (entry.state === 'loading') {
     return <CircularProgress size={20} aria-label="wird geladen" />
   }
   if (entry.state === 'error') {
+    // Der Grund steht einmal oben (UI-Runde 1) - nicht in jeder Zeile.
     return (
-      <Typography variant="body2" color="error">
-        {entry.message}
-      </Typography>
+      <Chip
+        size="small"
+        color="error"
+        variant="outlined"
+        label="Nicht geladen"
+        data-testid={`day-error-${entry.date}`}
+      />
     )
   }
   const result = entry.result
@@ -77,47 +151,40 @@ function DaySummary({ entry }: { entry: DayEntry }) {
     return <Chip size="small" variant="outlined" label="Ruhetag" />
   }
   const open = openDeltas(result).length
-  const preorderLines = linesWithPreorders(result)
   return (
-    <Stack spacing={0.5}>
-      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-        <BackzettelStatusChip status={result.status} />
-        {open > 0 && (
-          <Chip
-            size="small"
-            color="warning"
-            label={`${open} ${open === 1 ? 'Nachtrag' : 'Nachträge'} offen`}
-          />
-        )}
-        {result.warnings.length > 0 && (
-          <Chip
-            size="small"
-            color="warning"
-            variant="outlined"
-            label={`${result.warnings.length} ${
-              result.warnings.length === 1 ? 'Hinweis' : 'Hinweise'
-            }`}
-          />
-        )}
-        {(result.hefeteig?.doughs?.length ?? 0) > 0 && (
-          <Chip size="small" variant="outlined" label="Hefeteig" />
-        )}
-      </Stack>
-      <Typography variant="body2" color="text.secondary">
-        {preorderLines > 0
-          ? `Vorbestellungen in ${preorderLines} ${
-              preorderLines === 1 ? 'Zeile' : 'Zeilen'
-            }`
-          : 'keine Vorbestellungen'}
-        {result.status === 'confirmed' && result.confirmedBy
-          ? ` · freigegeben von ${result.confirmedBy.displayName}${
-              result.confirmedAt
-                ? ` am ${formatTimestamp(result.confirmedAt)}`
-                : ''
-            }`
-          : ''}
-      </Typography>
+    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+      <BackzettelStatusChip status={result.status} />
+      {open > 0 && (
+        <Chip
+          size="small"
+          color="warning"
+          label={`${open} ${open === 1 ? 'Nachtrag' : 'Nachträge'} offen`}
+        />
+      )}
     </Stack>
+  )
+}
+
+function DaySummaryLine({ entry }: { entry: DayEntry }) {
+  if (entry.state !== 'loaded') return null
+  const text = summaryText(entry.result)
+  const doughFor = isBackzettelDay(entry.result)
+    ? doughForText(entry.result)
+    : null
+  if (!text && !doughFor) return null
+  return (
+    <>
+      {doughFor && (
+        <Typography variant="body2" data-testid={`dough-for-${entry.date}`}>
+          {doughFor}
+        </Typography>
+      )}
+      {text && (
+        <Typography variant="body2" color="text.secondary">
+          {text}
+        </Typography>
+      )}
+    </>
   )
 }
 
@@ -197,82 +264,104 @@ export default function BackzettelOverviewClient({
     void load()
   }, [load])
 
+  // UI-Runde 1: ein Fehler steht einmal da, nicht in jeder Zeile. Ging gar
+  // nichts, gibt es nur den Fehler mit „Erneut versuchen“ - keine Karten mit
+  // aktivem „Öffnen“ über leeren Tagen.
+  const failed = entries.filter(
+    (e): e is Extract<DayEntry, { state: 'error' }> => e.state === 'error'
+  )
+  const allFailed =
+    !loading && entries.length > 0 && failed.length === entries.length
+  const errorMessage = configError ?? failed[0]?.message ?? null
+  const retry = () => void load()
+
   const days = config?.config?.days ?? null
   const next = nextProductionDay(today, days)
   const nextEntry = entries.find((e) => e.date === next)
   const nextResult =
     nextEntry && nextEntry.state === 'loaded' ? nextEntry.result : null
 
-  return (
-    <Box>
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        spacing={1.5}
-        justifyContent="space-between"
-        alignItems={{ xs: 'stretch', sm: 'center' }}
-        sx={{ mb: 2 }}
-      >
-        <Box>
-          <Typography
-            variant="h4"
-            component="h1"
-            sx={{ fontSize: { xs: '1.6rem', sm: '2rem' } }}
-          >
-            Backzettel
-          </Typography>
-          <Typography color="text.secondary">
-            {describeProductionDays(days)}
-          </Typography>
-        </Box>
-        <Box
-          component="form"
-          onSubmit={(e: React.FormEvent) => {
-            e.preventDefault()
-            if (isIsoDate(jump)) router.push(`/admin/backzettel/${jump}`)
-          }}
-          sx={{
-            display: 'flex',
-            gap: 1,
-            alignItems: 'center',
-            flexWrap: 'wrap',
-          }}
-        >
-          <TextField
-            type="date"
-            label="Anderer Tag"
-            value={jump}
-            onChange={(e) => setJump(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            inputProps={{ 'aria-label': 'Anderer Tag' }}
-          />
-          <Button
-            type="submit"
-            variant="outlined"
-            disabled={!isIsoDate(jump)}
-            sx={{ minHeight: 44 }}
-          >
-            Öffnen
-          </Button>
-          {showGrundmengen && (
-            <Button
-              component={Link}
-              href={GRUNDMENGEN_HREF}
-              variant="outlined"
-              sx={{ minHeight: 44, whiteSpace: 'nowrap' }}
-            >
-              Grundmengen
-            </Button>
-          )}
-        </Box>
-      </Stack>
+  const nextAction = !canPlan
+    ? 'Ansehen'
+    : isBackzettelDay(nextResult) && nextResult.status === 'draft'
+    ? 'Planen'
+    : 'Öffnen'
 
-      {configError && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {configError}
-        </Alert>
+  const jumpForm = (
+    <Box
+      component="form"
+      aria-label="Anderen Tag öffnen"
+      onSubmit={(e: React.FormEvent) => {
+        e.preventDefault()
+        if (isIsoDate(jump)) router.push(`/admin/backzettel/${jump}`)
+      }}
+      sx={{
+        display: 'flex',
+        gap: 1,
+        alignItems: 'center',
+        flexWrap: 'wrap',
+      }}
+    >
+      <TextField
+        type="date"
+        size="small"
+        label="Anderer Tag"
+        value={jump}
+        onChange={(e) => setJump(e.target.value)}
+        InputLabelProps={{ shrink: true }}
+        inputProps={{ 'aria-label': 'Anderer Tag' }}
+        sx={{ flex: { xs: '1 1 10rem', sm: '0 0 auto' } }}
+      />
+      <Button
+        type="submit"
+        variant="outlined"
+        disabled={!isIsoDate(jump)}
+        sx={{ minHeight: 44 }}
+      >
+        Öffnen
+      </Button>
+    </Box>
+  )
+
+  return (
+    <PageLayout
+      title="Backzettel"
+      subtitle={describeProductionDays(days)}
+      actions={
+        showGrundmengen ? (
+          <Button
+            component={Link}
+            href={GRUNDMENGEN_HREF}
+            variant="outlined"
+            sx={{ minHeight: 44, whiteSpace: 'nowrap' }}
+          >
+            Grundmengen
+          </Button>
+        ) : undefined
+      }
+    >
+      {allFailed ? (
+        <ErrorState
+          title="Backzettel konnten nicht geladen werden"
+          message={errorMessage}
+          onRetry={retry}
+          data-testid="overview-error"
+        />
+      ) : (
+        (configError || (!loading && failed.length > 0)) && (
+          <ErrorState
+            message={
+              failed.length > 0
+                ? `${failed.length} von ${entries.length} Tagen nicht geladen: ${failed[0].message}`
+                : configError
+            }
+            onRetry={retry}
+            data-testid="overview-error"
+          />
+        )
       )}
       {config?.status === 'no-config' && (
-        <Alert severity="warning" sx={{ mb: 2 }} data-testid="no-config">
+        <Alert severity="warning" data-testid="no-config">
           <AlertTitle>Keine Backzettel-Stammdaten</AlertTitle>
           Ohne gültige Stammdaten (<code>config/backzettel.yaml</code> in hq)
           rechnet die App keine Mengen. Bereits freigegebene Tage bleiben
@@ -287,98 +376,123 @@ export default function BackzettelOverviewClient({
         </Alert>
       )}
 
-      <Card
-        variant="outlined"
-        sx={{ mb: 3, borderColor: 'primary.main', borderWidth: 2 }}
-        data-testid="next-day"
-      >
-        <CardContent>
-          <Typography variant="overline" color="text.secondary">
-            Nächster Produktionstag
-          </Typography>
-          <Stack
-            direction={{ xs: 'column', sm: 'row' }}
-            spacing={2}
-            justifyContent="space-between"
-            alignItems={{ xs: 'stretch', sm: 'center' }}
+      {!allFailed && (
+        <PageSection
+          title={formatDateLong(next)}
+          description="Nächster Produktionstag"
+          data-testid="next-day"
+        >
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              alignItems: { xs: 'stretch', sm: 'center' },
+              justifyContent: 'space-between',
+              gap: 2,
+            }}
           >
-            <Box>
-              <Typography variant="h5" component="h2">
-                {formatDateLong(next)}
-              </Typography>
-              {nextEntry ? (
-                <Box sx={{ mt: 1 }}>
-                  <DaySummary entry={nextEntry} />
-                </Box>
-              ) : null}
-            </Box>
+            {nextEntry ? (
+              <Stack spacing={0.75} sx={{ minWidth: 0 }}>
+                <DayStatus entry={nextEntry} />
+                <DaySummaryLine entry={nextEntry} />
+              </Stack>
+            ) : (
+              <span />
+            )}
             <Button
               component={Link}
               href={`/admin/backzettel/${next}`}
               variant="contained"
-              size="large"
               endIcon={<ArrowForwardIcon />}
-              sx={{ minHeight: 48 }}
+              sx={{ minHeight: 48, minWidth: 160, flexShrink: 0 }}
             >
-              {!canPlan
-                ? 'Ansehen'
-                : isBackzettelDay(nextResult) && nextResult.status === 'draft'
-                ? 'Planen'
-                : 'Öffnen'}
+              {nextAction}
             </Button>
-          </Stack>
-        </CardContent>
-      </Card>
-
-      <Typography variant="h6" component="h2" sx={{ mb: 1 }}>
-        Diese Woche
-      </Typography>
-      {loading && entries.length === 0 ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-          <CircularProgress aria-label="Backzettel werden geladen" />
-        </Box>
-      ) : (
-        <Stack spacing={1.5} data-testid="day-list">
-          {entries.map((entry) => (
-            <Card
-              key={entry.date}
-              variant="outlined"
-              data-testid={`day-${entry.date}`}
-            >
-              <CardActionArea
-                component={Link}
-                href={`/admin/backzettel/${entry.date}`}
-                sx={{ p: 2, minHeight: 64 }}
-              >
-                <Stack
-                  direction={{ xs: 'column', sm: 'row' }}
-                  spacing={1}
-                  justifyContent="space-between"
-                  alignItems={{ xs: 'flex-start', sm: 'center' }}
-                >
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography variant="subtitle1" fontWeight={700}>
-                      {formatDateLong(entry.date)}
-                    </Typography>
-                    {entry.date === today && (
-                      <Chip size="small" color="primary" label="heute" />
-                    )}
-                    {entry.date === next && (
-                      <Chip
-                        size="small"
-                        color="primary"
-                        variant="outlined"
-                        label="als Nächstes"
-                      />
-                    )}
-                  </Stack>
-                  <DaySummary entry={entry} />
-                </Stack>
-              </CardActionArea>
-            </Card>
-          ))}
-        </Stack>
+          </Box>
+        </PageSection>
       )}
-    </Box>
+
+      {!allFailed && (
+        <PageSection title="Nächste Tage" disablePadding actions={jumpForm}>
+          {loading && entries.length === 0 ? (
+            <LoadingState label="Backzettel werden geladen …" />
+          ) : (
+            <Box component="ul" data-testid="day-list" sx={{ m: 0, p: 0 }}>
+              {entries.map((entry) => (
+                <Box
+                  component="li"
+                  key={entry.date}
+                  data-testid={`day-${entry.date}`}
+                  sx={{
+                    listStyle: 'none',
+                    borderTop: 1,
+                    borderColor: 'divider',
+                  }}
+                >
+                  <ListItemButton
+                    component={Link}
+                    href={`/admin/backzettel/${entry.date}`}
+                    sx={{
+                      px: { xs: 2, md: 3 },
+                      py: 1.5,
+                      minHeight: 64,
+                      gap: 2,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        flex: 1,
+                        minWidth: 0,
+                        display: 'flex',
+                        flexDirection: { xs: 'column', sm: 'row' },
+                        alignItems: { xs: 'flex-start', sm: 'center' },
+                        columnGap: 2,
+                        rowGap: 0.75,
+                      }}
+                    >
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Typography
+                            component="span"
+                            sx={{ fontWeight: 600, fontSize: '1rem' }}
+                          >
+                            {formatDateLong(entry.date)}
+                          </Typography>
+                          {entry.date === today && (
+                            <Chip size="small" color="primary" label="heute" />
+                          )}
+                        </Stack>
+                        <DaySummaryLine entry={entry} />
+                      </Box>
+                      <DayStatus entry={entry} />
+                    </Box>
+                    <ChevronRightIcon
+                      aria-hidden
+                      sx={{ color: 'text.secondary', flexShrink: 0 }}
+                    />
+                  </ListItemButton>
+                  {entry.state === 'loaded' &&
+                    isBackzettelDay(entry.result) &&
+                    isDoughDaySheet(entry.result) && (
+                      <Box sx={{ px: { xs: 2, md: 3 }, pb: 1 }}>
+                        <Button
+                          component={Link}
+                          href={`/admin/backzettel/${entry.date}/backen`}
+                          variant="text"
+                          aria-label={`Backliste ${formatDateLong(entry.date)}`}
+                          sx={{ minHeight: 44, ml: -1 }}
+                        >
+                          Backliste
+                        </Button>
+                      </Box>
+                    )}
+                </Box>
+              ))}
+            </Box>
+          )}
+        </PageSection>
+      )}
+    </PageLayout>
   )
 }

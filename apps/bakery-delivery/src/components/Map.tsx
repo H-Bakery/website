@@ -6,6 +6,7 @@ import 'leaflet/dist/leaflet.css'
 import { hasCoordinates } from '@bakery/delivery/routing'
 import type { Location } from '@bakery/delivery/tracking'
 import type { Depot, Stop } from '../lib/delivery-api'
+import { displayOrder, stopPositions } from '../lib/stop-order'
 
 // Leaflet sucht seine Marker-Bilder relativ zum Bundle. Die drei PNGs unter
 // `public/leaflet/` liegen genau deswegen im Repo.
@@ -104,24 +105,29 @@ export function Map({
         .addTo(layer)
     }
 
+    // Die Nummer ist die der Liste (`stopPositions`), nicht der Platz unter
+    // den Stopps mit Koordinaten - sonst trug Stopp 2 die 1, sobald dem
+    // ersten die Adresse fehlte. Verbunden wird in derselben Reihenfolge.
     // `hasCoordinates` statt `!== null`: bei `undefined` wuerfe Leaflet mit
     // "Invalid LatLng" die ganze Karte weg.
-    const located = stops.filter(hasCoordinates)
+    const positions = stopPositions(stops)
+    const located = displayOrder(stops).filter(hasCoordinates)
 
-    located.forEach((stop, index) => {
+    located.forEach((stop) => {
       const point: [number, number] = [stop.lat, stop.lon]
+      const position = positions.get(stop.id) ?? 0
       bounds.push(point)
 
       L.marker(point, {
         icon: badgeIcon(
-          String(index + 1),
+          String(position),
           STATUS_COLOR[stop.status],
           stop.id === activeStopId
         ),
         zIndexOffset: stop.id === activeStopId ? 1000 : 0,
       })
         .bindPopup(
-          `<strong>${index + 1}. ${escapeHtml(stop.customer)}</strong><br/>` +
+          `<strong>${position}. ${escapeHtml(stop.customer)}</strong><br/>` +
             `${escapeHtml(stop.address)}` +
             (stop.timeWindow
               ? `<br/>Zeitfenster: ${escapeHtml(stop.timeWindow)}`
@@ -150,8 +156,10 @@ export function Map({
 
     // Einpassen, wenn sich die *Menge* der Stopps aendert - nicht bei jedem
     // Abhaken, sonst springt die Karte dem Fahrer aus der Hand.
+    // (Sortiert: die Reihenfolge der Liste aendert sich mit jedem Abhaken.)
     const fingerprint = located
       .map((stop) => stop.id)
+      .sort((a, b) => a - b)
       .join(',')
       .concat(geometry ? `|${geometry.length}` : '')
     if (bounds.length > 0 && fingerprint !== hasFittedRef.current) {

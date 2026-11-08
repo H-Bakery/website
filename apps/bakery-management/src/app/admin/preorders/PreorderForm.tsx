@@ -6,7 +6,6 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   Divider,
   FormControlLabel,
   Grid,
@@ -29,6 +28,11 @@ import {
 import QuantityPad, {
   nextQuantity,
 } from '../../../components/preorders/QuantityPad'
+import {
+  LoadingState,
+  PageSection,
+  SECTION_GAP,
+} from '../../../components/layout'
 import {
   changePreorderStatus,
   createPreorder,
@@ -151,6 +155,41 @@ function rememberChannel(channel: PreorderChannel): void {
 }
 
 /** Touch-Chip: mindestens 44 px hoch. */
+/**
+ * Eine Chip-Gruppe (`role="radiogroup"`) ist **ein** Tab-Halt: nur die
+ * gewählte Chip (sonst die erste) ist per Tab erreichbar, die Pfeiltasten
+ * wählen die nächste bzw. vorige - wie bei echten Radio-Knöpfen. Vorher war
+ * jede Chip ein eigener Halt, 12 Halte bis zum Abholtag (UI-Runde 2).
+ */
+export function radioTabIndex(
+  checked: boolean,
+  isFirst: boolean,
+  anyChecked: boolean
+): number {
+  return checked || (!anyChecked && isFirst) ? 0 : -1
+}
+
+const RADIO_STEPS: Record<string, number> = {
+  ArrowRight: 1,
+  ArrowDown: 1,
+  ArrowLeft: -1,
+  ArrowUp: -1,
+}
+
+function radioGroupKeyDown(event: React.KeyboardEvent<HTMLElement>): void {
+  const step = RADIO_STEPS[event.key]
+  if (!step) return
+  const radios = Array.from(
+    event.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]')
+  )
+  const index = radios.indexOf(document.activeElement as HTMLElement)
+  if (index < 0) return
+  event.preventDefault()
+  const next = radios[(index + step + radios.length) % radios.length]
+  next.focus()
+  next.click()
+}
+
 const chipSx = {
   minHeight: 44,
   fontSize: '0.95rem',
@@ -174,6 +213,7 @@ const variantChipSx = {
   '&.MuiChip-outlined.Mui-focusVisible': { backgroundColor: 'transparent' },
 } as const
 
+/** Ein Block der Maske - derselbe Abschnitt wie auf jeder Seite (Layout-Kit). */
 function Section({
   title,
   children,
@@ -181,19 +221,7 @@ function Section({
   title: string
   children: React.ReactNode
 }) {
-  return (
-    <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 } }}>
-      <Typography
-        variant="subtitle2"
-        component="h2"
-        color="text.secondary"
-        sx={{ mb: 1.25, textTransform: 'uppercase', letterSpacing: 0.6 }}
-      >
-        {title}
-      </Typography>
-      {children}
-    </Paper>
-  )
+  return <PageSection title={title}>{children}</PageSection>
 }
 
 export interface PreorderFormProps {
@@ -1001,15 +1029,7 @@ export default function PreorderForm({
     }
 
   if (loading) {
-    return (
-      <Box
-        sx={{ display: 'flex', justifyContent: 'center', p: 6 }}
-        role="status"
-        aria-label="Maske wird geladen"
-      >
-        <CircularProgress />
-      </Box>
-    )
+    return <LoadingState label="Maske wird geladen …" />
   }
 
   const channelChoices: PreorderChannel[] = point
@@ -1076,10 +1096,10 @@ export default function PreorderForm({
         </Alert>
       )}
 
-      <Grid container spacing={2}>
+      <Grid container spacing={SECTION_GAP}>
         {/* ---------------- links: Kunde, Weg, Abholung ---------------- */}
         <Grid item xs={12} md={5}>
-          <Stack spacing={2}>
+          <Stack spacing={SECTION_GAP}>
             <Section title="Kunde">
               <Stack spacing={1.5}>
                 <TextField
@@ -1113,13 +1133,19 @@ export default function PreorderForm({
               <Box
                 role="radiogroup"
                 aria-label="Bestellweg"
+                onKeyDown={radioGroupKeyDown}
                 sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}
               >
-                {channelChoices.map((value) => (
+                {channelChoices.map((value, index) => (
                   <Chip
                     key={value}
                     role="radio"
                     aria-checked={channel === value}
+                    tabIndex={radioTabIndex(
+                      channel === value,
+                      index === 0,
+                      channelChoices.includes(channel)
+                    )}
                     label={CHANNEL_LABELS[value]}
                     color={channel === value ? 'primary' : 'default'}
                     variant={channel === value ? 'filled' : 'outlined'}
@@ -1134,11 +1160,13 @@ export default function PreorderForm({
               <Box
                 role="radiogroup"
                 aria-label="Abholort"
+                onKeyDown={radioGroupKeyDown}
                 sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1.5 }}
               >
                 <Chip
                   role="radio"
                   aria-checked={!point}
+                  tabIndex={!point ? 0 : -1}
                   label="Im Laden"
                   color={!point ? 'primary' : 'default'}
                   variant={!point ? 'filled' : 'outlined'}
@@ -1150,6 +1178,7 @@ export default function PreorderForm({
                     key={p.id}
                     role="radio"
                     aria-checked={pickupPointId === p.id}
+                    tabIndex={pickupPointId === p.id ? 0 : -1}
                     label={p.name}
                     color={pickupPointId === p.id ? 'primary' : 'default'}
                     variant={pickupPointId === p.id ? 'filled' : 'outlined'}
@@ -1162,13 +1191,19 @@ export default function PreorderForm({
               <Box
                 role="radiogroup"
                 aria-label="Abholtag schnell wählen"
+                onKeyDown={radioGroupKeyDown}
                 sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1.5 }}
               >
-                {dateChoices.map((date) => (
+                {dateChoices.map((date, index) => (
                   <Chip
                     key={date}
                     role="radio"
                     aria-checked={pickupDate === date}
+                    tabIndex={radioTabIndex(
+                      pickupDate === date,
+                      index === 0,
+                      dateChoices.includes(pickupDate)
+                    )}
                     label={formatShortDate(date)}
                     color={pickupDate === date ? 'primary' : 'default'}
                     variant={pickupDate === date ? 'filled' : 'outlined'}
@@ -1239,7 +1274,7 @@ export default function PreorderForm({
 
         {/* ------- rechts: Artikel, Bestellung, Zahlung (am Telefon darunter) ------- */}
         <Grid item xs={12} md={7}>
-          <Stack spacing={2}>
+          <Stack spacing={SECTION_GAP}>
             <Section title="Artikel">
               {!pending && (
                 <>
@@ -1261,7 +1296,12 @@ export default function PreorderForm({
                       ),
                     }}
                     inputProps={{
-                      'aria-controls': 'preorder-product-results',
+                      // Nur, solange die Liste wirklich da ist - ein Verweis
+                      // auf eine fehlende ID ist für Screenreader ungültig.
+                      'aria-controls':
+                        query.trim() && results.length > 0
+                          ? 'preorder-product-results'
+                          : undefined,
                       'aria-autocomplete': 'list',
                     }}
                   />
@@ -1319,10 +1359,11 @@ export default function PreorderForm({
                           aria-label="Häufig vorbestellt"
                           sx={{
                             display: 'grid',
-                            gridTemplateColumns: {
-                              xs: 'repeat(2, minmax(0, 1fr))',
-                              sm: 'repeat(4, minmax(0, 1fr))',
-                            },
+                            // Nach der Breite des Felds, nicht des Bildschirms:
+                            // quer am Tablet steht es in der halben Spalte, und
+                            // 4 Spalten trennten jeden Namen (UI-Runde 1).
+                            gridTemplateColumns:
+                              'repeat(auto-fill, minmax(136px, 1fr))',
                             gap: 1,
                           }}
                         >
@@ -1527,7 +1568,17 @@ export default function PreorderForm({
                       }}
                     >
                       <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography sx={{ fontWeight: 500 }} noWrap>
+                        {/* Umbrechen statt kürzen: am Handy standen sonst
+                            „Probebrötchen …“ zweimal untereinander, und man
+                            sah nicht, welche Zeile welche ist (UI-Runde 2). */}
+                        <Typography
+                          data-testid="preorder-line-name"
+                          sx={{
+                            fontWeight: 500,
+                            overflowWrap: 'break-word',
+                            hyphens: 'auto',
+                          }}
+                        >
                           {line.name}
                           {line.variant
                             ? ` (${variantLabel(line.variant)})`

@@ -116,6 +116,36 @@ async function ready() {
 }
 
 describe('PreorderEntryClient (P1)', () => {
+  it('Chip-Gruppen sind je ein Tab-Halt, Pfeiltasten wählen (UI-Runde 2)', async () => {
+    const user = userEvent.setup()
+    await ready()
+    for (const name of ['Bestellweg', 'Abholort', 'Abholtag schnell wählen']) {
+      const group = screen.getByRole('radiogroup', { name })
+      const radios = within(group).getAllByRole('radio')
+      expect(radios.length).toBeGreaterThan(1)
+      expect(radios.filter((r) => r.tabIndex === 0)).toHaveLength(1)
+    }
+    const channel = screen.getByRole('radiogroup', { name: 'Bestellweg' })
+    const checked = within(channel).getByRole('radio', { checked: true })
+    expect(checked.tabIndex).toBe(0)
+    checked.focus()
+    await user.keyboard('{ArrowRight}')
+    const now = within(channel).getByRole('radio', { checked: true })
+    expect(now).not.toBe(checked)
+    expect(now).toHaveFocus()
+    expect(now.tabIndex).toBe(0)
+  })
+
+  it('Suchfeld zeigt nur auf eine Ergebnisliste, die es gibt (UI-Runde 2)', async () => {
+    const user = userEvent.setup()
+    await ready()
+    const search = screen.getByLabelText('Produkt suchen')
+    expect(search).not.toHaveAttribute('aria-controls')
+    await user.type(search, 'korn')
+    expect(search).toHaveAttribute('aria-controls', 'preorder-product-results')
+    expect(document.getElementById('preorder-product-results')).not.toBeNull()
+  })
+
   it('erfasst per Tastatur: Name ↵ Telefon ↵ Produkt ↵ Menge ↵ Strg+↵', async () => {
     const user = userEvent.setup()
     mockCreate.mockResolvedValue(
@@ -132,6 +162,10 @@ describe('PreorderEntryClient (P1)', () => {
 
     const lines = screen.getByRole('list', { name: 'Positionen' })
     expect(within(lines).getByText('Kornbrot 500g')).toBeInTheDocument()
+    // Namen brechen um statt „Probebrötchen …“ (UI-Runde 2, 390 px).
+    expect(within(lines).getByText('Kornbrot 500g')).not.toHaveClass(
+      'MuiTypography-noWrap'
+    )
     expect(within(lines).getByText(/3 × 2,50\s€ = 7,50\s€/)).toBeInTheDocument()
     expect(screen.getByLabelText('Produkt suchen')).toHaveFocus()
 
@@ -158,9 +192,14 @@ describe('PreorderEntryClient (P1)', () => {
       { name: /Nächste Bestellung/ }
     )
     expect(next).toHaveFocus()
+    // UI-Runde 2: nur die Karte - keine Snackbar mit einem zweiten
+    // „Nächste Bestellung“.
     expect(
-      screen.getByText(/Vorbestellung LA-2026-11-13-04 gespeichert/)
-    ).toBeInTheDocument()
+      screen.getAllByRole('button', { name: /Nächste Bestellung/ })
+    ).toHaveLength(1)
+    expect(
+      screen.queryByText(/Vorbestellung LA-2026-11-13-04 gespeichert/)
+    ).not.toBeInTheDocument()
 
     await user.click(next)
     expect(await screen.findByLabelText(/^Name/)).toHaveValue('')

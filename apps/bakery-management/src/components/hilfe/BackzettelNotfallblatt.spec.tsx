@@ -2,7 +2,9 @@ import React from 'react'
 import { render } from '@testing-library/react'
 import BackzettelNotfallblatt, {
   FALLBACK_SECTIONS,
+  KEEP_TOGETHER_MAX_LINES,
   NOTFALL_COLS_MM,
+  keepSectionTogether,
   notfallLayout,
   notfallPostenWidthMm,
   notfallSections,
@@ -33,12 +35,34 @@ describe('Backzettel-Notfallblatt (P6)', () => {
     ])
   })
 
-  it('lässt „Vorbereitung“ und leere Abschnitte weg', () => {
+  it('lässt leere Abschnitte weg', () => {
     const sections = notfallSections({
       ...TEST_CONFIG,
       sections: ['vorbereitung', 'brot', 'kuchen'],
     })
     expect(sections.map((s) => s.id)).toEqual(['brot'])
+  })
+
+  it('hat eine Zeile für Posten der Vorbereitung (Sauerteig-Ansatz, Review r2)', () => {
+    const sections = notfallSections({
+      ...TEST_CONFIG,
+      sections: ['vorbereitung', ...TEST_CONFIG.sections],
+      items: [
+        ...TEST_CONFIG.items,
+        {
+          ...TEST_CONFIG.items[0],
+          id: 'testsauerteig',
+          name: 'Testsauerteig-Ansatz',
+          section: 'vorbereitung',
+          variants: [],
+        },
+      ],
+    })
+    expect(sections[0]).toEqual({
+      id: 'vorbereitung',
+      label: 'Vorbereitung',
+      rows: ['Testsauerteig-Ansatz', ''],
+    })
   })
 
   const sectionsWith = (rows: number, count = 6) =>
@@ -87,6 +111,27 @@ describe('Notfallblatt: Abschnittsname wiederholt sich beim Spaltenumbruch (W4-v
   })
 })
 
+describe('Notfallblatt: Leerzeile bleibt beim Abschnitt (Z10 Review)', () => {
+  it('die Leerzeile nach den Posten bricht nicht allein in die nächste Spalte', () => {
+    const { container } = render(
+      <BackzettelNotfallblatt config={TEST_CONFIG} />
+    )
+    const tables = Array.from(container.querySelectorAll('.nfb-section table'))
+    tables.forEach((table) => {
+      const rows = Array.from(table.querySelectorAll('tbody tr'))
+      const last = rows[rows.length - 1]
+      expect(last.textContent).toBe('')
+      expect(last).toHaveClass('nfb-blank')
+      expect(rows[0]).not.toHaveClass('nfb-blank')
+    })
+    // Ohne Stammdaten sind alle Zeilen leer - dort darf alles umbrechen.
+    const { container: empty } = render(
+      <BackzettelNotfallblatt config={null} />
+    )
+    expect(empty.querySelectorAll('tr.nfb-blank')).toHaveLength(0)
+  })
+})
+
 describe('Notfallblatt: Posten stehen ganz da (W4-verify r5)', () => {
   it('Spaltenbreiten per <colgroup>, nicht über die erste Zeile (die ist die Überschrift)', () => {
     const { container } = render(
@@ -127,5 +172,35 @@ describe('Notfallblatt: Posten stehen ganz da (W4-verify r5)', () => {
         { id: 'a', label: 'A', rows: Array.from({ length: 50 }, () => row) },
       ])
     expect(many(long).rowHeightMm).toBeLessThan(many('x').rowHeightMm)
+  })
+})
+
+describe('Notfallblatt: kurze Abschnitte bleiben in einer Spalte (Review r2)', () => {
+  it('Hefeteig bricht nicht über zwei Spalten um, lange Abschnitte dürfen', () => {
+    const { container } = render(
+      <BackzettelNotfallblatt config={TEST_CONFIG} />
+    )
+    const hefeteig = container.querySelector('[data-section="hefeteig"]')
+    expect(hefeteig).toHaveClass('nfb-keep')
+    const long = {
+      id: 'brot',
+      label: 'Brot',
+      rows: Array.from({ length: KEEP_TOGETHER_MAX_LINES + 1 }, () => 'x'),
+    }
+    expect(keepSectionTogether(long, 2)).toBe(false)
+  })
+
+  it('plant den Platz ein, den ein ganzer Abschnitt am Spaltenende frei lässt', () => {
+    const sections = [
+      { id: 'a', label: 'A', rows: Array.from({ length: 40 }, () => 'x') },
+      { id: 'b', label: 'B', rows: Array.from({ length: 20 }, () => 'x') },
+      { id: 'c', label: 'C', rows: Array.from({ length: 8 }, () => 'x') },
+    ]
+    const { columns, rowHeightMm } = notfallLayout(sections)
+    expect(columns).toBe(2)
+    // schlimmster Fall: C passt nicht mehr unten in Spalte 1 und lässt dort
+    // seine ganze Höhe frei - alles muss trotzdem in zwei Spalten passen
+    const used = (40 + 20 + 8 + 8) * rowHeightMm + 4 * 10
+    expect(used).toBeLessThanOrEqual(2 * 190)
   })
 })

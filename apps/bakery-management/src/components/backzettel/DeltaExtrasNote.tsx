@@ -30,7 +30,7 @@ export function DeltaExtrasNote({ extras, large }: DeltaExtrasNoteProps) {
       sx={large ? { fontSize: { xs: '1.05rem', sm: '1.2rem' } } : undefined}
     >
       <AlertTitle sx={large ? { fontSize: 'inherit', fontWeight: 800 } : {}}>
-        Nachträge seit der Freigabe - zusätzlich zu den Mengen unten
+        Nachträge seit der Freigabe – zusätzlich zu den Mengen unten
       </AlertTitle>
       {/* Tablet: die Mengen zum Abwiegen groß und fett, aus Armlänge lesbar
           - sonst las man darunter die alten, großen Summen (W4-verify r4). */}

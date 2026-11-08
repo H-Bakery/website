@@ -83,6 +83,21 @@ describe('Anmeldeseite', () => {
     expect(mockReplace).not.toHaveBeenCalled()
   })
 
+  it('ohne Verbindung: WLAN-Hinweis statt „Failed to fetch“', async () => {
+    const login = jest.fn(async () => {
+      throw new TypeError('Failed to fetch')
+    })
+    renderLogin(fakeSession({ login }))
+    fill('test.inhaber', 'geheim123')
+    fireEvent.click(screen.getByRole('button', { name: 'Anmelden' }))
+    expect(
+      await screen.findByText(
+        'Keine Verbindung zum Server – bitte WLAN prüfen.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Failed to fetch/)).not.toBeInTheDocument()
+  })
+
   it('sagt, warum abgemeldet wurde', () => {
     renderLogin(fakeSession({ endReason: 'Wegen Inaktivität abgemeldet.' }))
     expect(

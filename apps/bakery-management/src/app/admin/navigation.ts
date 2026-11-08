@@ -16,6 +16,12 @@ export interface NavItem {
   description?: string
   external?: boolean
   submenu?: NavItem[]
+  /**
+   * Für Rollen, die `path` nicht öffnen dürfen, steht `description` statt der
+   * normalen Beschreibung da (der Fahrer liest Vorbestellungen nur - kein
+   * „Erfassen“ im Menü, wenn „Neue Vorbestellung“ für ihn gesperrt ist).
+   */
+  readOnly?: { path: string; description: string }
 }
 
 /**
@@ -53,7 +59,9 @@ export function navHrefs(items: readonly NavItem[]): string[] {
   ])
 }
 
-// Navigation items with submenu support
+// Reihenfolge: Tagesgeschäft (Verkauf, Laden) → Auswertungen (Inhaber) →
+// Verwaltung. Die fertigen Pilot-Bildschirme setzt `getNavigation()` direkt
+// unter das Dashboard.
 export const MANAGEMENT_NAVIGATION: NavItem[] = [
   {
     label: 'Dashboard',
@@ -62,10 +70,14 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Übersicht',
   },
   {
-    label: 'Produkte',
-    href: '/admin/products',
-    icon: 'products',
-    description: 'Produktverwaltung',
+    // Nicht „Vorbestellungen“: so heißt der kommende allgemeine Bildschirm
+    // /admin/preorders (M1) - zwei gleichnamige Einträge wären verwechselbar.
+    label: 'Sammelstelle Mörsbach',
+    href: '/admin/delivery/preorders',
+    // Eigenes Symbol (Ort) - der Warenkorb gehört „Vorbestellungen“. Der
+    // Schlüssel muss in `iconMap` (layout.tsx) stehen, sonst fehlt das Symbol.
+    icon: 'pickuppoint',
+    description: 'Vorbestellungen Kindergarten',
   },
   {
     // M4: Zählung bei Ladenschluss (Verkauf, Laden-Tablet). Nicht in
@@ -73,24 +85,8 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     label: 'Rest am Abend',
     href: '/admin/rest',
     icon: 'unsold',
-    description: 'Was bei Ladenschluss übrig ist',
-  },
-  {
-    // M4: nur Inhaber (ROLE_ACCESS; API: GET /api/rest/summary).
-    label: 'Rest-Auswertung',
-    href: '/admin/rest/auswertung',
-    icon: 'analytics',
-    description: 'Gebacken, verkauft, übrig',
-  },
-  {
-    // Nicht „Vorbestellungen“: so heißt der kommende allgemeine Bildschirm
-    // /admin/preorders (M1) - zwei gleichnamige Einträge wären verwechselbar.
-    label: 'Sammelstelle Mörsbach',
-    href: '/admin/delivery/preorders',
-    // `iconMap` in layout.tsx kennt keinen eigenen Schlüssel dafür - ein
-    // unbekannter ließe die Zeile ohne Symbol stehen.
-    icon: 'orders',
-    description: 'Vorbestellungen Kindergarten',
+    // kurz genug für die 280-px-Seitenleiste (sonst „…“)
+    description: 'Zählen bei Ladenschluss',
   },
   {
     label: 'Verkaufspartner',
@@ -99,10 +95,20 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Backschrank & Lieferpartner',
   },
   {
+    label: 'Produkte',
+    href: '/admin/products',
+    icon: 'products',
+    description: 'Produktverwaltung',
+    readOnly: {
+      path: '/admin/products/new',
+      description: 'Sortiment nachschlagen',
+    },
+  },
+  {
     label: 'Kassenberichte',
     href: '/admin/reports',
     icon: 'reports',
-    description: 'Kassenberichte aus dem HQ-Archiv',
+    description: 'Tagesabschlüsse der Kasse',
   },
   {
     label: 'Analysen',
@@ -111,16 +117,35 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Umsatz & Produkte',
   },
   {
+    // M4: nur Inhaber (ROLE_ACCESS; API: GET /api/rest/summary).
+    label: 'Rest-Auswertung',
+    href: '/admin/rest/auswertung',
+    icon: 'restsummary',
+    description: 'Gebacken, verkauft, übrig',
+  },
+  {
     label: 'Finanzen',
     href: '/admin/finance',
     icon: 'finance',
-    description: 'Kontobewegungen (nur Inhaber)',
+    description: 'Einnahmen und Ausgaben',
   },
   {
     label: 'Tagesziel',
     href: '/admin/finance/tagesziel',
     icon: 'target',
-    description: 'Break-even-Ampel (nur Inhaber)',
+    description: 'Break-even-Ampel',
+  },
+  {
+    label: 'Jahresabschluss',
+    href: '/admin/finance/jahr',
+    icon: 'yearreport',
+    description: 'Einnahmen und Ausgaben im Jahr',
+  },
+  {
+    label: 'Monatsanalyse',
+    href: '/admin/finance/monat',
+    icon: 'monthreport',
+    description: 'Auffälligkeiten im Monat',
   },
   {
     // TASK-042: Schichten (Verkauf), Abwesenheiten und Urlaubskonten - nur
@@ -149,7 +174,7 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     label: 'Einstellungen',
     href: '/admin/settings',
     icon: 'settings',
-    description: 'Systemeinstellungen',
+    description: 'Darstellung, Passwort & PIN',
   },
   {
     label: 'Anmeldung',
@@ -202,7 +227,12 @@ export const PILOT_UPCOMING_NAVIGATION: UpcomingNavItem[] = [
     label: 'Vorbestellungen',
     href: '/admin/preorders',
     icon: 'orders',
-    description: 'Laden, Telefon, WhatsApp & Sammelstelle',
+    // kurz genug für die 280-px-Seitenleiste (sonst „Tagesübersi…“)
+    description: 'Erfassen, Liste, Übersicht',
+    readOnly: {
+      path: '/admin/preorders/neu',
+      description: 'Liste und Tagesübersicht',
+    },
     ready: true,
   },
   {
@@ -248,11 +278,12 @@ export function filterNavigationForPilot(items: NavItem[]): NavItem[] {
 export function getNavigation(pilot: boolean = isPilotMode()): NavItem[] {
   const ready: NavItem[] = PILOT_UPCOMING_NAVIGATION.filter(
     (item) => item.ready
-  ).map(({ label, href, icon, description }) => ({
+  ).map(({ label, href, icon, description, readOnly }) => ({
     label,
     href,
     icon,
     description,
+    readOnly,
   }))
   const [dashboard, ...rest] = MANAGEMENT_NAVIGATION
   const items = [dashboard, ...ready, ...rest]

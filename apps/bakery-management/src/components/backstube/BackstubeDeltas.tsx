@@ -14,6 +14,7 @@ import {
   formatTimestamp,
   lineLabel,
 } from '../../lib/backzettelFormat'
+import { BS_SECTION_TITLE_SX } from './backstubeType'
 import { useBackstubeColors } from './backstubeColors'
 
 /** Schlüssel für „Alle gesehen“ (`ackingKey`). */
@@ -60,6 +61,8 @@ export interface BackstubeDeltasProps {
    * große Zahl ist das, nicht die Viertelsumme (+6,5 Kranz = 7 backen).
    */
   bakeByKey?: Record<string, number | undefined>
+  /** Z10: Datum des Zettels (Nachträge für einen anderen Backtag: „· für Di“). */
+  sheetDate?: string
 }
 
 /** Große Zahl einer Gruppe: zu backen, sonst (ältere Server) die Summe. */
@@ -124,6 +127,7 @@ export function BackstubeDeltas({
   ackingKey,
   onAck,
   bakeByKey,
+  sheetDate,
 }: BackstubeDeltasProps) {
   const colors = useBackstubeColors()
   const groups = groupOpenDeltas(deltas)
@@ -167,8 +171,9 @@ export function BackstubeDeltas({
       >
         <Typography
           id="bs-deltas-title"
+          variant="h2"
           component="h2"
-          sx={{ fontSize: { xs: '1.5rem', sm: '1.9rem' }, fontWeight: 800 }}
+          sx={BS_SECTION_TITLE_SX}
         >
           {open.length === 1
             ? '1 Nachtrag seit der Freigabe'
@@ -200,7 +205,13 @@ export function BackstubeDeltas({
         {groups.map((g) => {
           const d = g.deltas[0]
           const label = lineLabel(
-            { name: d.name, variant: d.variant, itemId: d.itemId },
+            {
+              name: d.name,
+              variant: d.variant,
+              itemId: d.itemId,
+              bakeDate: d.bakeDate,
+              doughDate: sheetDate,
+            },
             config
           )
           const headline = groupHeadline(g, bakeByKey?.[g.key], d.unit)

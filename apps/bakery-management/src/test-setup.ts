@@ -108,3 +108,26 @@ beforeAll(() => {
 afterAll(() => {
   console.warn = originalWarn
 })
+
+// jsdom kennt die Seitenrand-Boxen in `@page` nicht (Fußzeile der
+// Finanz-Druckfassung, `FinancePrint.tsx`) und meldet das als Fehler. Chrome
+// kann sie; nur genau diese Meldung wird verschluckt.
+const originalError = console.error
+beforeAll(() => {
+  console.error = (...args) => {
+    const [first] = args as [{ message?: unknown; detail?: unknown }?]
+    if (
+      typeof first === 'object' &&
+      first !== null &&
+      first.message === 'Could not parse CSS stylesheet' &&
+      String(first.detail).includes('@page')
+    ) {
+      return
+    }
+    originalError.call(console, ...args)
+  }
+})
+
+afterAll(() => {
+  console.error = originalError
+})

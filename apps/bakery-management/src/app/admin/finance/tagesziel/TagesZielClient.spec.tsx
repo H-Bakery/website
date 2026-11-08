@@ -1,8 +1,10 @@
 import React from 'react'
-import { screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
+import { render } from '@testing-library/react'
 import TagesZielClient, {
+  TargetMarker,
   describeAverageRatio,
   formatSignedEuro,
 } from './TagesZielClient'
@@ -172,6 +174,35 @@ describe('TagesZielClient', () => {
     ).toBeInTheDocument()
   })
 
+  // UI-Runde 2: vorher „Failed to fetch“ / „HTTP 502: Bad Gateway“ und kein
+  // Knopf zum Wiederholen.
+  it.each([
+    ['abgebrochenes fetch', () => new TypeError('Failed to fetch')],
+    ['Caddy 502', () => new ApiError('HTTP 502: Bad Gateway', 502)],
+  ])(
+    'ohne Server (%s): WLAN-Hinweis und Erneut versuchen',
+    async (_l, make) => {
+      apiClient.get.mockRejectedValueOnce(make())
+      renderWithTheme(<TagesZielClient />)
+      expect(
+        await screen.findByText(
+          'Keine Verbindung zum Server – bitte WLAN prüfen.'
+        )
+      ).toBeInTheDocument()
+      expect(screen.queryByText(/Failed to fetch|Bad Gateway/)).toBeNull()
+      apiClient.get.mockResolvedValueOnce({
+        success: true,
+        status: 'no-target',
+        data: null,
+        message: 'Keine Zielkonfiguration gefunden.',
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }))
+      expect(
+        await screen.findByText('Kein Tagesziel verfügbar')
+      ).toBeInTheDocument()
+    }
+  )
+
   it('rendert Kopfzeile, Kennzahlen, Kostenquote, Wochentagstabelle, Verlauf und Monatssicht', async () => {
     mockHappyPath()
     renderWithTheme(<TagesZielClient />)
@@ -216,7 +247,11 @@ describe('TagesZielClient', () => {
       /10 % über dem Tagesziel \(110 %/
     )
 
-    // Tagesverlauf: Ruhetag und laufender Tag sind offen, nicht rot
+    // Tagesverlauf: Ruhetag und laufender Tag sind offen, nicht rot. Die
+    // Tabelle steht zugeklappt unter dem Diagramm.
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Tage als Tabelle' })
+    )
     await waitFor(() =>
       expect(
         screen.getByRole('table', { name: 'Tagesverlauf' })
@@ -243,6 +278,48 @@ describe('TagesZielClient', () => {
     })
   })
 
+  it('blendet am Handy Kopf- und Datenzelle derselben Spalte gemeinsam aus', async () => {
+    // Regression: „Abweichung“ war nur im Kopf ausgeblendet - am Handy rutschte
+    // die Abweichung unter die Spalte „Ø Ist“ und ragte aus der Tabelle.
+    mockHappyPath()
+    renderWithTheme(<TagesZielClient />)
+    const table = await screen.findByRole('table', {
+      name: 'Ziel je Wochentag',
+    })
+    // jsdom wertet Media Queries nicht aus: an den Emotion-Regeln ablesen,
+    // ob eine Zelle am Handy (`xs`) `display: none` hat.
+    const phoneHidden = new Set<string>()
+    for (const sheet of Array.from(document.styleSheets)) {
+      for (const rule of Array.from(sheet.cssRules)) {
+        // MUI schreibt `xs` als `@media (min-width:0px)` - das gilt am Handy.
+        if (
+          !(rule instanceof CSSMediaRule) ||
+          !/min-width:\s*0px/.test(rule.media.mediaText)
+        ) {
+          continue
+        }
+        for (const inner of Array.from(rule.cssRules)) {
+          if (inner instanceof CSSStyleRule && inner.style.display === 'none') {
+            phoneHidden.add(inner.selectorText)
+          }
+        }
+      }
+    }
+    const hiddenOnPhone = (el: Element) =>
+      Array.from(el.classList).some((name) => phoneHidden.has(`.${name}`))
+    const head = Array.from(table.querySelectorAll('thead th'))
+    expect(head.filter(hiddenOnPhone).length).toBeGreaterThan(0)
+    const rows = Array.from(table.querySelectorAll('tbody tr'))
+    expect(rows.length).toBeGreaterThan(0)
+    for (const row of rows) {
+      const cells = Array.from(row.querySelectorAll('td'))
+      expect(cells).toHaveLength(head.length)
+      cells.forEach((cell, i) => {
+        expect([i, hiddenOnPhone(cell)]).toEqual([i, hiddenOnPhone(head[i])])
+      })
+    }
+  })
+
   it('schaltet auf die Entnahme-Stufe um und kennzeichnet sie als Annahme', async () => {
     mockHappyPath()
     renderWithTheme(<TagesZielClient />)
@@ -257,6 +334,9 @@ describe('TagesZielClient', () => {
     ).toBeInTheDocument()
     expect(screen.getByText(/inkl\. Entnahme/)).toBeInTheDocument()
     // Die Tageszahlen der zweiten Stufe: Ziel 25 % höher, alle drei Tage rot
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Tage als Tabelle' })
+    )
     const dayTable = screen.getByRole('table', { name: 'Tagesverlauf' })
     expect(dayTable.querySelectorAll('[data-status="red"]').length).toBe(3)
   })
@@ -286,9 +366,11 @@ describe('TagesZielClient', () => {
         }
       )
     )
-    expect(
-      await screen.findByText('Mai 2026', { selector: 'h6' })
-    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByTestId('month-view-title')).toHaveTextContent(
+        'Mai 2026'
+      )
+    )
   })
 
   it('formatiert Abweichungen mit Vorzeichen', () => {
@@ -300,5 +382,47 @@ describe('TagesZielClient', () => {
     expect(describeAverageRatio(1.16)).toMatch(/16\s% über dem Tagesziel/)
     expect(describeAverageRatio(0.9)).toMatch(/10\s% unter dem Tagesziel/)
     expect(describeAverageRatio(1)).toMatch(/genau auf dem Tagesziel/)
+  })
+
+  it('zeichnet das Ziel genau über dem Balken desselben Tages', () => {
+    // Regression: eine stepAfter-Linie über die Balkenmitten - die linke
+    // Hälfte jedes Balkens zeigte das Ziel des Vortags.
+    const { container } = render(
+      <svg>
+        <TargetMarker
+          x={100}
+          y={40}
+          width={36}
+          height={200}
+          stroke="#000"
+          halo="#fff"
+          payload={{ target: 244.34 }}
+        />
+      </svg>
+    )
+    const lines = container.querySelectorAll('line')
+    expect(lines).toHaveLength(2)
+    lines.forEach((line) => {
+      expect(line.getAttribute('x1')).toBe('100')
+      expect(line.getAttribute('x2')).toBe('136')
+      expect(line.getAttribute('y1')).toBe('40')
+      expect(line.getAttribute('y2')).toBe('40')
+    })
+  })
+
+  it('zeichnet ohne Ziel (Ruhetag, offen) keine Markierung', () => {
+    const { container } = render(
+      <svg>
+        <TargetMarker
+          x={100}
+          y={240}
+          width={36}
+          stroke="#000"
+          halo="#fff"
+          payload={{ target: null }}
+        />
+      </svg>
+    )
+    expect(container.querySelector('line')).toBeNull()
   })
 })

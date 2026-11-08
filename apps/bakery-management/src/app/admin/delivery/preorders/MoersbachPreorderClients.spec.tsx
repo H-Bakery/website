@@ -84,6 +84,14 @@ describe('Mörsbach-Seiten auf der allgemeinen Maske (P2)', () => {
       '/admin/delivery/preorders?date=2026-11-21&saved=1'
     )
     expect(moersbachListHref(null)).toBe('/admin/delivery/preorders')
+    // Mit Sammelstelle: zurück auf genau diese, nicht auf die erste.
+    expect(moersbachListHref('2026-11-21', true, 'kita-test')).toBe(
+      '/admin/delivery/preorders?date=2026-11-21&point=kita-test&saved=1'
+    )
+    // unbrauchbare Kennungen landen nicht in der URL
+    expect(moersbachListHref('2026-11-21', false, '../x')).toBe(
+      '/admin/delivery/preorders?date=2026-11-21'
+    )
   })
 
   it('erfasst mit vorbelegter Sammelstelle und kehrt zum Liefertag zurück', async () => {
@@ -96,14 +104,22 @@ describe('Mörsbach-Seiten auf der allgemeinen Maske (P2)', () => {
     )
     expect(screen.getByTestId('form-point')).toHaveTextContent(POINT.id)
     expect(screen.getByTestId('form-date')).toHaveTextContent('2026-11-21')
-    expect(fetchPickupPoints).not.toHaveBeenCalled()
+    // die Maske wartet nicht auf die Sammelstellen - die liefern nur den Namen
+    expect(
+      await screen.findByText(`Abholung: ${POINT.name}`)
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Neue Vorbestellung' })
+    ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'speichern' }))
+    // Regression: ohne `point` zeigte die Liste danach die erste Sammelstelle
+    // und die eben gespeicherte Bestellung fehlte.
     expect(mockPush).toHaveBeenCalledWith(
-      '/admin/delivery/preorders?date=2026-11-21&saved=1'
+      `/admin/delivery/preorders?date=2026-11-21&point=kita-test&saved=1`
     )
     await user.click(screen.getByRole('button', { name: 'abbrechen' }))
     expect(mockPush).toHaveBeenLastCalledWith(
-      '/admin/delivery/preorders?date=2026-11-21'
+      `/admin/delivery/preorders?date=2026-11-21&point=${POINT.id}`
     )
   })
 

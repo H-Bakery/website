@@ -8,7 +8,6 @@ import {
   Box,
   Button,
   ButtonBase,
-  CircularProgress,
   Paper,
   Stack,
   TextField,
@@ -47,7 +46,9 @@ import {
   readPreorderEditDraft,
 } from '../../lib/preorderDraft'
 import PinPad from '../../components/auth/PinPad'
+import { describeAuthError } from '../../components/auth/authErrors'
 import LogoutButton from '../../components/auth/LogoutButton'
+import { LoadingState } from '../../components/layout'
 
 /** Ohne Tippen fällt die PIN-Eingabe nach so vielen ms zurück auf die Kacheln. */
 export const PIN_IDLE_MS = 60 * 1000
@@ -56,7 +57,7 @@ const REVOKED_MESSAGE =
   'Diese Station wurde widerrufen oder ist unbekannt. Ein Inhaber muss das Gerät neu einrichten.'
 
 function messageOf(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback
+  return describeAuthError(error, fallback)
 }
 
 function isStationRejected(error: unknown): boolean {
@@ -95,8 +96,8 @@ export default function StationClient() {
 
   if (!mounted || session.isLoading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-        <CircularProgress aria-label="Wird geladen" />
+      <Box sx={{ py: 8 }}>
+        <LoadingState label="Wird geladen …" />
       </Box>
     )
   }
@@ -115,6 +116,7 @@ export default function StationClient() {
           station={station}
           onRevoked={handleRevoked}
           notice={notice}
+          onNoticeSeen={() => setNotice(null)}
           onDone={(path) => router.replace(path)}
         />
       ) : (
@@ -158,7 +160,9 @@ function StationSetup({
       await logout()
       onRegistered(
         next,
-        `Station „${next.name}“ ist eingerichtet. Ihre persönliche Anmeldung auf diesem Gerät wurde beendet.`
+        // Unpersönlich: die Kacheln danach duzen („Wer bist du?“), diese
+        // Meldung gilt dem Inhaber - kein Sie neben dem Du.
+        `Station „${next.name}“ ist eingerichtet. Die persönliche Anmeldung auf diesem Gerät ist beendet.`
       )
     } catch (err) {
       setError(messageOf(err, 'Die Station konnte nicht eingerichtet werden.'))
@@ -170,10 +174,7 @@ function StationSetup({
   return (
     <Paper sx={{ p: { xs: 3, md: 4 }, maxWidth: 560, mx: 'auto' }}>
       <Stack spacing={2}>
-        <Typography variant="h4" component="h1">
-          <StationIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-          Station einrichten
-        </Typography>
+        <Typography variant="h1">Station einrichten</Typography>
         {notice && <Alert severity="warning">{notice}</Alert>}
         <Typography color="text.secondary">
           Dieses Gerät ist noch keine Station. An einer Station melden sich alle
@@ -256,11 +257,14 @@ export function stationReturnPath(
 function StationLogin({
   station,
   notice,
+  onNoticeSeen,
   onRevoked,
   onDone,
 }: {
   station: StoredStation
   notice: string | null
+  /** Die Einrichtungsmeldung gilt dem Inhaber, nicht der nächsten Person. */
+  onNoticeSeen: () => void
   onRevoked: () => void
   onDone: (path: string) => void
 }) {
@@ -309,6 +313,7 @@ function StationLogin({
   }, [selected, pin])
 
   const choose = (user: StationUser) => {
+    onNoticeSeen()
     setSelected(user)
     setPin('')
     setPinError(null)
@@ -348,7 +353,7 @@ function StationLogin({
         }}
       >
         <Box>
-          <Typography variant="h4" component="h1">
+          <Typography variant="h1">
             {selected ? `PIN für ${selected.displayName}` : 'Wer bist du?'}
           </Typography>
           <Typography color="text.secondary">
@@ -384,8 +389,8 @@ function StationLogin({
         )}
       </Box>
 
-      {notice && (
-        <Alert severity="success" sx={{ mb: 3 }}>
+      {notice && !selected && (
+        <Alert severity="success" sx={{ mb: 3 }} onClose={onNoticeSeen}>
           {notice}
         </Alert>
       )}
@@ -454,9 +459,7 @@ function StationLogin({
           {loadError}
         </Alert>
       ) : users === null ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-          <CircularProgress aria-label="Namen werden geladen" />
-        </Box>
+        <LoadingState label="Namen werden geladen …" />
       ) : users.length === 0 ? (
         <Alert severity="info">
           Noch hat niemand eine PIN. Der Inhaber setzt PINs unter Verwaltung ›

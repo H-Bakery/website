@@ -1,7 +1,6 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import NextLink from 'next/link'
 import {
   Alert,
   Box,
@@ -13,12 +12,10 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
-  Divider,
   FormControlLabel,
   InputAdornment,
+  Menu,
   MenuItem,
-  Paper,
-  Snackbar,
   Stack,
   Switch,
   Tab,
@@ -26,7 +23,6 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
-import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import SaveIcon from '@mui/icons-material/Save'
 import SearchIcon from '@mui/icons-material/Search'
@@ -45,6 +41,15 @@ import {
   saveTemplate,
 } from '../../../../../lib/partnerApi'
 import { useOptionalSession } from '../../../../../lib/session'
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PageLayout,
+  PageSection,
+} from '../../../../../components/layout'
+import { useConfirmLeave } from '../../partnerUi'
+import { errorText } from '../../errorText'
 
 interface CategoryGroup {
   category: string
@@ -115,10 +120,16 @@ export default function TemplatesClient({
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
-  const [onlyStocked, setOnlyStocked] = useState(false)
-  const [copySource, setCopySource] = useState('')
+  // Standard: nur die Positionen des Tages (r1: sonst standen alle 56
+  // Katalogprodukte als „0“ da und die vier echten Positionen gingen unter).
+  const [showAll, setShowAll] = useState(false)
+  // Zeilen, die in dieser Sitzung bearbeitet wurden (`Wochentag:slug`): sie
+  // bleiben stehen, auch wenn ihre Menge auf 0 geht oder die Suche geleert
+  // wird - sonst verschwände eine Zeile mitten im Tippen.
+  const [touched, setTouched] = useState<Set<string>>(() => new Set())
+  const [copyAnchor, setCopyAnchor] = useState<HTMLElement | null>(null)
   const [pendingCopy, setPendingCopy] = useState<number | null>(null)
-  const [snackbar, setSnackbar] = useState<{
+  const [notice, setNotice] = useState<{
     message: string
     severity: 'success' | 'info'
   } | null>(null)
@@ -152,11 +163,7 @@ export default function TemplatesClient({
       setSaved(stored)
       setDrafts(cloneMap(stored))
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Vorlagen konnten nicht geladen werden'
-      )
+      setError(errorText(err, 'Vorlagen konnten nicht geladen werden'))
     } finally {
       setLoading(false)
     }
@@ -204,16 +211,12 @@ export default function TemplatesClient({
   )
   const isDirty = weekday != null && dirtyDays.includes(weekday)
 
-  // Ungespeicherte Mengen nicht stillschweigend verlieren.
-  useEffect(() => {
-    if (dirtyDays.length === 0) return undefined
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault()
-      event.returnValue = ''
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [dirtyDays])
+  // Ungespeicherte Mengen nicht stillschweigend verlieren - auch nicht über
+  // den Rücklink oder die Seitenleiste (beforeunload greift dort nicht).
+  useConfirmLeave(
+    dirtyDays.length > 0,
+    'Es gibt ungespeicherte Mengen. Seite trotzdem verlassen?'
+  )
 
   const positionsOf = useCallback(
     (day: number) => Object.keys(withoutEmpty(drafts[day] ?? {})).length,
@@ -245,6 +248,9 @@ export default function TemplatesClient({
 
   const setQuantity = (slug: string, value: number) => {
     if (weekday == null) return
+    setNotice(null)
+    const key = `${weekday}:${slug}`
+    setTouched((prev) => (prev.has(key) ? prev : new Set(prev).add(key)))
     setDrafts((prev) => {
       const day = { ...(prev[weekday] ?? {}) }
       if (value > 0) day[slug] = value
@@ -255,17 +261,29 @@ export default function TemplatesClient({
 
   const applyCopy = (source: number) => {
     if (weekday == null || source === weekday) return
-    setDrafts((prev) => ({ ...prev, [weekday]: { ...(prev[source] ?? {}) } }))
-    setSnackbar({
-      message: `Mengen von ${WEEKDAY_LABELS[source]} übernommen – noch nicht gespeichert`,
+    const copied = { ...(drafts[source] ?? {}) }
+    setDrafts((prev) => ({ ...prev, [weekday]: copied }))
+    // Stimmt das Ergebnis mit der gespeicherten Vorlage überein, gibt es
+    // nichts zu speichern - dann nicht „nicht gespeichert“ melden.
+    setNotice({
+      message: sameQuantities(copied, saved[weekday] ?? {})
+        ? `Von ${WEEKDAY_LABELS[source]} übernommen - entspricht der gespeicherten Vorlage`
+        : `Von ${WEEKDAY_LABELS[source]} übernommen - nicht gespeichert`,
       severity: 'info',
     })
   }
 
-  const handleCopySelect = (value: string) => {
-    const source = Number(value)
-    setCopySource('')
+  const handleCopySelect = (source: number) => {
+    setCopyAnchor(null)
     if (!Number.isFinite(source) || source === weekday) return
+    // Gleiche Mengen: keine Rückfrage, nichts ändern - nur sagen, warum.
+    if (sameQuantities(drafts[source] ?? {}, currentDraft)) {
+      setNotice({
+        message: `${WEEKDAY_LABELS[source]} hat dieselben Mengen - nichts geändert`,
+        severity: 'info',
+      })
+      return
+    }
     if (summary.positions > 0) {
       setPendingCopy(source)
       return
@@ -314,128 +332,154 @@ export default function TemplatesClient({
       for (const item of items) persisted[item.productSlug] = item.quantity
       setSaved((prev) => ({ ...prev, [weekday]: persisted }))
       setDrafts((prev) => ({ ...prev, [weekday]: { ...persisted } }))
-      setSnackbar({
-        message: `Standard-Bestückung für ${WEEKDAY_LABELS[weekday]} gespeichert`,
+      setNotice({
+        message: `${WEEKDAY_LABELS[weekday]} gespeichert`,
         severity: 'success',
       })
     } catch (err) {
-      setSaveError(
-        err instanceof Error
-          ? err.message
-          : 'Vorlage konnte nicht gespeichert werden'
-      )
+      setSaveError(errorText(err, 'Vorlage konnte nicht gespeichert werden'))
     } finally {
       setSaving(false)
     }
   }
 
   const needle = search.trim().toLowerCase()
+  /**
+   * Hat der Tag noch keine gespeicherte Bestückung, steht der ganze Katalog
+   * da (Erstbestückung). Sonst nur die Positionen des Tages; weitere Produkte
+   * über die Suche (durchsucht immer den ganzen Katalog) oder „Alle Produkte
+   * zeigen“.
+   */
+  const savedPositions =
+    weekday != null ? Object.keys(withoutEmpty(saved[weekday] ?? {})).length : 0
+  // Erstbestückung: wer schreiben darf, sieht den ganzen Katalog. Wer nur
+  // nachschlägt, bekommt keine 56 gesperrten Nullen, sondern „nichts
+  // hinterlegt“.
+  const firstStocking = canEdit && savedPositions === 0
+  const listAll = showAll || firstStocking
   const visibleGroups = useMemo(() => {
+    const savedDay = weekday != null ? saved[weekday] ?? {} : {}
     return groups
       .map((group) => ({
         ...group,
         products: group.products.filter((product) => {
-          const quantity = currentDraft[product.productSlug] ?? 0
-          if (onlyStocked && quantity <= 0) return false
-          if (!needle) return true
-          return product.productName.toLowerCase().includes(needle)
+          const slug = product.productSlug
+          if (needle) return product.productName.toLowerCase().includes(needle)
+          if (listAll) return true
+          return (
+            (currentDraft[slug] ?? 0) > 0 ||
+            (savedDay[slug] ?? 0) > 0 ||
+            touched.has(`${weekday}:${slug}`)
+          )
         }),
       }))
       .filter((group) => group.products.length > 0)
-  }, [groups, currentDraft, onlyStocked, needle])
-
-  const header = (
-    <Box sx={{ mb: { xs: 2, md: 3 } }}>
-      <Button
-        component={NextLink}
-        href={`/admin/partners/${partnerId}`}
-        startIcon={<ArrowBackIcon />}
-        size="small"
-        sx={{ mb: 1 }}
-      >
-        Zurück zum Partner
-      </Button>
-      <Typography
-        variant="h4"
-        component="h1"
-        sx={{ fontSize: { xs: '1.5rem', md: '2.125rem' } }}
-      >
-        Standard-Bestückung
-      </Typography>
-      <Typography variant="subtitle1" color="text.secondary">
-        {partner?.name
-          ? `${partner.name} – feste Liefermengen je Wochentag`
-          : 'Feste Liefermengen je Wochentag'}
-      </Typography>
-    </Box>
+  }, [groups, currentDraft, saved, weekday, touched, listAll, needle])
+  const visibleCount = visibleGroups.reduce(
+    (sum, group) => sum + group.products.length,
+    0
   )
+
+  const subtitle = partner?.name
+    ? canEdit
+      ? `${partner.name} · feste Liefermengen je Wochentag`
+      : `${partner.name} · nur zum Nachschlagen - die Standard-Bestückung ändert nur der Inhaber.`
+    : 'Feste Liefermengen je Wochentag'
+  const layoutProps = {
+    title: 'Standard-Bestückung',
+    width: 'narrow' as const,
+    back: { href: `/admin/partners/${partnerId}`, label: 'Zurück zum Partner' },
+  }
 
   if (loading) {
     return (
-      <Box>
-        {header}
-        <Box
-          sx={{ display: 'flex', justifyContent: 'center', p: 6 }}
-          role="status"
-          aria-label="Vorlagen werden geladen"
-        >
-          <CircularProgress />
-        </Box>
-      </Box>
+      <PageLayout {...layoutProps} subtitle="Feste Liefermengen je Wochentag">
+        <LoadingState label="Vorlagen werden geladen …" />
+      </PageLayout>
     )
   }
 
   if (error) {
     return (
-      <Box>
-        {header}
-        <Alert
-          severity="error"
-          action={
-            <Button color="inherit" size="small" onClick={load}>
-              Erneut versuchen
-            </Button>
-          }
-        >
-          {error}
-        </Alert>
-      </Box>
+      <PageLayout {...layoutProps} subtitle="Feste Liefermengen je Wochentag">
+        <ErrorState message={error} onRetry={load} />
+      </PageLayout>
     )
   }
 
+  const summaryText = `${positionsLabel(summary.positions)} · ${
+    summary.units
+  } Stück · Warenwert ${formatCurrency(summary.value)}`
+  const copyTargets = weekdays.filter((day) => day !== weekday)
+  const copyAction =
+    canEdit && copyTargets.length > 0 ? (
+      <>
+        <Button
+          variant="outlined"
+          startIcon={<ContentCopyIcon />}
+          onClick={(event) => setCopyAnchor(event.currentTarget)}
+          disabled={saving}
+          aria-haspopup="menu"
+          aria-expanded={copyAnchor ? 'true' : undefined}
+          aria-controls={copyAnchor ? 'copy-day-menu' : undefined}
+        >
+          Von anderem Tag übernehmen
+        </Button>
+        <Menu
+          id="copy-day-menu"
+          anchorEl={copyAnchor}
+          open={copyAnchor != null}
+          onClose={() => setCopyAnchor(null)}
+        >
+          {copyTargets.map((day) => (
+            <MenuItem key={day} onClick={() => handleCopySelect(day)}>
+              {WEEKDAY_LABELS[day]} ({positionsLabel(positionsOf(day))})
+            </MenuItem>
+          ))}
+        </Menu>
+      </>
+    ) : undefined
+
   return (
-    <Box>
-      {header}
-
-      {!canEdit && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          Die Standard-Bestückung ändert nur der Inhaber - hier nur zum
-          Nachschlagen.
-        </Alert>
-      )}
-
+    <PageLayout
+      {...layoutProps}
+      subtitle={subtitle}
+      status={
+        canEdit ? undefined : (
+          <Chip size="small" variant="outlined" label="Nur Ansicht" />
+        )
+      }
+    >
       {!hasDeliveryDays && (
-        <Alert severity="info" sx={{ mb: 2 }}>
+        <Alert severity="info">
           Für diesen Partner sind keine Liefertage hinterlegt – es stehen alle
           Wochentage zur Auswahl.
         </Alert>
       )}
 
       {catalogue.length === 0 && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          Es sind keine lieferbaren Produkte aus HQ verfügbar. Ohne Katalog
+        <Alert severity="warning">
+          Es sind keine lieferbaren Produkte im Produktkatalog. Ohne Katalog
           lässt sich keine Bestückung pflegen.
         </Alert>
       )}
 
-      <Paper sx={{ mb: 2 }}>
+      <PageSection
+        title="Liefermengen je Wochentag"
+        actions={copyAction}
+        disablePadding
+      >
         <Tabs
           value={weekday ?? false}
-          onChange={(_event, value: number) => setWeekday(value)}
+          onChange={(_event, value: number) => {
+            setWeekday(value)
+            setNotice(null)
+          }}
           variant="scrollable"
           scrollButtons="auto"
           allowScrollButtonsMobile
           aria-label="Wochentage"
+          sx={{ borderBottom: 1, borderColor: 'divider', px: { md: 1 } }}
         >
           {weekdays.map((day) => (
             <Tab
@@ -443,22 +487,12 @@ export default function TemplatesClient({
               value={day}
               id={`weekday-tab-${day}`}
               aria-controls={`weekday-panel-${day}`}
+              sx={{ minHeight: 48, minWidth: { xs: 64, sm: 90 } }}
               label={
                 <Stack direction="row" spacing={0.75} alignItems="center">
-                  <Box
-                    component="span"
-                    sx={{ display: { xs: 'none', sm: 'inline' } }}
-                  >
-                    {WEEKDAY_LABELS[day]}
-                  </Box>
-                  <Box
-                    component="span"
-                    sx={{ display: { xs: 'inline', sm: 'none' } }}
-                  >
-                    {WEEKDAY_SHORT[day]}
-                  </Box>
-                  <Box component="span" sx={{ opacity: 0.7 }}>
-                    ({positionsOf(day)})
+                  <Box component="span">{WEEKDAY_SHORT[day]}</Box>
+                  <Box component="span" sx={{ color: 'text.secondary' }}>
+                    {positionsOf(day)}
                   </Box>
                   {dirtyDays.includes(day) && (
                     <Box
@@ -477,135 +511,37 @@ export default function TemplatesClient({
             />
           ))}
         </Tabs>
-      </Paper>
 
-      <Paper sx={{ p: { xs: 2, md: 2.5 }, mb: 2 }}>
-        <Stack
-          direction={{ xs: 'column', md: 'row' }}
-          spacing={2}
-          alignItems={{ xs: 'stretch', md: 'center' }}
-          divider={
-            <Divider
-              orientation="vertical"
-              flexItem
-              sx={{ display: { xs: 'none', md: 'block' } }}
-            />
-          }
+        {/* Summe des gewählten Tags (der Tag selbst steht im Reiter), dann
+            suchen und „Alle Produkte zeigen“. Übernehmen steht im Kopf. */}
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: 1.5,
+            px: { xs: 2, md: 3 },
+            py: 2,
+          }}
         >
-          <Box sx={{ minWidth: 120 }}>
-            <Typography variant="overline" color="text.secondary">
-              Positionen
-            </Typography>
-            <Typography variant="h5">{summary.positions}</Typography>
-          </Box>
-          <Box sx={{ minWidth: 120 }}>
-            <Typography variant="overline" color="text.secondary">
-              Stück gesamt
-            </Typography>
-            <Typography variant="h5">{summary.units}</Typography>
-          </Box>
-          <Box sx={{ minWidth: 160 }}>
-            <Typography variant="overline" color="text.secondary">
-              Warenwert (HQ-Preise)
-            </Typography>
-            <Typography variant="h5">
-              {formatCurrency(summary.value)}
-            </Typography>
-          </Box>
-          <Box sx={{ flexGrow: 1 }} />
-          {canEdit && (
-            <Stack
-              direction="row"
-              spacing={1}
-              alignItems="center"
-              justifyContent={{ xs: 'space-between', md: 'flex-end' }}
-            >
-              {isDirty && (
-                <Chip
-                  size="small"
-                  color="warning"
-                  variant="outlined"
-                  label="Ungespeicherte Änderungen"
-                />
-              )}
-              <Button
-                startIcon={<UndoIcon />}
-                onClick={handleReset}
-                disabled={!isDirty || saving}
-              >
-                Zurücksetzen
-              </Button>
-              <Button
-                variant="contained"
-                startIcon={<SaveIcon />}
-                onClick={handleSave}
-                disabled={!isDirty || saving || weekday == null}
-              >
-                {saving ? 'Speichert …' : 'Speichern'}
-              </Button>
-            </Stack>
-          )}
-        </Stack>
-      </Paper>
-
-      {saveError && (
-        <Alert
-          severity="error"
-          sx={{ mb: 2 }}
-          action={
-            <Button color="inherit" size="small" onClick={handleSave}>
-              Erneut versuchen
-            </Button>
-          }
-        >
-          {saveError}
-        </Alert>
-      )}
-
-      {unknownSlugs.length > 0 && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          {unknownSlugs.length} Position(en) der gespeicherten Vorlage stehen
-          nicht mehr im HQ-Katalog ({unknownSlugs.join(', ')}) und werden beim
-          Speichern entfernt.
-        </Alert>
-      )}
-
-      <Paper sx={{ p: { xs: 2, md: 2.5 }, mb: 2 }}>
-        <Stack
-          direction={{ xs: 'column', sm: 'row' }}
-          spacing={2}
-          alignItems={{ xs: 'stretch', sm: 'center' }}
-        >
-          <TextField
-            select
-            size="small"
-            label="Von anderem Wochentag übernehmen"
-            value={copySource}
-            onChange={(event) => handleCopySelect(event.target.value)}
-            disabled={!canEdit || weekdays.length < 2 || saving}
-            sx={{ minWidth: 260 }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <ContentCopyIcon fontSize="small" />
-                </InputAdornment>
-              ),
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            data-testid="template-summary"
+            sx={{
+              flexBasis: '100%',
+              mb: 0.5,
+              fontVariantNumeric: 'tabular-nums',
             }}
           >
-            {weekdays
-              .filter((day) => day !== weekday)
-              .map((day) => (
-                <MenuItem key={day} value={String(day)}>
-                  {WEEKDAY_LABELS[day]} ({positionsLabel(positionsOf(day))})
-                </MenuItem>
-              ))}
-          </TextField>
+            {summaryText} zu aktuellen Preisen
+          </Typography>
           <TextField
             size="small"
             label="Produkt suchen"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            sx={{ minWidth: 220 }}
+            sx={{ flex: '1 1 220px' }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -614,134 +550,290 @@ export default function TemplatesClient({
               ),
             }}
           />
-          <FormControlLabel
-            control={
-              <Switch
-                checked={onlyStocked}
-                onChange={(event) => setOnlyStocked(event.target.checked)}
+          {!firstStocking && (
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={showAll}
+                  onChange={(event) => setShowAll(event.target.checked)}
+                />
+              }
+              label="Alle Produkte zeigen"
+              sx={{ mr: 0, minHeight: 44 }}
+            />
+          )}
+        </Box>
+
+        {unknownSlugs.length > 0 && (
+          <Box sx={{ px: { xs: 2, md: 3 }, pb: 2 }}>
+            <Alert severity="warning">
+              {unknownSlugs.length} Position(en) der gespeicherten Vorlage
+              stehen nicht mehr im Produktkatalog ({unknownSlugs.join(', ')})
+              und werden beim Speichern entfernt.
+            </Alert>
+          </Box>
+        )}
+
+        <Box
+          role="tabpanel"
+          id={`weekday-panel-${weekday ?? 'none'}`}
+          aria-labelledby={`weekday-tab-${weekday ?? 'none'}`}
+        >
+          {visibleGroups.length === 0 ? (
+            <Box sx={{ px: { xs: 2, md: 3 }, pb: 3 }}>
+              <EmptyState
+                title={
+                  needle
+                    ? 'Kein Produkt passt zur Suche.'
+                    : catalogue.length === 0
+                    ? 'Keine Produkte im Katalog.'
+                    : `Für ${
+                        weekday != null ? WEEKDAY_LABELS[weekday] : 'diesen Tag'
+                      } ist keine Bestückung hinterlegt.`
+                }
               />
-            }
-            label="Nur bestückte Produkte"
-          />
-        </Stack>
-      </Paper>
+            </Box>
+          ) : (
+            visibleGroups.map((group) => {
+              const groupUnits = group.products.reduce(
+                (sum, product) =>
+                  sum + (currentDraft[product.productSlug] ?? 0),
+                0
+              )
+              const groupPositions = group.products.filter(
+                (product) => (currentDraft[product.productSlug] ?? 0) > 0
+              ).length
 
-      <Box
-        role="tabpanel"
-        id={`weekday-panel-${weekday ?? 'none'}`}
-        aria-labelledby={`weekday-tab-${weekday ?? 'none'}`}
-      >
-        {visibleGroups.length === 0 ? (
-          <Paper sx={{ p: 4, textAlign: 'center' }}>
-            <Typography color="text.secondary">
-              {onlyStocked || needle
-                ? 'Keine Produkte für diese Filter.'
-                : 'Keine Produkte im Katalog.'}
-            </Typography>
-          </Paper>
-        ) : (
-          visibleGroups.map((group) => {
-            const groupUnits = group.products.reduce(
-              (sum, product) => sum + (currentDraft[product.productSlug] ?? 0),
-              0
-            )
-            const groupPositions = group.products.filter(
-              (product) => (currentDraft[product.productSlug] ?? 0) > 0
-            ).length
-
-            return (
-              <Paper key={group.category} sx={{ mb: 2, overflow: 'hidden' }}>
-                <Box
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 1,
-                    px: { xs: 1.5, md: 2 },
-                    py: 1.25,
-                    bgcolor: 'action.selected',
-                  }}
-                >
-                  <Typography variant="subtitle1" fontWeight={600}>
-                    {group.label}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {positionsLabel(groupPositions)} · {groupUnits} Stück
-                  </Typography>
-                </Box>
-
-                {group.products.map((product) => {
-                  const quantity = currentDraft[product.productSlug] ?? 0
-                  return (
-                    <Box
-                      key={product.productSlug}
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: { xs: 1, md: 2 },
-                        px: { xs: 1.5, md: 2 },
-                        py: 1,
-                        borderTop: '1px solid',
-                        borderColor: 'divider',
-                        bgcolor: quantity > 0 ? 'action.hover' : 'transparent',
-                      }}
+              return (
+                <Box key={group.category} component="section">
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'baseline',
+                      justifyContent: 'space-between',
+                      gap: 1,
+                      px: { xs: 2, md: 3 },
+                      pt: 2,
+                      pb: 1,
+                      borderTop: 1,
+                      borderColor: 'divider',
+                    }}
+                  >
+                    <Typography
+                      variant="subtitle1"
+                      component="h3"
+                      fontWeight={600}
                     >
-                      <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                        <Typography variant="body2" fontWeight={500} noWrap>
-                          {product.productName}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {formatCurrency(product.unitPrice)} je Stück
-                        </Typography>
-                      </Box>
-                      <TextField
-                        type="number"
-                        size="small"
-                        value={quantity > 0 ? String(quantity) : ''}
-                        placeholder="0"
-                        disabled={!canEdit}
-                        error={quantity > MAX_TEMPLATE_QTY}
-                        onChange={(event) => {
-                          const parsed = parseInt(event.target.value, 10)
-                          setQuantity(
-                            product.productSlug,
-                            Number.isFinite(parsed) && parsed > 0 ? parsed : 0
-                          )
-                        }}
-                        inputProps={{
-                          min: 0,
-                          max: MAX_TEMPLATE_QTY,
-                          step: 1,
-                          inputMode: 'numeric',
-                          readOnly: !canEdit,
-                          'aria-label': `Menge ${product.productName}`,
-                          style: { textAlign: 'right' },
-                        }}
-                        sx={{ width: 96, flexShrink: 0 }}
-                      />
-                      <Typography
-                        variant="body2"
-                        // „–“ ist Inhalt (kein Betrag), keine deaktivierte
-                        // Schrift: text.disabled stand bei 2,7:1 (W4-verify r4).
-                        color={quantity > 0 ? 'text.primary' : 'text.secondary'}
+                      {group.label}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {positionsLabel(groupPositions)} · {groupUnits} Stück
+                    </Typography>
+                  </Box>
+
+                  {group.products.map((product) => {
+                    const quantity = currentDraft[product.productSlug] ?? 0
+                    return (
+                      <Box
+                        key={product.productSlug}
                         sx={{
-                          width: { xs: 72, md: 96 },
-                          flexShrink: 0,
-                          textAlign: 'right',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: { xs: 1.5, md: 2 },
+                          px: { xs: 2, md: 3 },
+                          py: 1,
                         }}
                       >
-                        {quantity > 0
-                          ? formatCurrency(product.unitPrice * quantity)
-                          : '–'}
-                      </Typography>
-                    </Box>
-                  )
-                })}
-              </Paper>
-            )
-          })
+                        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                          <Typography
+                            variant="body2"
+                            fontWeight={quantity > 0 ? 600 : 400}
+                            noWrap
+                          >
+                            {product.productName}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {formatCurrency(product.unitPrice)} je Stück
+                            {quantity > 0 &&
+                              ` · ${formatCurrency(
+                                product.unitPrice * quantity
+                              )}`}
+                          </Typography>
+                        </Box>
+                        {canEdit ? (
+                          <TextField
+                            type="number"
+                            size="small"
+                            value={quantity > 0 ? String(quantity) : ''}
+                            placeholder="0"
+                            error={quantity > MAX_TEMPLATE_QTY}
+                            onChange={(event) => {
+                              const parsed = parseInt(event.target.value, 10)
+                              setQuantity(
+                                product.productSlug,
+                                Number.isFinite(parsed) && parsed > 0
+                                  ? parsed
+                                  : 0
+                              )
+                            }}
+                            inputProps={{
+                              min: 0,
+                              max: MAX_TEMPLATE_QTY,
+                              step: 1,
+                              inputMode: 'numeric',
+                              'aria-label': `Menge ${product.productName}`,
+                              style: { textAlign: 'right' },
+                            }}
+                            sx={{
+                              width: 96,
+                              flexShrink: 0,
+                              '& .MuiInputBase-root': { minHeight: 44 },
+                            }}
+                          />
+                        ) : (
+                          // Nur Ansicht: Menge als Text statt eines gesperrten
+                          // Felds (graue Ziffern lagen unter 4,5:1).
+                          <Typography
+                            variant="body2"
+                            fontWeight={quantity > 0 ? 600 : 400}
+                            color={
+                              quantity > 0 ? 'text.primary' : 'text.secondary'
+                            }
+                            aria-label={`Menge ${product.productName}`}
+                            sx={{
+                              flexShrink: 0,
+                              minWidth: 72,
+                              textAlign: 'right',
+                              fontVariantNumeric: 'tabular-nums',
+                            }}
+                          >
+                            {quantity > 0 ? `${quantity} Stück` : '–'}
+                          </Typography>
+                        )}
+                      </Box>
+                    )
+                  })}
+                </Box>
+              )
+            })
+          )}
+          {!listAll && !needle && visibleCount < catalogue.length && (
+            <Box
+              sx={{
+                px: { xs: 2, md: 3 },
+                py: 1.5,
+                borderTop: 1,
+                borderColor: 'divider',
+                '@media print': { display: 'none' },
+              }}
+            >
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  columnGap: 1,
+                }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  {canEdit
+                    ? 'Weiteres Produkt aufnehmen: oben suchen oder'
+                    : 'Gezeigt sind nur die Positionen dieses Tages.'}
+                </Typography>
+                <Button size="small" onClick={() => setShowAll(true)}>
+                  Alle {catalogue.length} Produkte zeigen
+                </Button>
+              </Box>
+            </Box>
+          )}
+        </Box>
+
+        {canEdit && (
+          // Speichern bleibt am Handy in Reichweite, auch am Ende einer
+          // langen Liste.
+          <Box
+            sx={{
+              position: 'sticky',
+              bottom: 0,
+              zIndex: 2,
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              gap: 1,
+              px: { xs: 2, md: 3 },
+              py: 1.5,
+              borderTop: 1,
+              borderColor: 'divider',
+              bgcolor: 'background.paper',
+              backgroundImage: 'inherit',
+              '@media print': { display: 'none' },
+            }}
+          >
+            {saveError && (
+              <Alert
+                severity="error"
+                sx={{ flexBasis: '100%' }}
+                action={
+                  <Button color="inherit" size="small" onClick={handleSave}>
+                    Erneut versuchen
+                  </Button>
+                }
+              >
+                {saveError}
+              </Alert>
+            )}
+            {/* Rückmeldung in der Leiste statt als Snackbar - die lag sonst
+                4 s lang über Speichern/Zurücksetzen. */}
+            <Typography
+              variant="body2"
+              role="status"
+              color={
+                notice?.severity === 'success'
+                  ? 'success.main'
+                  : isDirty
+                  ? 'warning.main'
+                  : 'text.secondary'
+              }
+              sx={{ mr: 'auto', minWidth: 0 }}
+            >
+              {notice?.message ??
+                (isDirty ? 'Nicht gespeichert' : 'Gespeichert')}
+            </Typography>
+            <Button
+              startIcon={<UndoIcon />}
+              onClick={handleReset}
+              disabled={!isDirty || saving}
+              aria-label="Zurücksetzen"
+              sx={{
+                minWidth: 44,
+                '& .MuiButton-startIcon': { mr: { xs: 0, sm: 1 } },
+              }}
+            >
+              <Box
+                component="span"
+                sx={{ display: { xs: 'none', sm: 'inline' } }}
+              >
+                Zurücksetzen
+              </Box>
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={
+                saving ? (
+                  <CircularProgress size={18} color="inherit" />
+                ) : (
+                  <SaveIcon />
+                )
+              }
+              onClick={handleSave}
+              disabled={!isDirty || saving || weekday == null}
+            >
+              {saving ? 'Speichert …' : 'Speichern'}
+            </Button>
+          </Box>
         )}
-      </Box>
+      </PageSection>
 
       <Dialog
         open={pendingCopy != null}
@@ -775,22 +867,6 @@ export default function TemplatesClient({
           </Button>
         </DialogActions>
       </Dialog>
-
-      <Snackbar
-        open={snackbar != null}
-        autoHideDuration={4000}
-        onClose={() => setSnackbar(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert
-          onClose={() => setSnackbar(null)}
-          severity={snackbar?.severity ?? 'success'}
-          variant="filled"
-          sx={{ width: '100%' }}
-        >
-          {snackbar?.message}
-        </Alert>
-      </Snackbar>
-    </Box>
+    </PageLayout>
   )
 }

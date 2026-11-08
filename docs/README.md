@@ -32,7 +32,8 @@
 [deliveries](./api/deliveries.md) · [backzettel](./api/backzettel.md) · [rest](./api/rest.md) ·
 [dienstplan](./api/dienstplan.md)
 
-**Apps:** [landing](./apps/landing.md) · [shop](./apps/shop.md) · [delivery](./apps/delivery.md)
+**Apps:** [landing](./apps/landing.md) · [shop](./apps/shop.md) · [delivery](./apps/delivery.md) ·
+[partybrezel](./apps/partybrezel.md) (Klick-Prototyp, nicht im Pilot)
 
 ## Historical (pre-pilot, not maintained)
 

@@ -2,7 +2,7 @@ import React from 'react'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
-import BackingListClient from './BackingListClient'
+import BackingListClient, { pieceTotal } from './BackingListClient'
 import {
   fetchPickupPoints,
   fetchPreorderDay,
@@ -143,8 +143,17 @@ describe('BackingListClient', () => {
       <BackingListClient initialDate={DATE} initialPickupPointId={POINT.id} />
     )
 
+    // Geschütztes Leerzeichen vor „·“: keine Zeile beginnt mit dem Punkt
+    // (UI-Runde 1). Die Teile stehen in eigenen Spans.
+    const subtitle = /Samstag, 12\.09\.2026\u00a0· Kindergarten Mörsbach/
     expect(
-      await screen.findByText(/Samstag, 12\.09\.2026 · Kindergarten Mörsbach/)
+      await screen.findByText(
+        (_content, el) =>
+          subtitle.test(el?.textContent ?? '') &&
+          Array.from(el?.children ?? []).every(
+            (child) => !subtitle.test(child.textContent ?? '')
+          )
+      )
     ).toBeInTheDocument()
   })
 
@@ -214,6 +223,46 @@ describe('BackingListClient', () => {
     ).toBeInTheDocument()
   })
 
+  it('sagt beim langsamen Laden „wird geladen“, nie „nichts vorbestellt“ (UI-Runde 2)', async () => {
+    // Sammelstellen hängen (langsames WLAN): vorher stand die ganze Zeit
+    // „Für diesen Tag ist nichts vorbestellt.“ - am vollen Samstag.
+    let resolvePoints: (points: PickupPoint[]) => void = () => undefined
+    mockFetchPickupPoints.mockReturnValue(
+      new Promise<PickupPoint[]>((resolve) => {
+        resolvePoints = resolve
+      })
+    )
+    let resolveSums: (sums: PreorderSums) => void = () => undefined
+    mockFetchSummary.mockReturnValue(
+      new Promise<PreorderSums>((resolve) => {
+        resolveSums = resolve
+      })
+    )
+    renderWithTheme(<BackingListClient initialDate={DATE} />)
+
+    expect(screen.getByText('Backliste wird geladen …')).toBeInTheDocument()
+    expect(
+      screen.queryByText('Für diesen Tag ist nichts vorbestellt.')
+    ).not.toBeInTheDocument()
+
+    resolvePoints([POINT])
+    await waitFor(() =>
+      expect(mockFetchSummary).toHaveBeenCalledWith(DATE, POINT.id)
+    )
+    expect(screen.getByText('Backliste wird geladen …')).toBeInTheDocument()
+    expect(
+      screen.queryByText('Für diesen Tag ist nichts vorbestellt.')
+    ).not.toBeInTheDocument()
+
+    resolveSums(SUMMARY)
+    expect(
+      await screen.findByRole('table', { name: 'Menge je Produkt' })
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText('Backliste wird geladen …')
+    ).not.toBeInTheDocument()
+  })
+
   it('zeigt die Fehlermeldung des Servers an', async () => {
     mockFetchSummary.mockRejectedValue(
       new Error(
@@ -234,5 +283,23 @@ describe('BackingListClient', () => {
         screen.getByRole('button', { name: 'Erneut versuchen' })
       ).toBeInTheDocument()
     )
+  })
+})
+
+describe('pieceTotal', () => {
+  it('zählt Stück nur, wenn alle Zeilen in Stück sind', () => {
+    expect(
+      pieceTotal([
+        { quantity: 12, unit: 'Stück' },
+        { quantity: 3, unit: 'Stück' },
+      ])
+    ).toBe(15)
+    // 12 Stück + 2 Blech sind keine „14 Stück“
+    expect(
+      pieceTotal([
+        { quantity: 12, unit: 'Stück' },
+        { quantity: 2, unit: 'Blech' },
+      ])
+    ).toBeNull()
   })
 })

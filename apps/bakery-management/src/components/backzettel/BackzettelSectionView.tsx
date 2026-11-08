@@ -5,7 +5,6 @@ import {
   Box,
   Chip,
   IconButton,
-  Paper,
   Stack,
   Table,
   TableBody,
@@ -21,23 +20,32 @@ import EditIcon from '@mui/icons-material/Edit'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import type {
   BackzettelConfigData,
+  BackzettelDeltaEntry,
   BackzettelLine,
   BackzettelSection,
 } from '../../lib/backzettelApi'
 import {
+  deltaAfterDone,
+  deltaAfterDoneText,
   formatNumber,
   formatOrDash,
   deltaBadgeText,
-  formatQty,
+  minQtyText,
   formatSigned,
   lineLabel,
   previouslyDoneText,
 } from '../../lib/backzettelFormat'
 import { CorrectionEditor } from './CorrectionEditor'
+import { PageSection } from '../layout'
 
 export interface BackzettelSectionViewProps {
   section: BackzettelSection
   config: BackzettelConfigData | null
+  /**
+   * Nachträge des Tages: kamen sie nach dem Haken einer Zeile, ist sie
+   * wieder offen (UI-Runde 1). Fehlt im Entwurf.
+   */
+  deltas?: BackzettelDeltaEntry[]
   /** Korrekturen erlaubt (Entwurf + Rolle inhaber/backstube). */
   editable: boolean
   editingKey: string | null
@@ -49,16 +57,20 @@ export interface BackzettelSectionViewProps {
   ) => Promise<void>
 }
 
-/** Zeile mit offenen Nachträgen: Rand + leichte Warnfarbe, in beiden Modi lesbar. */
-function deltaSx(line: BackzettelLine) {
-  if (!line.delta || line.delta.open === 0) return {}
+/**
+ * Zeile mit offenen Nachträgen oder einem Nachtrag nach dem Haken: Rand +
+ * leichte Warnfarbe, in beiden Modi lesbar.
+ */
+function deltaSx(line: BackzettelLine, reopened = false) {
+  if (!reopened && (!line.delta || line.delta.open === 0)) return {}
   return {
     bgcolor: (t: Theme) => alpha(t.palette.warning.main, 0.14),
     boxShadow: (t: Theme) => `inset 4px 0 0 ${t.palette.warning.main}`,
   }
 }
 
-function DeltaChip({ line }: { line: BackzettelLine }) {
+/** Abzeichen „Nachtrag +N“ einer Zeile (offen farbig, quittiert umrandet). */
+export function DeltaChip({ line }: { line: BackzettelLine }) {
   if (!line.delta || line.delta.count === 0) return null
   const open = line.delta.open > 0
   return (
@@ -67,7 +79,7 @@ function DeltaChip({ line }: { line: BackzettelLine }) {
       color={open ? 'warning' : 'default'}
       variant={open ? 'filled' : 'outlined'}
       label={`${deltaBadgeText(line.delta, line.unit)}${
-        open ? '' : ' · quittiert'
+        open ? '' : ' · gesehen'
       }`}
       data-testid={`delta-chip-${line.key}`}
     />
@@ -92,10 +104,13 @@ function BaseValue({ line }: { line: BackzettelLine }) {
 function LineName({
   line,
   config,
+  deltas,
 }: {
   line: BackzettelLine
   config: BackzettelConfigData | null
+  deltas?: BackzettelDeltaEntry[]
 }) {
+  const after = deltaAfterDone(line, deltas ?? null)
   return (
     <Box sx={{ minWidth: 0 }}>
       <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
@@ -117,6 +132,16 @@ function LineName({
         )}
         <DeltaChip line={line} />
       </Stack>
+      {after && (
+        <Typography
+          variant="caption"
+          component="div"
+          data-testid={`after-done-${line.key}`}
+          sx={{ fontWeight: 600, whiteSpace: 'normal' }}
+        >
+          {deltaAfterDoneText(line, after)}
+        </Typography>
+      )}
       {previouslyDoneText(line) && (
         <Typography
           variant="caption"
@@ -201,7 +226,62 @@ function CorrectionValue({
   )
 }
 
-const NUM = { textAlign: 'right' as const, whiteSpace: 'nowrap' as const }
+const NUM = {
+  textAlign: 'right' as const,
+  whiteSpace: 'nowrap' as const,
+  fontVariantNumeric: 'tabular-nums',
+}
+
+/** Gesamt: die Zahl, nach der gebacken wird - groß, aber keine Überschrift. */
+const TOTAL_SX = {
+  fontSize: '1.25rem',
+  fontWeight: 700,
+  lineHeight: 1.3,
+  fontVariantNumeric: 'tabular-nums',
+}
+
+/**
+ * Herkunft einer Zeile für die Karte am Handy: nur Quellen mit Wert
+ * („Basis 80 · Vorbestellt 20“) statt eines Rasters aus vier Feldern mit
+ * drei Strichen. Basis steht immer da - „offen“ ist keine 0.
+ */
+function SourcesLine({ line }: { line: BackzettelLine }) {
+  const parts: React.ReactNode[] = []
+  const add = (label: string, value: number | null, signed = false) => {
+    if (value === null || value === 0) return
+    parts.push(
+      <span key={label}>
+        {label} {signed ? formatSigned(value) : formatNumber(value)}
+      </span>
+    )
+  }
+  add('Saison', line.seasonal, true)
+  add('Vorbestellt', line.preorders)
+  add('CAP', line.cap)
+  return (
+    <Typography
+      variant="body2"
+      color="text.secondary"
+      component="div"
+      sx={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        // Lücke ≈ Leerzeichen: sonst stand vor jedem „·“ mehr Abstand als
+        // dahinter (UI-Runde 1).
+        columnGap: 0.5,
+        rowGap: 0.5,
+        mt: 0.5,
+        '& > span + span::before': { content: '"· "' },
+      }}
+    >
+      <span>
+        Basis <BaseValue line={line} />
+      </span>
+      {parts}
+    </Typography>
+  )
+}
 
 /**
  * Ein Abschnitt des Backzettels (Brot, Brötchen, Hefeteig, …): ab `md` als
@@ -212,26 +292,23 @@ const NUM = { textAlign: 'right' as const, whiteSpace: 'nowrap' as const }
 export function BackzettelSectionView({
   section,
   config,
+  deltas,
   editable,
   editingKey,
   onEdit,
   onSaveCorrection,
 }: BackzettelSectionViewProps) {
+  const reopened = (line: BackzettelLine) =>
+    (deltaAfterDone(line, deltas ?? null)?.bake ?? 0) > 0
   const save = (line: BackzettelLine) => (c: number, r: string | null) =>
     onSaveCorrection(line, c, r)
 
   return (
-    <Paper
-      variant="outlined"
-      sx={{ mb: 2, overflow: 'hidden' }}
+    <PageSection
+      title={section.label}
+      disablePadding
       data-testid={`section-${section.id}`}
     >
-      <Box sx={{ px: 2, py: 1.5, bgcolor: 'action.hover' }}>
-        <Typography variant="h6" component="h2">
-          {section.label}
-        </Typography>
-      </Box>
-
       {/* Tabelle ab md */}
       <TableContainer
         sx={{ display: { xs: 'none', md: 'block' } }}
@@ -272,10 +349,10 @@ export function BackzettelSectionView({
                 <React.Fragment key={line.key}>
                   <TableRow
                     data-testid={`line-row-${line.key}`}
-                    sx={deltaSx(line)}
+                    sx={deltaSx(line, reopened(line))}
                   >
                     <TableCell>
-                      <LineName line={line} config={config} />
+                      <LineName line={line} config={config} deltas={deltas} />
                     </TableCell>
                     <TableCell sx={NUM}>
                       <BaseValue line={line} />
@@ -298,11 +375,10 @@ export function BackzettelSectionView({
                     <TableCell sx={NUM}>
                       <Typography
                         component="span"
-                        variant="h6"
-                        fontWeight={700}
+                        sx={TOTAL_SX}
                         data-testid={`line-total-${line.key}`}
                       >
-                        {formatQty(line.total, line.unit)}
+                        {minQtyText(line, line.unit)}
                       </Typography>
                     </TableCell>
                   </TableRow>
@@ -346,7 +422,7 @@ export function BackzettelSectionView({
                 py: 1.5,
                 borderTop: index === 0 ? 0 : 1,
                 borderColor: 'divider',
-                ...deltaSx(line),
+                ...deltaSx(line, reopened(line)),
               }}
             >
               <Stack
@@ -355,92 +431,64 @@ export function BackzettelSectionView({
                 alignItems="flex-start"
                 justifyContent="space-between"
               >
-                <LineName line={line} config={config} />
+                <LineName line={line} config={config} deltas={deltas} />
                 <Typography
-                  variant="h5"
                   component="div"
-                  fontWeight={700}
-                  sx={{ whiteSpace: 'nowrap' }}
+                  sx={{ ...TOTAL_SX, fontSize: '1.5rem', whiteSpace: 'nowrap' }}
                   aria-label={`Gesamt ${label}`}
                 >
-                  {formatQty(line.total, line.unit)}
+                  {minQtyText(line, line.unit)}
                 </Typography>
               </Stack>
-              <Box
-                component="dl"
-                sx={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-                  gap: 0.5,
-                  m: 0,
-                  mt: 1,
-                  '& dt': { typography: 'caption', color: 'text.secondary' },
-                  '& dd': { m: 0, typography: 'body2' },
-                }}
-              >
-                <div>
-                  <dt>Basis</dt>
-                  <dd>
-                    <BaseValue line={line} />
-                  </dd>
-                </div>
-                <div>
-                  <dt>Saison</dt>
-                  <dd>{formatSigned(line.seasonal)}</dd>
-                </div>
-                <div>
-                  <dt>Vorbest.</dt>
-                  <dd>{formatOrDash(line.preorders)}</dd>
-                </div>
-                <div>
-                  <dt>CAP</dt>
-                  <dd>{formatOrDash(line.cap)}</dd>
-                </div>
-              </Box>
-              <Stack
-                direction="row"
-                alignItems="center"
-                justifyContent="space-between"
-                sx={{ mt: 0.5, minHeight: 44 }}
-              >
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography variant="body2">
-                    Korrektur: {formatSigned(line.correction)}
-                    {line.correctionClamped && (
+              <SourcesLine line={line} />
+              {(editable ||
+                line.correction !== 0 ||
+                line.correctionClamped) && (
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  justifyContent="space-between"
+                  sx={{ mt: 0.5, minHeight: editable ? 44 : 0 }}
+                >
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="body2">
+                      Korrektur: {formatSigned(line.correction)}
+                      {line.correctionClamped && (
+                        <Typography
+                          component="span"
+                          variant="body2"
+                          color="error"
+                          fontWeight={600}
+                        >
+                          {' '}
+                          - größer als die Menge
+                        </Typography>
+                      )}
+                    </Typography>
+                    {line.correctionReason && (
                       <Typography
-                        component="span"
-                        variant="body2"
-                        color="error"
-                        fontWeight={600}
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ overflowWrap: 'anywhere' }}
                       >
-                        {' '}
-                        - größer als die Menge
+                        {line.correctionReason}
+                        {line.correctionBy
+                          ? ` (${line.correctionBy.displayName})`
+                          : ''}
                       </Typography>
                     )}
-                  </Typography>
-                  {line.correctionReason && (
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ overflowWrap: 'anywhere' }}
+                  </Box>
+                  {editable && !editing && (
+                    <IconButton
+                      onClick={() => onEdit(line.key)}
+                      aria-label={`Korrektur ${label} bearbeiten`}
+                      sx={{ width: 44, height: 44 }}
                     >
-                      {line.correctionReason}
-                      {line.correctionBy
-                        ? ` (${line.correctionBy.displayName})`
-                        : ''}
-                    </Typography>
+                      <EditIcon fontSize="small" />
+                    </IconButton>
                   )}
-                </Box>
-                {editable && !editing && (
-                  <IconButton
-                    onClick={() => onEdit(line.key)}
-                    aria-label={`Korrektur ${label} bearbeiten`}
-                    sx={{ width: 44, height: 44 }}
-                  >
-                    <EditIcon fontSize="small" />
-                  </IconButton>
-                )}
-              </Stack>
+                </Stack>
+              )}
               {editing && (
                 <CorrectionEditor
                   idPrefix="card"
@@ -454,7 +502,7 @@ export function BackzettelSectionView({
           )
         })}
       </Box>
-    </Paper>
+    </PageSection>
   )
 }
 

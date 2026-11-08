@@ -15,7 +15,7 @@ export default function OwnerOnlyNotice({
   what?: string
 }) {
   return (
-    <Alert severity="info" sx={{ mb: 3 }}>
+    <Alert severity="info">
       <AlertTitle>{OWNER_ONLY_TITLE}</AlertTitle>
       {what} sieht im Pilotbetrieb nur der Inhaber.
     </Alert>

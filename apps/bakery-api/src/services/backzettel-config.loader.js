@@ -82,8 +82,9 @@ function readProductCatalog(dir) {
  *
  * @param {string} filePath Pfad zu `backzettel.yaml`.
  * @param {{products?: Array, productsDir?: string}} [options]
- * @returns {{ok:boolean, config: object|null, errors: Array, warnings: Array}}
- *   `config` ist normalisiert, wenn `ok`.
+ * @returns {{ok:boolean, config: object|null, errors: Array, warnings: Array, open: Array}}
+ *   `config` ist normalisiert, wenn `ok`; `open` sind die offenen
+ *   Stammdaten (ausdrueckliches `null`, Z10).
  */
 function loadBackzettelConfig(filePath, options) {
   const opts = options || {}
@@ -101,11 +102,18 @@ function loadBackzettelConfig(filePath, options) {
         },
       ],
       warnings: [],
+      open: [],
     }
   }
   const parsed = parseBackzettelYaml(text)
   if (!parsed.ok)
-    return { ok: false, config: null, errors: parsed.errors, warnings: [] }
+    return {
+      ok: false,
+      config: null,
+      errors: parsed.errors,
+      warnings: [],
+      open: [],
+    }
   const products =
     opts.products ||
     (opts.productsDir ? readProductCatalog(opts.productsDir) : undefined)
@@ -115,6 +123,7 @@ function loadBackzettelConfig(filePath, options) {
     config: result.ok ? configCore.normalizeConfig(parsed.data) : null,
     errors: result.errors,
     warnings: result.warnings,
+    open: result.open,
   }
 }
 
@@ -131,6 +140,7 @@ function loadFillingRecipes(config, hqRoot) {
     if (!f.recipe) {
       missing.push({
         id: f.id,
+        noRecipe: true,
         message: `Für „${f.name || f.id}“ ist kein Rezept hinterlegt.`,
       })
       continue

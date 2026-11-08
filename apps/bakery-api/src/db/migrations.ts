@@ -69,8 +69,18 @@ export const MIGRATIONS: MigrationEntry[] = [
     module: require('../../migrations/20270106000000-rest-count-line-rows.js'),
   },
   {
+    // Z10: backzettel_lines/_deltas.bake_date (Teigtag ≠ Backtag), backfilled
+    name: '20270201000000-backzettel-dough-day.js',
+    module: require('../../migrations/20270201000000-backzettel-dough-day.js'),
+  },
+  {
+    // Z10 O5 (2026-11-08): baked_at/_by on backzettel_lines/_deltas (Backliste)
+    name: '20270210000000-backzettel-baked.js',
+    module: require('../../migrations/20270210000000-backzettel-baked.js'),
+  },
+  {
     // TASK-042 (after the pilot): employees, entitlements, shifts, absences
-    name: '20270107000000-dienstplan.js',
-    module: require('../../migrations/20270107000000-dienstplan.js'),
+    name: '20270301000000-dienstplan.js',
+    module: require('../../migrations/20270301000000-dienstplan.js'),
   },
 ]

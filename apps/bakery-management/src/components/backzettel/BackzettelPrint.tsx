@@ -11,27 +11,22 @@ import {
 } from '../../lib/backzettelApi'
 import {
   DELTA_KIND_LABELS,
+  deltaAfterDone,
   deltaCodeText,
   deltaBadgeText,
-  deltaExtrasLines,
   formatDateLong,
   formatFactor,
-  formatGrams,
   formatNumber,
   formatOrDash,
   formatQty,
   formatSigned,
   formatSignedQty,
   formatTimestamp,
-  hasHefeteig,
-  ingredientAmount,
+  type DeltaAfterDone,
   lineLabel,
   previouslyDoneText,
-  recipeHeading,
-  recipeIncompleteNote,
 } from '../../lib/backzettelFormat'
-import { batchText } from './HefeteigCard'
-import { prepTaskLabel } from './PrepCard'
+import { BackzettelPrintExtras } from './BackzettelPrintExtras'
 
 /**
  * Druckbild des Backzettels (Z7, roadmap §5.5 Nr. 4) - A4, schwarz auf weiß.
@@ -45,6 +40,10 @@ import { prepTaskLabel } from './PrepCard'
  *   S. 1  Backzettel: alle Abschnitte, Gesamt groß, Kästchen zum Abhaken
  *   S. 2  (wenn Hefeteig/Füllungen) Abwiegeliste + skalierte Füllungsrezepte
  *   S. 3  (wenn Vorbereitungen) Vorbereitung am Vortag
+ *
+ * Seit Z10 druckt so nur noch ein Tag, der vor Z10 freigegeben wurde
+ * (`sheetVersion: 1`); S. 2-3 stehen in `BackzettelPrintExtras`. Ein
+ * Teigtag-Zettel druckt `DoughDayPrint` (eine Seite).
  */
 export const backzettelPrintStyles = (
   <GlobalStyles
@@ -96,7 +95,7 @@ export const backzettelPrintStyles = (
         // Abschnitt wird nicht mittendrin umbrochen (.bz-section).
         '.bz-print h2': {
           fontSize: '11.5pt',
-          margin: '2.5mm 0 0.5mm',
+          margin: '2mm 0 0.5mm',
           borderBottom: '1.5pt solid #000',
           breakAfter: 'avoid',
         },
@@ -132,13 +131,20 @@ export const backzettelPrintStyles = (
         '.bz-print tr': { pageBreakInside: 'avoid', breakInside: 'avoid' },
         '.bz-print th, .bz-print td': {
           borderBottom: '0.5pt solid #777',
-          padding: '0.6mm 1.5mm',
+          padding: '0.4mm 1.5mm',
           textAlign: 'left',
           verticalAlign: 'middle',
         },
         '.bz-print th': { fontSize: '8.5pt' },
         '.bz-print .num': { textAlign: 'right', whiteSpace: 'nowrap' },
-        '.bz-print .total': { fontSize: '13pt', fontWeight: 700 },
+        // UI-Runde 1: Zeilenhöhe 1,05 statt 1,25 bei der großen Zahl - am
+        // freigegebenen Samstag mit Nachträgen rutschten sonst die Hinweise
+        // allein auf ein zweites Blatt (25 Zeilen × gut 1 mm).
+        '.bz-print .total': {
+          fontSize: '13pt',
+          fontWeight: 700,
+          lineHeight: 1.05,
+        },
         '.bz-print .small': { fontSize: '8pt' },
         '.bz-print .box': {
           display: 'inline-block',
@@ -169,6 +175,15 @@ export const backzettelPrintStyles = (
         '.bz-print .figures': { display: 'flex', gap: '8mm', margin: '1mm 0' },
         '.bz-print .figures strong': { fontSize: '14pt' },
         '.bz-print ul': { margin: '1mm 0', paddingLeft: '5mm' },
+        // Hinweise zweispaltig und knapp: sie gehören auf Seite 1, nicht
+        // allein auf ein eigenes Blatt (UI-Runde 1).
+        '.bz-print .bz-warnings h3': { margin: '2mm 0 0.5mm' },
+        '.bz-print .bz-warnings ul': {
+          columnCount: 2,
+          columnGap: '6mm',
+          margin: '0.5mm 0',
+        },
+        '.bz-print .bz-warnings li': { breakInside: 'avoid' },
         '.bz-print .avoid': { breakInside: 'avoid' },
       },
     }}
@@ -262,12 +277,20 @@ export function groupDeltasForPrint(
  * Backstube buk sie sonst ein zweites Mal. Ganz gesehen: die Summe mit
  * Haken; teils gesehen: nur, was noch offen ist.
  */
-export function printDeltaFigure(group: PrintDeltaGroup): {
+export function printDeltaFigure(
+  group: PrintDeltaGroup,
+  afterDone: DeltaAfterDone | null = null
+): {
   shown: number
   done: boolean
   seen: number | null
 } {
   const total = group.bake ?? group.qty
+  // UI-Runde 1: Gesehen heißt nicht gebacken. Kam der Nachtrag nach dem
+  // Haken der Zeile, bleibt sein Kästchen leer, bis die Zeile neu abgehakt ist.
+  if (afterDone && afterDone.bake > 0) {
+    return { shown: afterDone.bake, done: false, seen: null }
+  }
   if (group.open === 0) return { shown: total, done: true, seen: null }
   if (group.open === group.deltas.length) {
     return { shown: total, done: false, seen: null }
@@ -289,7 +312,7 @@ export function printLineDeltaNote(
   unit: BackzettelDeltaEntry['unit']
 ): string {
   if (delta.open === 0) {
-    return `${deltaBadgeText(delta, unit)} · schon gesehen (Liste unten)`
+    return `${deltaBadgeText(delta, unit)} · gesehen`
   }
   if (delta.open < delta.count && typeof delta.openQty === 'number') {
     const open = delta.bakeOpen ?? delta.openQty
@@ -306,7 +329,8 @@ export function printLineDeltaNote(
 
 function printDeltaDetail(
   group: PrintDeltaGroup,
-  unit: BackzettelDeltaEntry['unit']
+  unit: BackzettelDeltaEntry['unit'],
+  afterDone: DeltaAfterDone | null = null
 ): string {
   const parts: string[] = []
   if (group.bake !== undefined && group.bake !== group.qty) {
@@ -327,8 +351,10 @@ function printDeltaDetail(
   )
   if (codes.length) parts.push(codes.join(', '))
   parts.push(
-    group.open === 0
-      ? 'quittiert'
+    afterDone && afterDone.bake > 0
+      ? 'nach dem Abhaken – noch backen'
+      : group.open === 0
+      ? 'gesehen'
       : group.open === group.deltas.length
       ? 'offen'
       : `${group.open} offen`
@@ -338,13 +364,19 @@ function printDeltaDetail(
 
 export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
   const confirmed = day.status === 'confirmed'
-  const doughs = day.hefeteig?.doughs ?? []
-  const fillings = day.fillings ?? []
-  const prep = day.prep ?? []
-  const withPage2 = hasHefeteig(day)
-  const withPage3 = prep.length > 0
+  const withPage3 = (day.prep ?? []).length > 0
   const deltas = day.deltas ?? []
   const deltaGroups = groupDeltasForPrint(deltas, deltaTotalsByKey(day))
+  // Nachträge nach dem Haken je Zeile (UI-Runde 1).
+  const afterDoneByKey = new Map<string, DeltaAfterDone>()
+  if (confirmed) {
+    for (const section of day.sections) {
+      for (const line of section.lines) {
+        const after = deltaAfterDone(line, deltas)
+        if (after) afterDoneByKey.set(line.key, after)
+      }
+    }
+  }
 
   return (
     <div className="bz-print" data-testid="bz-print" aria-hidden="true">
@@ -412,7 +444,12 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
                               ? `Korrektur: ${line.correctionReason}`
                               : null,
                             previouslyDoneText(line),
-                            line.delta && line.delta.count > 0
+                            afterDoneByKey.get(line.key)?.bake
+                              ? `danach Nachtrag: noch ${formatSignedQty(
+                                  afterDoneByKey.get(line.key)?.bake ?? 0,
+                                  line.unit
+                                )} backen`
+                              : line.delta && line.delta.count > 0
                               ? printLineDeltaNote(line.delta, line.unit)
                               : null,
                           ]
@@ -473,7 +510,8 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
               </thead>
               <tbody>
                 {deltaGroups.map((g) => {
-                  const { shown, done, seen } = printDeltaFigure(g)
+                  const after = afterDoneByKey.get(g.key) ?? null
+                  const { shown, done, seen } = printDeltaFigure(g, after)
                   return (
                     <tr key={g.key} data-testid={`print-delta-${g.key}`}>
                       <td className="num total">
@@ -503,7 +541,7 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
                                   g.first.unit
                                 )} schon gesehen`
                               : null,
-                            printDeltaDetail(g, g.first.unit),
+                            printDeltaDetail(g, g.first.unit, after),
                           ]
                             .filter(Boolean)
                             .join(' · ')}
@@ -529,7 +567,7 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
           </div>
         )}
         {day.warnings.length > 0 && (
-          <div className="small avoid">
+          <div className="small avoid bz-warnings">
             <h3>Hinweise</h3>
             <ul>
               {day.warnings.map((w, i) => (
@@ -543,161 +581,7 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
         )}
       </section>
 
-      {/* Seite 2: Hefeteig & Füllungen */}
-      {withPage2 && (
-        <section className="bz-page bz-break" data-testid="print-page-2">
-          <h1>Hefeteig &amp; Füllungen – {formatDateLong(day.date)}</h1>
-          {!confirmed && (
-            <p className="banner">ENTWURF – noch nicht freigegeben</p>
-          )}
-          {deltaExtrasLines(day.deltaExtras).length > 0 && (
-            <div className="extras avoid" data-testid="print-delta-extras">
-              <strong>
-                Nachträge seit der Freigabe – zusätzlich zu den Mengen unten:
-              </strong>
-              <ul>
-                {deltaExtrasLines(day.deltaExtras).map((text) => (
-                  <li key={text}>
-                    <span className="box" /> {text}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {doughs.map((dough) => (
-            <div key={dough.id} className="avoid">
-              <h2>{dough.name}</h2>
-              <div className="figures">
-                <span>
-                  Teigstücke <strong>{formatNumber(dough.pieces)}</strong>
-                </span>
-                <span>
-                  Teig <strong>{formatGrams(dough.dough_g)}</strong>
-                </span>
-                <span>{batchText(dough)}</span>
-              </div>
-              <h3>Abwiegeliste</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Stückgewicht</th>
-                    <th className="num">Stück</th>
-                    <th>für</th>
-                    <th className="num">✓</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dough.weighing.map((w) => (
-                    <tr key={w.piece_g}>
-                      <td className="total">{formatNumber(w.piece_g)} g</td>
-                      <td className="num total">{formatNumber(w.pieces)}</td>
-                      <td>
-                        {w.items
-                          .map((i) =>
-                            i.piecesPerProduct === 1
-                              ? `${i.name} ${formatNumber(i.products)}`
-                              : `${i.name} ${formatNumber(i.products)} × ${
-                                  i.piecesPerProduct
-                                }`
-                          )
-                          .join(', ')}
-                      </td>
-                      <td className="num">
-                        <span className="box" />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ))}
-          {fillings.length > 0 && <h2>Füllungen</h2>}
-          {fillings.map((f) => (
-            <div key={f.id} className="avoid">
-              <h3>
-                {f.name}: {formatGrams(f.grams)}
-              </h3>
-              <p className="small">
-                {f.items
-                  .map(
-                    (i) =>
-                      `${i.name} ${formatNumber(i.pieces)} × ${
-                        i.filling_g === null
-                          ? '? g'
-                          : `${formatNumber(i.filling_g)} g`
-                      }`
-                  )
-                  .join(', ')}
-                {f.missingFillingG
-                  ? ' · Füllungsgewicht fehlt bei mindestens einem Posten – Menge zu klein!'
-                  : ''}
-              </p>
-              {f.recipe ? (
-                <table>
-                  <thead>
-                    <tr>
-                      <th>{recipeHeading(f.recipe)}</th>
-                      <th className="num">Menge</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {f.recipe.ingredients.map((ing, idx) => (
-                      <tr key={`${ing.name}-${idx}`}>
-                        <td>{ing.name}</td>
-                        <td className="num">
-                          {ing.scaled_g === null ? (
-                            ingredientAmount(ing, f.recipe).text
-                          ) : (
-                            <strong>{formatGrams(ing.scaled_g)}</strong>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <p className="small">Kein Rezept hinterlegt.</p>
-              )}
-              {f.recipe && recipeIncompleteNote(f.recipe) && (
-                <p className="small">
-                  <strong>{recipeIncompleteNote(f.recipe)}</strong>
-                </p>
-              )}
-            </div>
-          ))}
-        </section>
-      )}
-
-      {/* Seite 3: Vorbereitung */}
-      {withPage3 && (
-        <section className="bz-page bz-break" data-testid="print-page-3">
-          <h1>Vorbereitung für {formatDateLong(day.date)}</h1>
-          <p className="meta">
-            am Vortag, {formatDateLong(day.prepDate)}, ab 14 Uhr
-            {day.prepDateProvisional
-              ? ' – der Vortag ist Ruhetag, wer vorbereitet ist noch offen'
-              : ''}
-          </p>
-          {/* Wird abgerissen und am Vortag abgearbeitet - auch hier muss
-              ein Entwurf als Entwurf erkennbar sein (W4-verify r5). */}
-          {!confirmed && (
-            <p className="banner">ENTWURF – noch nicht freigegeben</p>
-          )}
-          <table>
-            <tbody>
-              {prep.map((t) => (
-                <tr key={t.id}>
-                  <td className="num" style={{ width: '8mm' }}>
-                    <span className="box" />
-                  </td>
-                  <td className="total">{prepTaskLabel(t)}</td>
-                  <td>{t.note || ''}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      )}
+      <BackzettelPrintExtras day={day} />
     </div>
   )
 }

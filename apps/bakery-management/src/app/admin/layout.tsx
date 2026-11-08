@@ -32,12 +32,17 @@ import {
   RemoveShoppingCart as UnsoldIcon,
   AccountBalance as FinanceIcon,
   Flag as TargetIcon,
+  Summarize as YearReportIcon,
+  CalendarMonth as MonthReportIcon,
   Login as LoginIcon,
   ManageAccounts as UsersIcon,
   Checklist as PickupIcon,
   HelpOutline as HelpIcon,
+  Place as PickupPointIcon,
+  QueryStats as RestSummaryIcon,
   CalendarMonth as DienstplanIcon,
 } from '@mui/icons-material'
+import type { Theme } from '@mui/material/styles'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -61,8 +66,49 @@ import {
 import NoAccess from '../../components/auth/NoAccess'
 import LogoutButton from '../../components/auth/LogoutButton'
 import { formatDateLong, isIsoDate } from '../../lib/backzettelFormat'
+import { formatMonth } from '../../lib/reportFormat'
+import { useFocusNotObscured } from '../../components/layout/focusNotObscured'
+import { FOCUS_RING_COLOR } from '../../lib/muiTheme'
+
+/** Ziel des Sprunglinks „Zum Inhalt springen“ (`<main>`). */
+const MAIN_CONTENT_ID = 'inhalt'
+const MOBILE_NAV_ID = 'navigation-mobil'
 
 const drawerWidth = 280
+
+/**
+ * Navigationseinträge: ruhig statt leuchtend. Der gewählte Eintrag bekommt
+ * `action.selected` als Fläche, einen Balken in `primary.main` und halbfette
+ * Schrift - Text bleibt `text.primary` (Dunkelmodus-Regel: keine Schrift auf
+ * `*.main`). `dense` + einzeilige Beschreibung: alle Einträge passen ohne
+ * Scrollen in die Seitenleiste eines 900-px-Fensters; die volle
+ * Beschreibung steht im Tooltip (`title`).
+ */
+const navItemSx = {
+  mx: 1,
+  my: 0.25,
+  borderRadius: 1,
+  minHeight: 44,
+  '&.Mui-selected, &.Mui-selected:hover': {
+    backgroundColor: 'action.selected',
+    boxShadow: (theme: Theme) => `inset 3px 0 0 ${theme.palette.primary.main}`,
+  },
+  '&.Mui-selected .MuiListItemIcon-root': { color: 'primary.main' },
+  '&.Mui-selected .MuiListItemText-primary': { fontWeight: 600 },
+} as const
+
+const navTextProps = {
+  primaryTypographyProps: { variant: 'body2' as const, fontWeight: 500 },
+  secondaryTypographyProps: { variant: 'caption' as const, noWrap: true },
+}
+
+/**
+ * Im Druck weg (Review r2): AppBar („Verwaltung · Pilotbetrieb · Name“),
+ * Seitenleiste und ihr Platzhalter. Vorher kam das nur bei Seiten mit
+ * eigener Druckansicht weg; der Kassentag druckte die blaue Leiste und die
+ * leere Seitenleiste deckte die erste Karte halb zu.
+ */
+const PRINT_HIDDEN = { '@media print': { display: 'none' } } as const
 
 /** Kennzeichen rechts in der AppBar: nie umbrechen, nie gequetscht. */
 const statusLabelSx = { ml: 1, flexShrink: 0, whiteSpace: 'nowrap' } as const
@@ -86,10 +132,14 @@ const iconMap: Record<string, React.ReactElement> = {
   analytics: <AnalyticsIcon />,
   finance: <FinanceIcon />,
   target: <TargetIcon />,
+  yearreport: <YearReportIcon />,
+  monthreport: <MonthReportIcon />,
   login: <LoginIcon />,
   users: <UsersIcon />,
   pickup: <PickupIcon />,
   help: <HelpIcon />,
+  pickuppoint: <PickupPointIcon />,
+  restsummary: <RestSummaryIcon />,
   dienstplan: <DienstplanIcon />,
 }
 
@@ -100,7 +150,9 @@ const iconMap: Record<string, React.ReactElement> = {
  * sagt im Pfad niemandem etwas.
  */
 const DYNAMIC_BREADCRUMB_LABELS: Record<string, string | null> = {
-  '/admin/partners/[id]': null,
+  // Review r1: der Pfad endet überall mit der aktuellen Seite - der Name des
+  // Partners / der Code der Vorbestellung steht als h1 darunter.
+  '/admin/partners/[id]': 'Partner',
   '/admin/partners/[id]/visit': null,
   '/admin/partners/[id]/visit/new': 'Besuch erfassen',
   '/admin/partners/[id]/templates': 'Standard-Bestückung',
@@ -109,13 +161,13 @@ const DYNAMIC_BREADCRUMB_LABELS: Record<string, string | null> = {
   // die Referenz (MO-…) steht auf der Seite selbst.
   // `/admin/delivery` selbst ist keine Seite mehr (B12, Weiterleitung).
   '/admin/delivery': null,
-  '/admin/delivery/preorders/[id]': null,
+  '/admin/delivery/preorders/[id]': 'Vorbestellung',
   '/admin/delivery/preorders/new': 'Neue Vorbestellung',
   '/admin/delivery/preorders/backliste': 'Backliste',
   '/admin/delivery/preorders/lieferstelle': 'Lieferstelle',
   '/admin/backzettel/grundmengen': 'Grundmengen',
   // Vorbestellungen (P1/P3): der Code steht auf der Seite selbst.
-  '/admin/preorders/[id]': null,
+  '/admin/preorders/[id]': 'Vorbestellung',
   '/admin/preorders/neu': 'Neue Vorbestellung',
   '/admin/preorders/tag': 'Tagesübersicht',
   '/admin/products/new': 'Neues Produkt',
@@ -129,8 +181,12 @@ const DYNAMIC_BREADCRUMB_LABELS: Record<string, string | null> = {
   '/admin/dienstplan/mitarbeiter/[id]': null,
 }
 
-/** Human readable breadcrumb segments for the current path. */
-function getBreadcrumb(pathname: string): string[] {
+/**
+ * Human readable breadcrumb segments for the current path. Ohne
+ * `includeRoot` fällt „Dashboard“ weg - für Rollen, die das Dashboard nicht
+ * öffnen dürfen (Fahrer), wäre es ein toter Anfang.
+ */
+function getBreadcrumb(pathname: string, includeRoot = true): string[] {
   const segments = pathname.split('/').filter(Boolean)
   const flat: NavItem[] = [
     ...MANAGEMENT_NAVIGATION.flatMap((item) => [item, ...(item.submenu ?? [])]),
@@ -155,9 +211,12 @@ function getBreadcrumb(pathname: string): string[] {
       if (/^\/admin\/products\/[^/]+$/.test(href)) return 'Bearbeiten'
       // Tage (Backzettel, Kassenbericht …) als „Donnerstag, 05.11.2026“
       if (isIsoDate(segment)) return formatDateLong(segment)
+      // Monate (Monatsanalyse) als „Oktober 2026“
+      if (/^\d{4}-(0[1-9]|1[0-2])$/.test(segment)) return formatMonth(segment)
       return segment
     })
     .filter((label): label is string => label !== null)
+    .filter((_label, index) => includeRoot || index > 0)
 }
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
@@ -188,6 +247,9 @@ function AdminShell({
   pathname,
 }: AdminLayoutProps & { pathname: string }) {
   const [mobileOpen, setMobileOpen] = React.useState(false)
+  // Klebende Speichern-Leisten und die AppBar decken ein Feld beim Tabben
+  // nicht mehr zu (Layout-Kit, Review r2).
+  useFocusNotObscured()
   // Rolle (F1): Navigation und Seiten-Sperre nach ROLE_ACCESS
   // (src/lib/roles.ts). Ohne SessionProvider (Layout-Tests) gilt die volle
   // Navigation - in der App rendert der RouteGuard das Layout nur mit
@@ -214,6 +276,15 @@ function AdminShell({
   const forbidden =
     role !== null && !isPathAllowedForRole(pathname, role, sessionKind)
   const isStation = session?.sessionKind === 'station'
+  // Pfad: nicht auf dem Dashboard selbst (stünde „Dashboard“ über „Dashboard“)
+  // und ohne „Dashboard“ für Rollen, die es nicht öffnen dürfen.
+  const breadcrumb =
+    pathname === '/admin'
+      ? []
+      : getBreadcrumb(
+          pathname,
+          role === null || isPathAllowedForRole('/admin', role, sessionKind)
+        )
   const [openSubmenus, setOpenSubmenus] = React.useState<
     Record<string, boolean>
   >(() =>
@@ -252,7 +323,7 @@ function AdminShell({
         </Typography>
       </Toolbar>
       <Divider />
-      <List>
+      <List sx={{ py: 1 }}>
         {navigation.map((item) => {
           const icon = item.icon ? iconMap[item.icon] : <DashboardIcon />
 
@@ -267,9 +338,11 @@ function AdminShell({
               <React.Fragment key={item.label}>
                 <ListItem disablePadding>
                   <ListItemButton
+                    dense
                     onClick={() => handleSubmenuToggle(item.label)}
                     aria-expanded={isSubmenuOpen}
                     sx={{
+                      ...navItemSx,
                       backgroundColor: hasActiveChild
                         ? 'action.selected'
                         : 'transparent',
@@ -279,6 +352,7 @@ function AdminShell({
                     <ListItemText
                       primary={item.label}
                       secondary={item.description}
+                      {...navTextProps}
                     />
                     {isSubmenuOpen ? <ExpandLess /> : <ExpandMore />}
                   </ListItemButton>
@@ -300,30 +374,19 @@ function AdminShell({
                     return (
                       <ListItem key={subItem.href} disablePadding>
                         <ListItemButton
+                          dense
                           component={Link}
                           href={subItem.href}
                           selected={isActive}
-                          sx={{
-                            pl: 4,
-                            '&.Mui-selected': {
-                              backgroundColor: 'primary.main',
-                              color: 'primary.contrastText',
-                              '&:hover': {
-                                backgroundColor: 'primary.dark',
-                              },
-                              '& .MuiListItemIcon-root': {
-                                color: 'primary.contrastText',
-                              },
-                              '& .MuiListItemText-secondary': {
-                                color: 'inherit',
-                              },
-                            },
-                          }}
+                          aria-current={isActive ? 'page' : undefined}
+                          title={subItem.description}
+                          sx={{ ...navItemSx, pl: 4 }}
                         >
                           {subIcon && <ListItemIcon>{subIcon}</ListItemIcon>}
                           <ListItemText
                             primary={subItem.label}
                             secondary={subItem.description}
+                            {...navTextProps}
                           />
                         </ListItemButton>
                       </ListItem>
@@ -339,21 +402,19 @@ function AdminShell({
             return (
               <ListItem key={item.href} disablePadding>
                 <ListItemButton
+                  dense
                   component="a"
                   href={item.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  sx={{
-                    backgroundColor: 'action.hover',
-                    '&:hover': {
-                      backgroundColor: 'action.selected',
-                    },
-                  }}
+                  title={item.description}
+                  sx={navItemSx}
                 >
                   <ListItemIcon>{icon}</ListItemIcon>
                   <ListItemText
                     primary={item.label}
                     secondary={item.description}
+                    {...navTextProps}
                   />
                 </ListItemButton>
               </ListItem>
@@ -366,29 +427,19 @@ function AdminShell({
           return (
             <ListItem key={item.href} disablePadding>
               <ListItemButton
+                dense
                 component={Link}
                 href={item.href}
                 selected={isActive}
-                sx={{
-                  '&.Mui-selected': {
-                    backgroundColor: 'primary.main',
-                    color: 'primary.contrastText',
-                    '&:hover': {
-                      backgroundColor: 'primary.dark',
-                    },
-                    '& .MuiListItemIcon-root': {
-                      color: 'primary.contrastText',
-                    },
-                    '& .MuiListItemText-secondary': {
-                      color: 'inherit',
-                    },
-                  },
-                }}
+                aria-current={isActive ? 'page' : undefined}
+                title={item.description}
+                sx={navItemSx}
               >
                 <ListItemIcon>{icon}</ListItemIcon>
                 <ListItemText
                   primary={item.label}
                   secondary={item.description}
+                  {...navTextProps}
                 />
               </ListItemButton>
             </ListItem>
@@ -400,18 +451,60 @@ function AdminShell({
 
   return (
     <Box sx={{ display: 'flex' }}>
+      {/* Sprunglink (Review r2): sonst führt Tab am PC erst durch Abmelden
+          und 15 Navigationseinträge, bevor die Seite kommt. Unsichtbar, bis
+          er den Fokus hat. */}
+      <Box
+        component="a"
+        href={`#${MAIN_CONTENT_ID}`}
+        data-testid="skip-link"
+        sx={{
+          position: 'fixed',
+          top: 8,
+          left: 8,
+          zIndex: (theme: Theme) => theme.zIndex.tooltip + 1,
+          px: 2,
+          py: 1.5,
+          borderRadius: 1,
+          bgcolor: 'background.paper',
+          color: 'text.primary',
+          boxShadow: 8,
+          fontWeight: 600,
+          transform: 'translateY(-200%)',
+          // ohne Übergang (global.css blendet `transform` bei :focus über
+          // 0,2 s): der Link stünde sonst kurz halb unter der AppBar
+          transition: 'none',
+          '&:focus': {
+            transform: 'none',
+            transition: 'none',
+            // derselbe Ring wie an Knöpfen (lib/muiTheme.ts), nicht das
+            // Magenta aus global.css
+            outline: '2px solid',
+            outlineColor: (theme: Theme) =>
+              FOCUS_RING_COLOR[theme.palette.mode],
+            outlineOffset: 2,
+          },
+          '&::after': { display: 'none' },
+          '@media print': { display: 'none' },
+        }}
+      >
+        Zum Inhalt springen
+      </Box>
       {/* App Bar */}
       <AppBar
         position="fixed"
         sx={{
           width: { md: `calc(100% - ${drawerWidth}px)` },
           ml: { md: `${drawerWidth}px` },
+          ...PRINT_HIDDEN,
         }}
       >
         <Toolbar>
           <IconButton
             color="inherit"
             aria-label="Navigation öffnen"
+            aria-expanded={mobileOpen}
+            aria-controls={MOBILE_NAV_ID}
             edge="start"
             onClick={handleDrawerToggle}
             // W4-Verifikation: 48 px statt 40 px - Touch-Ziel am Handy/Tablet.
@@ -488,7 +581,12 @@ function AdminShell({
       {/* Navigation Drawer */}
       <Box
         component="nav"
-        sx={{ width: { md: drawerWidth }, flexShrink: { md: 0 } }}
+        aria-label="Hauptnavigation"
+        sx={{
+          width: { md: drawerWidth },
+          flexShrink: { md: 0 },
+          ...PRINT_HIDDEN,
+        }}
       >
         {/* Mobile drawer */}
         <Drawer
@@ -498,6 +596,7 @@ function AdminShell({
           ModalProps={{
             keepMounted: true, // Better open performance on mobile
           }}
+          PaperProps={{ id: MOBILE_NAV_ID }}
           sx={{
             display: { xs: 'block', md: 'none' },
             '& .MuiDrawer-paper': {
@@ -528,27 +627,57 @@ function AdminShell({
       {/* Main content */}
       <Box
         component="main"
+        id={MAIN_CONTENT_ID}
+        tabIndex={-1}
         sx={{
+          // Ziel des Sprunglinks: kein Fokusrahmen um die ganze Seite
+          '&:focus': { outline: 'none' },
           flexGrow: 1,
-          p: { xs: 1.5, sm: 2, md: 3 },
+          // Der einzige Seitenrand (Gutter) der App: 16 px am Handy, 24 px ab
+          // Tablet. Seiten (PageLayout) geben keinen eigenen dazu.
+          p: { xs: 2, sm: 3 },
+          minWidth: 0,
           width: { xs: '100%', md: `calc(100% - ${drawerWidth}px)` },
-          overflowX: 'hidden',
+          // `clip`, nicht `hidden`: `overflow-x: hidden` macht <main> zum
+          // Scroll-Container (overflow-y wird `auto`), ohne dass <main> selbst
+          // scrollt - jedes `position: sticky` darunter (Speichern-Leisten,
+          // Tabellenköpfe) klebte dann nie. `clip` schneidet nur ab.
+          overflowX: 'clip',
+          // Druck jeder Seite (Review r2): ohne AppBar und Seitenleiste
+          // steht der Inhalt ab dem oberen Rand über die ganze Breite.
+          // Seiten mit eigener Druckansicht setzen dasselbe noch einmal.
+          '@media print': {
+            p: 0,
+            width: '100%',
+            overflow: 'visible',
+          },
         }}
       >
-        <Toolbar />
+        <Toolbar sx={PRINT_HIDDEN} />
 
-        {/* Simple Breadcrumb */}
-        <Box sx={{ mb: 2 }}>
-          <Typography
-            variant="body2"
-            color="text.secondary"
-            noWrap
-            aria-label="Pfad"
-            sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}
+        {/* Pfad - leise über dem Seitentitel, im Druck ausgeblendet. Am
+            Handy weg: dort stehen Rücklink und h1 schon untereinander, der
+            Pfad schob den Inhalt nur weiter nach unten (Review r1). */}
+        {breadcrumb.length > 0 && (
+          <Box
+            data-testid="breadcrumb"
+            sx={{
+              mb: 1,
+              display: { xs: 'none', sm: 'block' },
+              '@media print': { display: 'none' },
+            }}
           >
-            {getBreadcrumb(pathname).join(' › ')}
-          </Typography>
-        </Box>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              noWrap
+              aria-label="Pfad"
+              sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}
+            >
+              {breadcrumb.join(' › ')}
+            </Typography>
+          </Box>
+        )}
 
         {blocked ? (
           <PilotUnavailable />

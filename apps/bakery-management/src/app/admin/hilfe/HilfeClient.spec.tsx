@@ -155,8 +155,15 @@ describe('Hilfe (/admin/hilfe, P6)', () => {
     expect(print).toHaveBeenCalledTimes(1)
   })
 
-  it('Papier-Regel steht auf der Seite, mit 10 Minuten und wer entscheidet', async () => {
+  it('Papier-Regel steht hinter „Regel ansehen“, mit 10 Minuten und wer entscheidet', async () => {
     renderFor('verkauf')
+    // Auf dem Bildschirm zugeklappt (Layout-Kit: Details); gedruckt wird sie
+    // trotzdem - das Blatt steht im DOM, hilfePrint klappt die Hülle auf.
+    const toggle = screen.getByRole('button', { name: 'Regel ansehen' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByTestId('sheet-papier-regel')).toBeInTheDocument()
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
     const regel = screen.getByTestId('sheet-papier-regel')
     expect(
       within(regel).getByRole('heading', { name: 'Wer entscheidet' })

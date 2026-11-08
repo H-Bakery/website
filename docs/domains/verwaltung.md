@@ -116,6 +116,18 @@ Registrierungsregel stehen **einmal** in `src/lib/pwa.ts`; Manifest (`src/app/ma
   Schublade ein - auch auf dem Tablet hochkant (820 px), quer (1180 px) steht sie fest. Breite Tabellen
   (Kassenberichte, Produktliste) scrollen in ihrem eigenen Container.
 
+## Layout-Kit (einheitliche Seiten)
+
+Jede Seite unter `/admin` baut auf `src/components/layout/` (`PageLayout`, `PageSection`,
+`KeyFigures`, `ResponsiveList`, `DayNavigator`, `LoadingState`/`EmptyState`/`ErrorState`); Regeln
+und Bausteine stehen in `src/components/layout/README.md`, Referenzseiten sind `/admin/settings` und
+`/admin/users`. Kurz: genau ein `PageLayout` je Seite, den Seitenrand setzt `admin/layout.tsx`
+(keine eigenen `p`/`Container`/`maxWidth`), höchstens 4 Kennzahlen, eine Hauptaktion je Seite,
+Tabellen werden unter 600 px zu Karten, Fehler stehen als deutscher Satz (`ErrorState` übersetzt
+„Failed to fetch“/HTTP 502 in den WLAN-Hinweis), Druck ist immer hell. Die Fahrer-App folgt
+denselben Regeln in CSS ([`docs/apps/delivery.md`](../apps/delivery.md#oberfläche)).
+Tests: `src/components/layout/layoutKit.spec.tsx`, `focusNotObscured.spec.tsx`.
+
 ## Theme und Dunkelmodus
 
 - **Standard ist dunkel:** `<ThemeProvider defaultMode="dark" storageKey="bakery-management-theme">` in

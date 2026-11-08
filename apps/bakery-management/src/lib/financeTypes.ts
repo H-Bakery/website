@@ -127,3 +127,272 @@ export interface FinanceMonthsResponse {
 export type FinanceResult<T> =
   | { status: 'ok'; data: T }
   | { status: 'no-data'; reason: string }
+
+// ---------------------------------------------------------------------------
+// Jahresabschluss und Monatsanalyse (`GET /api/finance/year[/:year]`,
+// `GET /api/finance/month[/:month]`). Spiegel von `buildYearReport()` und
+// `buildMonthReport()` in `apps/bakery-api/src/services/finance-report.core.js`
+// - dort steht jede Formel und jeder Hinweistext; die App zeigt nur an.
+// ---------------------------------------------------------------------------
+
+export interface FinanceReportSubcategory {
+  key: string
+  label: string
+  amount: number
+}
+
+export interface FinanceReportRow extends FinanceBucket {
+  category: string
+  label: string
+  kind: CategoryKind | string
+  /** Anteil 0..1 an allen Zuflüssen (Einnahmen) bzw. Abflüssen (Ausgaben). */
+  share?: number
+  subcategories: FinanceReportSubcategory[]
+  /** Nur Monatsanalyse: Ø der vollständigen Monate davor (`null` = keiner). */
+  average?: number | null
+  /** Nur Monatsanalyse: `amount - average` (`null` ohne Ø). */
+  diff?: number | null
+}
+
+export interface FinanceReportSection {
+  total: number
+  rows: FinanceReportRow[]
+}
+
+/** Einnahmen-Überschuss-Gliederung eines Zeitraums. */
+export interface FinanceStatement {
+  income: FinanceReportSection
+  /** inkl. „nicht zugeordnet“ (kind `offen`) */
+  expense: FinanceReportSection
+  result: number
+  neutral: FinanceReportSection
+  net_change: number
+  transactions: number
+  unassigned: { amount: number; count: number }
+}
+
+/** Monats- bzw. Jahressumme der Kasse (Tagesabschlüsse). */
+export interface FinanceKasse {
+  revenue: number
+  /** Tage mit Kassenbericht (Öffnungstage) */
+  days: number
+  avg_day: number
+  receipts: number
+  cash: number
+  card: number
+  unpaid: number
+}
+
+/** Kasse gegen Konto (bar und Karte). */
+export interface FinanceReconciliation {
+  kasse_revenue: number
+  kasse_cash: number
+  kasse_card: number
+  kasse_days: number
+  bank_cash: number
+  bank_card: number
+  diff_cash: number
+  diff_card: number
+  diff_total: number
+  /** Kasse bar + Karte */
+  kasse_total: number
+  /** Konto bar + Karte */
+  bank_total: number
+  /** Nur im Jahresabschluss: über welche vollständigen Monate verglichen wurde. */
+  months?: number
+  from?: string
+  to?: string
+}
+
+export interface FinanceReportNote {
+  key: string
+  severity: 'info' | 'warning'
+  text: string
+}
+
+export type FinanceMonthCoverageStatus = 'complete' | 'partial' | 'missing'
+
+export interface FinanceYearMonthRow {
+  /** `JJJJ-MM` */
+  month: string
+  /** Monatsname, z. B. „Oktober“ */
+  label: string
+  coverage: FinanceMonthCoverageStatus
+  /** Letzter Tag mit Bankdaten in diesem Monat (`null` bei `missing`). */
+  covered_to: string | null
+  income: number
+  expense: number
+  result: number
+  neutral: number
+  net_change: number
+  transactions: number
+  has_data: boolean
+  /** Ergebnis seit Jahres- bzw. Datenbeginn bis Ende dieses Monats (`null` ohne Daten). */
+  cumulative_result: number | null
+  kasse: FinanceKasse | null
+}
+
+/** Ein Monat der Hochrechnung: ganzer Monat (Ist + geschätzter Rest). */
+export interface FinanceProjectionMonth {
+  month: string
+  /** `actual`, `previous_year`, `average`, `partial_previous_year`, `partial_average` */
+  source: string
+  /** Geschätzter Anteil des Monats (1 = ganz geschätzt, 0 bei `actual`). */
+  fraction: number
+  income: number
+  expense: number
+  result: number
+  /** Davon geschätzt (0 bei `actual`). */
+  estimate_income: number
+  estimate_expense: number
+  /** Hochgerechnetes Ergebnis seit Jahresbeginn bis Ende dieses Monats. */
+  cumulative_result: number
+}
+
+/** Ein Monat im Verlauf der Monatsanalyse. */
+export interface FinanceTrendMonth {
+  month: string
+  coverage: FinanceMonthCoverageStatus
+  covered_to: string | null
+  income: number
+  expense: number
+  result: number
+}
+
+export interface FinanceProjection {
+  income: number
+  expense: number
+  result: number
+  /** Zwölf Einträge, Januar bis Dezember. */
+  basis: FinanceProjectionMonth[]
+  average_window: { from: string; to: string; months: number } | null
+  /** Rechenweg als Satz (deutsch, vom Server). */
+  method: string
+}
+
+export type FinanceYearStatus = 'final' | 'provisional' | 'incomplete'
+
+/** Antwort von `GET /api/finance/year[/:year]` (`data`). */
+export interface FinanceYearReport {
+  year: string
+  status: FinanceYearStatus
+  /** Letzter Tag mit Bankdaten (`JJJJ-MM-TT`). */
+  as_of: string | null
+  generated_at: string | null
+  today: string | null
+  coverage: {
+    from: string
+    to: string
+    data_from: string | null
+    data_to: string | null
+    complete_months: number
+    missing_before: string[]
+  }
+  statement: FinanceStatement
+  /** Immer 12 Zeilen, Januar bis Dezember. */
+  months: FinanceYearMonthRow[]
+  kasse: FinanceKasse | null
+  reconciliation: FinanceReconciliation | null
+  projection: FinanceProjection | null
+  projection_reason: string | null
+  notes: FinanceReportNote[]
+  /** Jahre mit Bankdaten, jüngstes zuerst. */
+  years: string[]
+  previous_year: string | null
+  next_year: string | null
+}
+
+export interface FinanceMonthCoverage {
+  status: FinanceMonthCoverageStatus
+  from: string | null
+  to: string | null
+  days: number
+  days_in_month: number
+}
+
+export interface FinanceMonthComparison {
+  month: string
+  label: string
+  income: number
+  expense: number
+  result: number
+  /** jetziger Monat minus Vergleichsmonat */
+  diff_income: number
+  diff_expense: number
+  diff_result: number
+}
+
+export interface FinanceMonthAverage {
+  months: number
+  from: string
+  to: string
+  income: number
+  expense: number
+  result: number
+  /** jetziger Monat minus Ø */
+  diff_income: number
+  diff_expense: number
+  diff_result: number
+}
+
+/**
+ * Warum `highlights` leer sein kann: `partial` (Monat angebrochen),
+ * `too_few_months` (weniger als `highlights_min_months` volle Monate davor),
+ * `null` (verglichen, nichts gefunden).
+ */
+export type FinanceHighlightsReason = 'partial' | 'too_few_months' | null
+
+export type FinanceHighlightKind =
+  | 'expense_high'
+  | 'expense_new'
+  | 'expense_missing'
+  | 'income_low'
+  | 'income_high'
+
+export interface FinanceHighlight {
+  kind: FinanceHighlightKind | string
+  category: string | null
+  label: string
+  amount: number
+  average: number
+  ratio?: number
+  /** Fertiger deutscher Satz vom Server. */
+  text: string
+}
+
+/** Antwort von `GET /api/finance/month[/:month]` (`data`). */
+export interface FinanceMonthReport {
+  month: string
+  /** „Oktober 2026“ */
+  label: string
+  coverage: FinanceMonthCoverage
+  generated_at: string | null
+  income: number
+  expense: number
+  result: number
+  neutral: number
+  net_change: number
+  transactions: number
+  statement: FinanceStatement
+  kasse: FinanceKasse | null
+  kasse_previous_year: FinanceKasse | null
+  /** Nur für vollständige Monate. */
+  reconciliation: FinanceReconciliation | null
+  /** Bei angebrochenen Monaten alle drei `null`. */
+  comparison: {
+    previous_month: FinanceMonthComparison | null
+    previous_year: FinanceMonthComparison | null
+    average: FinanceMonthAverage | null
+  }
+  /** Dieser Monat und bis zu 12 davor, ältester zuerst. */
+  trend: FinanceTrendMonth[]
+  highlights: FinanceHighlight[]
+  highlights_reason: FinanceHighlightsReason
+  /** Ab so vielen vollen Vergleichsmonaten gibt es Auffälligkeiten. */
+  highlights_min_months: number
+  notes: FinanceReportNote[]
+  previous_month: string | null
+  next_month: string | null
+  /** Monate mit Bankdaten, jüngster zuerst. */
+  months: string[]
+}

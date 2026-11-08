@@ -75,8 +75,15 @@ die Überarbeitung „Backzettel v2" (Z10) ist dort geplant - dieses Dokument be
 - **Freigeben friert ein:** Zeilen, Vorbestellungs-Schnappschuss und - in `computed_snapshot` -
   Hefeteig, Füllungen, Vorbereitung und Hinweise. Eine spätere Änderung an YAML oder Rezepten ändert
   einen freigegebenen Zettel nicht; `configChangedSinceConfirm: true` sagt nur, dass die aktuellen
-  Stammdaten jetzt etwas anderes ergäben. Nach jeder Freigabe schreibt die API einen Schnappschuss nach
-  hq `data/production/backzettel/` (Z9, `hq-snapshots.service.ts`, ohne Personendaten).
+  Stammdaten jetzt etwas anderes ergäben - beim Teigtag-Zettel (Z10) auch für Teige,
+  Maschinen-Streifen, Brot, Brötchen (Bruch) und den Plan (`lead`, `dough_days`: Backtage, Posten,
+  die wegziehen, und Posten, die neu auf den Teigtag fallen - außer ein anderer freigegebener Zettel
+  trägt sie). Nach jeder Freigabe schreibt die API einen Schnappschuss nach
+  hq `data/production/backzettel/` (Z9, `hq-snapshots.service.ts`, ohne Personendaten). Ein
+  Teigtag-Zettel (Z10, `sheetVersion: 2`) wird mit `schema_version: 2` geschrieben - zusätzlich
+  `bakeDate`/`doughDate`/`variantLabel` je Zeile, `bakeDates`, `doughs`, `machine`, `rolls`
+  (Brüche) und `openMasterData`; Unbekanntes bleibt `null`, nie 0. Das Markdown gruppiert die
+  Brötchen nach Backtag. Tage von vor Z10 bleiben Schema 1.
 - **Offene Grundmenge bleibt offen nach der Freigabe:** `computed_snapshot.unsetKeys` hält die Zeilen
   mit `baseUnset`, `frozenSections(rows, config, unsetKeys)` setzt sie wieder - sonst stünde auf dem
   freigegebenen Zettel „Basis 0" statt „offen". Ältere Freigaben ohne das Feld zeigen 0.
@@ -93,7 +100,7 @@ die Überarbeitung „Backzettel v2" (Z10) ist dort geplant - dieses Dokument be
 - **Was Nachträge für Ofen, Teig und Füllung heißen:** je Zeile `delta.bake` =
   `roundUp(exakt + Nachtrag) − roundUp(exakt)` (`deltaBakeExtras`; `exakt` = Vorbestellungen vor dem
   Aufrunden, im `computed_snapshot` als `preordersExact`; ältere Freigaben rechnen mit der gerundeten
-  Menge - eher eine Einheit zu viel als zu wenig). Abzeichen sagen das mit Einheit („Nachtrag +1 l",
+  Menge - eher eine Einheit zu viel als zu wenig). Abzeichen sagen das mit Einheit („Nachtrag +1 L",
   „Nachtrag +0,25 · 1 mehr backen"). `deltaExtras` am Tag nennt, was Hefeteig und Füllungen dadurch
   zusätzlich brauchen (`doughs[].batchesBefore` + `batch_max_kg`, `fillings[].recipe`); der Hinweis
   nennt „jetzt 4 Chargen statt 3" und, wenn der Zusatzteig größer als eine Charge ist, wie viele
@@ -112,6 +119,82 @@ die Überarbeitung „Backzettel v2" (Z10) ist dort geplant - dieses Dokument be
   ein Tippfehler in der URL committete sonst einen Backzettel für 9999-12-31 nach hq `main`.
 - **Rollen:** lesen jede Sitzung; planen, freigeben, abhaken, quittieren `inhaber` + `backstube`.
   Jede Änderung steht im `audit_log`.
+
+## Teigtag ≠ Backtag auf der API (Z10)
+
+Entwurf: [`docs/backzettel-v2.md`](../backzettel-v2.md); Endpunkte: [`docs/api/backzettel.md`](../api/backzettel.md),
+Abschnitt „Dough-day sheets and bake list". Stand: Stammdaten-Prüfung (S1), Kern (S2), API (S3),
+Rest am Abend/Schnappschuss (S4), Bildschirme (S5) und Druck (S6) sind auf dem Zweig
+`feat/Z10-backzettel-v2` gebaut; die neue hq-Datei kommt erst, wenn der Zweig auf der Box läuft.
+
+- **Ein Tag ist der Zettel eines Teigtags** (`computeDoughDay`): was an D gebacken wird (`lead` 0)
+  und was an D für einen späteren Backtag angesetzt wird (`lead` ≥ 1 - Samstag macht die Brötchen
+  für Sonntag und Dienstag). Mit der heutigen hq-Datei (ohne `lead`) ist jeder Zettel der v1-Tag
+  plus zusätzliche Felder. Die Grundmenge steht beim **Backtag**.
+- **`GET /api/backzettel/:datum/bake-list`** ist die Backliste für die Person, die nur backt
+  (Sonntag): je Backtag die Zeilen aller Zettel, mit „Teig vom Samstag", ohne Teigzahlen.
+- **Zwei Haken (Inhaber-Entscheidung O5, 2026-11-08):** „erledigt" auf dem Zettel des Teigtags
+  heißt bei Teig für einen späteren Backtag **gemacht**; **gebacken** ist ein eigener Haken je Zeile
+  der Backliste (`POST /:backtag/bake/:zeilenId/baked|unbaked`, `inhaber` + `backstube`). Beide sind
+  unabhängig - wer bäckt, muss nicht vorher „gemacht" getippt haben. Gebacken geht nur, wenn der
+  Zettel der Zeile freigegeben ist (409 `not_confirmed`, wie Abhaken); eine Zeile eines anderen
+  Backtags ist 404 `not_on_bake_list`. Für den gebacken-Haken gelten dieselben Regeln wie für
+  „erledigt", je Zeile: braucht eine erneute Freigabe mehr, fällt er weg (`clearedBakedTicks`,
+  danach `previouslyBaked` „bereits 66 gebacken - noch +5"), weniger oder gleich lässt ihn stehen
+  (`ticksAfterConfirm` im Tages-Kern). **Ein Nachtrag wird für sich abgehakt**, nie über seine Zeile
+  (`POST /:backtag/bake/deltas/baked { ids }`); gebacken heißt auch gesehen (`deltaBakedUpdate`),
+  zurücknehmen lässt „Gesehen" stehen. Wieder öffnen und neu freigeben verwirft die Nachträge (sie
+  stehen dann in den Zeilen) - **was davon gebacken war, zählt weiter als gebacken**: Wieder öffnen
+  hält die Ofenzahl der gebackenen Nachträge fest (`bakedDeltas`), Entwurf und neue Freigabe
+  rechnen sie zur gebackenen Menge der Zeile (`bakedAfterConfirm` im Tages-Kern). Deckt das die
+  Zeile, steht der Haken (bleibt bzw. wird gesetzt); sonst „bereits 8 gebacken - noch +70"
+  (`previouslyBaked`). Auf dem Tablet bleibt ein gebackener Nachtrag abgehakt und zurücknehmbar,
+  wenn danach eine Abbestellung kommt („+8 schon gebacken · nichts zusätzlich zu backen").
+  Der Z9-Schnappschuss trägt keinen der Haken.
+- **Freigeben friert den Plan ein** (welche Backtage × Posten der Zettel trägt). Was ein
+  freigegebener Zettel trägt, rechnet kein anderer Entwurf noch einmal (`owned_elsewhere`).
+  Ein vor Z10 freigegebener Tag trägt alle Posten seines Datums (`legacyPlan`) und zeigt die
+  v1-Ansicht (`sheetVersion: 1`).
+- **Nachträge landen beim Teigtag:** eine Vorbestellung für Dienstags-Brötchen nach der Freigabe
+  am Samstag ist ein Nachtrag auf dem Samstags-Zettel (`bakeDate` Dienstag) und steht auf der
+  Dienstags-Backliste - nicht auf dem Dienstags-Zettel.
+- **Korrekturen** nennen den Backtag (`bakeDate`); einer, der nicht auf dem Zettel steht, ist
+  400 `invalid_bake_date`.
+- **Umstellung in hq:** erst wenn S1-S3 auf der Box laufen. Ein Samstag, der **vor** der Umstellung
+  freigegeben wurde, trägt die Dienstags-Brötchen nicht. Dann nimmt sie der Entwurf des Dienstags
+  auf (`adopted_orphans`, „steht hier, weil der Zettel vom Samstag schon freigegeben ist"; der
+  Samstag sagt `moved_to_bake_day`) - nichts fällt weg, auch nicht nach „Wieder öffnen" eines alten
+  Dienstags. Ist auch der Dienstag schon freigegeben, warnen beide Zettel und die Backliste
+  (`not_on_confirmed_sheet`); dann einen der Zettel wieder öffnen und neu freigeben. Ein nach dem
+  Freigeben in hq ergänzter Posten bleibt beim Zettel seines Teigtags (`plan.knownItems`), seine
+  Vorbestellungen werden dort Nachträge.
+- **Ohne Stammdaten** bleibt die Backliste lesbar, soweit freigegebene Zettel den Tag tragen
+  (`configStatus: 'no-config'`, Hinweis, dass Entwürfe fehlen) - der Sonntag sieht die Brötchen
+  vom Samstag.
+- **Grundmenge offen heißt Mindestmenge, nicht fertige Zahl** (Review Z10 Runde 2): eine Zeile
+  ohne Grundmenge und ohne Korrektur trägt `totalIsMinimum: true` - `total` ist nur das Bekannte
+  (Vorbestellt, CAP). Dasselbe Feld steht an Brot-Zellen, Einzelstücken und Bruch-Mitgliedern
+  (`split[].total` bleibt die bekannte Zahl, nie `null`, nie 0 statt 7). Bildschirm, Tablet,
+  Backliste, Druck und Z9-Schnappschuss zeigen „≥ 4" bzw. „offen", wenn nichts bekannt ist
+  (`minQtyText` in `backzettelFormat.ts`, eine Regel). Gefüllte Posten ohne Grundmenge machen den
+  Füllungsbedarf unvollständig (`fillings[].baseUnset`, `openItems`; auch mit 0 Stück, kein
+  hochgerechnetes Rezept); ein Hefeteig-Nachtrag auf einen unvollständigen Teig nennt den
+  Zusatzteig aus Stück × Gramm und das Gesamt nur als Mindestmenge (`totalPiecesComplete`,
+  `totalDoughKnown_g`) - nie „+0 g".
+- **Folge für die heutige hq-Datei:** solange Grundmengen offen sind (z. B. Hefeteig am Samstag),
+  sind Hefeteig-kg, Liter und Chargen unbekannt („≥ kgKnown", „Chargen: unbekannt") - der alte
+  Zettel zeigte dort eine Zahl, die die offenen Posten als 0 zählte. Wer die Zahl am ersten
+  Samstag nach dem Deploy braucht, trägt vorher die Grundmengen in hq ein. Auch die
+  **Abwiegeliste** sagt das: Gewichtsstufe und Posten mit offener Grundmenge tragen
+  `isMinimum` („≥ 15 × 500 g", „Zopf gefüllt ≥ 15", ohne bekannte Stück „offen"), ebenso ein
+  Einzelstück (`singles[].kgKnown`, „Teig: ≥ 1,25 kg") - dieselben kg, die im `kgKnown` des Teigs
+  stecken.
+- **Unbekannt bleibt unbekannt, auch beim Bruch:** hat ein Mitglied einer Bruch-Gruppe keine
+  Grundmenge, sind Brüche, kg und „frei“ `null`; `bruecheKnown`/`kgKnown` zählen nur die bekannten
+  Mitglieder („≥ 1 Bruch“). „+n frei“ steht in Produkten (`spareProducts`, bei zwei Teigstücken je
+  Doppelweck die Hälfte), `spare` in Teigstücken. Liter werden vom ungerundeten Quotienten
+  gerundet (6,01 kg ÷ 3 = 2,003 L → auf 0,5 L aufgerundet 2,5). Die Hefeteig-Karte nimmt kg, Liter
+  und Chargen aus der Teigsumme des Zettels - dieselbe Zahl wie die Maschinenleiste.
 
 ## Grundmengen (Z4, `/admin/backzettel/grundmengen`)
 
@@ -142,10 +225,15 @@ erweitertes `GET /api/backzettel/config`.
   Backzettel** (`products[].factor`, Kassennummer = `numeric_id` des hq-Produkts): 1 Stück
   Marmorkuchen = ¼ Kuchen, ein 500-g-Laib = 0,5 l - dann `converted: true` und der Wert steht in der
   Einheit des Postens. Ist eine Kassennummer keinem Produkt des Postens zugeordnet, bleibt es „St."
-  (Stück laut Kasse), der Tooltip sagt das. Im Hinweis steht zusätzlich „Rest am Abend Ø"
+  (Stück laut Kasse), der Tooltip sagt das. **Brot je Laibgröße:** die Postenzeile zeigt den
+  Median des ganzen Postens, jede Größen-Zeile den Median über die Kassennummern der Größe
+  (`sizes[].plu`, ein Teil der `plu` des Postens, jede Kassennummer bei genau einer Größe). Ohne
+  Kassennummer der Größe (fehlt oder `null` = offen) steht „unbekannt“ - nie 0, nie ein Anteil;
+  hat der Posten selbst keine `plu`, bleiben auch die Größen-Zeilen leer. Im Hinweis steht zusätzlich „Rest am Abend Ø"
   (`GET /api/rest/averages`, nur Information, siehe [rest-am-abend.md](rest-am-abend.md)).
 - **Drucken:** eigenes Druckbild (`GrundmengenPrint.tsx`, A4 quer, schwarz auf weiß, alle Tage Di–So,
-  geänderte Werte mit `*` und dem freigegebenen in Klammern); das Bildschirm-Raster
+  geänderte Werte mit `*` und dem freigegebenen in Klammern, Referenz „≈ n“ klein unter dem Wert,
+  bei einer Größe ohne eigene Kassennummer „≈ unbekannt“ wie am Bildschirm, nie leer); das Bildschirm-Raster
   (`grundmengen-screen-only`) und die App-Hülle fallen im Druck weg. Mit `page.pdf()` prüfen, nicht mit
   einem Screenshot.
 - **Client:** `src/lib/grundmengenApi.ts` (getrennt von `backzettelApi.ts`), Fixtures
@@ -186,7 +274,67 @@ erweitertes `GET /api/backzettel/config`.
   `line-card-<key>`). Offene Nachträge: Zeile mit Warnrand + Chip, Karte „Nachträge seit der Freigabe"
   mit „Gesehen". `configChangedSinceConfirm` und `prepDateProvisional` stehen als Hinweise da.
   Bedienelemente ≥ 44 px.
-- **Druck (Z7):** `components/backzettel/BackzettelPrint.tsx`, eigenes schlichtes HTML, auf dem
+- **Druck eines Teigtag-Zettels (Z10 S6, `sheetVersion: 2`):** `components/backzettel/DoughDayPrint.tsx`,
+  **eine A4-Seite** je Teigtag, schwarz auf weiß: Kopf mit Stempel „FREIGEGEBEN" bzw. „ENTWURF – noch
+  nicht freigegeben" und „Teige heute", Maschinen-Leiste (Liter groß, kg, Chargen, Zugaben), Brot
+  (Größen als Spalten), Brötchen je Backtag (spätere Backtage zuerst, `n Bruch × g – Aufteilung`,
+  „+n frei" nur als Hinweis), Hefeteig (gefüllte Posten in einer Zeile mit den Sorten), die übrigen
+  Abschnitte knapp in zwei Spalten (Basis/Saison/Vorb./CAP stehen nur als Text dabei, wenn sie etwas
+  sagen; Aufteilung siehe unten „Spalten"), Nachträge (nie in den Mengen), „Hinweise", „Offen: …"
+  (offene Stammdaten und fehlende
+  Teig-Angaben, je einmal) und vier Notizzeilen. **Unbekanntes bleibt unbekannt:** Liter ohne
+  `kg_per_liter` sind „–" mit Grund („Liter unbekannt (kg je Liter offen)"), ohne Rundung stehen die
+  genauen Liter mit „Rundung offen", kg mit fehlendem Teil „≥ n kg", ganz unbekannt „– kg"; die
+  Seite summiert nichts (`printLiters`, `printKg`). **Wörter überall gleich** (Leiste, Karten,
+  Tablet, Druck): eine Stammdaten-Angabe, die fehlt, ist „offen" („Chargengröße offen", „kg je
+  Liter offen"); was sich daraus nicht rechnen lässt, ist „unbekannt" („Chargen: unbekannt
+  (Teiggewicht unbekannt)").
+  **Dichte:** `src/lib/dayPrintLayout.ts` schätzt die Höhe je Block in mm (wie `notfallLayout`) und
+  wählt die erste von fünf Stufen (10 pt … 7 pt, `DAY_PRINT_STEPS`), die auf 268 mm passt (A4, Rand
+  10 mm). Passt auch die dichteste nicht, werden zuerst die Notizzeilen gekürzt (bis keine,
+  `noteLines`); erst danach kommen die **übrigen Abschnitte auf Blatt 2**, und auf Seite 1 steht an
+  ihrer Stelle ein gerahmter Kasten „**Weitere Abschnitte auf Blatt 2:** Laugen, …"; weggelassen
+  wird nie etwas. Seite 1 nimmt dann wieder die luftigste Stufe, in der sie ohne die
+  Abschnitte passt; **Blatt 2 wählt seine Stufe für sich** (`layout.secondSheet`, die luftigste, in
+  der Titel, „ENTWURF“-Kasten und die zwei Spalten auf 268 mm passen) und trägt sie als eigene
+  CSS-Variablen `--dd-font`/`--dd-row` am Blatt (`.dd-sheet2`). Vorher erbte Blatt 2 die luftige
+  Stufe von Seite 1 und lief schon bei 75–100 Zeilen auf ein drittes Blatt, obwohl es knapp gesetzt
+  passte (Review Z10). Die Stufe steht als `data-print-step` am Druckbild und an Blatt 2.
+  **Spalten der übrigen Abschnitte:** keine CSS-Spalten (Chrome ließ eine Überschrift unten links
+  stehen und setzte die Zeilen ohne Überschrift nach rechts), sondern zwei feste Spalten, aufgeteilt
+  von `printColumns` in `dayPrintLayout.ts`: Reihenfolge bleibt, links zuerst; gewählt wird die
+  Teilung mit der niedrigsten höheren Spalte. Ein Abschnitt bis 8 Zeilen (`KEEP_SECTION_LINES`)
+  bleibt ganz; ein längerer darf umbrechen, mit mindestens 3 Zeilen (`MIN_SPLIT_LINES`) unter der
+  Überschrift und mindestens 3 rechts unter „**Kaffeestückchen (Forts.)**" - nie eine Überschrift
+  ohne ihre ersten Zeilen, nie Zeilen ohne Überschrift. Gewählt wurde die wiederholte Überschrift
+  statt „Überschrift mit den ersten Zeilen zusammenhalten", weil sonst rechts oben Zeilen ohne
+  Abschnitt stünden. Grenze: passen die übrigen Abschnitte auch in der dichtesten Stufe nicht in
+  zwei Spalten einer Seite (Schätzung, eher zu groß: ab etwa 120 Zeilen übriger Abschnitte), laufen beide Spalten
+  über die Seite weiter, auf der Folgeseite ohne Überschrift.
+  **Abwiegeliste, skalierte Rezepte und Vorbereitung** stehen in `BackzettelPrintExtras.tsx` und
+  kommen nur mit Haken bei „Abwiegeliste & Rezepte mitdrucken"
+  (`localStorage` `bakery-backzettel-print-extras`, Vorgabe aus, O8) auf eigene Blätter. Mit der
+  heutigen hq-Datei (ohne `lead`) liefert die API für Entwürfe und neue Freigaben schon
+  `sheetVersion: 2` - gedruckt wird also ab jetzt der Einseiter; alles außer Brot-Litern und Hefeteig
+  steht dann bei den übrigen Abschnitten.
+- **Druck der Backliste (Z10 S6):** `components/backzettel/BakeListPrint.tsx` auf
+  `/admin/backzettel/[datum]/backen`, eine Seite je Backtag: Posten, Stück, aus welchem Teig, Kästchen;
+  Banner, wenn eine Quelle noch Entwurf ist; Nachträge getrennt unten (an der Zeile nur „Nachtrag +n
+  (unten, nicht in der Zahl)"); **keine Teigzahlen**. Lange Listen gehen auf zwei Spalten
+  (`bakeListPrintLayout`), nicht auf ein zweites Blatt.
+- **Geprüft wird mit `page.pdf()`, nie mit einem Screenshot:** Seite im Browser laden,
+  `emulateMedia({ media: 'print' })` nur zum Messen, vor `page.pdf({ format: 'A4' })` mit
+  `media: null` zurücksetzen, Seiten zählen. Stand S6: geprüft war nur ein erfundener Samstag mit 34
+  Zeilen (Entwurf und freigegeben mit Nachträgen je 1 Seite, Backliste Sonntag/Dienstag/Samstag je 1 Seite, mit
+  Abwiegeliste 4 Blätter). Nachgeprüft mit dem vollen Samstag aus `make-hq.js --busy-saturday`
+  (58 Zeilen, nach der Freigabe 7 Nachträge für So/Di/Sa): Entwurf 1 Seite (Stufe 4, 237 mm),
+  freigegeben 1 Seite (Stufe 3), freigegeben mit Nachträgen 1 Seite (Stufe 4, 258 mm, 2 Notizzeilen);
+  Kaffeestückchen (10 Zeilen) brechen mit „Kaffeestückchen (Forts.)" um. Erzwungener Überlauf
+  (+40 Zeilen per Route-Umschreibung): Seite 1 mit Kasten „Weitere Abschnitte auf Blatt 2" in Stufe 1,
+  Blatt 2 = 1 Seite. In den Specs ist `busySaturdayV2Draft/Confirmed` (`backzettelFixtures.ts`, 60
+  Zeilen, 6 Nachträge) der größte Teigtag-Zettel; `dayPrintLayout.spec.ts` verlangt, dass jeder
+  Teigtag-Zettel der Specs auf ein Blatt passt.
+- **Druck eines Tages von vor Z10 (Z7, `sheetVersion: 1`):** `components/backzettel/BackzettelPrint.tsx`, eigenes schlichtes HTML, auf dem
   Bildschirm unsichtbar; im Druck verschwinden `.bz-screen` und die App-Hülle. S. 1 Backzettel (alle
   Abschnitte, Gesamt groß, Kästchen, Nachträge, Hinweise; Entwurf mit Banner; knapp gesetzt, bricht nur
   zwischen Abschnitten um - `.bz-section`), S. 2 nur mit Hefeteig/Füllungen (Abwiegeliste + skalierte
@@ -229,6 +377,15 @@ zu den Namenskacheln). Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhabe
   während eines laufenden Hakens zurückkommt, wird verworfen (`mutationSeq`) - sonst spränge der Haken
   kurz zurück.
 - **Entwurf:** großes Banner „Noch nicht freigegeben", Zahlen grau, gestrichelte Zeilen, keine Haken.
+- **Reiter „Backen" (O5):** je Zeile eines freigegebenen Zettels ein eigener 72-px-Haken
+  **gebacken** (`BackstubeBakeList.tsx`), getrennt von „erledigt" im Reiter „Zettel"; Zeilen eines
+  Entwurfs-Zettels (gestrichelt) haben keinen. Darunter „Nachträge (nicht in den Zahlen oben)" je
+  Zeile mit eigenem Haken (`bakeDeltaGroups` in `src/lib/backstubeBake.ts`: die große Zahl ist
+  `delta.bake` bzw. bei einem später gekommenen Nachtrag `delta.bakeUnbaked`; ein Tippen hakt die
+  noch offenen ab bzw. nimmt alle zurück; bei „−3"/„±0" kein Haken). Wie auf dem Zettel sofort
+  gesetzt und bei Fehler zurückgenommen; 409/404 laden die Backliste neu, ein Neuladen während
+  eines laufenden Hakens wird verworfen. Der **Ausdruck** der Backliste bleibt Papier: ein leeres
+  Kästchen je Zeile, unverändert (eine Seite).
 - **Nachträge:** Karte oben mit je einem großen „Gesehen", an der Zeile ein Badge „Nachtrag +N" (offen
   farbig, quittiert „· gesehen"). Nachträge stehen nie im Gesamt.
 - **Samstag:** Hefeteig & Füllungen (`components/backstube/BackstubeHefeteig.tsx`) **vor** den Zeilen,
@@ -245,7 +402,8 @@ zu den Namenskacheln). Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhabe
 - **Kontrast:** feste Farbpaare je Modus in `components/backstube/backstubeColors.ts` (Banner,
   Nachtrag, Haken ≥ 7:1), keine MUI-`*.main`-Texte. Die Seite schaltet das `section`-Einblenden aus
   `global.css` ab, sonst stünde der Zettel nach jedem Tageswechsel 0,8 s blass da.
-- **Kein eigener Druck:** gedruckt wird über „Planung & Druck" (`/admin/backzettel/[datum]`). Strg+P
+- **Kein eigener Druck:** gedruckt wird über „Planung & Druck" (`/admin/backzettel/[datum]`, dort
+  „Backliste" für die Backliste). Strg+P
   blendet Umschalter, Knöpfe und Reiter (`data-print="hide"`) aus und druckt schwarz auf weiß.
 - **„Zur Verwaltung"** (→ `/admin`) nur mit persönlicher Sitzung; das Tablet an der Station braucht ihn
   nicht.
@@ -263,6 +421,8 @@ zu den Namenskacheln). Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhabe
   `admin/backzettel/BackzettelOverviewClient.spec.tsx`,
   `admin/backzettel/[datum]/BackzettelDayClient.spec.tsx`,
   `admin/backzettel/grundmengen/GrundmengenClient.spec.tsx`,
-  `components/backzettel/BackzettelPrint.spec.tsx`, `app/backstube/BackstubeClient.spec.tsx`,
+  `components/backzettel/BackzettelPrint.spec.tsx`, Z10-Druck: `src/lib/dayPrintLayout.spec.ts`,
+  `components/backzettel/{DoughDayPrint,BakeListPrint}.spec.tsx`, Druck-Auswahl in
+  `admin/backzettel/[datum]/BackzettelDayClient.v2.spec.tsx`; `app/backstube/BackstubeClient.spec.tsx`,
   `components/backstube/backstubeColors.spec.ts`. Fixtures erfunden: `src/lib/backzettelFixtures.ts`
   (eindeutige Zeilen-IDs je Zeile), `src/lib/grundmengenFixtures.ts`.

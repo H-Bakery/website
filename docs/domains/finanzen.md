@@ -1,15 +1,20 @@
-# Finanzen und Tagesziel-Ampel
+# Finanzen, Jahresabschluss und Tagesziel-Ampel
 
 `/admin/finance` zeigt Bankumsätze aus dem privaten `hq`-Repo (`hq/data/finance/finance-summary.json`,
-`schema_version` 1) als Monatsreihe und Kostenstruktur; `/admin/finance/tagesziel` den Break-even als
-Tagesziel je Wochentag mit Ampel, rückblickend aus den Kassenberichten ([kassenberichte.md](kassenberichte.md)).
+`schema_version` 1) als Monatsreihe und Kostenstruktur; `/admin/finance/jahr` und
+`/admin/finance/monat/[JJJJ-MM]` daraus den Jahresabschluss (vorläufig) und die Monatsanalyse;
+`/admin/finance/tagesziel` den Break-even als Tagesziel je Wochentag mit Ampel, rückblickend aus den
+Kassenberichten ([kassenberichte.md](kassenberichte.md)).
 
-**Code:** Sanitizer/Formeln `apps/bakery-api/src/services/finance.core.js` · Tagesziel
+**Code:** Sanitizer/Formeln `apps/bakery-api/src/services/finance.core.js` · Jahr/Monat
+`apps/bakery-api/src/services/finance-report.core.js` · Tagesziel
 `apps/bakery-api/src/services/targets.core.js` · Routen `src/routes/finance.routes.js`,
 `src/routes/targets.routes.js` (bis B12 `*.mock.js`, eingehängt über `hq-data.routes.ts`) ·
 Management-App
 `src/lib/financeApi.ts`, `src/lib/targetsApi.ts`, `app/admin/finance/FinanceClient.tsx`,
-`app/admin/finance/tagesziel/TagesZielClient.tsx`, `components/targets/{TargetsTile,TargetStatusChip}.tsx`.
+`app/admin/finance/tagesziel/TagesZielClient.tsx`, `components/targets/{TargetsTile,TargetStatusChip}.tsx`,
+`app/admin/finance/{jahr,monat}/**`, `components/finance/{FinanceCharts,FinancePrint,FinanceReportParts}.tsx`,
+`src/lib/{financeTypes,financeCharts}.ts`.
 API-Details: [`docs/api/hq-data.md`](../api/hq-data.md).
 
 **Dieses Repo ist öffentlich, `hq` nicht.** Keine echten Beträge, IBANs oder Namen in Code, Tests,
@@ -41,6 +46,46 @@ Fixtures, Snapshots, Screenshots oder Commit-Messages.
   genau dieser Stelle bleiben**, sonst hängt `bakery-management` im Nx-Graph an `bakery-api` und
   `nx build` baut erst die API. (Die Finanzseite selbst liest über `financeApi.ts` die
   rollengeschützte API; den Loader importiert derzeit nur seine Spec.)
+
+## Jahresabschluss (vorläufig) und Monatsanalyse (`/admin/finance/jahr`, `/admin/finance/monat`)
+
+Aus derselben bereinigten `finance-summary.json` plus den Monatssummen der Kasse (Tagesberichte aus
+`HQ_REPORTS_DIR`): `GET /api/finance/year[/:year]` (ohne Jahr das jüngste mit Bankdaten) und
+`GET /api/finance/month[/:month]` (ohne Monat der jüngste vollständige), Rechte wie
+`/api/finance/summary`, ungültige Eingabe 400 `validation`. Gerechnet wird **nur** in
+`finance-report.core.js`; die Seiten zeigen an, auch die Hinweistexte (`notes`) kommen vom Server.
+
+- **„Vorläufig“ ist ein Status, kein Etikett:** `final` nur, wenn die Bankdaten das ganze Jahr
+  abdecken; `provisional` für ein laufendes Jahr, mit Hochrechnung (Ist + Vorjahresmonat, sonst Ø der
+  letzten 12 vollständigen Monate, der laufende Monat anteilig nach Tagen); `incomplete`, wenn die
+  Bankdaten erst im Jahr beginnen - dann **keine** Hochrechnung. Es bleibt eine Cashflow-Sicht
+  (Zuflussprinzip), kein steuerlicher Abschluss; was fehlt (AfA, Bestand, offene Rechnungen,
+  Barausgaben aus der Kasse, Kosten über das Verrechnungskonto), steht in `notes`.
+- **Fehlende Daten sind offen, nicht 0:** ein Monat ohne Bankdaten (`coverage: 'missing'`) steht als
+  „keine Bankdaten“ da und fehlt im Diagramm; ein Monat ohne Kassenberichte hat kein `kasse`.
+- **Nur vollständige Monate zählen in Durchschnitten** (`monthCoverage` gegen `period`). Ein
+  angebrochener Monat hat keine Vergleiche (`comparison.*`, `average`, `diff` sind `null`,
+  `highlights_reason: 'partial'`). Dieselbe Regel gilt für das Kostenfenster des Tagesziels
+  (`lastMonths` in `targets.core.js`).
+- **Auffälligkeiten** messen Ausgaben am **Abfluss** (`expense`), nicht am Netto - sonst sähe eine
+  Steuererstattung wie eine neue Ausgabe aus. Schwellen (1,5 × Ø und ≥ 300 €, „fehlt“ nur bei
+  regelmäßigen Posten) im Kopf von `highlightsOf`; erst ab 6 Vergleichsmonaten.
+- **Kassenabgleich** (Kasse bar + Karte gegen Bareinzahlungen + Kartenabrechnungen) nur über
+  vollständige Monate. Bekannte Kleinigkeit: die Kasse zählt Bons „ohne Zahlung“ mit Betrag zum
+  Umsatz, der Kassenabschluss nicht.
+- **Diagramme** (`FinanceCharts.tsx`, Daten nur umgeordnet in `financeCharts.ts`): Jahr im Verlauf,
+  Ergebnis seit Jahresbeginn, Einnahmen nach Herkunft, Ausgaben nach Posten (Monat mit Ø-Strich),
+  Verlauf der letzten 13 Monate (`trend`). Hochrechnung und aufgelaufenes Ergebnis liefert der
+  Server (`projection.basis[]`, `months[].cumulative_result`). Geschätzte Anteile schraffiert, offene
+  Monate gestrichelt mit `*`. Klick auf einen Monat öffnet die Monatsanalyse.
+- **Druckfassung ist ein eigenes Dokument** (`JahresabschlussPrint.tsx`, `MonatsanalysePrint.tsx`
+  aus den Bausteinen in `FinancePrint.tsx`): Seite 1 Übersicht (Stempel „Vorläufig“/„Unvollständig“,
+  Kennzahlen, Diagramme), ab Seite 2 nummerierte Tabellen, Fußzeile „Bäckerei Heusser · … · Seite X
+  von Y“ über `@page`-Randboxen (Chrome; Safari druckt ohne). Nicht zurückbauen: das Druckdokument
+  ist **immer im DOM** (auf dem Bildschirm versteckt - erst in `beforeprint` montiert, hängte Chrome
+  eine leere Seite an); Druck-Diagramme mit fester Breite (`PRINT_CHART_WIDTH`); Breiten in `sx`
+  als Pixel-String (`px()`), weil MUI Zahlen ≤ 1 als Prozent liest. Prüfen mit `page.pdf()`, echte
+  Zahlen nur lokal.
 
 ## Tagesziel-Ampel (`/admin/finance/tagesziel`)
 
@@ -83,12 +128,16 @@ Dashboard-Kachel (`components/targets/TargetsTile.tsx`) und Detailseite.
 
 - API, Finanzen: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/finance`
   (Core und Routen, `financeCore.test.js`, `financeRoutes.test.js`)
+- API, Jahr/Monat: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/financeReport`
+  (`financeReportCore.test.js`, `financeReportRoutes.test.js`)
 - API, Tagesziel: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/targets`
   (`targetsCore.test.js`, `targetsRoutes.test.js`; synthetische Fixtures in Temp-Verzeichnissen)
 - Management-App: `src/lib/finance.spec.ts`, `src/lib/financeApi.spec.ts`,
   `admin/finance/FinanceClient.spec.tsx`, `src/lib/targetsApi.spec.ts`,
   `components/targets/TargetsTile.spec.tsx`, `components/targets/TargetStatusChip.spec.tsx`,
-  `admin/finance/tagesziel/TagesZielClient.spec.tsx`
+  `admin/finance/tagesziel/TagesZielClient.spec.tsx`, `admin/finance/{jahr,monat}/**/*.spec.tsx`,
+  `src/lib/financeCharts.spec.ts`, `components/finance/{FinanceCharts,FinancePrint}.spec.tsx`
 
 Fixtures sind erfunden: `apps/bakery-api/tests/fixtures/finance-summary.synthetic.js`,
-`apps/bakery-management/src/lib/targetsFixtures.ts`. Nie einen echten Auszug hineinkopieren.
+`apps/bakery-management/src/lib/targetsFixtures.ts`, `apps/bakery-api/tests/fixtures/finance-report.synthetic.js`,
+`apps/bakery-management/src/lib/financeReportFixtures.ts`. Nie einen echten Auszug hineinkopieren.

@@ -290,7 +290,15 @@ function filterForRole(
     if (item.href === '/admin/login') return []
     if (item.external) return role === 'inhaber' ? [item] : []
     if (!item.href) return []
-    return isPathAllowedForRole(item.href, role, sessionKind) ? [item] : []
+    if (!isPathAllowedForRole(item.href, role, sessionKind)) return []
+    // Nur lesen: Beschreibung ohne das, was die Rolle nicht darf.
+    if (
+      item.readOnly &&
+      !isPathAllowedForRole(item.readOnly.path, role, sessionKind)
+    ) {
+      return [{ ...item, description: item.readOnly.description }]
+    }
+    return [item]
   })
 }
 

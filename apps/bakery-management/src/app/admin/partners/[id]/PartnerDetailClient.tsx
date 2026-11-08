@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -8,22 +8,18 @@ import {
   AlertTitle,
   Box,
   Button,
-  Card,
-  CardContent,
   Chip,
-  CircularProgress,
   Collapse,
   Dialog,
   DialogActions,
   DialogContent,
   DialogContentText,
   DialogTitle,
-  Divider,
-  Grid,
   IconButton,
-  Paper,
+  ListItemIcon,
+  Menu,
+  MenuItem,
   Snackbar,
-  Stack,
   Table,
   TableBody,
   TableCell,
@@ -35,7 +31,6 @@ import {
   Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
-import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import AssessmentIcon from '@mui/icons-material/Assessment'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
@@ -44,9 +39,8 @@ import EditIcon from '@mui/icons-material/Edit'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ListAltIcon from '@mui/icons-material/ListAlt'
-import PlaceIcon from '@mui/icons-material/Place'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
 import RefreshIcon from '@mui/icons-material/Refresh'
-import StorefrontIcon from '@mui/icons-material/Storefront'
 import {
   deleteVisit,
   fetchPartner,
@@ -57,11 +51,9 @@ import {
   Partner,
   PartnerStats,
   PartnerVisit,
-  SettlementModel,
   TimelineEntry,
   VISIT_TYPE_COLORS,
   VISIT_TYPE_LABELS,
-  WEEKDAY_SHORT,
   formatCurrency,
   formatDate,
   formatPercent,
@@ -71,67 +63,66 @@ import {
   toBusinessDate,
   weekdayOf,
 } from '../../../../lib/partnerTypes'
+import {
+  EmptyState,
+  ErrorState,
+  KeyFigures,
+  LoadingState,
+  PageLayout,
+  PageSection,
+} from '../../../../components/layout'
+import {
+  DayStateChip,
+  ProvisionalBadge,
+  SETTLEMENT_DESCRIPTIONS,
+  SETTLEMENT_LABELS,
+  dayStateOf,
+  deliveryDaysText,
+  isProvisionalState,
+} from '../partnerUi'
+import { errorText } from '../errorText'
 
 type DayView = DayDetail & { visits: PartnerVisit[] }
 type Totals = PartnerStats['totals']
-
-const SETTLEMENT_LABELS: Record<SettlementModel, string> = {
-  commission: 'Kommission',
-  firm_sale: 'Festkauf',
-}
-
-const SETTLEMENT_DESCRIPTIONS: Record<SettlementModel, string> = {
-  commission:
-    'Abgerechnet wird nur, was verkauft wurde - die Reste kommen zurück.',
-  firm_sale: 'Die gelieferte Ware wird fest abgerechnet.',
-}
 
 /** Menge - `null` heißt "nicht gezählt", nicht "null Stück". */
 function formatQty(value: number | null | undefined): string {
   return value == null ? '–' : String(value)
 }
 
-function KpiTile({
-  label,
-  value,
-  hint,
-  provisional,
-  color,
-}: {
-  label: string
-  value: string
-  hint?: string
-  provisional?: boolean
-  color?: string
-}) {
+/** Zahl mit Bezeichnung in einer Besuchszeile. */
+/**
+ * „Rest gezählt“ eines Besuchs. `countedQty` des Eintrags ist eine Summe, in
+ * der „nicht gezählt“ (`null`) als 0 steckt - eine Erstbestückung ohne
+ * Zählung stand so als „0“ da, als wäre der Schrank leer gewesen.
+ */
+function countedText(entry: TimelineEntry): string {
+  const items = entry.items ?? []
+  const uncounted = items.filter((item) => item.countedQty == null).length
+  if (items.length > 0 && uncounted === items.length) return 'nicht gezählt'
+  if (uncounted > 0) return `${entry.countedQty} · ${uncounted} nicht gezählt`
+  return String(entry.countedQty)
+}
+
+function VisitFigure({ label, value }: { label: string; value: string }) {
   return (
-    <Card variant="outlined" sx={{ height: '100%' }}>
-      <CardContent sx={{ py: { xs: 1.5, md: 2 } }}>
-        <Typography variant="body2" color="text.secondary" gutterBottom>
-          {label}
-        </Typography>
-        <Typography
-          variant="h4"
-          sx={{ fontSize: { xs: '1.5rem', md: '2rem' }, color: color }}
-        >
-          {value}
-        </Typography>
-        {provisional ? (
-          <Typography variant="caption" color="warning.main">
-            vorläufig
-          </Typography>
-        ) : hint ? (
-          <Typography variant="caption" color="text.secondary">
-            {hint}
-          </Typography>
-        ) : null}
-      </CardContent>
-    </Card>
+    <Box sx={{ minWidth: 0 }}>
+      <Typography variant="caption" color="text.secondary" display="block">
+        {label}
+      </Typography>
+      <Typography
+        variant="body2"
+        fontWeight={500}
+        sx={{ fontVariantNumeric: 'tabular-nums' }}
+      >
+        {value}
+      </Typography>
+    </Box>
   )
 }
 
-/** Ein Besuch in der Timeline - zugeklappt die Summen, aufgeklappt je Produkt. */
-function TimelineCard({
+/** Ein Besuch der Tagesliste - zugeklappt die Summen, aufgeklappt je Produkt. */
+function VisitRow({
   entry,
   partnerId,
   onDelete,
@@ -141,177 +132,150 @@ function TimelineCard({
   onDelete: (entry: TimelineEntry) => void
 }) {
   const [open, setOpen] = useState(false)
+  const time = formatTime(entry.visitAt)
 
   return (
-    <Paper variant="outlined" sx={{ mb: 2 }}>
-      <Box
-        sx={{
-          p: { xs: 1.5, md: 2 },
-          display: 'flex',
-          flexDirection: { xs: 'column', md: 'row' },
-          gap: 1.5,
-          alignItems: { xs: 'stretch', md: 'flex-start' },
-        }}
-      >
-        <Box sx={{ minWidth: 96 }}>
-          <Typography variant="h6" component="p">
-            {formatTime(entry.visitAt)}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {entry.sequence}. Besuch
-          </Typography>
+    <Box
+      component="li"
+      sx={{
+        listStyle: 'none',
+        '&:not(:last-of-type)': { borderBottom: 1, borderColor: 'divider' },
+      }}
+    >
+      <Box sx={{ px: { xs: 2, md: 3 }, py: 1.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+          <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                columnGap: 1,
+                rowGap: 0.5,
+              }}
+            >
+              <Typography
+                variant="subtitle1"
+                component="p"
+                sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}
+              >
+                {time}
+              </Typography>
+              <Chip
+                size="small"
+                variant="outlined"
+                label={VISIT_TYPE_LABELS[entry.visitType]}
+                color={VISIT_TYPE_COLORS[entry.visitType]}
+              />
+              <Typography variant="body2" color="text.secondary">
+                {entry.staffName || 'Person nicht erfasst'}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {entry.sequence}. Besuch
+              </Typography>
+            </Box>
+            {entry.note && (
+              <Typography
+                variant="body2"
+                sx={{ mt: 0.5, fontStyle: 'italic', overflowWrap: 'anywhere' }}
+              >
+                „{entry.note}“
+              </Typography>
+            )}
+          </Box>
+
+          <Box sx={{ display: 'flex', flexShrink: 0, mr: -1, mt: -0.5 }}>
+            <Tooltip title="Besuch korrigieren">
+              <IconButton
+                component={Link}
+                href={`/admin/partners/${partnerId}/visit/new?visit=${entry.visitId}`}
+                aria-label={`Besuch um ${time} korrigieren`}
+                sx={{ minWidth: 44, minHeight: 44 }}
+              >
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Besuch löschen">
+              <IconButton
+                color="error"
+                onClick={() => onDelete(entry)}
+                aria-label={`Besuch um ${time} löschen`}
+                sx={{ minWidth: 44, minHeight: 44 }}
+              >
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title={open ? 'Produkte ausblenden' : 'Produkte anzeigen'}>
+              <IconButton
+                onClick={() => setOpen((prev) => !prev)}
+                aria-expanded={open}
+                aria-label={
+                  open
+                    ? `Produkte des Besuchs um ${time} ausblenden`
+                    : `Produkte des Besuchs um ${time} anzeigen`
+                }
+                sx={{ minWidth: 44, minHeight: 44 }}
+              >
+                {open ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+              </IconButton>
+            </Tooltip>
+          </Box>
         </Box>
 
-        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-          <Stack
-            direction="row"
-            spacing={1}
-            alignItems="center"
-            flexWrap="wrap"
-            useFlexGap
-            sx={{ mb: 0.5 }}
-          >
-            <Chip
-              size="small"
-              label={VISIT_TYPE_LABELS[entry.visitType]}
-              color={VISIT_TYPE_COLORS[entry.visitType]}
-            />
-            <Typography variant="body2" color="text.secondary">
-              {entry.staffName || 'Person nicht erfasst'}
-            </Typography>
-          </Stack>
-
-          {entry.note && (
-            <Typography variant="body2" sx={{ mb: 1, fontStyle: 'italic' }}>
-              „{entry.note}“
-            </Typography>
-          )}
-
-          <Stack
-            direction="row"
-            spacing={{ xs: 2, md: 3 }}
-            flexWrap="wrap"
-            useFlexGap
-          >
-            <Box>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                display="block"
-              >
-                Rest gezählt
-              </Typography>
-              <Typography variant="body2" fontWeight={500}>
-                {entry.countedQty}
-              </Typography>
-            </Box>
-            <Box>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                display="block"
-              >
-                Neu geliefert
-              </Typography>
-              <Typography variant="body2" fontWeight={500}>
-                {entry.deliveredQty}
-              </Typography>
-            </Box>
-            <Box>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                display="block"
-              >
-                Verkauft seit letztem Besuch
-              </Typography>
-              <Typography variant="body2" fontWeight={500}>
-                {entry.soldSinceLastQty} ·{' '}
-                {formatCurrency(entry.soldSinceLastRevenue)}
-              </Typography>
-            </Box>
-            <Box>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                display="block"
-              >
-                Bestand danach
-              </Typography>
-              <Typography variant="body2" fontWeight={500}>
-                {entry.stockAfterQty}
-              </Typography>
-            </Box>
-          </Stack>
+        <Box
+          sx={{
+            mt: 1,
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: 'repeat(2, minmax(0, 1fr))',
+              sm: 'repeat(4, minmax(0, 1fr))',
+            },
+            gap: 1,
+            maxWidth: 720,
+          }}
+        >
+          <VisitFigure label="Rest gezählt" value={countedText(entry)} />
+          <VisitFigure
+            label="Neu geliefert"
+            value={String(entry.deliveredQty)}
+          />
+          <VisitFigure
+            label="Verkauft seit letztem Besuch"
+            value={`${entry.soldSinceLastQty} · ${formatCurrency(
+              entry.soldSinceLastRevenue
+            )}`}
+          />
+          <VisitFigure
+            label="Bestand danach"
+            value={String(entry.stockAfterQty)}
+          />
         </Box>
-
-        <Stack direction="row" spacing={0.5} sx={{ alignSelf: 'flex-start' }}>
-          <Tooltip title="Besuch korrigieren">
-            <IconButton
-              size="small"
-              component={Link}
-              href={`/admin/partners/${partnerId}/visit/new?visit=${entry.visitId}`}
-              aria-label={`Besuch um ${formatTime(entry.visitAt)} korrigieren`}
-            >
-              <EditIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Besuch löschen">
-            <IconButton
-              size="small"
-              color="error"
-              onClick={() => onDelete(entry)}
-              aria-label={`Besuch um ${formatTime(entry.visitAt)} löschen`}
-            >
-              <DeleteIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title={open ? 'Produkte ausblenden' : 'Produkte anzeigen'}>
-            <IconButton
-              size="small"
-              onClick={() => setOpen((prev) => !prev)}
-              aria-expanded={open}
-              aria-label={
-                open
-                  ? `Produkte des Besuchs um ${formatTime(
-                      entry.visitAt
-                    )} ausblenden`
-                  : `Produkte des Besuchs um ${formatTime(
-                      entry.visitAt
-                    )} anzeigen`
-              }
-            >
-              {open ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-            </IconButton>
-          </Tooltip>
-        </Stack>
       </Box>
 
       <Collapse in={open} unmountOnExit>
-        <Divider />
         {entry.items.length === 0 ? (
-          <Box sx={{ p: 2 }}>
-            <Typography variant="body2" color="text.secondary">
-              Für diesen Besuch sind keine Produkte erfasst.
-            </Typography>
-          </Box>
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ px: { xs: 2, md: 3 }, pb: 2 }}
+          >
+            Für diesen Besuch sind keine Produkte erfasst.
+          </Typography>
         ) : (
-          <TableContainer>
-            <Table size="small">
+          <TableContainer sx={{ overflowX: 'auto', bgcolor: 'action.hover' }}>
+            <Table size="small" aria-label={`Produkte des Besuchs um ${time}`}>
               <TableHead>
                 <TableRow>
                   <TableCell>Produkt</TableCell>
                   <TableCell align="right">Rest</TableCell>
                   <TableCell align="right">Neu</TableCell>
-                  <TableCell align="right">
-                    Verkauft seit letztem Besuch
-                  </TableCell>
-                  <TableCell align="right">Bestand danach</TableCell>
+                  <TableCell align="right">Verkauft</TableCell>
+                  <TableCell align="right">Bestand</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {entry.items.map((item) => (
-                  <TableRow key={item.productSlug || item.productId} hover>
+                  <TableRow key={item.productSlug || item.productId}>
                     <TableCell>
                       <Typography variant="body2">
                         {item.productName}
@@ -333,7 +297,7 @@ function TimelineCard({
           </TableContainer>
         )}
       </Collapse>
-    </Paper>
+    </Box>
   )
 }
 
@@ -359,10 +323,17 @@ export default function PartnerDetailClient({
   const [error, setError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<TimelineEntry | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null)
   const [feedback, setFeedback] = useState<{
     message: string
     severity: 'success' | 'error'
   } | null>(null)
+  /**
+   * Nur die jüngste Anfrage darf den Tag setzen. Wer schnell zwei Tage
+   * zurückblättert, bekam sonst die Antwort des ersten Tages unter dem
+   * Datum des zweiten angezeigt, wenn sie später ankam.
+   */
+  const requestRef = useRef(0)
 
   useEffect(() => {
     setSelectedDate((current) => current || initialDate || toBusinessDate())
@@ -385,24 +356,30 @@ export default function PartnerDetailClient({
   const load = useCallback(async () => {
     // Vor dem Mount steht noch kein Geschäftstag fest - dann nicht laden.
     if (!selectedDate) return
+    const request = ++requestRef.current
     setLoading(true)
     setError(null)
-    try {
-      const [partnerData, dayData] = await Promise.all([
-        fetchPartner(partnerId),
-        fetchToday(partnerId, selectedDate),
-      ])
-      setPartner(partnerData)
-      setDay(dayData)
-    } catch (err) {
+    const [partnerResult, dayResult] = await Promise.allSettled([
+      fetchPartner(partnerId),
+      fetchToday(partnerId, selectedDate),
+    ])
+    if (request !== requestRef.current) return
+    if (partnerResult.status === 'fulfilled') setPartner(partnerResult.value)
+    const failed =
+      partnerResult.status === 'rejected'
+        ? partnerResult.reason
+        : dayResult.status === 'rejected'
+        ? dayResult.reason
+        : null
+    if (failed) {
+      setDay(null)
       setError(
-        err instanceof Error
-          ? err.message
-          : 'Die Partnerdaten konnten nicht geladen werden.'
+        errorText(failed, 'Die Partnerdaten konnten nicht geladen werden.')
       )
-    } finally {
-      setLoading(false)
+    } else if (dayResult.status === 'fulfilled') {
+      setDay(dayResult.value)
     }
+    setLoading(false)
   }, [partnerId, selectedDate])
 
   useEffect(() => {
@@ -415,7 +392,6 @@ export default function PartnerDetailClient({
   // Abholung erfasst, aber nicht jedes Produkt mit Bestand gezählt
   const isComplete = day?.isComplete !== false
   const uncountedProducts = day?.uncountedProducts ?? []
-  const provisional = isOpen || !isComplete
   const hasVisits = timeline.length > 0
 
   const address = useMemo(() => {
@@ -424,18 +400,20 @@ export default function PartnerDetailClient({
     return [partner.street, city].filter(Boolean).join(', ')
   }, [partner])
 
-  const deliveryDayLabel = useMemo(() => {
-    if (!partner?.deliveryDays?.length) return ''
-    return partner.deliveryDays
-      .map((d) => WEEKDAY_SHORT[d] || String(d))
-      .join(', ')
-  }, [partner])
-
   const isDeliveryDay = useMemo(() => {
     const weekday = weekdayOf(selectedDate)
     if (weekday == null || !partner?.deliveryDays?.length) return true
     return partner.deliveryDays.includes(weekday)
   }, [partner, selectedDate])
+
+  const state = dayStateOf({
+    visitCount: timeline.length,
+    isOpen,
+    isComplete,
+    isDeliveryDay,
+  })
+  const provisional = isProvisionalState(state)
+  const showDay = Boolean(day) && !loading && !error
 
   const captureHref = `/admin/partners/${partnerId}/visit/new?date=${selectedDate}`
 
@@ -450,10 +428,7 @@ export default function PartnerDetailClient({
       await load()
     } catch (err) {
       setFeedback({
-        message:
-          err instanceof Error
-            ? err.message
-            : 'Der Besuch konnte nicht gelöscht werden.',
+        message: errorText(err, 'Der Besuch konnte nicht gelöscht werden.'),
         severity: 'error',
       })
     } finally {
@@ -461,370 +436,280 @@ export default function PartnerDetailClient({
     }
   }
 
+  const subtitle = partner
+    ? [
+        address || 'Adresse noch nicht hinterlegt',
+        SETTLEMENT_LABELS[partner.settlementModel] || partner.settlementModel,
+        `Liefertage ${deliveryDaysText(partner.deliveryDays)}`,
+      ].join(' · ')
+    : undefined
+
+  const returnHint = isOpen
+    ? 'Retoure erst mit der Abholung'
+    : !isComplete
+    ? 'Retoure unvollständig gezählt'
+    : `Retoure ${totals?.returnedQty ?? 0} Stück · ${formatCurrency(
+        totals?.returnValue ?? 0
+      )}`
+
   return (
-    <Box>
-      <Button
-        component={Link}
-        href="/admin/partners"
-        startIcon={<ArrowBackIcon />}
-        size="small"
-        sx={{ mb: 1 }}
-      >
-        Alle Verkaufspartner
-      </Button>
-
-      {/* Kopf: Partner, Adresse, Abrechnungsmodell, Datum, Erfassen-Button */}
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: { xs: 'column', lg: 'row' },
-          justifyContent: 'space-between',
-          alignItems: { xs: 'stretch', lg: 'flex-start' },
-          gap: 2,
-          mb: 3,
-        }}
-      >
-        <Box sx={{ minWidth: 0 }}>
-          <Typography
-            variant="h4"
-            component="h1"
-            sx={{ fontSize: { xs: '1.5rem', md: '2.125rem' } }}
+    <PageLayout
+      title={partner?.name || 'Verkaufspartner'}
+      subtitle={
+        partner ? (
+          <Tooltip
+            title={SETTLEMENT_DESCRIPTIONS[partner.settlementModel] ?? ''}
           >
-            <StorefrontIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-            {partner?.name || 'Verkaufspartner'}
-          </Typography>
-
-          {address && (
-            <Typography
-              variant="subtitle1"
-              color="text.secondary"
-              sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}
-            >
-              <PlaceIcon fontSize="small" />
-              {address}
-            </Typography>
-          )}
-          {partner && !address && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              Adresse noch nicht hinterlegt.
-            </Typography>
-          )}
-
-          <Stack
-            direction="row"
-            spacing={1}
-            flexWrap="wrap"
-            useFlexGap
-            sx={{ mt: 1.5 }}
-          >
-            {partner && (
-              <Tooltip title={SETTLEMENT_DESCRIPTIONS[partner.settlementModel]}>
-                <Chip
-                  size="small"
-                  color="secondary"
-                  label={`Abrechnung: ${
-                    SETTLEMENT_LABELS[partner.settlementModel] ||
-                    partner.settlementModel
-                  }`}
-                />
-              </Tooltip>
-            )}
-            {deliveryDayLabel && (
-              <Chip
-                size="small"
-                variant="outlined"
-                label={`Liefertage: ${deliveryDayLabel}`}
-              />
-            )}
-            {partner && !partner.active && (
-              <Chip size="small" color="warning" label="Inaktiv" />
-            )}
-          </Stack>
-        </Box>
-
-        <Stack spacing={1.5} sx={{ minWidth: { lg: 340 } }}>
-          <Stack direction="row" spacing={1} alignItems="center">
-            <Tooltip title="Vorheriger Tag">
-              <IconButton
-                size="small"
-                aria-label="Vorheriger Tag"
-                onClick={() => setSelectedDate((d) => shiftDate(d, -1))}
-              >
-                <ChevronLeftIcon />
-              </IconButton>
-            </Tooltip>
-            <TextField
-              type="date"
+            <span>{subtitle}</span>
+          </Tooltip>
+        ) : undefined
+      }
+      back={{ href: '/admin/partners', label: 'Alle Verkaufspartner' }}
+      status={
+        <>
+          {partner && !partner.active && (
+            <Chip
               size="small"
-              label="Geschäftstag"
-              value={selectedDate}
-              onChange={(e) =>
-                setSelectedDate(e.target.value || toBusinessDate())
-              }
-              InputLabelProps={{ shrink: true }}
-              sx={{ flexGrow: 1 }}
+              variant="outlined"
+              color="warning"
+              label="Inaktiv"
             />
-            <Tooltip title="Nächster Tag">
-              <IconButton
-                size="small"
-                aria-label="Nächster Tag"
-                onClick={() => setSelectedDate((d) => shiftDate(d, 1))}
-              >
-                <ChevronRightIcon />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title="Aktualisieren">
-              <span>
-                <IconButton
-                  size="small"
-                  aria-label="Daten aktualisieren"
-                  onClick={load}
-                  disabled={loading}
-                >
-                  <RefreshIcon />
-                </IconButton>
-              </span>
-            </Tooltip>
-          </Stack>
-
+          )}
+          {showDay && state === 'closed' && (
+            <DayStateChip state={state} label="Tag abgeschlossen" />
+          )}
+        </>
+      }
+      actions={
+        <>
           <Button
             component={Link}
             href={captureHref}
             variant="contained"
-            size="large"
             startIcon={<AddIcon />}
-            fullWidth
           >
             Besuch erfassen
           </Button>
-
-          <Stack direction="row" spacing={1}>
-            <Button
+          <IconButton
+            aria-label="Weitere Aktionen"
+            aria-haspopup="menu"
+            aria-expanded={Boolean(menuAnchor)}
+            onClick={(event) => setMenuAnchor(event.currentTarget)}
+            sx={{ minWidth: 44, minHeight: 44 }}
+          >
+            <MoreVertIcon />
+          </IconButton>
+          <Menu
+            anchorEl={menuAnchor}
+            open={Boolean(menuAnchor)}
+            onClose={() => setMenuAnchor(null)}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+          >
+            <MenuItem
               component={Link}
               href={`/admin/partners/${partnerId}/templates`}
-              variant="outlined"
-              size="small"
-              startIcon={<ListAltIcon />}
-              fullWidth
+              onClick={() => setMenuAnchor(null)}
             >
-              Vorlagen
-            </Button>
-            <Button
+              <ListItemIcon>
+                <ListAltIcon fontSize="small" />
+              </ListItemIcon>
+              Standard-Bestückung
+            </MenuItem>
+            <MenuItem
               component={Link}
               href={`/admin/partners/${partnerId}/report`}
-              variant="outlined"
-              size="small"
-              startIcon={<AssessmentIcon />}
-              fullWidth
+              onClick={() => setMenuAnchor(null)}
             >
+              <ListItemIcon>
+                <AssessmentIcon fontSize="small" />
+              </ListItemIcon>
               Report
-            </Button>
-          </Stack>
-        </Stack>
+            </MenuItem>
+          </Menu>
+        </>
+      }
+    >
+      {/* Tag wählen */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.5,
+          maxWidth: 420,
+          '@media print': { display: 'none' },
+        }}
+      >
+        <Tooltip title="Vorheriger Tag">
+          <IconButton
+            aria-label="Vorheriger Tag"
+            onClick={() => setSelectedDate((d) => shiftDate(d, -1))}
+            disabled={!selectedDate}
+            sx={{ minWidth: 44, minHeight: 44 }}
+          >
+            <ChevronLeftIcon />
+          </IconButton>
+        </Tooltip>
+        <TextField
+          type="date"
+          size="small"
+          label="Geschäftstag"
+          value={selectedDate}
+          onChange={(e) => {
+            // Ein halb getipptes Datum ist leer - dann nicht auf heute springen.
+            if (e.target.value) setSelectedDate(e.target.value)
+          }}
+          InputLabelProps={{ shrink: true }}
+          sx={{ flexGrow: 1 }}
+        />
+        <Tooltip title="Nächster Tag">
+          <IconButton
+            aria-label="Nächster Tag"
+            onClick={() => setSelectedDate((d) => shiftDate(d, 1))}
+            disabled={!selectedDate}
+            sx={{ minWidth: 44, minHeight: 44 }}
+          >
+            <ChevronRightIcon />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Aktualisieren">
+          <span>
+            <IconButton
+              aria-label="Daten aktualisieren"
+              onClick={load}
+              disabled={loading}
+              sx={{ minWidth: 44, minHeight: 44 }}
+            >
+              <RefreshIcon />
+            </IconButton>
+          </span>
+        </Tooltip>
       </Box>
 
-      {error && (
-        <Alert
-          severity="error"
-          sx={{ mb: 3 }}
-          action={
-            <Button color="inherit" size="small" onClick={load}>
-              Erneut versuchen
-            </Button>
-          }
-        >
-          {error}
-        </Alert>
-      )}
+      {error && <ErrorState message={error} onRetry={load} />}
 
-      {loading ? (
-        <Box
-          sx={{ display: 'flex', justifyContent: 'center', p: 6 }}
-          role="status"
-          aria-label="Partnerdaten werden geladen"
-        >
-          <CircularProgress />
-        </Box>
-      ) : (
-        !error && (
-          <>
-            {/* Tagesstatus - offene Tage sind ausdrücklich vorläufig */}
-            {!hasVisits ? (
-              <Alert severity="warning" sx={{ mb: 3 }}>
-                <AlertTitle>Tag noch offen – kein Besuch erfasst</AlertTitle>
-                Für den {formatDate(selectedDate)} ist noch kein Besuch am
-                Backschrank erfasst. Verkauf und Umsatz lassen sich erst nach
-                der Erstbestückung berechnen.
-                {!isDeliveryDay &&
-                  ' Der Tag ist außerdem kein regulärer Liefertag.'}
-              </Alert>
-            ) : isOpen ? (
-              <Alert severity="warning" sx={{ mb: 3 }}>
-                <AlertTitle>
-                  Tag noch offen – Verkauf und Umsatz sind vorläufig
-                </AlertTitle>
-                Für den {formatDate(selectedDate)} ist noch keine Abholung
-                erfasst. Erst die Abholung schließt den Geschäftstag ab; bis
-                dahin ist nur verkauft, was beim Nachfüllen gezählt wurde - was
-                noch im Schrank liegt, ist weder als verkauft noch als Retoure
-                gebucht.
-              </Alert>
-            ) : !isComplete ? (
-              <Alert severity="warning" sx={{ mb: 3 }}>
-                <AlertTitle>
-                  Abholung unvollständig – {day?.uncountedQty ?? 0} Stück nicht
-                  gezählt
-                </AlertTitle>
-                Bei der Abholung am {formatDate(selectedDate)} wurde nicht jedes
-                Produkt mit Bestand gezählt. Diese Stücke sind weder als
-                verkauft noch als Retoure erfasst; Verkauf und Umsatz bleiben
-                vorläufig:{' '}
-                <strong>
-                  {uncountedProducts
-                    .map((p) => `${p.productName}: ${p.stockQty} erwartet`)
-                    .join(', ')}
-                </strong>
-              </Alert>
-            ) : (
-              <Alert severity="success" sx={{ mb: 3 }}>
-                <AlertTitle>Tag abgeschlossen</AlertTitle>
-                Die Abholung für den {formatDate(selectedDate)} ist erfasst –
-                Verkauf, Retoure und Umsatz sind endgültig.
-              </Alert>
-            )}
+      {loading && <LoadingState label="Partnerdaten werden geladen …" />}
 
-            {/* Mehr gezählt als möglich: eine Fehlzählung oder eine nicht
-                erfasste Lieferung - nie Retoure (W4-Verifikation Runde 2) */}
-            {(totals?.discrepancyQty ?? 0) > 0 && (
-              <Alert
-                severity="warning"
-                sx={{ mb: 3 }}
-                data-testid="day-discrepancy"
-              >
-                <AlertTitle>
-                  Abweichung: {totals?.discrepancyQty} Stück mehr gezählt, als
-                  im Schrank sein konnten
-                </AlertTitle>
-                Diese Stücke sind weder als verkauft noch als Retoure gebucht.
-                Meist fehlt eine Lieferung (Erstbestückung oder Nachlieferung),
-                oder es wurde verzählt - bitte die Besuche prüfen und
-                korrigieren:{' '}
-                <strong>
-                  {(day?.byProduct ?? [])
-                    .filter((p) => p.discrepancyQty > 0)
-                    .map((p) => `${p.productName}: ${p.discrepancyQty}`)
-                    .join(', ')}
-                </strong>
-              </Alert>
-            )}
+      {showDay && (
+        <>
+          {/* Tagesstatus - offene Tage sind ausdrücklich vorläufig */}
+          {state === 'open' ? (
+            <Alert severity="warning">
+              <AlertTitle>
+                Tag noch offen – Verkauf und Umsatz sind vorläufig
+              </AlertTitle>
+              Für den {formatDate(selectedDate)} ist noch keine Abholung
+              erfasst. Was noch im Schrank liegt, ist weder als verkauft noch
+              als Retoure gebucht.
+            </Alert>
+          ) : state === 'incomplete' ? (
+            <Alert severity="warning">
+              <AlertTitle>
+                Abholung unvollständig – {day?.uncountedQty ?? 0} Stück nicht
+                gezählt
+              </AlertTitle>
+              Diese Stücke sind weder verkauft noch Retoure; Verkauf und Umsatz
+              bleiben vorläufig:{' '}
+              <strong>
+                {uncountedProducts
+                  .map((p) => `${p.productName}: ${p.stockQty} erwartet`)
+                  .join(', ')}
+              </strong>
+            </Alert>
+          ) : null}
 
-            {/* Kennzahlen des gewählten Geschäftstags */}
-            <Grid container spacing={{ xs: 1.5, md: 2 }} sx={{ mb: 4 }}>
-              <Grid item xs={6} md={4} lg={2.4}>
-                <KpiTile
-                  label="Geliefert"
-                  value={String(totals?.deliveredQty ?? 0)}
-                  hint="Stück eingeräumt"
-                />
-              </Grid>
-              <Grid item xs={6} md={4} lg={2.4}>
-                <KpiTile
-                  label="Verkauft"
-                  value={String(totals?.soldQty ?? 0)}
-                  hint="Stück"
-                  provisional={provisional}
-                />
-              </Grid>
-              <Grid item xs={6} md={4} lg={2.4}>
-                <KpiTile
-                  label="Retoure"
-                  value={String(totals?.returnedQty ?? 0)}
-                  hint={
-                    isOpen
-                      ? 'erst mit der Abholung'
-                      : !isComplete
-                      ? 'unvollständig gezählt'
-                      : formatCurrency(totals?.returnValue ?? 0)
-                  }
-                />
-              </Grid>
-              <Grid item xs={6} md={6} lg={2.4}>
-                <KpiTile
-                  label="Umsatz"
-                  value={formatCurrency(totals?.revenue ?? 0)}
-                  hint="zu HQ-Preisen"
-                  provisional={provisional}
-                  color="success.main"
-                />
-              </Grid>
-              <Grid item xs={12} md={6} lg={2.4}>
-                <KpiTile
-                  label="Abverkaufsquote"
-                  value={formatPercent(totals?.sellThroughRate)}
-                  hint="verkauft / geliefert"
-                  provisional={provisional}
-                />
-              </Grid>
-            </Grid>
+          {/* Mehr gezählt als möglich: eine Fehlzählung oder eine nicht
+              erfasste Lieferung - nie Retoure (W4-Verifikation Runde 2) */}
+          {(totals?.discrepancyQty ?? 0) > 0 && (
+            <Alert severity="warning" data-testid="day-discrepancy">
+              <AlertTitle>
+                Abweichung: {totals?.discrepancyQty} Stück mehr gezählt, als im
+                Schrank sein konnten
+              </AlertTitle>
+              Weder verkauft noch Retoure - meist fehlt eine Lieferung, oder es
+              wurde verzählt. Bitte die Besuche prüfen:{' '}
+              <strong>
+                {(day?.byProduct ?? [])
+                  .filter((p) => p.discrepancyQty > 0)
+                  .map((p) => `${p.productName}: ${p.discrepancyQty}`)
+                  .join(', ')}
+              </strong>
+            </Alert>
+          )}
 
-            {/* Besuchs-Timeline */}
-            <Box
-              sx={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'baseline',
-                gap: 2,
-                mb: 1.5,
-              }}
-            >
-              <Typography variant="h6" component="h2">
-                Besuche am {formatDate(selectedDate)}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {plural(
-                  totals?.visitCount ?? timeline.length,
-                  'Besuch',
-                  'Besuche'
-                )}{' '}
-                ·{' '}
-                {plural(
-                  totals?.refillCount ?? 0,
-                  'Nachlieferung',
-                  'Nachlieferungen'
-                )}
-              </Typography>
-            </Box>
+          {hasVisits && (
+            <KeyFigures
+              aria-label={`Kennzahlen am ${formatDate(selectedDate)}`}
+              items={[
+                {
+                  label: 'Geliefert',
+                  // Einheit wie in Übersicht und Report: „60 Stück“.
+                  value: `${totals?.deliveredQty ?? 0} Stück`,
+                  hint: 'eingeräumt',
+                  'data-testid': 'kpi-geliefert',
+                },
+                {
+                  label: 'Verkauft',
+                  value: `${totals?.soldQty ?? 0} Stück`,
+                  badge: provisional ? <ProvisionalBadge /> : undefined,
+                  'data-testid': 'kpi-verkauft',
+                },
+                {
+                  label: 'Umsatz',
+                  value: formatCurrency(totals?.revenue ?? 0),
+                  hint: 'zum Preis bei Lieferung',
+                  badge: provisional ? <ProvisionalBadge /> : undefined,
+                  // Grün nur, wenn die Zahl endgültig ist - ein vorläufiger
+                  // Umsatz von 0,00 € in Grün las sich wie „alles gut“.
+                  tone: provisional ? 'default' : 'success',
+                  'data-testid': 'kpi-umsatz',
+                },
+                {
+                  label: 'Abverkaufsquote',
+                  value: formatPercent(totals?.sellThroughRate),
+                  hint: returnHint,
+                  badge: provisional ? <ProvisionalBadge /> : undefined,
+                  'data-testid': 'kpi-abverkaufsquote',
+                },
+              ]}
+            />
+          )}
 
+          {/* Besuche des Tages */}
+          <PageSection
+            title={`Besuche am ${formatDate(selectedDate)}`}
+            description={`${plural(
+              totals?.visitCount ?? timeline.length,
+              'Besuch',
+              'Besuche'
+            )} · ${plural(
+              totals?.refillCount ?? 0,
+              'Nachlieferung',
+              'Nachlieferungen'
+            )}${!isDeliveryDay ? ' · kein regulärer Liefertag' : ''}`}
+            disablePadding
+          >
             {hasVisits ? (
-              timeline.map((entry) => (
-                <TimelineCard
-                  key={entry.visitId}
-                  entry={entry}
-                  partnerId={partnerId}
-                  onDelete={setDeleteTarget}
-                />
-              ))
+              <Box component="ul" sx={{ m: 0, p: 0 }}>
+                {timeline.map((entry) => (
+                  <VisitRow
+                    key={entry.visitId}
+                    entry={entry}
+                    partnerId={partnerId}
+                    onDelete={setDeleteTarget}
+                  />
+                ))}
+              </Box>
             ) : (
-              <Paper
-                variant="outlined"
-                sx={{ p: { xs: 3, md: 5 }, textAlign: 'center' }}
-              >
-                <Typography color="text.secondary" gutterBottom>
-                  Für diesen Tag ist noch kein Besuch erfasst.
-                </Typography>
-                <Button
-                  component={Link}
-                  href={captureHref}
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                  sx={{ mt: 1 }}
-                >
-                  Besuch erfassen
-                </Button>
-              </Paper>
+              <Box sx={{ px: { xs: 2, md: 3 }, pb: { xs: 2, md: 3 } }}>
+                <EmptyState
+                  title="Für diesen Tag ist noch kein Besuch erfasst."
+                  description="Verkauf und Umsatz lassen sich erst nach der Erstbestückung berechnen."
+                />
+              </Box>
             )}
-          </>
-        )
+          </PageSection>
+        </>
       )}
 
       {/* Löschen nur nach ausdrücklicher Bestätigung */}
@@ -870,6 +755,6 @@ export default function PartnerDetailClient({
           {feedback?.message}
         </Alert>
       </Snackbar>
-    </Box>
+    </PageLayout>
   )
 }

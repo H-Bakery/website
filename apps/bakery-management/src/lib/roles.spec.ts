@@ -33,6 +33,10 @@ describe('ROLE_ACCESS - die eine Rollen-Tabelle', () => {
 
   it.each<[PilotRole, string, boolean]>([
     ['inhaber', '/admin/finance/tagesziel', true],
+    ['inhaber', '/admin/finance/jahr', true],
+    ['inhaber', '/admin/finance/monat/2026-01', true],
+    ['verkauf', '/admin/finance/jahr', false],
+    ['backstube', '/admin/finance/monat', false],
     ['inhaber', '/admin/users', true],
     ['verkauf', '/admin/preorders/abholliste', true],
     ['verkauf', '/admin/delivery/preorders/new', true],
@@ -50,6 +54,10 @@ describe('ROLE_ACCESS - die eine Rollen-Tabelle', () => {
     ['verkauf', '/admin/backzettel/grundmengen/brot', false],
     ['verkauf', '/admin/backzettel/grundmengenx', true],
     ['backstube', '/admin/backzettel/grundmengen', true],
+    // Z10: Backliste eines Backtags - wer den Zettel lesen darf
+    ['backstube', '/admin/backzettel/2026-11-29/backen', true],
+    ['verkauf', '/admin/backzettel/2026-11-29/backen', true],
+    ['fahrer', '/admin/backzettel/2026-11-29/backen', false],
     ['fahrer', '/admin/backzettel', false],
     ['backstube', '/backstube', true],
     // M4 Rest am Abend: Verkauf zählt, Backstube liest, Auswertung nur Inhaber
@@ -276,7 +284,12 @@ describe('Station (PIN-Sitzung)', () => {
   })
 
   it('Finanzen und Tagesziel wie die API nur mit persönlicher Sitzung (W4-verify r2)', () => {
-    for (const path of ['/admin/finance', '/admin/finance/tagesziel']) {
+    for (const path of [
+      '/admin/finance',
+      '/admin/finance/tagesziel',
+      '/admin/finance/jahr',
+      '/admin/finance/monat/2026-01',
+    ]) {
       expect(isPathAllowedForRole(path, 'inhaber', 'station')).toBe(false)
       expect(isPathAllowedForRole(path, 'inhaber', 'personal')).toBe(true)
     }

@@ -614,6 +614,10 @@ describe('confirm, deltas, ticks, reopen', () => {
       bake: 0,
       openQty: 0,
       bakeOpen: 0,
+      // Z10 O5: none of them ticked „gebacken“ on the bake list.
+      baked: 0,
+      bakedQty: 0,
+      bakeUnbaked: 0,
     })
     expect(await auditActions(TUE)).toEqual([
       'confirm',

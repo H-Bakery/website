@@ -4,6 +4,9 @@
  * migrations keeps its partner data. Synthetic data only.
  */
 /* eslint-disable @typescript-eslint/no-var-requires */
+import * as fs from 'fs'
+import * as os from 'os'
+import * as path from 'path'
 import { Model, ModelStatic, QueryTypes, Sequelize } from 'sequelize'
 
 import { openDatabase } from '../../src/db/database'
@@ -16,7 +19,9 @@ const authMigration = require('../../migrations/20261106000000-auth-sessions-sta
 const preordersMigration = require('../../migrations/20261113000000-preorders-b7.js')
 const deliveriesMigration = require('../../migrations/20270105000000-delivery-tours-b8.js')
 const restMigration = require('../../migrations/20261201000000-rest-am-abend.js')
-const dienstplanMigration = require('../../migrations/20270107000000-dienstplan.js')
+const doughDayMigration = require('../../migrations/20270201000000-backzettel-dough-day.js')
+const bakedMigration = require('../../migrations/20270210000000-backzettel-baked.js')
+const dienstplanMigration = require('../../migrations/20270301000000-dienstplan.js')
 
 /** The 17 migrations the server ran before B2, now in migrations/archive/. */
 const LEGACY_NAMES = [
@@ -78,7 +83,7 @@ describe('pilot baseline on a fresh database', () => {
   })
   afterAll(() => sequelize.close())
 
-  it('opens the static list, followed by B3 auth, Z3 Backzettel, B7 preorders, M4 rest, B8 tours and the Dienstplan', () => {
+  it('opens the static list, followed by B3 auth, Z3 Backzettel, B7 preorders, M4 rest, B8 tours, Z10, O5 and the Dienstplan', () => {
     expect(MIGRATIONS.map((m) => m.name)).toEqual([
       '20261105000000-pilot-baseline.js',
       '20261106000000-auth-sessions-stations.js',
@@ -89,7 +94,9 @@ describe('pilot baseline on a fresh database', () => {
       '20261201000000-rest-am-abend.js',
       '20270105000000-delivery-tours-b8.js',
       '20270106000000-rest-count-line-rows.js',
-      '20270107000000-dienstplan.js',
+      '20270201000000-backzettel-dough-day.js',
+      '20270210000000-backzettel-baked.js',
+      '20270301000000-dienstplan.js',
     ])
   })
 
@@ -164,6 +171,8 @@ describe('pilot baseline on a fresh database', () => {
         'total',
         'done_at',
         'done_by',
+        'baked_at',
+        'baked_by',
       ])
     )
   })
@@ -870,6 +879,415 @@ describe('B8 delivery tours migration', () => {
     for (const table of deliveriesMigration.TABLES) {
       expect(await tableNames(sequelize)).not.toContain(table)
     }
+    await sequelize.close()
+  })
+})
+
+describe('Z10 Backzettel dough-day migration (bake_date)', () => {
+  const Z10 = '20270201000000-backzettel-dough-day.js'
+  const SAT = '2026-11-28'
+  const TUE = '2026-12-01'
+  const fixture = require('../fixtures/backzettel.synthetic')
+  const core = require('../../src/services/backzettel.core')
+  const dayCore = require('../../src/services/backzettel-day.core')
+  const configCore = require('../../src/services/backzettel-config.core')
+
+  /** A database with a day confirmed by the v1 path, then the Z10 migration. */
+  async function confirmedV1Day() {
+    const sequelize = await freshDb()
+    await runMigrations(sequelize, {
+      ...quiet,
+      migrations: MIGRATIONS.filter((m) => m.name !== Z10),
+    })
+    expect(await columns(sequelize, 'backzettel_lines')).not.toContain(
+      'bake_date'
+    )
+    // The v1 confirm path: computeDay → linesForConfirm + computedSnapshot.
+    const config = configCore.normalizeConfig(fixture.config())
+    const result = core.computeDay({ config, date: SAT })
+    const lines = dayCore.linesForConfirm(result.lines)
+    const snapshot = dayCore.computedSnapshot(result)
+    await sequelize.query(
+      `INSERT INTO backzettel_days (date, status, season_factor, confirmed_at, preorder_snapshot, computed_snapshot, created_at, updated_at)
+       VALUES (:date, 'confirmed', 1, CURRENT_TIMESTAMP, '[]', :snap, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+              (:tue, 'draft', 1, NULL, NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      { replacements: { date: SAT, tue: TUE, snap: JSON.stringify(snapshot) } }
+    )
+    for (const l of lines) {
+      await sequelize.query(
+        `INSERT INTO backzettel_lines (date, item_id, variant, name, section, unit, base, seasonal, preorders, cap, correction, total, done_at, created_at, updated_at)
+         VALUES (:date, :itemId, :variant, :name, :section, :unit, :base, :seasonal, :preorders, :cap, :correction, :total, :doneAt, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+        {
+          replacements: {
+            ...l,
+            date: SAT,
+            cap: l.cap ?? null,
+            doneAt: l.itemId === 'weck' ? '2026-11-28 05:00:00' : null,
+          },
+        }
+      )
+    }
+    // A draft day with a correction only.
+    await sequelize.query(
+      `INSERT INTO backzettel_lines (date, item_id, variant, correction, correction_reason, created_at, updated_at)
+       VALUES (:tue, 'weck', '', 4, 'Testgrund', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      { replacements: { tue: TUE } }
+    )
+    await initializeModels(sequelize)
+    const { Preorder, PreorderItem } = await import('../../src/models')
+    const preorder = await Preorder.create({
+      code: 'LA-2026-11-28-01',
+      channel: 'laden',
+      customerName: 'Testkunde',
+      pickupDate: SAT,
+    })
+    await PreorderItem.create({
+      preorderId: preorder.id,
+      productId: 'test-weck',
+      productName: 'Test test-weck',
+      unitPrice: 1,
+      quantity: 5,
+    })
+    // A Nachtrag recorded after the confirm (snapshot [] → +5).
+    await sequelize.query(
+      `INSERT INTO backzettel_deltas (date, item_id, variant, qty, preorder_id, kind, created_at)
+       VALUES (:date, 'weck', '', 5, :id, 'added', CURRENT_TIMESTAMP)`,
+      { replacements: { date: SAT, id: preorder.id } }
+    )
+    const result2 = await runMigrations(sequelize, quiet)
+    expect(result2.executed).toEqual([Z10])
+    return { sequelize, lines, snapshot, config }
+  }
+
+  async function indexes(sequelize: Sequelize, table: string) {
+    const list = (await sequelize
+      .getQueryInterface()
+      .showIndex(table)) as unknown as {
+      name: string
+      unique: boolean
+      fields: { attribute: string }[]
+    }[]
+    return Object.fromEntries(
+      list
+        .filter((i) => !i.name.startsWith('sqlite_autoindex'))
+        .map((i) => [
+          i.name,
+          { unique: i.unique, fields: i.fields.map((f) => f.attribute) },
+        ])
+    )
+  }
+
+  it('backfills bake_date = date on lines and deltas and swaps the unique index', async () => {
+    const { sequelize } = await confirmedV1Day()
+    for (const table of ['backzettel_lines', 'backzettel_deltas']) {
+      const rows = await sequelize.query<{ date: string; bake_date: string }>(
+        `SELECT date, bake_date FROM ${table}`,
+        { type: QueryTypes.SELECT }
+      )
+      expect(rows.length).toBeGreaterThan(0)
+      for (const r of rows) expect(r.bake_date).toBe(r.date)
+    }
+    const lineIndexes = await indexes(sequelize, 'backzettel_lines')
+    expect(lineIndexes[doughDayMigration.OLD_LINES_INDEX]).toBeUndefined()
+    expect(lineIndexes[doughDayMigration.LINES_INDEX]).toEqual({
+      unique: true,
+      fields: ['date', 'bake_date', 'item_id', 'variant'],
+    })
+    expect(lineIndexes['backzettel_lines_bake_date']).toEqual({
+      unique: false,
+      fields: ['bake_date'],
+    })
+    expect(
+      (await indexes(sequelize, 'backzettel_deltas'))[
+        'backzettel_deltas_bake_date'
+      ]
+    ).toEqual({ unique: false, fields: ['bake_date'] })
+
+    // One line per sheet, bake day, item and variant: Saturday's sheet may
+    // hold Tuesday's Weck next to its own.
+    const insert = (bakeDate: string) =>
+      sequelize.query(
+        `INSERT INTO backzettel_lines (date, bake_date, item_id, created_at, updated_at) VALUES (:date, :bakeDate, 'weck', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+        { replacements: { date: SAT, bakeDate } }
+      )
+    // Without a bake date the column is '' (never 'Invalid date').
+    await sequelize.query(
+      `INSERT INTO backzettel_lines (date, item_id, variant, created_at, updated_at) VALUES (:date, 'weck', 'probe', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      { replacements: { date: SAT } }
+    )
+    expect(
+      await sequelize.query(
+        "SELECT bake_date FROM backzettel_lines WHERE variant = 'probe'",
+        { type: QueryTypes.SELECT }
+      )
+    ).toEqual([{ bake_date: '' }])
+    await insert(TUE)
+    await expect(insert(TUE)).rejects.toMatchObject({
+      name: 'SequelizeUniqueConstraintError',
+    })
+    await expect(insert(SAT)).rejects.toMatchObject({
+      name: 'SequelizeUniqueConstraintError',
+    })
+    expect(await foreignKeyViolations(sequelize)).toEqual([])
+    await sequelize.close()
+  })
+
+  it('a day confirmed before Z10 reads as before (v1 layout, legacy plan)', async () => {
+    const { sequelize, lines, snapshot, config } = await confirmedV1Day()
+    const { createBackzettelService } = await import(
+      '../../src/services/backzettel.service'
+    )
+    const { createBackzettelSource } = await import(
+      '../../src/services/backzettel-source'
+    )
+    const hqDir = fs.mkdtempSync(path.join(os.tmpdir(), 'z10-mig-hq-'))
+    try {
+      fs.mkdirSync(path.join(hqDir, 'config'), { recursive: true })
+      fs.writeFileSync(
+        path.join(hqDir, 'config', 'backzettel.yaml'),
+        JSON.stringify(fixture.config())
+      )
+      const service = createBackzettelService(
+        createBackzettelSource({ hqDir, cacheMs: 0 })
+      )
+      const day: any = await service.getDay(SAT)
+      expect(day).toMatchObject({
+        status: 'confirmed',
+        sheetVersion: 1,
+        plan: { version: 1, doughDate: SAT, bakeDates: [{ date: SAT }] },
+        configChangedSinceConfirm: false,
+        deltasPending: false,
+      })
+      expect(day.doughs).toBeUndefined()
+      expect(day.machine).toBeUndefined()
+      // Frozen Hefeteig, fillings, prep, warnings: exactly as confirmed.
+      for (const k of ['hefeteig', 'fillings', 'prep', 'warnings']) {
+        expect(day[k]).toEqual(snapshot[k])
+      }
+      // The lines: the v1 reading of the same rows (without bake_date) -
+      // plus only the additive Z10 fields, with the bake day = the day.
+      const v1 = dayCore.frozenSections(
+        lines.map((l: any) => ({ ...l, date: SAT })),
+        config,
+        snapshot.unsetKeys
+      )
+      const ADDITIVE = [
+        'bakeDate',
+        'doughDate',
+        'lead',
+        'variantKind',
+        'variantLabel',
+      ]
+      const got = day.sections.map((s: any) => ({
+        id: s.id,
+        lines: s.lines.map((l: any) => {
+          for (const k of ADDITIVE.slice(1)) expect(l).toHaveProperty(k)
+          expect(l.bakeDate).toBe(SAT)
+          expect(l.doughDate).toBe(SAT)
+          expect(l.lead).toBe(0)
+          const v1Line: Record<string, unknown> = {}
+          for (const [k, v] of Object.entries(l)) {
+            if (!ADDITIVE.includes(k)) v1Line[k] = v
+          }
+          return v1Line
+        }),
+      }))
+      expect(got).toEqual(
+        v1.map((s: any) => ({
+          id: s.id,
+          lines: s.lines.map(({ line }: any) => expect.objectContaining(line)),
+        }))
+      )
+      const weck =
+        got[0] &&
+        day.sections
+          .flatMap((s: any) => s.lines)
+          .find((l: any) => l.itemId === 'weck')
+      expect(weck).toMatchObject({
+        key: 'weck|',
+        doneAt: expect.anything(),
+        delta: { qty: 5, open: 1, count: 1 },
+      })
+      expect(day.deltas).toEqual([
+        expect.objectContaining({
+          key: 'weck|',
+          bakeDate: SAT,
+          itemId: 'weck',
+          qty: 5,
+          kind: 'added',
+          preorderMovedTo: null,
+        }),
+      ])
+      // The draft's correction row still counts on its own day.
+      const tue: any = await service.getDay(TUE)
+      expect(tue.status).toBe('draft')
+      const tueWeck = tue.sections
+        .flatMap((s: any) => s.lines)
+        .find((l: any) => l.itemId === 'weck')
+      expect(tueWeck).toMatchObject({
+        key: 'weck|',
+        bakeDate: TUE,
+        correction: 4,
+        id: expect.any(Number),
+      })
+      await service.idle()
+    } finally {
+      fs.rmSync(hqDir, { recursive: true, force: true })
+      await sequelize.close()
+    }
+  })
+
+  it('down() leaves the schema as before Z10: foreign keys and every index', async () => {
+    const sequelize = await freshDb()
+    await runMigrations(sequelize, {
+      ...quiet,
+      migrations: MIGRATIONS.filter((m) => m.name !== Z10),
+    })
+    const schema = async () => {
+      const out: Record<string, unknown> = {}
+      for (const table of ['backzettel_lines', 'backzettel_deltas']) {
+        out[`${table}:fk`] = await sequelize.query(
+          `PRAGMA foreign_key_list(${table})`,
+          { type: QueryTypes.SELECT }
+        )
+        out[`${table}:indexes`] = await indexes(sequelize, table)
+        out[`${table}:columns`] = await columns(sequelize, table)
+      }
+      return out
+    }
+    const before = await schema()
+    // the baseline really has cascading keys and the deltas indexes
+    expect(JSON.stringify(before)).toContain('CASCADE')
+    expect(JSON.stringify(before)).toContain('SET NULL')
+    expect(Object.keys(before['backzettel_deltas:indexes'] as object)).toEqual(
+      expect.arrayContaining([
+        'backzettel_deltas_date',
+        'backzettel_deltas_preorder_id',
+      ])
+    )
+    const qi = sequelize.getQueryInterface()
+    await doughDayMigration.up(qi, Sequelize)
+    await doughDayMigration.down(qi, Sequelize)
+    expect(await schema()).toEqual(before)
+    await sequelize.close()
+  })
+
+  it('is idempotent, and down() restores the old index (same-day sheets only)', async () => {
+    const { sequelize } = await confirmedV1Day()
+    const qi = sequelize.getQueryInterface()
+    const before = await indexes(sequelize, 'backzettel_lines')
+    await doughDayMigration.up(qi, Sequelize)
+    expect(await indexes(sequelize, 'backzettel_lines')).toEqual(before)
+
+    // A line baked on another day than its sheet: down() refuses.
+    await sequelize.query(
+      `INSERT INTO backzettel_lines (date, bake_date, item_id, created_at, updated_at) VALUES (:date, :tue, 'weck', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      { replacements: { date: SAT, tue: TUE } }
+    )
+    await expect(doughDayMigration.down(qi, Sequelize)).rejects.toThrow(
+      /anderen Tag gebacken/
+    )
+    await sequelize.query(
+      'DELETE FROM backzettel_lines WHERE bake_date <> date'
+    )
+    const count = async () =>
+      (
+        await sequelize.query<{ n: number }>(
+          'SELECT COUNT(*) AS n FROM backzettel_lines',
+          { type: QueryTypes.SELECT }
+        )
+      )[0].n
+    const rows = await count()
+    await doughDayMigration.down(qi, Sequelize)
+    expect(await columns(sequelize, 'backzettel_lines')).not.toContain(
+      'bake_date'
+    )
+    expect(await columns(sequelize, 'backzettel_deltas')).not.toContain(
+      'bake_date'
+    )
+    expect(await count()).toBe(rows)
+    expect(
+      (await indexes(sequelize, 'backzettel_lines'))[
+        doughDayMigration.OLD_LINES_INDEX
+      ]
+    ).toEqual({ unique: true, fields: ['date', 'item_id', 'variant'] })
+    expect(await foreignKeyViolations(sequelize)).toEqual([])
+    await doughDayMigration.up(qi, Sequelize)
+    expect(await indexes(sequelize, 'backzettel_lines')).toEqual(before)
+    await sequelize.close()
+  })
+})
+
+describe('Z10 O5 migration (baked_at/_by)', () => {
+  const BAKED = '20270210000000-backzettel-baked.js'
+
+  async function schema(sequelize: Sequelize) {
+    const out: Record<string, unknown> = {}
+    for (const table of bakedMigration.TABLES as string[]) {
+      out[`${table}:fk`] = await sequelize.query(
+        `PRAGMA foreign_key_list(${table})`,
+        { type: QueryTypes.SELECT }
+      )
+      out[`${table}:indexes`] = await sequelize
+        .getQueryInterface()
+        .showIndex(table)
+      out[`${table}:columns`] = await columns(sequelize, table)
+    }
+    return out
+  }
+
+  it('adds nullable baked_at/baked_by (FK users, SET NULL) to lines and deltas; idempotent; down() restores the schema', async () => {
+    const sequelize = await freshDb()
+    await runMigrations(sequelize, {
+      ...quiet,
+      migrations: MIGRATIONS.filter((m) => m.name !== BAKED),
+    })
+    const before = await schema(sequelize)
+    // A row from before the migration keeps its data and reads unticked.
+    await sequelize.query(
+      `INSERT INTO backzettel_days (date, status, season_factor, created_at, updated_at)
+       VALUES ('2026-11-28', 'draft', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+    )
+    await sequelize.query(
+      `INSERT INTO backzettel_lines (date, bake_date, item_id, total, done_at, created_at, updated_at)
+       VALUES ('2026-11-28', '2026-11-29', 'weck', 12, '2026-11-28 05:00:00', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+    )
+    const result = await runMigrations(sequelize, quiet)
+    expect(result.executed).toEqual([BAKED])
+    for (const table of bakedMigration.TABLES as string[]) {
+      expect(await columns(sequelize, table)).toEqual(
+        expect.arrayContaining(['baked_at', 'baked_by'])
+      )
+      const fks = await sequelize.query<{
+        from: string
+        table: string
+        on_delete: string
+      }>(`PRAGMA foreign_key_list(${table})`, { type: QueryTypes.SELECT })
+      expect(fks.find((f) => f.from === 'baked_by')).toMatchObject({
+        table: 'users',
+        on_delete: 'SET NULL',
+      })
+    }
+    expect(
+      await sequelize.query(
+        'SELECT total, done_at, baked_at, baked_by FROM backzettel_lines',
+        { type: QueryTypes.SELECT }
+      )
+    ).toEqual([
+      {
+        total: 12,
+        done_at: '2026-11-28 05:00:00',
+        baked_at: null,
+        baked_by: null,
+      },
+    ])
+    const qi = sequelize.getQueryInterface()
+    const after = await schema(sequelize)
+    await bakedMigration.up(qi, Sequelize)
+    expect(await schema(sequelize)).toEqual(after)
+    await bakedMigration.down(qi, Sequelize)
+    expect(await schema(sequelize)).toEqual(before)
+    expect(await foreignKeyViolations(sequelize)).toEqual([])
     await sequelize.close()
   })
 })

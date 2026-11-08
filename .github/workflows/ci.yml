@@ -297,7 +297,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [bakery-shop, bakery-management, bakery-landing, bakery-api]
+        app:
+          [
+            bakery-shop,
+            bakery-management,
+            bakery-landing,
+            bakery-partybrezel,
+            bakery-api,
+          ]
     steps:
       - uses: actions/checkout@v4
 

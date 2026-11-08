@@ -22,7 +22,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 
-import { BackzettelSource } from './backzettel-source'
+import { BackzettelSource, OpenMasterDataEntry } from './backzettel-source'
 import { BackzettelError } from './backzettel.service'
 import {
   currentBranch,
@@ -81,6 +81,8 @@ export interface WorkingConfig {
   config: unknown | null
   errors: ConfigReason[]
   warnings: ConfigReason[]
+  /** Z10: open master data of the working version (see `open` of the source). */
+  open: OpenMasterDataEntry[]
 }
 
 export interface ConfigWriteStatus {
@@ -190,6 +192,7 @@ export function createBackzettelConfigWriter(
         : parsedConfig(readIfExists(writeFile as string)),
       errors: result.errors,
       warnings: result.warnings,
+      open: Array.isArray(result.open) ? result.open : [],
     }
   }
 
@@ -246,6 +249,7 @@ export function createBackzettelConfigWriter(
             : parsedConfig(readIfExists(source.paths.configPath)),
           errors: loaded.reasons,
           warnings: loaded.warnings,
+          open: loaded.open,
         },
       }
     }

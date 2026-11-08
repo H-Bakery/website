@@ -1,6 +1,7 @@
 import './global.css'
 import { THEME_COLOR, THEME_INIT_SCRIPT } from '../lib/theme'
 import { AuthGate } from '../components/AuthGate'
+import { ServiceWorkerRegistration } from '../components/ServiceWorkerRegistration'
 
 export const metadata = {
   title: 'Bäckerei Heusser – Liefertour',
@@ -34,6 +35,8 @@ export default function RootLayout({
       <body>
         {/* B8: ohne Anmeldung nur das Anmeldeformular. */}
         <AuthGate>{children}</AuthGate>
+        {/* Startet die App auch im Funkloch (gespeicherte Tour). */}
+        <ServiceWorkerRegistration />
       </body>
     </html>
   )

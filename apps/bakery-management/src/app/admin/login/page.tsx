@@ -13,7 +13,6 @@ import {
   Typography,
 } from '@mui/material'
 import {
-  Login as LoginIcon,
   Logout as LogoutIcon,
   TabletAndroid as StationIcon,
 } from '@mui/icons-material'
@@ -21,6 +20,7 @@ import { useSession } from '../../../lib/session'
 import { loadStation } from '../../../lib/authSession'
 import { readLostActions, type LostAction } from '../../../lib/lostActions'
 import { ROLE_LABELS, resolvePostLoginPath } from '../../../lib/roles'
+import { describeAuthError } from '../../../components/auth/authErrors'
 
 /**
  * Anmeldung mit Benutzername und Passwort (F1, B3-Vertrag
@@ -62,11 +62,7 @@ function LoginForm() {
       const loggedIn = await login(username.trim(), password)
       router.replace(resolvePostLoginPath(loggedIn.role, next))
     } catch (err) {
-      setError(
-        err instanceof Error && err.message
-          ? err.message
-          : 'Anmeldung fehlgeschlagen.'
-      )
+      setError(describeAuthError(err, 'Anmeldung fehlgeschlagen.'))
       setPassword('')
     } finally {
       setSubmitting(false)
@@ -79,118 +75,126 @@ function LoginForm() {
   }
 
   return (
-    <Box sx={{ width: '100%', maxWidth: 440 }}>
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h4" component="h1">
-          <LoginIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-          Anmeldung
-        </Typography>
-        <Typography variant="subtitle1" color="text.secondary">
-          Bäckerei Heusser · Verwaltung
-        </Typography>
+    <Paper
+      component="section"
+      aria-labelledby="login-title"
+      sx={{ width: '100%', maxWidth: 420, p: { xs: 3, sm: 4 } }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+        <Box
+          component="img"
+          src="/icons/icon-192.png"
+          alt=""
+          width={44}
+          height={44}
+          sx={{ borderRadius: 1, flexShrink: 0 }}
+        />
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="h1" id="login-title">
+            Anmeldung
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Bäckerei Heusser · Verwaltung
+          </Typography>
+        </Box>
       </Box>
 
       {isAuthenticated && user ? (
-        <Paper elevation={2} sx={{ p: 3 }}>
+        <Stack spacing={2}>
+          <Typography>
+            Angemeldet als <strong>{user.displayName}</strong> (
+            {ROLE_LABELS[user.role]})
+          </Typography>
+          <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+            <Button
+              component={Link}
+              href={resolvePostLoginPath(user.role, next)}
+              variant="contained"
+            >
+              Weiter
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<LogoutIcon />}
+              onClick={handleLogout}
+              disabled={isLoading}
+            >
+              Abmelden
+            </Button>
+          </Stack>
+        </Stack>
+      ) : (
+        <form onSubmit={handleSubmit} noValidate>
           <Stack spacing={2}>
-            <Typography>
-              Angemeldet als <strong>{user.displayName}</strong> (
-              {ROLE_LABELS[user.role]})
-            </Typography>
-            <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+            {lostActions.length > 0 && (
+              <Alert severity="error" data-testid="lost-actions">
+                <AlertTitle>Nicht gespeichert</AlertTitle>
+                {lostActions.map((a) => (
+                  <Box
+                    key={a.at + a.text}
+                    component="span"
+                    sx={{ display: 'block' }}
+                  >
+                    {a.text}
+                  </Box>
+                ))}
+              </Alert>
+            )}
+            {endReason && !error && (
+              <Alert severity="info" onClose={clearEndReason}>
+                {endReason}
+              </Alert>
+            )}
+            {error && (
+              <Alert severity="error" onClose={() => setError(null)}>
+                {error}
+              </Alert>
+            )}
+            <TextField
+              label="Benutzername"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
+              autoCapitalize="none"
+              autoFocus
+              required
+              fullWidth
+            />
+            <TextField
+              label="Passwort"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+              fullWidth
+            />
+            <Button
+              type="submit"
+              variant="contained"
+              size="large"
+              disabled={submitting || !username.trim() || !password}
+            >
+              {submitting ? 'Anmelden …' : 'Anmelden'}
+            </Button>
+            {isStation && (
               <Button
                 component={Link}
-                href={resolvePostLoginPath(user.role, next)}
-                variant="contained"
-              >
-                Weiter
-              </Button>
-              <Button
+                href="/station"
                 variant="outlined"
-                startIcon={<LogoutIcon />}
-                onClick={handleLogout}
-                disabled={isLoading}
+                startIcon={<StationIcon />}
               >
-                Abmelden
+                Mit PIN an der Station anmelden
               </Button>
-            </Stack>
+            )}
+            <Typography variant="body2" color="text.secondary">
+              Zugang vergessen? Der Inhaber setzt Passwort und PIN unter
+              „Benutzer“ neu.
+            </Typography>
           </Stack>
-        </Paper>
-      ) : (
-        <Paper elevation={2} sx={{ p: 3 }}>
-          <form onSubmit={handleSubmit} noValidate>
-            <Stack spacing={2}>
-              {lostActions.length > 0 && (
-                <Alert severity="error" data-testid="lost-actions">
-                  <AlertTitle>Nicht gespeichert</AlertTitle>
-                  {lostActions.map((a) => (
-                    <Box
-                      key={a.at + a.text}
-                      component="span"
-                      sx={{ display: 'block' }}
-                    >
-                      {a.text}
-                    </Box>
-                  ))}
-                </Alert>
-              )}
-              {endReason && !error && (
-                <Alert severity="info" onClose={clearEndReason}>
-                  {endReason}
-                </Alert>
-              )}
-              {error && (
-                <Alert severity="error" onClose={() => setError(null)}>
-                  {error}
-                </Alert>
-              )}
-              <TextField
-                label="Benutzername"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                autoComplete="username"
-                autoCapitalize="none"
-                autoFocus
-                required
-                fullWidth
-              />
-              <TextField
-                label="Passwort"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-                required
-                fullWidth
-              />
-              <Button
-                type="submit"
-                variant="contained"
-                size="large"
-                startIcon={<LoginIcon />}
-                disabled={submitting || !username.trim() || !password}
-              >
-                {submitting ? 'Anmelden …' : 'Anmelden'}
-              </Button>
-              {isStation && (
-                <Button
-                  component={Link}
-                  href="/station"
-                  variant="outlined"
-                  startIcon={<StationIcon />}
-                >
-                  Mit PIN an der Station anmelden
-                </Button>
-              )}
-              <Typography variant="body2" color="text.secondary">
-                Zugang vergessen? Der Inhaber setzt Passwort und PIN unter
-                „Benutzer“ neu.
-              </Typography>
-            </Stack>
-          </form>
-        </Paper>
+        </form>
       )}
-    </Box>
+    </Paper>
   )
 }
 

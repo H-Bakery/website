@@ -1,5 +1,7 @@
 import {
   DELTA_KIND_LABELS,
+  deltaAfterDone,
+  deltaAfterDoneText,
   deltaCodeText,
   addDays,
   deltaBadgeText,
@@ -84,7 +86,7 @@ describe('Backzettel-Kalender', () => {
 describe('Backzettel-Zahlen', () => {
   it('Mengen mit Einheit, Liter mit Komma', () => {
     expect(formatQty(40, 'Stück')).toBe('40')
-    expect(formatQty(1.24, 'Liter')).toBe('1,24 l')
+    expect(formatQty(1.24, 'Liter')).toBe('1,24 L')
     expect(formatQty(3, 'Blech')).toBe('3 Bl.')
   })
 
@@ -173,7 +175,7 @@ describe('Backzettel-Helfer (Fixup)', () => {
 
 describe('Nachträge mit Einheit und Backmenge (W4-Verifikation)', () => {
   it('formatSignedQty hängt die Einheit an', () => {
-    expect(formatSignedQty(1, 'Liter')).toBe('+1 l')
+    expect(formatSignedQty(1, 'Liter')).toBe('+1 L')
     expect(formatSignedQty(-2, 'Stück')).toBe('−2')
     expect(formatSignedQty(0.5, 'kg')).toBe('+0,5 kg')
     expect(formatSignedQty(0, 'Liter')).toBe('–')
@@ -182,7 +184,7 @@ describe('Nachträge mit Einheit und Backmenge (W4-Verifikation)', () => {
   it('deltaBadgeText sagt, was nach dem Aufrunden zu backen ist', () => {
     expect(
       deltaBadgeText({ qty: 1, open: 1, count: 1, bake: 1 }, 'Liter')
-    ).toBe('Nachtrag +1 l')
+    ).toBe('Nachtrag +1 L')
     expect(
       deltaBadgeText({ qty: 0.25, open: 1, count: 1, bake: 1 }, 'Stück')
     ).toBe('Nachtrag +0,25 · 1 mehr backen')
@@ -383,5 +385,65 @@ describe('Nachtrag: Art und Code (W4-verify r5)', () => {
       'LA-2026-11-08-03'
     )
     expect(deltaCodeText({ preorderCode: null })).toBeNull()
+  })
+})
+
+describe('Nachtrag nach dem Abhaken (UI-Runde 1)', () => {
+  const line = {
+    key: 'brezel|',
+    unit: 'Stück',
+    doneAt: '2026-11-07T01:54:45.000Z',
+    doneBy: { id: 4, displayName: 'Bernd Backstube' },
+    delta: { qty: 12, open: 0, count: 1, bake: 12, openQty: 0, bakeOpen: 0 },
+  }
+  const later = {
+    key: 'brezel|',
+    qty: 12,
+    createdAt: '2026-11-07T01:54:48.000Z',
+  }
+
+  it('gesehen ist nicht gebacken: ein späterer Nachtrag bleibt offen', () => {
+    expect(deltaAfterDone(line, [later])).toEqual({
+      qty: 12,
+      bake: 12,
+      count: 1,
+    })
+    expect(deltaAfterDoneText(line, { qty: 12, bake: 12, count: 1 })).toMatch(
+      /^erledigt .* · Bernd Backstube – danach Nachtrag: noch \+12 backen$/
+    )
+  })
+
+  it('Nachträge vor dem Haken, andere Zeilen oder kein Haken zählen nicht', () => {
+    const earlier = { ...later, createdAt: '2026-11-07T01:00:00.000Z' }
+    expect(deltaAfterDone(line, [earlier])).toBeNull()
+    expect(deltaAfterDone(line, [{ ...later, key: 'croissant|' }])).toBeNull()
+    expect(deltaAfterDone({ ...line, doneAt: null }, [later])).toBeNull()
+    expect(deltaAfterDone(line, null)).toBeNull()
+  })
+
+  it('gemischt vor/nach: nur der spätere Teil, Stück aufgerundet', () => {
+    const earlier = {
+      key: 'brezel|',
+      qty: 2,
+      createdAt: '2026-11-07T01:00:00.000Z',
+    }
+    const quarter = { ...later, qty: 0.25 }
+    expect(
+      deltaAfterDone(
+        { ...line, delta: { ...line.delta, qty: 2.25, bake: 3 } },
+        [earlier, quarter]
+      )
+    ).toEqual({ qty: 0.25, bake: 1, count: 1 })
+  })
+
+  it('ein Storno nach dem Haken heißt nicht „mehr backen“', () => {
+    const cancel = { ...later, qty: -5 }
+    const after = deltaAfterDone(
+      { ...line, delta: { qty: -5, open: 0, count: 1, bake: -5 } },
+      [cancel]
+    )
+    expect(after?.bake).toBe(-5)
+    if (!after) throw new Error('erwartet: Nachtrag nach dem Haken')
+    expect(deltaAfterDoneText(line, after)).toContain('5 weniger nötig')
   })
 })

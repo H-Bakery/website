@@ -40,7 +40,7 @@ defaults to the current year (Berlin), 2000-2100 (400 `invalid_year`).
 
 ## Model
 
-Migration `20270107000000-dienstplan.js` (additive, idempotent), models `Employee`,
+Migration `20270301000000-dienstplan.js` (additive, idempotent), models `Employee`,
 `VacationEntitlement`, `ShiftTemplate`, `Shift`, `Absence`:
 
 - `employees` - `display_name` (authoritative), `area` `verkauf|backstube|fahrer|buero`, `color`

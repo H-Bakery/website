@@ -3,6 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import PreorderDayClient from './PreorderDayClient'
+import { WithSession, fakeSession } from '../../../../lib/testing/fakeSession'
 import { fetchPreorderDay } from '../../../../lib/preordersApi'
 import {
   ONLY_DATE,
@@ -36,16 +37,19 @@ describe('PreorderDayClient (P3)', () => {
     expect(rows[1]).toHaveTextContent('Kornbrot 500g–42')
     expect(rows[2]).toHaveTextContent('MustersemmelNuss61')
     expect(
-      screen.getByRole('heading', { name: /Sa, 14\.11\.2026/ })
+      screen.getByRole('heading', { name: /Sa,\s14\.11\.2026/ })
     ).toBeInTheDocument()
     expect(screen.getByText('Noch zu kassieren')).toBeInTheDocument()
-    expect(
-      screen.getByText(/Kita Teststraße: 1 Bestellung/)
-    ).toBeInTheDocument()
     // Bestellweg und Abholort stehen getrennt - "Laden" im Bestellweg ist
     // keine Abholzahl (W4-verify r5).
-    expect(screen.getByTestId('preorder-day-places')).toHaveTextContent(
-      /^Abholung: Laden: 1 Bestellung · Kita Teststraße: 1 Bestellung/
+    // Seit UI-Runde 1 ein eigener Abschnitt statt eines losen Textblocks.
+    const section = screen.getByRole('region', { name: 'Abholorte' })
+    const places = within(
+      within(section).getByRole('list', { name: 'Abholorte' })
+    ).getAllByRole('listitem')
+    expect(places[0]).toHaveTextContent(/^Laden1 Bestellung$/)
+    expect(places[1]).toHaveTextContent(
+      /^Kita Teststraße · Übergabe 09:00-09:30 Uhr1 Bestellung$/
     )
     expect(screen.getByText(/Bestellweg:/)).toBeInTheDocument()
   })
@@ -88,6 +92,45 @@ describe('PreorderDayClient (P3)', () => {
       true
     )
     expect(struck(screen.getByText('Stefan Storno').closest('td'))).toBe(true)
+  })
+
+  it('ein leerer Tag ist ein Leerzustand, keine Flächen voller Nullen (UI-Runde 2)', async () => {
+    mockDay.mockResolvedValue(
+      day({
+        date: '2026-11-18',
+        summary: {
+          count: 0,
+          total: 0,
+          byStatus: { offen: 0, bereit: 0, abgeholt: 0, storniert: 0 },
+          notCollected: 0,
+          paid: 0,
+          unpaidTotal: 0,
+          byChannel: {},
+        },
+        sums: [],
+        pickupPoints: [],
+        preorders: [],
+      })
+    )
+    renderWithTheme(
+      <WithSession value={fakeSession({ role: 'verkauf' })}>
+        <PreorderDayClient initialDate="2026-11-18" />
+      </WithSession>
+    )
+    const empty = await screen.findByTestId('preorder-day-empty')
+    expect(empty).toHaveTextContent('Für diesen Tag ist nichts vorbestellt.')
+    expect(
+      within(empty).getByRole('link', { name: /Vorbestellung erfassen/ })
+    ).toHaveAttribute('href', '/admin/preorders/neu?date=2026-11-18')
+    expect(screen.queryByText('Noch zu kassieren')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('region', { name: 'Summen je Produkt' })
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Drucken' })).toBeDisabled()
+    // Datum bleibt im Titel zusammen (geschütztes Leerzeichen).
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
+      'Vorbestellungen Mi,\u00a018.11.2026'
+    )
   })
 
   it('druckt', async () => {

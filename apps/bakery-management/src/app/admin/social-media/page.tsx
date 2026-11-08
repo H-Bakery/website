@@ -1,32 +1,24 @@
 'use client'
 import React, { useState, useRef } from 'react'
 import {
-  Container,
-  Typography,
-  Box,
-  Paper,
-  Grid,
-  TextField,
-  Button,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Chip,
   Alert,
-  FormControlLabel,
-  Switch,
+  Box,
+  Button,
+  CircularProgress,
+  Grid,
+  MenuItem,
   Snackbar,
-  Link,
+  Stack,
+  TextField,
+  Typography,
 } from '@mui/material'
 import {
-  PhotoCamera as PhotoCameraIcon,
-  TextSnippet as TextSnippetIcon,
   Download as DownloadIcon,
   Refresh as RefreshIcon,
-  Smartphone as SmartphoneIcon,
 } from '@mui/icons-material'
 import { HeusserLogo } from '@bakery/shared/ui'
+import { PageLayout, PageSection } from '../../../components/layout'
+import { formatSocialPrice } from './socialPrice'
 
 // Template types
 type TemplateType =
@@ -168,9 +160,23 @@ const getTemplateContentByType = (templateType: TemplateType) => {
   }
 }
 
+interface PostContent {
+  title: string
+  description: string
+  price: string
+  additionalInfo: string
+}
+
+const EMPTY_CONTENT: PostContent = {
+  title: '',
+  description: '',
+  price: '',
+  additionalInfo: '',
+}
+
 // Image generation function
 const createBakeryImage = (
-  content: any,
+  content: PostContent,
   templateType: TemplateType,
   templateContent: ReturnType<typeof getTemplateContentByType>,
   width = 1080,
@@ -247,50 +253,67 @@ const createBakeryImage = (
   ctx.fillStyle = BRAND_COLORS.textDark
   ctx.textAlign = 'center'
 
+  // Titel, Text und Preis untereinander: ein Titel über zwei Zeilen schiebt
+  // den Rest nach unten (vorher lagen die Zeilen übereinander).
+  let nextY = panelY + 280 * scale
+
   // Title
   if (content.title) {
     ctx.font = `bold ${64 * scale}px Georgia, serif`
-    wrapText(
+    const lastY = wrapText(
       ctx,
       content.title,
       width / 2,
-      panelY + 280 * scale,
+      nextY,
       width - 160 * scale,
       70 * scale
     )
+    nextY = lastY + 100 * scale
+  } else {
+    nextY = panelY + 380 * scale
   }
 
   // Description
   if (content.description) {
     ctx.font = `${32 * scale}px Arial, sans-serif`
     ctx.fillStyle = BRAND_COLORS.textMedium
-    wrapText(
+    const lastY = wrapText(
       ctx,
       content.description,
       width / 2,
-      panelY + 380 * scale,
+      nextY,
       width - 160 * scale,
       40 * scale
     )
+    nextY = lastY + 100 * scale
+  } else {
+    nextY = Math.max(nextY, panelY + 480 * scale)
   }
 
   // Price (if applicable)
-  if (templateContent.showPrice && content.price) {
+  const price = formatSocialPrice(content.price ?? '')
+  if (templateContent.showPrice && price) {
     ctx.save()
+    ctx.font = `bold ${56 * scale}px Arial, sans-serif`
+    // Kasten so breit wie der Text - „Sparen Sie 30%“ lief vorher über den
+    // festen 200-px-Kasten hinaus.
+    const boxWidth = Math.min(
+      width - 2 * panelMargin - 40 * scale,
+      Math.max(200 * scale, ctx.measureText(price).width + 60 * scale)
+    )
     // Price background with success green for freshness
     ctx.fillStyle = BRAND_COLORS.success
-    const priceY = panelY + 480 * scale
+    const priceY = nextY
     ctx.fillRect(
-      width / 2 - 100 * scale,
+      width / 2 - boxWidth / 2,
       priceY - 40 * scale,
-      200 * scale,
+      boxWidth,
       80 * scale
     )
 
     // Price text
     ctx.fillStyle = BRAND_COLORS.bgPaper
-    ctx.font = `bold ${56 * scale}px Arial, sans-serif`
-    ctx.fillText(content.price + '€', width / 2, priceY + 15 * scale)
+    ctx.fillText(price, width / 2, priceY + 15 * scale)
     ctx.restore()
   }
 
@@ -346,7 +369,7 @@ function wrapText(
   y: number,
   maxWidth: number,
   lineHeight: number
-) {
+): number {
   const words = text.split(' ')
   let line = ''
   let currentY = y
@@ -365,18 +388,13 @@ function wrapText(
     }
   }
   ctx.fillText(line, x, currentY)
+  return currentY
 }
 
 export default function SocialMediaPage() {
   const [templateType, setTemplateType] =
     useState<TemplateType>('daily-special')
-  const [content, setContent] = useState({
-    title: '',
-    description: '',
-    price: '',
-    additionalInfo: '',
-  })
-  const [textOnly, setTextOnly] = useState(true)
+  const [content, setContent] = useState<PostContent>(EMPTY_CONTENT)
   const [loading, setLoading] = useState(false)
   const [socialPlatform, setSocialPlatform] =
     useState<SocialPlatform>('instagram-square')
@@ -388,7 +406,8 @@ export default function SocialMediaPage() {
   const previewRef = useRef<HTMLDivElement>(null)
 
   const handleContentChange =
-    (field: string) => (event: React.ChangeEvent<HTMLInputElement>) => {
+    (field: keyof PostContent) =>
+    (event: React.ChangeEvent<HTMLInputElement>) => {
       setContent((prev) => ({
         ...prev,
         [field]: event.target.value,
@@ -396,62 +415,26 @@ export default function SocialMediaPage() {
     }
 
   const templateContent = getTemplateContentByType(templateType)
+  const priceText = formatSocialPrice(content.price)
+  const format = SOCIAL_DIMENSIONS[socialPlatform]
+  const hasContent = Object.values(content).some((value) => value.trim())
 
+  // Ein Knopf für das gewählte Format - vorher gab es zusätzlich
+  // „Standard (1080x1080)“, das bei Quadrat dasselbe Bild lieferte.
   const handleDownload = async () => {
     setLoading(true)
     try {
-      // Generate the image
-      const dataUrl = createBakeryImage(content, templateType, templateContent)
-
-      // Create download link
-      const link = document.createElement('a')
-      const filename = `baeckerei-heusser-${templateType}-${
-        new Date().toISOString().split('T')[0]
-      }.png`
-      link.download = filename
-      link.href = dataUrl
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-
-      setSnackbar({
-        open: true,
-        message: 'Bild erfolgreich heruntergeladen!',
-        severity: 'success',
-      })
-    } catch (error) {
-      console.error('Download error:', error)
-      setSnackbar({
-        open: true,
-        message: 'Fehler beim Herunterladen. Bitte versuchen Sie es erneut.',
-        severity: 'error',
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleSocialMediaDownload = async () => {
-    setLoading(true)
-    try {
-      // Get platform dimensions
-      const dimensions = SOCIAL_DIMENSIONS[socialPlatform]
-
-      // Generate the image with platform-specific dimensions
       const dataUrl = createBakeryImage(
         content,
         templateType,
         templateContent,
-        dimensions.width,
-        dimensions.height
+        format.width,
+        format.height
       )
-
-      // Create download link
       const link = document.createElement('a')
-      const filename = `baeckerei-heusser-${socialPlatform}-${templateType}-${
+      link.download = `baeckerei-heusser-${socialPlatform}-${templateType}-${
         new Date().toISOString().split('T')[0]
       }.png`
-      link.download = filename
       link.href = dataUrl
       document.body.appendChild(link)
       link.click()
@@ -459,7 +442,7 @@ export default function SocialMediaPage() {
 
       setSnackbar({
         open: true,
-        message: `Bild für ${dimensions.label} erfolgreich heruntergeladen!`,
+        message: `Bild für ${format.label} heruntergeladen.`,
         severity: 'success',
       })
     } catch (error) {
@@ -479,138 +462,45 @@ export default function SocialMediaPage() {
   }
 
   return (
-    <>
-      {/* Page Header with Brand Style */}
-      <Box
-        sx={{
-          bgcolor: 'background.paper',
-          mb: 4,
-          py: 3,
-          borderBottom: '1px solid',
-          borderColor: 'divider',
-          position: 'relative',
-          '&::before': {
-            content: '""',
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: '4px',
-            bgcolor: BRAND_COLORS.primary,
-          },
-        }}
-      >
-        <Container>
-          {/* Der Pfad steht schon in der Kopfzeile des Admin-Layouts. */}
-
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-            <HeusserLogo width={100} height={32} color={BRAND_COLORS.primary} />
-            <Box>
-              <Typography
-                variant="h4"
-                component="h1"
-                sx={{
-                  fontWeight: 600,
-                  fontFamily: "'Playfair Display', serif",
-                  color: 'text.primary',
+    <PageLayout
+      title="Social Media"
+      subtitle="Bild für Instagram oder Facebook aus einer Vorlage erstellen"
+    >
+      <Grid container spacing={{ xs: 2, md: 3 }}>
+        <Grid item xs={12} md={6}>
+          <PageSection title="Inhalt">
+            <Stack spacing={2}>
+              <TextField
+                select
+                fullWidth
+                label="Vorlage"
+                value={templateType}
+                onChange={(e) =>
+                  setTemplateType(e.target.value as TemplateType)
+                }
+                SelectProps={{
+                  renderValue: (value) =>
+                    templates.find((t) => t.id === value)?.name ?? '',
                 }}
               >
-                Social Media
-              </Typography>
-              <Typography variant="subtitle1" sx={{ color: 'text.secondary' }}>
-                Erstellen Sie professionelle Inhalte mit authentischem
-                Bäckerei-Branding
-              </Typography>
-            </Box>
-          </Box>
+                {templates.map((template) => (
+                  <MenuItem key={template.id} value={template.id}>
+                    <Box>
+                      <Typography variant="body1">{template.name}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {template.description}
+                      </Typography>
+                    </Box>
+                  </MenuItem>
+                ))}
+              </TextField>
 
-          {/* Seiten-Chrome, keine Grafik: Die Markenfarben erreichen auf
-              background.paper keinen Lesekontrast (Grün 1,9:1, Magenta
-              4,2:1), deshalb Theme-Farben - siehe CLAUDE.md, Dark mode. */}
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: 1,
-              mt: 2,
-            }}
-          >
-            <Chip
-              icon={<TextSnippetIcon />}
-              label="Text-fokussierte Designs"
-              size="small"
-              variant="outlined"
-              sx={{ color: 'text.primary', borderColor: 'divider' }}
-            />
-            <Chip
-              icon={<PhotoCameraIcon />}
-              label="Mit Firmen-Logo"
-              size="small"
-              variant="outlined"
-              sx={{ color: 'text.primary', borderColor: 'divider' }}
-            />
-          </Box>
-        </Container>
-      </Box>
-
-      <Container>
-        <Grid container spacing={3}>
-          {/* Form Section */}
-          <Grid item xs={12} md={6}>
-            <Paper
-              elevation={0}
-              sx={{
-                p: 3,
-                borderRadius: 2,
-                bgcolor: 'background.paper',
-                border: '1px solid',
-                borderColor: 'divider',
-              }}
-            >
-              <Typography
-                variant="h6"
-                gutterBottom
-                sx={{
-                  color: 'text.primary',
-                  fontWeight: 500,
-                  fontFamily: "'Lora', serif",
-                }}
-              >
-                Inhalt erstellen
-              </Typography>
-
-              {/* Template Selection */}
-              <FormControl fullWidth sx={{ mb: 3 }}>
-                <InputLabel>Template auswählen</InputLabel>
-                <Select
-                  value={templateType}
-                  onChange={(e) =>
-                    setTemplateType(e.target.value as TemplateType)
-                  }
-                  label="Template auswählen"
-                >
-                  {templates.map((template) => (
-                    <MenuItem key={template.id} value={template.id}>
-                      <Box>
-                        <Typography variant="body1">{template.name}</Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {template.description}
-                        </Typography>
-                      </Box>
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-
-              {/* Content Form */}
               <TextField
                 fullWidth
                 label="Titel"
                 value={content.title}
                 onChange={handleContentChange('title')}
                 placeholder={templateContent.placeholder.title}
-                sx={{ mb: 2 }}
               />
 
               <TextField
@@ -621,7 +511,6 @@ export default function SocialMediaPage() {
                 value={content.description}
                 onChange={handleContentChange('description')}
                 placeholder={templateContent.placeholder.description}
-                sx={{ mb: 2 }}
               />
 
               {templateContent.showPrice && (
@@ -631,7 +520,7 @@ export default function SocialMediaPage() {
                   value={content.price}
                   onChange={handleContentChange('price')}
                   placeholder={templateContent.placeholder.price}
-                  sx={{ mb: 2 }}
+                  helperText="Betrag ohne €-Zeichen oder freier Text, z. B. „3 für 2“"
                 />
               )}
 
@@ -641,411 +530,334 @@ export default function SocialMediaPage() {
                 value={content.additionalInfo}
                 onChange={handleContentChange('additionalInfo')}
                 placeholder={templateContent.placeholder.additionalInfo}
-                sx={{ mb: 3 }}
               />
 
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={textOnly}
-                    onChange={(e) => setTextOnly(e.target.checked)}
-                  />
+              <TextField
+                select
+                fullWidth
+                label="Format"
+                value={socialPlatform}
+                onChange={(e) =>
+                  setSocialPlatform(e.target.value as SocialPlatform)
                 }
-                label="Nur Text (ohne Bilder)"
-                sx={{ mb: 2 }}
-              />
-
-              {/* Social Media Platform Selector */}
-              <FormControl fullWidth sx={{ mb: 3 }}>
-                <InputLabel>Social Media Format</InputLabel>
-                <Select
-                  value={socialPlatform}
-                  onChange={(e) =>
-                    setSocialPlatform(e.target.value as SocialPlatform)
-                  }
-                  label="Social Media Format"
-                >
-                  {Object.entries(SOCIAL_DIMENSIONS).map(([key, value]) => (
-                    <MenuItem key={key} value={key}>
-                      <Box>
-                        <Typography variant="body1">{value.label}</Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {value.width} x {value.height} Pixel
-                        </Typography>
-                      </Box>
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-
-              <Box sx={{ display: 'flex', gap: 2, flexDirection: 'column' }}>
-                {/* Primary download buttons row */}
-                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                  <Button
-                    variant="contained"
-                    startIcon={<DownloadIcon />}
-                    onClick={handleDownload}
-                    disabled={loading || !content.title}
-                    fullWidth
-                    sx={{
-                      backgroundColor: BRAND_COLORS.primary,
-                      color: BRAND_COLORS.bgPaper,
-                      '&:hover': {
-                        backgroundColor: BRAND_COLORS.primaryDark,
-                      },
-                      '&:disabled': {
-                        backgroundColor: 'action.disabledBackground',
-                      },
-                    }}
-                  >
-                    {loading ? 'Wird erstellt...' : 'Standard (1080x1080)'}
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    startIcon={<RefreshIcon />}
-                    onClick={() =>
-                      setContent({
-                        title: '',
-                        description: '',
-                        price: '',
-                        additionalInfo: '',
-                      })
-                    }
-                    sx={{
-                      flexShrink: 0,
-                      whiteSpace: 'nowrap',
-                      borderColor: BRAND_COLORS.primary,
-                      color: BRAND_COLORS.primary,
-                      '&:hover': {
-                        borderColor: BRAND_COLORS.primaryDark,
-                        backgroundColor: BRAND_COLORS.primaryLight + '20',
-                      },
-                    }}
-                  >
-                    Zurücksetzen
-                  </Button>
-                </Box>
-
-                {/* Social media optimized download button */}
-                <Button
-                  variant="contained"
-                  startIcon={<SmartphoneIcon />}
-                  onClick={handleSocialMediaDownload}
-                  disabled={loading || !content.title}
-                  fullWidth
-                  sx={{
-                    backgroundColor: BRAND_COLORS.success,
-                    color: BRAND_COLORS.bgPaper,
-                    '&:hover': {
-                      backgroundColor: '#15C55C', // Darker green on hover
-                    },
-                    '&:disabled': {
-                      backgroundColor: 'action.disabledBackground',
-                    },
-                  }}
-                >
-                  {loading
-                    ? 'Wird erstellt...'
-                    : `Für ${SOCIAL_DIMENSIONS[socialPlatform].label} optimiert`}
-                </Button>
-              </Box>
-            </Paper>
-          </Grid>
-
-          {/* Preview Section */}
-          <Grid item xs={12} md={6}>
-            <Paper
-              elevation={0}
-              sx={{
-                p: 3,
-                borderRadius: 2,
-                bgcolor: 'background.paper',
-                border: '1px solid',
-                borderColor: 'divider',
-              }}
-            >
-              <Typography
-                variant="h6"
-                gutterBottom
-                sx={{
-                  color: 'text.primary',
-                  fontWeight: 500,
-                  fontFamily: "'Lora', serif",
+                SelectProps={{
+                  renderValue: (value) =>
+                    SOCIAL_DIMENSIONS[value as SocialPlatform]?.label ?? '',
                 }}
               >
-                Vorschau
-              </Typography>
+                {Object.entries(SOCIAL_DIMENSIONS).map(([key, value]) => (
+                  <MenuItem key={key} value={key}>
+                    <Box>
+                      <Typography variant="body1">{value.label}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {value.width} × {value.height} Pixel
+                      </Typography>
+                    </Box>
+                  </MenuItem>
+                ))}
+              </TextField>
 
               <Box
-                ref={previewRef}
                 sx={{
-                  width: '100%',
-                  aspectRatio: '1',
-                  // Bezugsgröße 540 px: alle Maße innen in cqw (1cqw = 1 %
-                  // der Vorschaubreite), damit die Karte am Handy mitschrumpft,
-                  // statt dass Fußzeile und Texte übereinanderliegen.
-                  containerType: 'inline-size',
-                  background: `linear-gradient(180deg, ${BRAND_COLORS.bgPaper} 0%, ${BRAND_COLORS.bgLight} 100%)`,
-                  border: '2px solid',
-                  borderColor: BRAND_COLORS.border,
-                  borderRadius: 2,
-                  position: 'relative',
-                  overflow: 'hidden',
-                  boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 1,
+                  justifyContent: 'flex-end',
                 }}
               >
-                {/* Decorative pattern elements */}
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    top: '3.7cqw',
-                    left: '3.7cqw',
-                    width: '18.5cqw',
-                    height: '18.5cqw',
-                    borderRadius: '50%',
-                    bgcolor: BRAND_COLORS.primary,
-                    opacity: 0.05,
-                  }}
-                />
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    bottom: '7.4cqw',
-                    right: '7.4cqw',
-                    width: '14.8cqw',
-                    height: '14.8cqw',
-                    borderRadius: '50%',
-                    bgcolor: BRAND_COLORS.primary,
-                    opacity: 0.05,
-                  }}
-                />
+                <Button
+                  startIcon={<RefreshIcon />}
+                  onClick={() => setContent(EMPTY_CONTENT)}
+                  disabled={!hasContent || loading}
+                >
+                  Leeren
+                </Button>
+                <Button
+                  variant="contained"
+                  startIcon={
+                    loading ? (
+                      <CircularProgress size={18} color="inherit" />
+                    ) : (
+                      <DownloadIcon />
+                    )
+                  }
+                  onClick={handleDownload}
+                  disabled={loading || !content.title.trim()}
+                  sx={{ flex: { xs: '1 1 100%', sm: '0 0 auto' } }}
+                >
+                  {loading ? 'Wird erstellt …' : 'Bild herunterladen'}
+                </Button>
+              </Box>
+              {!content.title.trim() && (
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ textAlign: 'right', mt: '4px !important' }}
+                >
+                  Zum Herunterladen zuerst einen Titel eingeben.
+                </Typography>
+              )}
+            </Stack>
+          </PageSection>
+        </Grid>
 
-                {/* Main content panel */}
+        <Grid item xs={12} md={6}>
+          <PageSection
+            title="Vorschau"
+            description={`Quadratische Vorschau · heruntergeladen wird ${format.label}, ${format.width} × ${format.height} Pixel.`}
+          >
+            <Box
+              ref={previewRef}
+              sx={{
+                width: '100%',
+                aspectRatio: '1',
+                // Bezugsgröße 540 px: alle Maße innen in cqw (1cqw = 1 %
+                // der Vorschaubreite), damit die Karte am Handy mitschrumpft,
+                // statt dass Fußzeile und Texte übereinanderliegen.
+                containerType: 'inline-size',
+                background: `linear-gradient(180deg, ${BRAND_COLORS.bgPaper} 0%, ${BRAND_COLORS.bgLight} 100%)`,
+                border: '2px solid',
+                borderColor: BRAND_COLORS.border,
+                borderRadius: 2,
+                position: 'relative',
+                overflow: 'hidden',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+              }}
+            >
+              {/* Decorative pattern elements */}
+              <Box
+                sx={{
+                  position: 'absolute',
+                  top: '3.7cqw',
+                  left: '3.7cqw',
+                  width: '18.5cqw',
+                  height: '18.5cqw',
+                  borderRadius: '50%',
+                  bgcolor: BRAND_COLORS.primary,
+                  opacity: 0.05,
+                }}
+              />
+              <Box
+                sx={{
+                  position: 'absolute',
+                  bottom: '7.4cqw',
+                  right: '7.4cqw',
+                  width: '14.8cqw',
+                  height: '14.8cqw',
+                  borderRadius: '50%',
+                  bgcolor: BRAND_COLORS.primary,
+                  opacity: 0.05,
+                }}
+              />
+
+              {/* Main content panel */}
+              <Box
+                sx={{
+                  position: 'absolute',
+                  top: '20%',
+                  left: '5.5%',
+                  right: '5.5%',
+                  height: '60%',
+                  bgcolor: BRAND_COLORS.bgPaper,
+                  boxShadow: '0 10px 25px rgba(208, 56, 186, 0.15)',
+                  borderRadius: 2,
+                  overflow: 'hidden',
+                }}
+              >
+                {/* Header */}
                 <Box
                   sx={{
-                    position: 'absolute',
-                    top: '20%',
-                    left: '5.5%',
-                    right: '5.5%',
-                    height: '60%',
-                    bgcolor: BRAND_COLORS.bgPaper,
-                    boxShadow: '0 10px 25px rgba(208, 56, 186, 0.15)',
-                    borderRadius: 2,
-                    overflow: 'hidden',
+                    bgcolor: BRAND_COLORS.primary,
+                    p: '3cqw',
+                    textAlign: 'center',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
                   }}
                 >
-                  {/* Header */}
-                  <Box
-                    sx={{
-                      bgcolor: BRAND_COLORS.primary,
-                      p: '3cqw',
-                      textAlign: 'center',
-                      display: 'flex',
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <HeusserLogo
-                      width={120}
-                      height={30}
-                      color={BRAND_COLORS.bgPaper}
-                      style={{ width: '22cqw', height: '5.5cqw' }}
-                    />
-                  </Box>
-
-                  {/* Template heading */}
-                  <Typography
-                    variant="h6"
-                    sx={{
-                      textAlign: 'center',
-                      color: BRAND_COLORS.primaryDark,
-                      fontWeight: 'bold',
-                      fontFamily: "'Playfair Display', serif",
-                      fontSize: '3.7cqw',
-                      mt: '3cqw',
-                      mb: '1.5cqw',
-                    }}
-                  >
-                    {templateContent.heading}
-                  </Typography>
-
-                  {/* Content */}
-                  <Box sx={{ p: '4.4cqw', textAlign: 'center' }}>
-                    {/* Platzhalter dort, wo später Titel und Text stehen -
-                        nicht absolut über der Karte, sonst liegt er am Handy
-                        auf der Überschrift. Die Karte ist immer weiß, also
-                        Markenfarbe statt text.secondary (im Dark Mode wäre
-                        das hellgrau auf weiß). */}
-                    {!content.title && !content.description && (
-                      <Typography
-                        variant="body1"
-                        sx={{
-                          color: BRAND_COLORS.textMedium,
-                          fontStyle: 'italic',
-                          fontFamily: "'Lora', serif",
-                          fontSize: '3cqw',
-                        }}
-                      >
-                        Füllen Sie das Formular aus, um eine Vorschau zu sehen
-                      </Typography>
-                    )}
-
-                    {content.title && (
-                      <Typography
-                        variant="h4"
-                        sx={{
-                          mb: '3cqw',
-                          fontWeight: 'bold',
-                          color: BRAND_COLORS.textDark,
-                          fontFamily: "'Playfair Display', serif",
-                          fontSize: '6.3cqw',
-                        }}
-                      >
-                        {content.title}
-                      </Typography>
-                    )}
-
-                    {content.description && (
-                      <Typography
-                        variant="body1"
-                        sx={{
-                          mb: '3cqw',
-                          color: BRAND_COLORS.textMedium,
-                          fontFamily: "'Lora', serif",
-                          fontSize: '3cqw',
-                        }}
-                      >
-                        {content.description}
-                      </Typography>
-                    )}
-
-                    {templateContent.showPrice && content.price && (
-                      <Box
-                        sx={{
-                          display: 'inline-block',
-                          bgcolor: BRAND_COLORS.success,
-                          color: BRAND_COLORS.bgPaper,
-                          px: '4.4cqw',
-                          py: '1.5cqw',
-                          borderRadius: '1.5cqw',
-                          mb: '3cqw',
-                          boxShadow: '0 2px 8px rgba(26, 218, 103, 0.3)',
-                        }}
-                      >
-                        <Typography
-                          variant="h3"
-                          sx={{ fontWeight: 'bold', fontSize: '8.9cqw' }}
-                        >
-                          {content.price}€
-                        </Typography>
-                      </Box>
-                    )}
-
-                    {content.additionalInfo && (
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          fontStyle: 'italic',
-                          color: BRAND_COLORS.primary,
-                          fontFamily: "'Lora', serif",
-                          fontSize: '2.6cqw',
-                        }}
-                      >
-                        {content.additionalInfo}
-                      </Typography>
-                    )}
-                  </Box>
+                  <HeusserLogo
+                    width={120}
+                    height={30}
+                    color={BRAND_COLORS.bgPaper}
+                    style={{ width: '22cqw', height: '5.5cqw' }}
+                  />
                 </Box>
 
-                {/* Footer */}
-                <Box
+                {/* Template heading */}
+                <Typography
+                  variant="h6"
                   sx={{
-                    position: 'absolute',
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    height: '18.5cqw',
-                    bgcolor: BRAND_COLORS.primary,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    textAlign: 'center',
+                    color: BRAND_COLORS.primaryDark,
+                    fontWeight: 'bold',
+                    fontFamily: "'Playfair Display', serif",
+                    fontSize: '3.7cqw',
+                    mt: '3cqw',
+                    mb: '1.5cqw',
                   }}
                 >
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      color: BRAND_COLORS.bgPaper,
-                      textAlign: 'center',
-                      fontFamily: "'Lora', serif",
-                      fontSize: '2.6cqw',
-                    }}
-                  >
-                    Traditionelle Handwerkskunst seit 1952
-                  </Typography>
-                </Box>
+                  {templateContent.heading}
+                </Typography>
 
-                {/* Logo mark in corner */}
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    bottom: '20.4cqw',
-                    right: '5.5cqw',
-                    width: '11cqw',
-                    height: '11cqw',
-                    borderRadius: '50%',
-                    bgcolor: 'rgba(255, 255, 255, 0.2)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Typography
-                    sx={{
-                      fontSize: '6.7cqw',
-                      fontWeight: 'bold',
-                      color: BRAND_COLORS.bgPaper,
-                    }}
-                  >
-                    H
-                  </Typography>
+                {/* Content */}
+                <Box sx={{ p: '4.4cqw', textAlign: 'center' }}>
+                  {/* Platzhalter dort, wo später Titel und Text stehen -
+                      nicht absolut über der Karte, sonst liegt er am Handy
+                      auf der Überschrift. Die Karte ist immer weiß, also
+                      Markenfarbe statt text.secondary (im Dark Mode wäre
+                      das hellgrau auf weiß). */}
+                  {!content.title && !content.description && (
+                    <Typography
+                      variant="body1"
+                      sx={{
+                        color: BRAND_COLORS.textMedium,
+                        fontStyle: 'italic',
+                        fontFamily: "'Lora', serif",
+                        fontSize: '3cqw',
+                      }}
+                    >
+                      Füllen Sie das Formular aus, um eine Vorschau zu sehen
+                    </Typography>
+                  )}
+
+                  {content.title && (
+                    <Typography
+                      variant="h4"
+                      sx={{
+                        mb: '3cqw',
+                        fontWeight: 'bold',
+                        color: BRAND_COLORS.textDark,
+                        fontFamily: "'Playfair Display', serif",
+                        fontSize: '6.3cqw',
+                      }}
+                    >
+                      {content.title}
+                    </Typography>
+                  )}
+
+                  {content.description && (
+                    <Typography
+                      variant="body1"
+                      sx={{
+                        mb: '3cqw',
+                        color: BRAND_COLORS.textMedium,
+                        fontFamily: "'Lora', serif",
+                        fontSize: '3cqw',
+                      }}
+                    >
+                      {content.description}
+                    </Typography>
+                  )}
+
+                  {templateContent.showPrice && priceText && (
+                    <Box
+                      sx={{
+                        display: 'inline-block',
+                        bgcolor: BRAND_COLORS.success,
+                        color: BRAND_COLORS.bgPaper,
+                        px: '4.4cqw',
+                        py: '1.5cqw',
+                        borderRadius: '1.5cqw',
+                        mb: '3cqw',
+                        boxShadow: '0 2px 8px rgba(26, 218, 103, 0.3)',
+                      }}
+                    >
+                      <Typography
+                        variant="h3"
+                        sx={{ fontWeight: 'bold', fontSize: '8.9cqw' }}
+                      >
+                        {priceText}
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {content.additionalInfo && (
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontStyle: 'italic',
+                        color: BRAND_COLORS.primary,
+                        fontFamily: "'Lora', serif",
+                        fontSize: '2.6cqw',
+                      }}
+                    >
+                      {content.additionalInfo}
+                    </Typography>
+                  )}
                 </Box>
               </Box>
 
-              <Alert
-                severity="info"
+              {/* Footer */}
+              <Box
                 sx={{
-                  mt: 2,
-                  bgcolor: BRAND_COLORS.primaryLight + '10',
-                  color: 'text.primary',
-                  '& .MuiAlert-icon': {
-                    color: BRAND_COLORS.primary,
-                  },
+                  position: 'absolute',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  height: '18.5cqw',
+                  bgcolor: BRAND_COLORS.primary,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
               >
-                Die Vorschau zeigt, wie Ihr Social Media Post aussehen wird. Das
-                fertige Bild kann heruntergeladen und auf allen Plattformen
-                geteilt werden.
-              </Alert>
-            </Paper>
-          </Grid>
-        </Grid>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: BRAND_COLORS.bgPaper,
+                    textAlign: 'center',
+                    fontFamily: "'Lora', serif",
+                    fontSize: '2.6cqw',
+                  }}
+                >
+                  Traditionelle Handwerkskunst seit 1952
+                </Typography>
+              </Box>
 
-        {/* Snackbar for notifications */}
-        <Snackbar
-          open={snackbar.open}
-          autoHideDuration={6000}
+              {/* Logo mark in corner */}
+              <Box
+                sx={{
+                  position: 'absolute',
+                  bottom: '20.4cqw',
+                  right: '5.5cqw',
+                  width: '11cqw',
+                  height: '11cqw',
+                  borderRadius: '50%',
+                  bgcolor: 'rgba(255, 255, 255, 0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Typography
+                  sx={{
+                    fontSize: '6.7cqw',
+                    fontWeight: 'bold',
+                    color: BRAND_COLORS.bgPaper,
+                  }}
+                >
+                  H
+                </Typography>
+              </Box>
+            </Box>
+          </PageSection>
+        </Grid>
+      </Grid>
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
           onClose={handleCloseSnackbar}
-          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
         >
-          <Alert
-            onClose={handleCloseSnackbar}
-            severity={snackbar.severity}
-            sx={{ width: '100%' }}
-          >
-            {snackbar.message}
-          </Alert>
-        </Snackbar>
-      </Container>
-    </>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+    </PageLayout>
   )
 }

@@ -46,8 +46,12 @@ nicht mehr.
 - **Fahrer-App** (B12, `deliveryApiServer()`): die echte API mit dem
   App-Origin in `CORS_ORIGIN`. `apps/bakery-delivery-e2e/src/login.ts` meldet
   den E2E-Inhaber an und gibt den Specs einen `request`-Kontext mit Bearer;
-  den Fahrer „E2E-Fahrer“ legt `driverId()` beim ersten Aufruf an (die echte
-  API seedet keine Fahrer).
+  den Fahrer „E2E-Fahrer“ legt `global-setup.ts` einmal vor allen Workern an
+  (die echte API seedet keine Fahrer; je Worker entstanden sonst zwei
+  gleichnamige). Die App startet wie die anderen über `nextApp()`, mit
+  `E2E_BUILT=1` also `next start` auf `dist/apps/bakery-delivery` (oder
+  `E2E_APP_DIR`) - dort muss `NEXT_PUBLIC_API_URL` beim Build auf `API_URL`
+  gezeigt haben.
 
 ## Zwei Betriebsarten
 

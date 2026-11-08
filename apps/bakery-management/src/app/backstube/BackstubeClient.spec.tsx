@@ -131,7 +131,7 @@ describe('Backstube-Tablet', () => {
     // Gesamt groß, Liter mit Einheit, Zusammensetzung klein
     expect(screen.getByTestId(`bs-total-${WECK}`)).toHaveTextContent('65')
     expect(screen.getByTestId('bs-total-test-kornbrot|')).toHaveTextContent(
-      '2,25 l'
+      '2,25 L'
     )
     expect(screen.getByTestId(`bs-line-${WECK}`)).toHaveTextContent(
       'Basis 60 · CAP 10 · Korr. −5 (Testgrund)'
@@ -1035,5 +1035,136 @@ describe('Backstube-Tablet', () => {
     expect(
       within(screen.getByTestId('bs-deltas')).queryByRole('button')
     ).not.toBeInTheDocument()
+  })
+})
+
+describe('Backstube-Tablet: UI-Runde 1', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    mocked.fetchBackzettelConfig.mockResolvedValue(CONFIG_RESPONSE)
+  })
+
+  /** Weck abgehakt um 04:00, danach ein Nachtrag +12 (schon gesehen). */
+  function weckDoneThenDelta(): api.BackzettelDay {
+    const base = saturdayConfirmed()
+    return {
+      ...base,
+      sections: base.sections.map((s) => ({
+        ...s,
+        lines: s.lines.map((l) =>
+          l.key === WECK
+            ? {
+                ...l,
+                doneAt: '2026-11-28T03:00:00.000Z',
+                doneBy: { id: 2, displayName: 'Test Backstube' },
+                delta: { qty: 12, open: 0, count: 1, bake: 12, bakeOpen: 0 },
+              }
+            : l
+        ),
+      })),
+      deltas: [
+        {
+          id: 20,
+          key: WECK,
+          itemId: 'test-weck',
+          name: 'Testweck',
+          unit: 'Stück',
+          variant: null,
+          qty: 12,
+          kind: 'added',
+          preorderId: 50,
+          preorderCode: 'LA-2026-11-28-09',
+          createdAt: '2026-11-28T03:30:00.000Z',
+          acknowledgedAt: '2026-11-28T03:40:00.000Z',
+          acknowledgedBy: { id: 2, displayName: 'Test Backstube' },
+        },
+      ],
+    }
+  }
+
+  it('ein Nachtrag nach dem Abhaken lässt die Zeile offen, auch wenn er gesehen ist', async () => {
+    mocked.fetchBackzettelDay.mockResolvedValue(weckDoneThenDelta())
+    renderTablet({ now: at(SAT, 5) })
+    const row = await screen.findByTestId(`bs-line-${WECK}`)
+    expect(row).toHaveAttribute('data-done', 'false')
+    expect(row).toHaveAttribute('data-reopened', 'true')
+    expect(screen.getByTestId(`bs-after-done-${WECK}`)).toHaveTextContent(
+      'danach Nachtrag: noch +12 backen'
+    )
+    expect(screen.getByTestId(`bs-after-done-qty-${WECK}`)).toHaveTextContent(
+      '+12'
+    )
+    expect(screen.getByTestId(`bs-tick-${WECK}`)).toHaveAttribute(
+      'aria-checked',
+      'mixed'
+    )
+    // zählt nicht als erledigt
+    expect(screen.getByTestId('bs-progress')).toHaveTextContent(
+      '0 von 4 erledigt'
+    )
+  })
+
+  it('ein Tipp auf den Haken setzt ihn neu (undone + done), danach ist die Zeile erledigt', async () => {
+    mocked.fetchBackzettelDay.mockResolvedValue(weckDoneThenDelta())
+    mocked.setLineDone.mockImplementation(async (_d, id, done) => ({
+      id,
+      date: SAT,
+      itemId: 'test-weck',
+      variant: null,
+      doneAt: done ? '2026-11-28T04:10:00.000Z' : null,
+      doneBy: done ? { id: 2, displayName: 'Test Backstube' } : null,
+    }))
+    renderTablet({ now: at(SAT, 5) })
+    fireEvent.click(await screen.findByTestId(`bs-tick-${WECK}`))
+    await waitFor(() => expect(mocked.setLineDone).toHaveBeenCalledTimes(2))
+    const weckId = mocked.setLineDone.mock.calls[0][1]
+    expect(mocked.setLineDone.mock.calls[0]).toEqual([SAT, weckId, false])
+    expect(mocked.setLineDone.mock.calls[1]).toEqual([SAT, weckId, true, 65])
+    await waitFor(() =>
+      expect(screen.getByTestId(`bs-line-${WECK}`)).toHaveAttribute(
+        'data-done',
+        'true'
+      )
+    )
+    expect(
+      screen.queryByTestId(`bs-after-done-qty-${WECK}`)
+    ).not.toBeInTheDocument()
+  })
+
+  it('offene Grundmenge: Abzeichen an der Zeile', async () => {
+    mocked.fetchBackzettelDay.mockResolvedValue(saturdayConfirmed())
+    renderTablet()
+    expect(
+      await screen.findByTestId('bs-base-unset-test-zopf|mohn')
+    ).toHaveTextContent('Grundmenge offen')
+    expect(screen.queryByTestId(`bs-base-unset-${WECK}`)).toBeNull()
+  })
+
+  it('Hinweise stehen oben als Warnung, nicht unten als Info', async () => {
+    mocked.fetchBackzettelDay.mockResolvedValue(
+      saturdayConfirmed({
+        warnings: [
+          {
+            code: 'unmapped_product',
+            message: 'Testsemmel gehört zu keinem Posten.',
+          },
+          { code: 'base_unset', message: 'Grundmenge offen: Testzopf.' },
+          {
+            code: 'unmapped_product',
+            message: 'Testtorte gehört zu keinem Posten.',
+          },
+        ],
+      })
+    )
+    renderTablet()
+    const warnings = await screen.findByTestId('bs-warnings')
+    expect(warnings).toHaveClass('MuiAlert-standardWarning')
+    expect(warnings).toHaveTextContent('Hinweise (3)')
+    const order = Array.from(
+      document.querySelectorAll(
+        '[data-testid="bs-warnings"], [data-testid^="bs-section-"]'
+      )
+    ).map((el) => el.getAttribute('data-testid'))
+    expect(order[0]).toBe('bs-warnings')
   })
 })

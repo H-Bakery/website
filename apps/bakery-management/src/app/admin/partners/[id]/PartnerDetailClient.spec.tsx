@@ -249,7 +249,7 @@ const INCOMPLETE_DAY: DayView = {
 
 /** Kennzahlen-Kachel über ihr Label greifen. */
 function kpi(label: string) {
-  const tile = screen.getByText(label).closest('.MuiCard-root')
+  const tile = screen.getByText(label).closest('[data-testid^="kpi-"]')
   if (!tile) throw new Error(`Kennzahlen-Kachel "${label}" nicht gefunden`)
   return within(tile as HTMLElement)
 }
@@ -288,18 +288,20 @@ describe('PartnerDetailClient', () => {
 
     // Verkauft, Umsatz und Abverkaufsquote hängen an der fehlenden Abholung
     expect(screen.getAllByText('vorläufig')).toHaveLength(3)
-    expect(kpi('Verkauft').getByText('30')).toBeInTheDocument()
+    expect(kpi('Verkauft').getByText('30 Stück')).toBeInTheDocument()
     expect(kpi('Verkauft').getByText('vorläufig')).toBeInTheDocument()
     expect(kpi('Umsatz').getByText('63,00 €')).toBeInTheDocument()
     expect(kpi('Umsatz').getByText('vorläufig')).toBeInTheDocument()
     expect(kpi('Abverkaufsquote').getByText('50 %')).toBeInTheDocument()
 
     // Geliefert steht fest, die Retoure gibt es erst mit der Abholung
-    expect(kpi('Geliefert').getByText('60')).toBeInTheDocument()
+    expect(kpi('Geliefert').getByText('60 Stück')).toBeInTheDocument()
     expect(kpi('Geliefert').queryByText('vorläufig')).toBeNull()
     expect(
-      kpi('Retoure').getByText('erst mit der Abholung')
+      kpi('Abverkaufsquote').getByText('Retoure erst mit der Abholung')
     ).toBeInTheDocument()
+    // Höchstens vier Kennzahlen (Layout-Kit)
+    expect(screen.getAllByTestId(/^kpi-/)).toHaveLength(4)
   })
 
   it('shows a closed day as final without the provisional marking', async () => {
@@ -310,12 +312,13 @@ describe('PartnerDetailClient', () => {
     expect(screen.queryByText(/Tag noch offen/)).toBeNull()
     expect(screen.queryByText('vorläufig')).toBeNull()
 
-    expect(kpi('Verkauft').getByText('45')).toBeInTheDocument()
+    expect(kpi('Verkauft').getByText('45 Stück')).toBeInTheDocument()
     expect(kpi('Umsatz').getByText('94,50 €')).toBeInTheDocument()
     expect(kpi('Abverkaufsquote').getByText('75 %')).toBeInTheDocument()
     // Abgeschlossen: die Retoure ist beziffert statt angekündigt
-    expect(kpi('Retoure').getByText('15')).toBeInTheDocument()
-    expect(kpi('Retoure').getByText('31,50 €')).toBeInTheDocument()
+    expect(
+      kpi('Abverkaufsquote').getByText('Retoure 15 Stück · 31,50 €')
+    ).toBeInTheDocument()
   })
 
   it('warns about a pickup that left a product uncounted and keeps the KPIs provisional', async () => {
@@ -332,7 +335,7 @@ describe('PartnerDetailClient', () => {
     expect(screen.getAllByText('vorläufig')).toHaveLength(3)
     expect(kpi('Verkauft').getByText('vorläufig')).toBeInTheDocument()
     expect(
-      kpi('Retoure').getByText('unvollständig gezählt')
+      kpi('Abverkaufsquote').getByText('Retoure unvollständig gezählt')
     ).toBeInTheDocument()
   })
 
@@ -368,7 +371,12 @@ describe('PartnerDetailClient', () => {
     expect(
       screen.getByRole('heading', { name: `Besuche am ${formatDate(TODAY)}` })
     ).toBeInTheDocument()
-    expect(screen.getByText('3 Besuche · 1 Nachlieferung')).toBeInTheDocument()
+    // TODAY ist das echte Datum - an So/Mo hängt „kein regulärer Liefertag“ an.
+    expect(
+      screen.getByText(
+        /^3 Besuche · 1 Nachlieferung( · kein regulärer Liefertag)?$/
+      )
+    ).toBeInTheDocument()
 
     const entries = screen.getAllByRole('button', {
       name: /^Besuch um .+ löschen$/,
@@ -394,6 +402,24 @@ describe('PartnerDetailClient', () => {
     expect(
       screen.getByText('„Brot war um 10 Uhr komplett leer“')
     ).toBeInTheDocument()
+  })
+
+  it('zeigt einen Besuch ohne Zählung als „nicht gezählt“, nicht als 0', async () => {
+    const uncounted = {
+      ...INITIAL,
+      items: INITIAL.items.map((item) => ({ ...item, countedQty: null })),
+    }
+    mockFetchToday.mockResolvedValue({
+      ...OPEN_DAY,
+      timeline: [uncounted, REFILL],
+    })
+    await renderDetail()
+
+    const figures = screen.getAllByText('Rest gezählt')
+    // Erstbestückung ohne Zählung: null heißt „nicht gezählt“, 0 hieße
+    // „Schrank war leer“.
+    expect(figures[0].parentElement).toHaveTextContent('nicht gezählt')
+    expect(figures[1].parentElement).toHaveTextContent('10')
   })
 
   it('asks for confirmation in a dialog before deleting a visit', async () => {
@@ -487,6 +513,31 @@ describe('PartnerDetailClient', () => {
       `/admin/partners/1?date=${PAST_DATE}`,
       { scroll: false }
     )
+  })
+
+  it('zeigt beim schnellen Blättern nie den Tag einer älteren Antwort', async () => {
+    const user = userEvent.setup()
+    await renderDetail()
+    mockFetchToday.mockClear()
+
+    // Erste Anfrage (gestern) hängt, die zweite (vorgestern) kommt sofort.
+    let resolveYesterday: (day: DayView) => void = () => undefined
+    const yesterday = new Promise<DayView>((resolve) => {
+      resolveYesterday = resolve
+    })
+    mockFetchToday
+      .mockImplementationOnce(() => yesterday)
+      .mockResolvedValueOnce(CLOSED_DAY)
+    await user.click(screen.getByRole('button', { name: 'Vorheriger Tag' }))
+    await user.click(screen.getByRole('button', { name: 'Vorheriger Tag' }))
+    expect(await screen.findByText('Tag abgeschlossen')).toBeInTheDocument()
+
+    // Die verspätete Antwort für gestern darf den Tag nicht überschreiben.
+    resolveYesterday(OPEN_DAY)
+    await waitFor(() => expect(mockFetchToday).toHaveBeenCalledTimes(2))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(screen.getByText('Tag abgeschlossen')).toBeInTheDocument()
+    expect(screen.queryByText(/Tag noch offen/)).toBeNull()
   })
 
   it('shows the German error message when the day cannot be loaded', async () => {

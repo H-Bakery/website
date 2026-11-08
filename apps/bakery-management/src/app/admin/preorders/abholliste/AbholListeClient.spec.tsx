@@ -178,16 +178,58 @@ beforeEach(() => {
 afterEach(() => jest.useRealTimers())
 
 describe('AbholListeClient (P2)', () => {
+  it('zeigt schon während der ersten Anfrage „wird geladen“ (UI-Runde 2)', async () => {
+    // Langsames WLAN: solange die Sammelstellen laden, stand unter den
+    // Filtern eine leere Fläche ohne Hinweis.
+    let resolvePoints: (points: unknown[]) => void = () => undefined
+    ;(fetchPickupPoints as jest.Mock).mockReturnValue(
+      new Promise((resolve) => {
+        resolvePoints = resolve
+      })
+    )
+    renderAs('verkauf')
+    expect(screen.getByText('Abholliste wird geladen …')).toBeInTheDocument()
+    expect(mockDay).not.toHaveBeenCalled()
+
+    resolvePoints([POINT])
+    expect(await screen.findByTestId('abhol-LA-2026-11-12-01')).toBeVisible()
+    expect(
+      screen.queryByText('Abholliste wird geladen …')
+    ).not.toBeInTheDocument()
+  })
+
+  it('Tab-Reihenfolge der Filter folgt den Zeilen: Sortierung vor der Suche (UI-Runde 2)', async () => {
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-01')
+    const sort = screen.getByRole('group', { name: 'Sortierung' })
+    const search = screen.getByRole('textbox', {
+      name: 'Name oder Code suchen',
+    })
+    expect(
+      sort.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+  })
+
   it('lädt Tag und Ort, gruppiert nach Uhrzeit, Stornierte am Ende', async () => {
     renderAs('verkauf')
     expect(
       await screen.findByRole('heading', { name: 'Abholliste Laden' })
     ).toBeInTheDocument()
     expect(mockDay).toHaveBeenCalledWith(DATE, 'laden')
-    const groups = screen
-      .getAllByRole('heading', { level: 2 })
+    const headings = screen.getAllByRole('heading', { level: 2 })
+    const groups = headings
       .map((h) => h.textContent)
+      .filter((t) => t !== 'Für alle Bestellungen')
     expect(groups).toEqual(['08:30 Uhr · 2', '09:00 Uhr · 1', 'Storniert · 1'])
+    // Sammelaktionen stehen am Listenende, nicht über der Liste (UI-Runde 1).
+    const bulk = screen.getByRole('region', { name: 'Für alle Bestellungen' })
+    expect(
+      row('LA-2026-11-12-04').compareDocumentPosition(bulk) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    expect(
+      within(bulk).getByRole('button', { name: /Tagesabschluss: Rest/ })
+    ).toBeInTheDocument()
     const early = screen.getByRole('region', { name: '08:30 Uhr' })
     expect(
       within(early)
@@ -226,6 +268,9 @@ describe('AbholListeClient (P2)', () => {
         '2026-11-12T09:14:00.000Z'
       )
     )
+    expect(
+      await screen.findByText('Erika Beispiel: rückgängig gemacht.')
+    ).toBeVisible()
     // nach jeder Aktion still neu geladen
     expect(mockDay.mock.calls.length).toBeGreaterThanOrEqual(2)
   })
@@ -276,13 +321,28 @@ describe('AbholListeClient (P2)', () => {
     )
   })
 
-  it('Fahrer: „Bezahlt“ ohne „Rückgängig“ - eine Zahlung nimmt nur der Verkauf zurück (W4-verify r2)', async () => {
+  it('Fahrer: „Bezahlt“ erst nach Rückfrage, ohne „Rückgängig“ - eine Zahlung nimmt nur der Verkauf zurück (W4-verify r2, UI-Runde 1)', async () => {
     const user = userEvent.setup()
     renderAs('fahrer', {})
     await screen.findByTestId('abhol-LA-2026-11-12-03')
-    await user.click(
-      screen.getByRole('button', { name: 'Paula Probe: als bezahlt markieren' })
-    )
+    const pay = screen.getByRole('button', {
+      name: 'Paula Probe: als bezahlt markieren',
+    })
+    // Ein Fehltipp bucht nichts: erst die Rückfrage mit Betrag.
+    await user.click(pay)
+    let dialog = await screen.findByRole('dialog', {
+      name: 'Zahlung erfassen?',
+    })
+    expect(dialog).toHaveTextContent(/von Paula Probe erhalten\?/)
+    expect(dialog).toHaveTextContent(/Zurücknehmen kann danach nur der Verkauf/)
+    expect(mockStatus).not.toHaveBeenCalled()
+    await user.click(within(dialog).getByRole('button', { name: 'Abbrechen' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(mockStatus).not.toHaveBeenCalled()
+
+    await user.click(pay)
+    dialog = await screen.findByRole('dialog', { name: 'Zahlung erfassen?' })
+    await user.click(within(dialog).getByRole('button', { name: /kassiert$/ }))
     expect(mockStatus).toHaveBeenCalledWith(
       3,
       { paid: true },
@@ -1425,6 +1485,10 @@ describe('Ausdruck passt auf A4 (W4-verify r4)', () => {
     expect(PRINT_PAGE_WIDTH_MM - fixed).toBeGreaterThanOrEqual(30)
     const sign = PRINT_COLUMNS.find((c) => c.key === 'sign')
     expect(sign?.widthMm).toBeGreaterThanOrEqual(30)
+    // Namen ohne Silbentrennung und breit genug (UI-Runde 1).
+    const who = PRINT_COLUMNS.find((c) => c.key === 'who')
+    expect(who?.widthMm).toBeGreaterThanOrEqual(40)
+    expect(css['.abholliste-print .name']['hyphens']).toBe('manual')
   })
 
   it('der Artikel bekommt den Platz, Wörter brechen mit Trennstrich (W4-verify r5)', () => {
@@ -1500,5 +1564,18 @@ describe('deaktivierte Sammelstelle (W4-verify r4)', () => {
     expect(sheet.querySelector('h1')?.textContent).toMatch(
       /^Abholliste Gemeindehaus Test \(inaktiv\) · /
     )
+  })
+
+  it('sagt bei einem Serverausfall nur einmal „Keine Verbindung“', async () => {
+    // Regression: Sammelstellen- und Listenfehler standen untereinander.
+    ;(fetchPickupPoints as jest.Mock).mockRejectedValueOnce(
+      new Error('Failed to fetch')
+    )
+    mockDay.mockRejectedValue(new Error('Failed to fetch'))
+    renderAs('verkauf')
+    expect(
+      await screen.findByRole('button', { name: 'Erneut versuchen' })
+    ).toBeInTheDocument()
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
   })
 })

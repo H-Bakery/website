@@ -135,6 +135,7 @@ export const SPICKZETTEL: Record<PilotRole, Spickzettel> = {
         title: 'Heute oder Morgen',
         steps: [
           'Oben **Heute** oder **Morgen** tippen. Das Datum steht groß links oben.',
+          'Reiter **Zettel**: was heute in die Maschine kommt (Teige, Brot, Brötchen je Backtag). Reiter **Backen**: die Backliste – was heute in den Ofen kommt, auch aus dem Teig vom Vortag.',
           'Die Seite lädt jede Minute neu. Der Kreispfeil lädt sofort.',
           'Samstag: die Karte **Hefeteig & Füllungen** steht zuerst – Teigstücke, Chargen, Abwiegen, Füllungen.',
         ],
@@ -145,6 +146,7 @@ export const SPICKZETTEL: Record<PilotRole, Spickzettel> = {
           'Ist ein Posten fertig: das Kästchen rechts in der Zeile antippen.',
           'Noch einmal tippen nimmt den Haken weg.',
           'Oben steht, wie viele Zeilen erledigt sind.',
+          'Reiter **Backen**: eigenes Kästchen **gebacken** je Zeile – auch für Teig vom Vortag. Nachträge haben unten ein eigenes Kästchen.',
         ],
       },
       {
@@ -164,8 +166,9 @@ export const SPICKZETTEL: Record<PilotRole, Spickzettel> = {
       {
         title: 'Drucken',
         steps: [
-          'Unten **Planung & Druck**, dann **Drucken**.',
-          'Zuerst der Backzettel (mit vielen Nachträgen auch zwei Blätter), samstags dann Abwiegen und Füllungen, zuletzt die Vorbereitung.',
+          'Unten **Planung & Druck**, dann **Drucken**: der Zettel des Teigtags auf einer Seite, unten Platz für Notizen.',
+          'Abwiegen, Füllungen und Vorbereitung nur mit Haken bei **Abwiegeliste & Rezepte mitdrucken** (eigene Blätter).',
+          'Die Backliste: in **Planung & Druck** auf **Backliste**, dann **Drucken**.',
           'Den Ausdruck des freigegebenen Zettels aufheben – er ist der Ersatz bei einem Ausfall.',
         ],
       },

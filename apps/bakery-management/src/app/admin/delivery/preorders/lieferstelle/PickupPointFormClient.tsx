@@ -6,20 +6,19 @@ import {
   Alert,
   Box,
   Button,
-  CircularProgress,
+  Chip,
   FormControlLabel,
   Grid,
-  IconButton,
   MenuItem,
-  Paper,
   Switch,
   TextField,
-  Typography,
 } from '@mui/material'
+import { Save as SaveIcon } from '@mui/icons-material'
 import {
-  ArrowBack as ArrowBackIcon,
-  Save as SaveIcon,
-} from '@mui/icons-material'
+  LoadingState,
+  PageLayout,
+  PageSection,
+} from '../../../../../components/layout'
 import { useOptionalSession } from '../../../../../lib/session'
 import {
   STALE_PICKUP_POINT,
@@ -31,6 +30,10 @@ import {
 } from '../../../../../lib/preordersApi'
 import { toBusinessDate } from '../../../../../lib/partnerTypes'
 import {
+  MOERSBACH_POINT_ID,
+  preferredPickupPoint,
+} from '../../../../../lib/abholliste'
+import {
   PICKUP_POINT_MAX_LENGTH,
   formatShortDate,
   type PickupPointInput,
@@ -40,9 +43,8 @@ import {
   PickupPoint,
   formatPickupAddress,
   hasPickupAddress,
+  moersbachListHref,
 } from '../preorderTypes'
-
-const LIST_HREF = '/admin/delivery/preorders'
 
 const messageOf = preorderErrorMessage
 
@@ -135,7 +137,8 @@ export default function PickupPointFormClient({
       const first =
         list.find((p) => p.id === pointIdRef.current) ??
         list.find((p) => p.id === initialPickupPointId) ??
-        list.find((p) => p.active !== false) ??
+        // Ohne Kennung Mörsbach wie die Liste (UI-Runde 1).
+        preferredPickupPoint(list, { preferId: MOERSBACH_POINT_ID }) ??
         list[0] ??
         null
       if (first) apply(first)
@@ -218,52 +221,45 @@ export default function PickupPointFormClient({
     }
   }
 
+  // Zurück auf die Liste dieser Sammelstelle, nicht auf die erste.
+  const listHref = moersbachListHref(null, false, pointId)
+  const back = { href: listHref, label: 'Zurück zur Liste' }
+
   if (loading) {
     return (
-      <Box
-        sx={{ display: 'flex', justifyContent: 'center', p: 6 }}
-        role="status"
-        aria-label="Sammelstelle wird geladen"
-      >
-        <CircularProgress />
-      </Box>
+      <PageLayout width="narrow" title="Sammelstelle" back={back}>
+        <LoadingState label="Sammelstelle wird geladen …" />
+      </PageLayout>
     )
   }
 
   return (
-    <Box sx={{ maxWidth: 800, mx: 'auto' }}>
-      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 2 }}>
-        <IconButton
-          aria-label="Zurück zur Liste"
-          onClick={() => router.push(LIST_HREF)}
-          sx={{ minWidth: 44, minHeight: 44 }}
-        >
-          <ArrowBackIcon />
-        </IconButton>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography
-            variant="h5"
-            component="h1"
-            sx={{ fontSize: { xs: '1.35rem', md: '1.75rem' } }}
-          >
-            Sammelstelle
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {!point
-              ? 'Keine Sammelstelle angelegt'
-              : hasPickupAddress(point)
-              ? formatPickupAddress(point)
-              : `Straße noch nicht hinterlegt${
-                  point.city ? ` · ${point.city}` : ''
-                }`}
-          </Typography>
-        </Box>
-      </Box>
-
+    <PageLayout
+      width="narrow"
+      title="Sammelstelle"
+      back={back}
+      subtitle={
+        // Bei einem Ladefehler wissen wir nicht, ob es eine gibt - kein
+        // „Keine Sammelstelle angelegt“ über „Keine Verbindung“ (UI-Runde 2).
+        loadError
+          ? undefined
+          : !point
+          ? 'Keine Sammelstelle angelegt'
+          : hasPickupAddress(point)
+          ? `${point.name} · ${formatPickupAddress(point)}`
+          : `${point.name} · Straße noch nicht hinterlegt${
+              point.city ? ` · ${point.city}` : ''
+            }`
+      }
+      status={
+        point && point.active === false ? (
+          <Chip label="inaktiv" variant="outlined" />
+        ) : undefined
+      }
+    >
       {loadError && (
         <Alert
           severity="error"
-          sx={{ mb: 2 }}
           action={
             <Button color="inherit" size="small" onClick={load}>
               Erneut versuchen
@@ -275,24 +271,17 @@ export default function PickupPointFormClient({
       )}
 
       {!loadError && !point && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          Es ist keine Sammelstelle angelegt.
-        </Alert>
+        <Alert severity="info">Es ist keine Sammelstelle angelegt.</Alert>
       )}
 
       {saved && (
-        <Alert
-          severity="success"
-          sx={{ mb: 2 }}
-          onClose={() => setSaved(false)}
-        >
+        <Alert severity="success" onClose={() => setSaved(false)}>
           Die Sammelstelle wurde gespeichert.
         </Alert>
       )}
       {openAfterDeactivate && (
         <Alert
           severity="warning"
-          sx={{ mb: 2 }}
           data-testid="pickup-point-open-after-deactivate"
           onClose={() => setOpenAfterDeactivate(null)}
         >
@@ -313,14 +302,13 @@ export default function PickupPointFormClient({
         </Alert>
       )}
       {!canEdit && point && (
-        <Alert severity="info" sx={{ mb: 2 }}>
+        <Alert severity="info">
           Nur der Inhaber kann die Sammelstelle ändern.
         </Alert>
       )}
       {saveError && (
         <Alert
           severity={staleSave ? 'warning' : 'error'}
-          sx={{ mb: 2 }}
           action={
             staleSave ? (
               <Button
@@ -350,7 +338,7 @@ export default function PickupPointFormClient({
                 if (next) apply(next)
               }}
               size="small"
-              sx={{ mb: 2, minWidth: 240 }}
+              sx={{ minWidth: 240, alignSelf: 'flex-start' }}
             >
               {points.map((p) => (
                 <MenuItem key={p.id} value={p.id}>
@@ -360,7 +348,7 @@ export default function PickupPointFormClient({
             </TextField>
           )}
 
-          <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+          <PageSection title="Adresse" description="Steht auf der Abholliste.">
             <Grid container spacing={2}>
               <Grid item xs={12}>
                 <TextField
@@ -381,12 +369,11 @@ export default function PickupPointFormClient({
                   onChange={(event) => setStreet(event.target.value)}
                   fullWidth
                   size="small"
-                  helperText="Steht auf der Abholliste."
                   InputProps={readOnly}
                   inputProps={{ maxLength: PICKUP_POINT_MAX_LENGTH.street }}
                 />
               </Grid>
-              <Grid item xs={6} sm={4}>
+              <Grid item xs={5} sm={4}>
                 <TextField
                   label="PLZ"
                   value={zip}
@@ -394,10 +381,13 @@ export default function PickupPointFormClient({
                   fullWidth
                   size="small"
                   InputProps={readOnly}
-                  inputProps={{ maxLength: PICKUP_POINT_MAX_LENGTH.zip }}
+                  inputProps={{
+                    maxLength: PICKUP_POINT_MAX_LENGTH.zip,
+                    inputMode: 'numeric',
+                  }}
                 />
               </Grid>
-              <Grid item xs={12} sm={8}>
+              <Grid item xs={7} sm={12}>
                 <TextField
                   label="Ort"
                   value={city}
@@ -408,7 +398,12 @@ export default function PickupPointFormClient({
                   inputProps={{ maxLength: PICKUP_POINT_MAX_LENGTH.city }}
                 />
               </Grid>
-              <Grid item xs={12} sm={4}>
+            </Grid>
+          </PageSection>
+
+          <PageSection title="Lieferung und Bestellschluss">
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
                 <TextField
                   select
                   label="Liefertag"
@@ -427,7 +422,7 @@ export default function PickupPointFormClient({
                   )}
                 </TextField>
               </Grid>
-              <Grid item xs={12} sm={4}>
+              <Grid item xs={12} sm={6}>
                 <TextField
                   label="Übergabefenster"
                   value={handoverWindow}
@@ -435,11 +430,11 @@ export default function PickupPointFormClient({
                   fullWidth
                   size="small"
                   placeholder="09:00-09:30"
-                  helperText={canEdit ? 'Format HH:MM-HH:MM' : undefined}
+                  helperText={canEdit ? 'z. B. 09:00-09:30' : undefined}
                   InputProps={readOnly}
                 />
               </Grid>
-              <Grid item xs={12} sm={4}>
+              <Grid item xs={12} sm={6}>
                 <TextField
                   select
                   label="Bestellschluss am"
@@ -459,7 +454,7 @@ export default function PickupPointFormClient({
                   )}
                 </TextField>
               </Grid>
-              <Grid item xs={12} sm={4}>
+              <Grid item xs={12} sm={6}>
                 <TextField
                   label="Bestellschluss um"
                   type="time"
@@ -471,70 +466,63 @@ export default function PickupPointFormClient({
                   InputProps={readOnly}
                 />
               </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  label="Notizen"
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  fullWidth
-                  size="small"
-                  multiline
-                  minRows={2}
-                  InputProps={readOnly}
-                  inputProps={{ maxLength: PICKUP_POINT_MAX_LENGTH.notes }}
-                  helperText={
-                    canEdit
-                      ? `${notes.length} / ${PICKUP_POINT_MAX_LENGTH.notes} Zeichen`
-                      : undefined
-                  }
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={active}
-                      onChange={(event) => setActive(event.target.checked)}
-                      disabled={!canEdit}
-                    />
-                  }
-                  label="Aktiv"
-                />
-              </Grid>
             </Grid>
-          </Paper>
+          </PageSection>
 
-          <Box sx={{ display: 'flex', gap: 1.5, justifyContent: 'flex-end' }}>
-            {canEdit ? (
-              <>
-                <Button
-                  onClick={() => router.push(LIST_HREF)}
-                  disabled={saving}
-                  sx={{ minHeight: 44 }}
-                >
-                  Abbrechen
-                </Button>
-                <Button
-                  variant="contained"
-                  startIcon={<SaveIcon />}
-                  onClick={handleSubmit}
-                  disabled={saving}
-                  sx={{ minHeight: 44 }}
-                >
-                  Speichern
-                </Button>
-              </>
-            ) : (
-              <Button
-                onClick={() => router.push(LIST_HREF)}
-                sx={{ minHeight: 44 }}
-              >
-                Zurück zur Liste
+          <PageSection title="Notizen und Status">
+            <TextField
+              label="Notizen"
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              fullWidth
+              size="small"
+              multiline
+              minRows={2}
+              InputProps={readOnly}
+              inputProps={{ maxLength: PICKUP_POINT_MAX_LENGTH.notes }}
+              helperText={
+                canEdit
+                  ? `${notes.length} / ${PICKUP_POINT_MAX_LENGTH.notes} Zeichen`
+                  : undefined
+              }
+            />
+            <FormControlLabel
+              sx={{ mt: 1, minHeight: 44 }}
+              control={
+                <Switch
+                  checked={active}
+                  onChange={(event) => setActive(event.target.checked)}
+                  disabled={!canEdit}
+                />
+              }
+              label="Aktiv"
+            />
+          </PageSection>
+
+          {canEdit && (
+            <Box
+              sx={{
+                display: 'flex',
+                gap: 1.5,
+                justifyContent: 'flex-end',
+                flexWrap: 'wrap',
+              }}
+            >
+              <Button onClick={() => router.push(listHref)} disabled={saving}>
+                Abbrechen
               </Button>
-            )}
-          </Box>
+              <Button
+                variant="contained"
+                startIcon={<SaveIcon />}
+                onClick={handleSubmit}
+                disabled={saving}
+              >
+                Speichern
+              </Button>
+            </Box>
+          )}
         </>
       )}
-    </Box>
+    </PageLayout>
   )
 }

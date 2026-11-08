@@ -1,5 +1,5 @@
 import React from 'react'
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import FinanceClient, { formatEuro, formatMonth } from './FinanceClient'
 import type { FinanceSummaryResponse } from '../../../lib/financeTypes'
@@ -200,13 +200,47 @@ describe('FinanceClient', () => {
   })
 
   it('zeigt einen echten Serverfehler als Fehler', async () => {
-    apiClient.get.mockRejectedValue(new Error('Request timeout'))
+    apiClient.get.mockRejectedValue(new ApiError('Interner Fehler', 500))
     renderWithTheme(<FinanceClient />)
     expect(
       await screen.findByText('Finanzdaten konnten nicht geladen werden')
     ).toBeInTheDocument()
-    expect(screen.getByText('Request timeout')).toBeInTheDocument()
+    expect(
+      screen.getByText(/Fehler auf dem Server \(500\)/)
+    ).toBeInTheDocument()
   })
+
+  // UI-Runde 2: vorher „Failed to fetch“ / „HTTP 502: Bad Gateway“ und kein
+  // Knopf zum Wiederholen.
+  it.each([
+    ['abgebrochenes fetch', () => new TypeError('Failed to fetch')],
+    ['Zeitüberschreitung', () => new Error('Request timeout')],
+    ['Caddy 502', () => new ApiError('HTTP 502: Bad Gateway', 502)],
+  ])(
+    'ohne Server (%s): WLAN-Hinweis und Erneut versuchen',
+    async (_l, make) => {
+      apiClient.get.mockRejectedValueOnce(make())
+      renderWithTheme(<FinanceClient />)
+      expect(
+        await screen.findByText(
+          'Keine Verbindung zum Server – bitte WLAN prüfen.'
+        )
+      ).toBeInTheDocument()
+      expect(
+        screen.queryByText(/Failed to fetch|Bad Gateway|Request timeout/)
+      ).toBeNull()
+      apiClient.get.mockResolvedValueOnce({
+        success: true,
+        status: 'no-data',
+        data: null,
+        message: 'Finanzdaten nicht gefunden.',
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }))
+      expect(
+        await screen.findByText('Keine Finanzdaten vorhanden')
+      ).toBeInTheDocument()
+    }
+  )
 
   it('rendert Kennzahlen, Stand, GuV-Hinweis und den Hinweis auf offene Buchungen', async () => {
     apiClient.get.mockResolvedValue({
@@ -303,6 +337,61 @@ describe('FinanceClient', () => {
     expect(await screen.findByText(euro(1200))).toBeInTheDocument()
     expect(screen.getByText('1 Monat')).toBeInTheDocument()
     expect(screen.getByText('Gesamter Zeitraum')).toBeInTheDocument()
+  })
+
+  it('nimmt „Lädt …“ zurück, wenn der Filter während einer Anfrage zurückgesetzt wird', async () => {
+    // Regression: die abgebrochene Monatsanfrage setzte ihr „Lädt …“ nie
+    // zurück - nach „Gesamter Zeitraum“ stand es für immer da.
+    apiClient.get.mockImplementation((url: string) =>
+      url === '/api/finance/summary'
+        ? Promise.resolve({
+            success: true,
+            status: 'ok',
+            data: syntheticSummary(),
+          })
+        : new Promise(() => undefined)
+    )
+    renderWithTheme(<FinanceClient />)
+    await screen.findByText('Einnahmen')
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { fireEvent } = require('@testing-library/react')
+    fireEvent.mouseDown(screen.getByLabelText('Von'))
+    fireEvent.click(await screen.findByRole('option', { name: 'Februar 2026' }))
+    expect(await screen.findByText('Lädt …')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gesamter Zeitraum' }))
+    await waitFor(() => expect(screen.queryByText('Lädt …')).toBeNull())
+  })
+
+  it('zeigt den gewählten Zeitraum in Von/Bis, auch ohne Filter', async () => {
+    // Regression: beide Felder zeigten nur ihre Beschriftung als
+    // Platzhalter - es sah aus, als sei nichts gewählt.
+    apiClient.get.mockResolvedValue({
+      success: true,
+      status: 'ok',
+      data: syntheticSummary(),
+    })
+    renderWithTheme(<FinanceClient />)
+    await screen.findByText('Einnahmen')
+    expect(screen.getByLabelText('Von')).toHaveTextContent('Januar 2026')
+    expect(screen.getByLabelText('Bis')).toHaveTextContent('Februar 2026')
+    expect(
+      screen.getByRole('button', { name: 'Gesamter Zeitraum' })
+    ).toHaveAttribute('aria-pressed', 'true')
+    // Schnellwahl wie auf den anderen Zahlen-Seiten
+    const last = screen.getByRole('button', { name: 'Letzter Monat' })
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { fireEvent } = require('@testing-library/react')
+    fireEvent.click(last)
+    await waitFor(() =>
+      expect(apiClient.get).toHaveBeenCalledWith('/api/finance/months', {
+        from: '2026-02',
+        to: undefined,
+      })
+    )
+    expect(last).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('Von')).toHaveTextContent('Februar 2026')
   })
 
   it('wartet mit dem Laden, bis die Anmeldung geprüft ist', () => {
