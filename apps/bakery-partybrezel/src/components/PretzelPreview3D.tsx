@@ -14,7 +14,7 @@ import RotateLeftIcon from '@mui/icons-material/RotateLeft'
 import RotateRightIcon from '@mui/icons-material/RotateRight'
 import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong'
 import PauseIcon from '@mui/icons-material/Pause'
-import PlayArrowIcon from '@mui/icons-material/PlayArrow'
+import ThreeSixtyIcon from '@mui/icons-material/ThreeSixty'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import type {
@@ -54,6 +54,10 @@ const FULL_TURN = 2 * Math.PI
 /** Kamera: Abstand und Neigung (0 = senkrecht von oben). */
 const CAMERA_DISTANCE = 4.1
 const CAMERA_TILT = 0.7
+/** Nie so nah, dass die große Brezel an den Rändern abgeschnitten wird. */
+const MIN_DISTANCE = 3.4
+/** Halbe Breite der großen Brezel samt Füllung (Weltmaß), für den Zoom. */
+const HALF_WIDTH = 1.3
 /** Kruste: helle Unterseite, goldbraune Flanke, dunkle Laugenkruste oben. */
 const CRUST_UNDER = '#c98a4b'
 const CRUST_SIDE = '#9a5a24'
@@ -247,8 +251,7 @@ function createScene(
   controls.enablePan = false
   controls.enableDamping = !reduced
   controls.dampingFactor = 0.08
-  // Näher als 3,4 schnitte die große Brezel an den Rändern ab.
-  controls.minDistance = 3.4
+  controls.minDistance = MIN_DISTANCE
   controls.maxDistance = 7
   controls.minPolarAngle = 0.15
   controls.maxPolarAngle = 1.3
@@ -263,6 +266,9 @@ function createScene(
 
   let pretzel: THREE.Group | null = null
   let anchors: THREE.Vector3[] = []
+  /** Mitte der Brezel im Grundriss: für „Teil liegt hinten“. */
+  const middle = new THREE.Vector3()
+  const view = new THREE.Vector3()
   let raf = 0
   let last = 0
   let needsRender = true
@@ -284,6 +290,10 @@ function createScene(
 
   const placeBadges = () => {
     const els = options.badges()
+    view.subVectors(camera.position, controls.target)
+    const level = Math.hypot(view.x, view.z)
+    // von oben gesehen liegt kein Teil „hinten“
+    const sideways = level / (view.length() || 1)
     anchors.forEach((a, i) => {
       const el = els[i]
       if (!el || width === 0) return
@@ -291,6 +301,19 @@ function createScene(
       el.style.left = `${((projected.x + 1) / 2) * width}px`
       el.style.top = `${((1 - projected.y) / 2) * height}px`
       el.style.visibility = 'visible'
+      // Nummern von Teilen auf der abgewandten Seite blassen aus, statt
+      // über dem vorderen Teil zu schweben.
+      const ox = a.x - middle.x
+      const oz = a.z - middle.z
+      const off = Math.hypot(ox, oz)
+      const away =
+        off < 1e-3 || level < 1e-3
+          ? 0
+          : (-(ox * view.x + oz * view.z) / (off * level)) *
+            sideways *
+            Math.min(1, off / 0.5)
+      const fade = THREE.MathUtils.smoothstep(away, 0.2, 0.75)
+      el.style.opacity = String(1 - 0.7 * fade)
     })
   }
 
@@ -359,6 +382,11 @@ function createScene(
     // Hochkant (schmale Spalte): weiter weg, damit die Brezel ganz drauf ist.
     camera.fov = camera.aspect < 1 ? 30 / Math.max(camera.aspect, 0.6) : 30
     camera.updateProjectionMatrix()
+    // Schmaleres Bild (Handy, 4:3): der Zoom hält auch seitlich Abstand.
+    const halfWidth =
+      Math.tan(((camera.fov / 2) * Math.PI) / 180) * camera.aspect
+    controls.minDistance = Math.max(MIN_DISTANCE, HALF_WIDTH / halfWidth)
+    controls.update()
     requestRender()
   }
   const resizeObserver =
@@ -465,6 +493,7 @@ function createScene(
       )
       blob.position.x = ((minX + maxX) / 2) * d.scale
       blob.position.z = ((minZ + maxZ) / 2) * d.scale
+      middle.set(blob.position.x, 0, blob.position.z)
       anchors = d.parts.map((part) =>
         new THREE.Vector3(...part.anchor).multiplyScalar(d.scale)
       )
@@ -586,7 +615,8 @@ export default function PretzelPreview3D({
         sx={{
           position: 'relative',
           width: '100%',
-          aspectRatio: '16 / 10',
+          // Handy: höher, damit die Brezel die schmale Spalte füllt.
+          aspectRatio: { xs: '4 / 3', sm: '16 / 10' },
           maxHeight: 400,
           cursor: 'grab',
           '&:active': { cursor: 'grabbing' },
@@ -674,7 +704,7 @@ export default function PretzelPreview3D({
             onClick={() => sceneRef.current?.setAutoRotate(!spinning)}
             sx={buttonSx}
           >
-            {spinning ? <PauseIcon /> : <PlayArrowIcon />}
+            {spinning ? <PauseIcon /> : <ThreeSixtyIcon />}
           </IconButton>
         </Tooltip>
       </Box>
@@ -684,9 +714,17 @@ export default function PretzelPreview3D({
         component="p"
         sx={{ textAlign: 'center', m: 0 }}
       >
-        {coarse
-          ? 'Schematische Darstellung. Zum Drehen seitlich wischen oder die Knöpfe nutzen.'
-          : 'Schematische Darstellung. Zum Drehen ziehen, zum Zoomen Strg/⌘ + Mausrad.'}
+        {coarse ? (
+          'Schematische Darstellung. Zum Drehen seitlich wischen oder die Knöpfe nutzen.'
+        ) : (
+          <>
+            Schematische Darstellung. Zum Drehen ziehen, zum Zoomen{' '}
+            <Box component="span" sx={{ whiteSpace: 'nowrap' }}>
+              Strg/⌘ + Mausrad
+            </Box>
+            .
+          </>
+        )}
       </Typography>
     </Box>
   )

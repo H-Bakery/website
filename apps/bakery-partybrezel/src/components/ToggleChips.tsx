@@ -62,7 +62,14 @@ export default function ToggleChips({
               onClick={() => onSelect(option.value)}
               color={isSelected ? 'primary' : 'default'}
               variant={isSelected ? 'filled' : 'outlined'}
-              icon={isSelected ? <CheckIcon /> : undefined}
+              // Das Häkchen hat immer seinen Platz (unsichtbar, solange
+              // nicht gewählt): sonst würde der Chip beim Wählen breiter
+              // und auf schmalen Bildschirmen in die nächste Zeile springen.
+              icon={
+                <CheckIcon
+                  sx={{ visibility: isSelected ? 'visible' : 'hidden' }}
+                />
+              }
             />
           )
         })}

@@ -70,6 +70,11 @@ export const FILLING_THICKNESS = 0.1
 export const FILLING_OVERHANG = 1.25
 /** Halbe Fuge zwischen zwei Teilen (Weltmaß). */
 export const PART_GAP = 0.03
+/**
+ * Abgerundete Enden: an jeder Schnittfläche und an den Strangenden schrumpft
+ * der Querschnitt auf diesen Anteil (Viertelkreis), statt kantig abzubrechen.
+ */
+export const END_ROUNDING = 0.6
 
 const SAMPLES_PER_SEGMENT = 24
 
@@ -367,6 +372,11 @@ interface ProfilePoint {
   shade: number
   /** Winkel im Querschnitt, nur auf der Kruste des Oberteils. */
   topTheta?: number
+  /**
+   * Skalarprodukt aus Normale und dem Anteil des Punkts, der mit dem Radius
+   * wächst - damit kippt die Normale an den abgerundeten Enden mit.
+   */
+  qn: number
 }
 
 interface Layer {
@@ -401,6 +411,7 @@ function ellipseArc(
       nb: (A * s) / nl,
       shade: shade(th),
       topTheta: offset > 0 ? th : undefined,
+      qn: (A * c * B * c + B * s * A * s) / nl,
     })
   }
   return pts
@@ -413,7 +424,7 @@ function flat(
   fromLeft: boolean
 ): ProfilePoint[] {
   const xs = fromLeft ? [-A, A] : [A, -A]
-  return xs.map((a) => ({ a, b, na: 0, nb, shade: 0 }))
+  return xs.map((a) => ({ a, b, na: 0, nb, shade: 0, qn: 0 }))
 }
 
 /** Unterteil, Füllung und Oberteil im Querschnitt bei Radius r. */
@@ -450,7 +461,15 @@ function layers(r: number, capMaterial: number): Layer[] {
     const ga = (a * a * a) / FA ** 4
     const gb = ((b - FB) * (b - FB) * (b - FB)) / FB ** 4
     const nl = Math.hypot(ga, gb) || 1
-    filling.push({ a, b, na: ga / nl, nb: gb / nl, shade: 0 })
+    // nur die Breite wächst mit dem Radius, die Dicke nicht
+    filling.push({
+      a,
+      b,
+      na: ga / nl,
+      nb: gb / nl,
+      shade: 0,
+      qn: (a * ga) / nl,
+    })
   }
   return [
     {
@@ -534,6 +553,37 @@ function frameNormal(f: Frame, na: number, nb: number): Vec3 {
   ])
 }
 
+/**
+ * Abstände (Weltmaß, 0…len) der Querschnitte eines Stücks: gleichmäßig in der
+ * Mitte, an beiden Enden dichter für die Rundung.
+ */
+function sweepDistances(len: number, round0: number, round1: number) {
+  const ROUND_STEPS = 6
+  const out: number[] = []
+  for (let j = 0; j < ROUND_STEPS; j += 1)
+    out.push(round0 * (1 - Math.cos(((j / ROUND_STEPS) * Math.PI) / 2)))
+  const mid = len - round0 - round1
+  const steps = Math.max(2, Math.ceil(mid / 0.03))
+  for (let i = 0; i <= steps; i += 1) out.push(round0 + (mid * i) / steps)
+  for (let j = ROUND_STEPS - 1; j >= 0; j -= 1)
+    out.push(len - round1 * (1 - Math.cos(((j / ROUND_STEPS) * Math.PI) / 2)))
+  return out
+}
+
+/**
+ * Rundung an einem Ende: Faktor k (END_ROUNDING … 1) und seine Ableitung
+ * nach der Bogenlänge, d = Abstand vom Ende, e = Länge der Rundung.
+ */
+function rounding(d: number, e: number): { k: number; dk: number } {
+  if (e <= 0 || d >= e) return { k: 1, dk: 0 }
+  const x = 1 - d / e
+  const root = Math.sqrt(Math.max(1 - x * x, 1e-6))
+  return {
+    k: END_ROUNDING + (1 - END_ROUNDING) * root,
+    dk: ((1 - END_ROUNDING) * x) / (root * e),
+  }
+}
+
 /** Zieht Unterteil, Füllung und Oberteil zwischen start und end entlang des Strangs. */
 function sweepSpan(
   builder: MeshBuilder,
@@ -541,14 +591,33 @@ function sweepSpan(
   end: number,
   curve: PretzelCurve
 ) {
-  const steps = Math.max(4, Math.ceil(((end - start) * curve.length) / 0.03))
+  const len = (end - start) * curve.length
+  // Rundung etwa so lang, wie der Querschnitt dabei schrumpft (Viertelkreis).
+  const roundLen = (u: number) =>
+    Math.min(
+      len / 3,
+      (1 - END_ROUNDING) * WIDTH_FACTOR * radiusAt(u, curve) * 1.1
+    )
+  const e0 = roundLen(start)
+  const e1 = roundLen(end)
   const frames: Frame[] = []
   const us: number[] = []
-  for (let i = 0; i <= steps; i += 1) {
-    us.push(start + ((end - start) * i) / steps)
-    frames.push(frameAt(us[i], curve))
+  /** Je Querschnitt: Rundungsfaktor und dessen relative Änderung k'/k. */
+  const scale: { k: number; slope: number }[] = []
+  for (const d of sweepDistances(len, e0, e1)) {
+    const u = start + d / curve.length
+    us.push(u)
+    frames.push(frameAt(u, curve))
+    const a = rounding(d, e0)
+    const b = rounding(len - d, e1)
+    const k = a.k * b.k
+    // vorn wächst k entlang des Strangs, hinten schrumpft es
+    scale.push({ k, slope: a.dk / a.k - b.dk / b.k })
   }
-  const profiles = frames.map((f) => layers(f.radius, MATERIAL_CRUMB))
+  const steps = frames.length - 1
+  const profiles = frames.map((f, i) =>
+    layers(f.radius * scale[i].k, MATERIAL_CRUMB)
+  )
   const layerCount = profiles[0].length
 
   for (let l = 0; l < layerCount; l += 1) {
@@ -563,9 +632,17 @@ function sweepSpan(
             p.topTheta === undefined
               ? 0
               : 0.04 * Math.sin(arc * 21 + p.topTheta * 5) * Math.sin(arc * 6.3)
+          // an den Rundungen kippt die Normale zum Ende hin (begrenzt,
+          // direkt am Ende wäre die Neigung sonst unendlich)
+          const tilt = Math.max(-6, Math.min(6, -scale[i].slope * p.qn))
+          const n = frameNormal(f, p.na, p.nb)
           builder.vertex(
             along(f, p.a, p.b),
-            frameNormal(f, p.na, p.nb),
+            normalize([
+              n[0] + f.tangent[0] * tilt,
+              n[1] + f.tangent[1] * tilt,
+              n[2] + f.tangent[2] * tilt,
+            ]),
             Math.min(1, Math.max(0, p.shade + mottle)),
             p.topTheta === undefined ? 0 : ausbundAt(us[i], p.topTheta, curve)
           )

@@ -4,7 +4,9 @@ import { createOrderReducer, initialOrderState } from './orderState'
 import {
   ARM_RADIUS,
   BELLY_RADIUS,
+  END_ROUNDING,
   FILLING_THICKNESS,
+  HEIGHT_FACTOR,
   ausbundAt,
   MATERIAL_CRUMB,
   MATERIAL_CRUST,
@@ -12,6 +14,7 @@ import {
   UNSET_COLOR,
   centerAt,
   describePretzel3D,
+  frameAt,
   partMeshes,
   partSpans,
   pretzelCurve,
@@ -179,6 +182,33 @@ describe('partMeshes', () => {
       }
     }
   )
+
+  it('rundet die Schnittflächen ab statt kantig abzubrechen', () => {
+    // Teil 1 beginnt an der Bauchmitte: dort ist der Strang am dicksten.
+    const span = partSpans(3).find((x) => x.part === 0)
+    if (!span) throw new Error('Teil 1 fehlt')
+    const f = frameAt(span.start)
+    const P = partMeshes(3)[0].positions
+    const topNear = (from: number, to: number) => {
+      let top = -Infinity
+      for (let i = 0; i < P.length; i += 3) {
+        const d = [0, 1, 2].map((k) => P[i + k] - f.center[k])
+        const t =
+          d[0] * f.tangent[0] + d[1] * f.tangent[1] + d[2] * f.tangent[2]
+        if (t >= from && t <= to && Math.hypot(d[0], d[2]) < 0.4)
+          top = Math.max(top, P[i + 1])
+      }
+      return top
+    }
+    const full = f.center[1] + FILLING_THICKNESS + HEIGHT_FACTOR * f.radius
+    // an der Schnittfläche nur der gerundete Rest, etwas weiter innen voll
+    expect(topNear(-0.001, 0.002)).toBeLessThan(
+      f.center[1] +
+        FILLING_THICKNESS +
+        (END_ROUNDING + 0.05) * HEIGHT_FACTOR * f.radius
+    )
+    expect(topNear(0.12, 0.16)).toBeGreaterThan(full - 0.02)
+  })
 
   it('rechnet jede Teilezahl nur einmal', () => {
     expect(partMeshes(3)).toBe(partMeshes(3))

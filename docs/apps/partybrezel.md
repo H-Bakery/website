@@ -121,7 +121,8 @@ Ein ungültiger Wert (ohne führendes `/`, Sonderzeichen) bricht den Build ab.
 Im Schritt **Belag** schaltet „Vorschau 2D | 3D“ zwischen der SVG-Vorschau und einer drehbaren
 3D-Brezel um. Sie ist eine **schematische Darstellung, kein Produktfoto**: eine Laugenbrezel mit
 dickem Bauch, dünneren Armen, Kreuzung, Salz und hellem Ausbund, waagerecht aufgeschnitten, die
-Füllung in der Farbe des Belags, die Teile mit kleiner Fuge und denselben Nummern wie in 2D
+Füllung in der Farbe des Belags (ein offener Teil grau, nicht beige - sonst läse man ihn als
+Butter), die Teile mit kleiner Fuge, abgerundeten Schnittflächen und denselben Nummern wie in 2D
 (1 linke Schlaufe, 2 rechte Schlaufe, 3 die Arme). „klein“ ist um ∛(300/400) kleiner - die
 Skalierung kommt aus `gramsPerPart`, nicht aus festen Zahlen.
 
@@ -153,7 +154,8 @@ Skalierung kommt aus `gramsPerPart`, nicht aus festen Zahlen.
   „Drehung anhalten“ / „Einmal rundum drehen“. Der Hinweis unter dem Bild richtet sich nach dem
   Zeiger (Touch: wischen und Knöpfe; sonst ziehen und Strg/⌘ + Mausrad). Das Canvas hat
   `role="img"` und einen Text mit Größe und Belag je Teil; die Nummern tragen einen Ring in der
-  Belagsfarbe, die Legende bleibt darunter.
+  Belagsfarbe und blassen aus, wenn ihr Teil auf der abgewandten Seite liegt; die Legende bleibt
+  darunter. Das Bild ist 16:10, auf dem Handy 4:3, damit die Brezel die schmale Spalte füllt.
 - **Ressourcen:** Größe per `ResizeObserver`, Pixeldichte ≤ 2, gerendert wird nur bei Bewegung;
   außerhalb des Bildes (`IntersectionObserver`) und im Hintergrund-Tab ruht die Schleife. Beim
   Abbauen wird alles freigegeben (Renderer, Geometrien, Materialien, Controls, Listener); jedes
