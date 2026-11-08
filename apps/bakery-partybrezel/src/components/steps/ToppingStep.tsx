@@ -1,5 +1,5 @@
 'use client'
-import React from 'react'
+import React, { useState } from 'react'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -15,7 +15,8 @@ import { findTopping, getSize } from '../../lib/configLookup'
 import { formatEuro, formatGrams } from '../../lib/format'
 import { pretzelPrice } from '../../lib/pricing'
 import type { PretzelDraft } from '../../lib/types'
-import PretzelPreview from '../PretzelPreview'
+import PretzelView, { PreviewModeToggle } from '../PretzelView'
+import { usePreviewMode } from '../usePreviewMode'
 import ToggleChips, { type ToggleChipOption } from '../ToggleChips'
 
 export interface ToppingStepProps {
@@ -35,6 +36,18 @@ export default function ToppingStep({
   onPretzelTopping,
   onCopyToAll,
 }: ToppingStepProps) {
+  const preview = usePreviewMode()
+  // Die 3D-Ansicht zeigt eine Brezel: die zuletzt bearbeitete (sonst die erste).
+  // Ein WebGL-Kontext für alle Karten statt einer je Brezel.
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [focus3D, setFocus3D] = useState(false)
+  const activate = (id: string, viaButton = false) => {
+    setActiveId(id)
+    setFocus3D(viaButton)
+  }
+  const active3D = pretzels.some((p) => p.id === activeId)
+    ? activeId
+    : pretzels[0]?.id ?? null
   // Der Aufpreis am Chip ist der, den ein Klick auslöst: je Teil bzw. für
   // die ganze Brezel (Aufpreis je Teil × Teile).
   const optionsFor = (size: SizeConfig): ToggleChipOption[] =>
@@ -72,6 +85,7 @@ export default function ToppingStep({
           : 'Wählen Sie für jede Brezel einen Belag; er gilt für alle Teile.'}{' '}
         {surchargeHint}
       </Typography>
+      <PreviewModeToggle preview={preview} />
       <Box sx={{ display: 'grid', gap: 2 }}>
         {pretzels.map((pretzel, i) => {
           const size = getSize(config, pretzel.size)
@@ -84,6 +98,7 @@ export default function ToppingStep({
           const price = pretzelPrice(pretzel, i + 1, config)
           const options = optionsFor(size)
           const headingId = `pretzel-${pretzel.id}-heading`
+          const in3D = preview.mode === '3d' && pretzel.id === active3D
           return (
             <Card
               key={pretzel.id}
@@ -98,7 +113,7 @@ export default function ToppingStep({
                   gap: 2,
                   gridTemplateColumns: {
                     xs: '1fr',
-                    md: '200px minmax(0, 1fr)',
+                    md: `${in3D ? 300 : 200}px minmax(0, 1fr)`,
                   },
                   alignItems: 'start',
                 }}
@@ -112,7 +127,20 @@ export default function ToppingStep({
                     {formatEuro(price.totalCents)}
                   </Typography>
                   <Box sx={{ mt: 1 }}>
-                    <PretzelPreview parts={parts} label={label} />
+                    <PretzelView
+                      parts={parts}
+                      label={label}
+                      size={size}
+                      config={config}
+                      mode={in3D ? '3d' : '2d'}
+                      onUnavailable={preview.markUnavailable}
+                      focus3D={focus3D}
+                      onShow3D={
+                        preview.mode === '3d' && !in3D
+                          ? () => activate(pretzel.id, true)
+                          : undefined
+                      }
+                    />
                   </Box>
                 </Box>
                 <Box sx={{ display: 'grid', gap: 2 }}>
@@ -128,7 +156,10 @@ export default function ToppingStep({
                           }`,
                         }))}
                         selected={topping?.id ?? null}
-                        onSelect={(id) => onPartTopping(pretzel.id, part, id)}
+                        onSelect={(id) => {
+                          activate(pretzel.id)
+                          onPartTopping(pretzel.id, part, id)
+                        }}
                       />
                     ))
                   ) : (
@@ -146,7 +177,10 @@ export default function ToppingStep({
                           ariaLabel: `${o.label} für ${label}`,
                         }))}
                         selected={uniform ? parts[0]?.id ?? null : null}
-                        onSelect={(id) => onPretzelTopping(pretzel.id, id)}
+                        onSelect={(id) => {
+                          activate(pretzel.id)
+                          onPretzelTopping(pretzel.id, id)
+                        }}
                       />
                     </>
                   )}

@@ -2,6 +2,7 @@
 import React, { useId } from 'react'
 import Box from '@mui/material/Box'
 import type { ToppingConfig } from '../config/partybrezel.config'
+import { UNSET_COLOR } from '../lib/previewColors'
 
 /** Stilisierte Brezel aus drei Teilen: linker Bogen, rechter Bogen, Mitte. */
 const THREE_PART_PATHS = [
@@ -21,7 +22,7 @@ const THREE_PART_BADGES = [
  * Dunkelmodus ≥ 3:1 gegen den Hintergrund stehen.
  */
 const CRUST = 'var(--partybrezel-crust, #7a4a1d)'
-const UNSET = '#b9aea2'
+const UNSET = UNSET_COLOR
 
 export interface PretzelPreviewProps {
   /** Je Teil der gewählte Belag oder `undefined` (offen). */
@@ -137,45 +138,53 @@ export default function PretzelPreview({
           )
         })}
       </svg>
-      {showLegend && (
+      {showLegend && <PretzelLegend parts={parts} label={label} />}
+    </Box>
+  )
+}
+
+/** Nummer, Farbe und Belag je Teil als Liste - auch unter der 3D-Ansicht. */
+export function PretzelLegend({
+  parts,
+  label,
+}: Pick<PretzelPreviewProps, 'parts' | 'label'>) {
+  return (
+    <Box
+      component="ul"
+      aria-label={`Teile von ${label}`}
+      sx={{
+        listStyle: 'none',
+        p: 0,
+        m: 0,
+        mt: 1,
+        display: 'grid',
+        gap: 0.5,
+        fontSize: '0.9rem',
+      }}
+    >
+      {parts.map((t, i) => (
         <Box
-          component="ul"
-          aria-label={`Teile von ${label}`}
-          sx={{
-            listStyle: 'none',
-            p: 0,
-            m: 0,
-            mt: 1,
-            display: 'grid',
-            gap: 0.5,
-            fontSize: '0.9rem',
-          }}
+          component="li"
+          key={i}
+          sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
         >
-          {parts.map((t, i) => (
-            <Box
-              component="li"
-              key={i}
-              sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
-            >
-              <Box
-                aria-hidden="true"
-                sx={{
-                  width: 14,
-                  height: 14,
-                  borderRadius: '50%',
-                  flexShrink: 0,
-                  bgcolor: t?.color ?? UNSET,
-                  border: `2px ${t ? 'solid' : 'dashed'} ${CRUST}`,
-                }}
-              />
-              <span>
-                {`Teil ${i + 1}: `}
-                <strong>{partText(t)}</strong>
-              </span>
-            </Box>
-          ))}
+          <Box
+            aria-hidden="true"
+            sx={{
+              width: 14,
+              height: 14,
+              borderRadius: '50%',
+              flexShrink: 0,
+              bgcolor: t?.color ?? UNSET,
+              border: `2px ${t ? 'solid' : 'dashed'} ${CRUST}`,
+            }}
+          />
+          <span>
+            {`Teil ${i + 1}: `}
+            <strong>{partText(t)}</strong>
+          </span>
         </Box>
-      )}
+      ))}
     </Box>
   )
 }
