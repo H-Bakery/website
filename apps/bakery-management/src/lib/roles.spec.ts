@@ -54,6 +54,10 @@ describe('ROLE_ACCESS - die eine Rollen-Tabelle', () => {
     ['verkauf', '/admin/backzettel/grundmengen/brot', false],
     ['verkauf', '/admin/backzettel/grundmengenx', true],
     ['backstube', '/admin/backzettel/grundmengen', true],
+    // Z10: Backliste eines Backtags - wer den Zettel lesen darf
+    ['backstube', '/admin/backzettel/2026-11-29/backen', true],
+    ['verkauf', '/admin/backzettel/2026-11-29/backen', true],
+    ['fahrer', '/admin/backzettel/2026-11-29/backen', false],
     ['fahrer', '/admin/backzettel', false],
     ['backstube', '/backstube', true],
     // M4 Rest am Abend: Verkauf zählt, Backstube liest, Auswertung nur Inhaber

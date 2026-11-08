@@ -1,4 +1,5 @@
 import {
+  cellReference,
   cellValue,
   displayValue,
   fetchBackzettelConfig,
@@ -15,6 +16,7 @@ import {
 import {
   syntheticConfig,
   syntheticReference,
+  syntheticReferenceV2,
   syntheticView,
 } from './grundmengenFixtures'
 
@@ -131,5 +133,25 @@ describe('Zellen lesen', () => {
     expect(referenceFor(ref, 6, 'testweck')?.median).toBe(58)
     expect(referenceFor(ref, 4, 'testweck')?.status).toBe('no_data')
     expect(referenceFor(null, 6, 'testweck')).toBeNull()
+  })
+
+  it('Referenz je Zeile: Posten, Laibgröße (Z10), Füllung nie', () => {
+    const ref = syntheticReferenceV2()
+    const korn = { id: 'testkorn', variantKind: 'size' as const }
+    expect(cellReference(ref, 6, korn, null)?.median).toBe(9)
+    expect(cellReference(ref, 6, korn, 'g500')).toMatchObject({
+      itemId: 'testkorn',
+      sizeId: 'g500',
+      median: 6,
+      plu: [981],
+    })
+    expect(cellReference(ref, 6, korn, 'g1000')?.status).toBe('unknown')
+    expect(cellReference(ref, 6, korn, 'g750')).toBeNull()
+    expect(
+      cellReference(ref, 6, { id: 'testkorn', variantKind: 'filling' }, 'g500')
+    ).toBeNull()
+    // älterer Server ohne sizes: keine Referenz an der Größe
+    delete ref.weekdays[0].items[0].sizes
+    expect(cellReference(ref, 6, korn, 'g500')).toBeNull()
   })
 })

@@ -1153,3 +1153,812 @@ describe('roundUp', () => {
     expect(core.roundUp(Number.NaN, 'Stück')).toBe(0)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Backzettel v2 (Z10, docs/backzettel-v2.md §4, §6): Zettel je Teigtag
+// ---------------------------------------------------------------------------
+
+const dayCore = require('../../src/services/backzettel-day.core')
+const configCore = require('../../src/services/backzettel-config.core')
+const planCore = require('../../src/services/backzettel-plan.core')
+const { configV2, PRODUCTS_V2 } = require('../fixtures/backzettel.synthetic')
+const {
+  V1_DAY_CASES,
+  fullArgs,
+} = require('../fixtures/backzettel-v1-day-cases')
+const V1_DAY_RECORDED = require('../fixtures/backzettel-v1-day.recorded.json')
+
+const NEXT_TUE = '2026-12-01'
+const FRI = '2026-11-27'
+
+/** Ein Zettel je Teigtag mit configV2 (oder `config`). */
+function sheetV2(date, extra = {}) {
+  const { config: cfg, ...rest } = extra
+  return core.computeDoughDay({
+    config: cfg || configV2(),
+    date,
+    catalog: PRODUCTS_V2,
+    recipes: RECIPES,
+    ...rest,
+  })
+}
+const lineAt = (r, key) => r.lines.find((l) => l.key === key)
+
+/** Entfernt die additiven Z10-Felder eines Zettels (R1-Vergleich). */
+function stripV2(sheet) {
+  const LINE_FIELDS = [
+    'bakeDate',
+    'doughDate',
+    'lead',
+    'variantKind',
+    'variantLabel',
+    'bruch',
+    'totalIsMinimum',
+  ]
+  const DOUGH_FIELDS = [
+    'kg',
+    'kgKnown',
+    'complete',
+    'missing',
+    'liters',
+    'piecesComplete',
+  ]
+  const s = JSON.parse(JSON.stringify(sheet))
+  for (const k of [
+    'sheetVersion',
+    'isDoughDay',
+    'bakeDates',
+    'plan',
+    'doughs',
+    'machine',
+    'bread',
+    'rolls',
+    'openMasterData',
+  ])
+    delete s[k]
+  const strip = (l) => LINE_FIELDS.forEach((f) => delete l[f])
+  s.lines.forEach(strip)
+  s.sections.forEach((sec) => sec.lines.forEach(strip))
+  delete s.hefeteig.complete
+  s.hefeteig.doughs.forEach((d) => DOUGH_FIELDS.forEach((f) => delete d[f]))
+  return s
+}
+
+describe('R1: v1-Stammdaten rechnen wie vor Z10', () => {
+  it.each(Object.keys(V1_DAY_CASES))(
+    '%s ist Byte für Byte gleich der Aufnahme',
+    (name) => {
+      const result = V1_DAY_CASES[name]({ core, day: dayCore, configCore })
+      expect(JSON.stringify(result)).toBe(JSON.stringify(V1_DAY_RECORDED[name]))
+    }
+  )
+
+  it.each([
+    ['2026-11-24'],
+    ['2026-11-25'],
+    ['2026-11-28'],
+    ['2026-11-29'],
+    ['2026-11-30'],
+  ])(
+    'der Zettel je Teigtag (%s) ist computeDay plus additive Felder',
+    (date) => {
+      for (const extra of [{}, { seasonFactor: 1.1, includeEmpty: true }]) {
+        const args = fullArgs(date, extra)
+        const v1 = core.computeDay(args)
+        const sheet = core.computeDoughDay(args)
+        expect(JSON.stringify(stripV2(sheet))).toBe(JSON.stringify(v1))
+        // gleiche Schluessel, jede Zeile auf ihrem eigenen Tag
+        for (const l of sheet.lines) {
+          expect(l.bakeDate).toBe(date)
+          expect(l.doughDate).toBe(date)
+          expect(l.lead).toBe(0)
+          expect(l.key).not.toMatch(/@/)
+        }
+        expect(sheet.plan.bakeDates.map((b) => b.date)).toEqual(
+          sheet.open ? [date] : []
+        )
+      }
+    }
+  )
+})
+
+describe('Zettel je Teigtag (computeDoughDay)', () => {
+  it('Samstag: Brot und Hefeteig heute, Brötchen für Sonntag und Dienstag', () => {
+    const r = sheetV2(SAT)
+    expect(r.sheetVersion).toBe(2)
+    expect(r.isDoughDay).toBe(true)
+    expect(r.bakeDates).toEqual([
+      {
+        date: SAT,
+        weekday: 6,
+        weekdayName: 'Samstag',
+        label: 'heute',
+        lineCount: 9,
+      },
+      {
+        date: SUN,
+        weekday: 7,
+        weekdayName: 'Sonntag',
+        label: 'für Sonntag',
+        lineCount: 5,
+      },
+      {
+        date: NEXT_TUE,
+        weekday: 2,
+        weekdayName: 'Dienstag',
+        label: 'für Dienstag',
+        lineCount: 4,
+      },
+    ])
+    // Abschnitt, dann Backtag, dann Stammdaten
+    expect(
+      r.sections.find((s) => s.id === 'broetchen').lines.map((l) => l.key)
+    ).toEqual([
+      `test-doppel|@${SUN}`,
+      `test-stern|@${SUN}`,
+      `test-kaese|@${SUN}`,
+      `test-flitweck|@${SUN}`,
+      `test-flit-klein|@${SUN}`,
+      `test-doppel|@${NEXT_TUE}`,
+      `test-stern|@${NEXT_TUE}`,
+      `test-kaese|@${NEXT_TUE}`,
+      `test-flitweck|@${NEXT_TUE}`,
+    ])
+    expect(lineAt(r, `test-doppel|@${NEXT_TUE}`)).toMatchObject({
+      bakeDate: NEXT_TUE,
+      doughDate: SAT,
+      lead: 1,
+      variantKind: null,
+      variantLabel: null,
+      bruch: { group: 'test-doppel', perProduct: 2 },
+      total: 40,
+    })
+    expect(lineAt(r, 'test-korn|g500')).toMatchObject({
+      bakeDate: SAT,
+      doughDate: SAT,
+      lead: 0,
+      variantKind: 'size',
+      variantLabel: '500 g',
+    })
+    expect(lineAt(r, 'test-zopf|nuss').variantLabel).toBe('Nussfüllung')
+    expect(r.warnings).toEqual([])
+  })
+
+  it('Sonntag: kein Teigtag, nur lead-0-Zeilen (hier keine); Montag geschlossen', () => {
+    const sun = sheetV2(SUN)
+    expect(sun.isDoughDay).toBe(false)
+    expect(sun.open).toBe(true)
+    expect(sun.lines).toEqual([])
+    expect(sun.plan.bakeDates.map((b) => b.date)).toEqual([SUN])
+    const mon = sheetV2(MON, {
+      preorderItems: [{ productId: 'test-doppel', qty: 2, pickupDate: MON }],
+    })
+    expect(mon.open).toBe(false)
+    expect(mon.plan.bakeDates).toEqual([])
+    expect(mon.warnings.map((w) => w.code)).toEqual(['preorders_on_closed_day'])
+  })
+
+  it('O3: der Saisonfaktor des Zettels gilt für alle seine Backtage', () => {
+    const r = sheetV2(SAT, { seasonFactor: 1.1 })
+    expect(lineAt(r, `test-doppel|@${SUN}`).total).toBe(66)
+    expect(lineAt(r, `test-doppel|@${NEXT_TUE}`).total).toBe(44)
+    expect(r.seasonFactor).toBe(1.1)
+    const bad = sheetV2(SAT, { seasonFactor: 0 })
+    expect(
+      bad.warnings.filter((w) => w.code === 'invalid_season_factor')
+    ).toHaveLength(1)
+  })
+
+  it('Korrekturen gehören zu ihrem Backtag; ohne bakeDate zum Zettel-Tag', () => {
+    const r = sheetV2(SAT, {
+      corrections: [
+        { itemId: 'test-doppel', qty: 5, reason: 'Fest', bakeDate: SUN },
+        { itemId: 'test-plunder', qty: 2, reason: 'Markt' },
+        { itemId: 'test-doppel', qty: 9, reason: 'nicht hier', bakeDate: FRI },
+      ],
+    })
+    expect(lineAt(r, `test-doppel|@${SUN}`)).toMatchObject({
+      correction: 5,
+      correctionReason: 'Fest',
+      total: 65,
+    })
+    expect(lineAt(r, `test-doppel|@${NEXT_TUE}`).correction).toBe(0)
+    expect(lineAt(r, 'test-plunder|').total).toBe(22)
+  })
+
+  it('Hinweise anderer Backtage tragen ihren Backtag; fremde Produkte meldet der eigene Zettel', () => {
+    const preorderItems = [
+      { productId: 'test-doppel', variant: 'x', qty: 1, pickupDate: SUN },
+      { productId: 'gibt-es-nicht', qty: 3, pickupDate: SUN },
+    ]
+    const sat = sheetV2(SAT, { preorderItems })
+    expect(sat.warnings).toEqual([
+      expect.objectContaining({ code: 'variant_ignored', bakeDate: SUN }),
+    ])
+    const sun = sheetV2(SUN, { preorderItems })
+    expect(sun.warnings.map((w) => w.code)).toEqual(['unmapped_product'])
+  })
+})
+
+describe('R19: Vorbestellungen und CAP gehören zum Backtag', () => {
+  const caps = [
+    {
+      weekday: 7,
+      active: true,
+      items: [{ productSlug: 'test-stern', quantity: 4 }],
+    },
+    {
+      weekday: 6,
+      active: true,
+      items: [{ productSlug: 'test-stern', quantity: 3 }],
+    },
+  ]
+  const preorderItems = [
+    { preorderId: 1, productId: 'test-doppel', qty: 5, pickupDate: SUN },
+    { preorderId: 2, productId: 'test-doppel', qty: 7, pickupDate: SAT },
+  ]
+
+  it('der Samstagszettel nimmt die Abholung am Sonntag und die CAP-Vorlage des Sonntags', () => {
+    const r = sheetV2(SAT, { preorderItems, capTemplate: caps })
+    expect(lineAt(r, `test-doppel|@${SUN}`)).toMatchObject({
+      preorders: 5,
+      preorderIds: [1],
+      total: 65,
+    })
+    expect(lineAt(r, `test-stern|@${SUN}`).cap).toBe(4)
+    // Samstagsbrötchen macht der Freitag
+    expect(
+      r.lines.some((l) => l.bakeDate === SAT && l.itemId === 'test-doppel')
+    ).toBe(false)
+    const fri = sheetV2(FRI, { preorderItems, capTemplate: caps })
+    expect(lineAt(fri, `test-doppel|@${SAT}`)).toMatchObject({
+      preorders: 7,
+      total: 7,
+    })
+    expect(lineAt(fri, `test-stern|@${SAT}`).cap).toBe(3)
+  })
+
+  it('bakeInputs je Backtag haben Vorrang', () => {
+    const r = sheetV2(SAT, {
+      preorderItems,
+      bakeInputs: {
+        [SUN]: {
+          preorderItems: [
+            { productId: 'test-doppel', qty: 2, pickupDate: SUN },
+          ],
+          capTemplate: [],
+        },
+      },
+      capTemplate: caps,
+    })
+    expect(lineAt(r, `test-doppel|@${SUN}`).preorders).toBe(2)
+    expect(lineAt(r, `test-stern|@${SUN}`).cap).toBe(0)
+  })
+})
+
+describe('R20: Viertel je (Backtag × Posten × Variante), nicht über Backtage', () => {
+  it('3 Viertel für Sonntag und 1 Viertel für Dienstag sind je ein Ganzes', () => {
+    const cfg = configV2()
+    cfg.items
+      .find((i) => i.id === 'test-doppel')
+      .products.push({ id: 'test-doppel-viertel', factor: 0.25 })
+    const r = sheetV2(SAT, {
+      config: cfg,
+      preorderItems: [
+        { productId: 'test-doppel-viertel', qty: 3, pickupDate: SUN },
+        { productId: 'test-doppel-viertel', qty: 1, pickupDate: NEXT_TUE },
+      ],
+    })
+    expect(lineAt(r, `test-doppel|@${SUN}`)).toMatchObject({
+      preordersExact: 0.75,
+      total: 61,
+    })
+    expect(lineAt(r, `test-doppel|@${NEXT_TUE}`)).toMatchObject({
+      preordersExact: 0.25,
+      total: 41,
+    })
+  })
+})
+
+describe('R21: Hefeteig mit Litern (kg ÷ 5, ganze Liter) und Chargen', () => {
+  it('6,6 kg → 1,32 L → 1 L; ohne Chargengröße keine Chargen', () => {
+    const h = sheetV2(SAT).hefeteig
+    expect(h.doughs).toHaveLength(1)
+    expect(h.doughs[0]).toMatchObject({
+      id: 'test-hefe',
+      pieces: 12,
+      dough_g: 6600,
+      kg: 6.6,
+      complete: true,
+      liters: { exact: 1.32, rounded: 1, reason: null },
+      batches: null,
+    })
+    expect(h.complete).toBe(true)
+  })
+
+  it('mehr Kränze: 9 kg → 1,8 L → 2 L; mit Chargengröße 5 kg zwei Chargen', () => {
+    const cfg = configV2()
+    cfg.doughs.find((d) => d.id === 'test-hefe').batch_max_kg = 5
+    const r = sheetV2(SAT, {
+      config: cfg,
+      corrections: [{ itemId: 'test-kranz', qty: 2, reason: 'Fest' }],
+    })
+    expect(r.hefeteig.doughs[0]).toMatchObject({
+      kg: 9,
+      liters: { exact: 1.8, rounded: 2 },
+      batches: 2,
+    })
+  })
+
+  it('Grundmenge offen: Hefeteig-Karte und Maschinenleiste sagen dasselbe (unvollständig)', () => {
+    const cfg = configV2()
+    cfg.items.find((i) => i.id === 'test-kranz').base[6] = null
+    cfg.doughs.find((d) => d.id === 'test-hefe').batch_max_kg = 5
+    const r = sheetV2(SAT, { config: cfg })
+    const card = r.hefeteig.doughs[0]
+    const machine = r.machine.find((m) => m.id === 'test-hefe')
+    expect(machine).toMatchObject({ kg: null, complete: false, batches: null })
+    expect(card).toMatchObject({
+      kg: machine.kg,
+      kgKnown: machine.kgKnown,
+      complete: false,
+      dough_g: null,
+      batches: null,
+      piecesComplete: false,
+      liters: machine.liters,
+    })
+    expect(card.liters.reason).toBe('dough_incomplete')
+    expect(card.missing.map((m) => m.code)).toContain('base_unset')
+    expect(r.hefeteig.complete).toBe(false)
+  })
+
+  it('Grundmenge offen: Abwiegeliste nennt Stufe und Posten als „mindestens“', () => {
+    const cfg = configV2()
+    cfg.items.find((i) => i.id === 'test-zopf').base[6] = {
+      nuss: null,
+      mohn: 2,
+    }
+    const r = sheetV2(SAT, {
+      config: cfg,
+      preorderItems: [pre('test-zopf-v2', 1, { variant: 'nuss' })],
+    })
+    const weighing = r.hefeteig.doughs[0].weighing
+    const zopf = weighing.find((w) => w.piece_g === 500)
+    expect(zopf).toMatchObject({ pieces: 3, isMinimum: true })
+    expect(zopf.items).toEqual([
+      expect.objectContaining({
+        itemId: 'test-zopf',
+        products: 3,
+        isMinimum: true,
+      }),
+    ])
+    // der Kranz (Grundmenge bekannt) bleibt eine feste Zahl
+    const kranz = weighing.find((w) => w.piece_g === 600)
+    expect(kranz.pieces).toBe(6)
+    expect(kranz.isMinimum).toBeUndefined()
+    expect(kranz.items[0].isMinimum).toBeUndefined()
+  })
+
+  it('Grundmenge offen ohne Vorbestellung: der Posten steht trotzdem in der Abwiegeliste', () => {
+    const cfg = configV2()
+    cfg.items.find((i) => i.id === 'test-kranz').base[6] = null
+    const weighing = sheetV2(SAT, { config: cfg }).hefeteig.doughs[0].weighing
+    const kranz = weighing.find((w) => w.piece_g === 600)
+    expect(kranz).toMatchObject({ pieces: 0, isMinimum: true })
+    expect(kranz.items[0]).toMatchObject({
+      itemId: 'test-kranz',
+      products: 0,
+      isMinimum: true,
+    })
+  })
+
+  it('Hefeteig-Karte = Teigsumme des Zettels, auch vollständig', () => {
+    const cfg = configV2()
+    cfg.doughs.find((d) => d.id === 'test-hefe').batch_max_kg = 5
+    const r = sheetV2(SAT, { config: cfg })
+    const card = r.hefeteig.doughs[0]
+    const summary = r.doughs.find((d) => d.id === 'test-hefe')
+    for (const f of ['kg', 'kgKnown', 'complete', 'liters', 'batches'])
+      expect(card[f]).toEqual(summary[f])
+  })
+
+  it('Stückgewicht offen: Teiggewicht unbekannt statt 0, keine Chargen', () => {
+    const cfg = configV2()
+    cfg.items.find((i) => i.id === 'test-kranz').dough.piece_g = null
+    cfg.doughs.find((d) => d.id === 'test-hefe').batch_max_kg = 5
+    const h = sheetV2(SAT, { config: cfg }).hefeteig
+    expect(h.doughs[0]).toMatchObject({
+      pieces: 12,
+      dough_g: null,
+      kg: null,
+      kgKnown: 3,
+      complete: false,
+      batches: null,
+      liters: { reason: 'dough_incomplete' },
+    })
+    expect(h.doughs[0].missing.map((m) => m.code)).toEqual(['piece_g_unknown'])
+    expect(h.dough_g).toBeNull()
+    // auch computeDay (v1-Form) zählt das nicht als 0 g
+    const v1 = core.computeDay({ config: cfg, date: SAT })
+    expect(v1.hefeteig.doughs[0].dough_g).toBeNull()
+  })
+
+  it('Brot je Größe und Brötchen in Bruch stehen nicht im Hefeteig', () => {
+    // v1-Form (computeDay rechnet alle Posten des Backtags): Einzelstücke
+    // (Testparty) zählen wie bisher, Größen und Brüche nie
+    const v1Form = core.computeDay({ config: configV2(), date: SAT }).hefeteig
+    expect(v1Form.doughs.map((d) => d.id)).toEqual([
+      'test-flit-teig',
+      'test-hefe',
+    ])
+    // der Zettel nimmt nur den Abschnitt Hefeteig
+    expect(sheetV2(SAT).hefeteig.doughs.map((d) => d.id)).toEqual(['test-hefe'])
+  })
+})
+
+describe('R22: filling_g null - gefüllt, Gramm unbekannt', () => {
+  it('Füllungsbedarf nur in Stück, kein hochgerechnetes Rezept, offene Stammdaten', () => {
+    const r = sheetV2(SAT)
+    const nuss = r.fillings.find((f) => f.id === 'nuss')
+    expect(nuss).toMatchObject({
+      missingFillingG: true,
+      grams: 0,
+      recipe: null,
+      recipeMissing: false,
+    })
+    expect(nuss.items).toEqual([
+      {
+        itemId: 'test-zopf',
+        name: 'Testzopf gefüllt',
+        pieces: 4,
+        filling_g: null,
+        grams: null,
+      },
+    ])
+    expect(r.openMasterData).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: 'items[12].filling_g',
+          code: 'filling_g_unknown',
+        }),
+      ])
+    )
+  })
+
+  it('Regel 7: fehlt das Gramm nur für einen Posten, gibt es kein Rezept für die Teilmenge', () => {
+    const cfg = config()
+    cfg.items.find((i) => i.id === 'kranz-gefuellt').filling_g = {
+      nuss: 1000,
+      mohn: null,
+    }
+    const f = core.computeDay({
+      config: cfg,
+      date: SAT,
+      recipes: RECIPES,
+    }).fillings
+    expect(f.find((x) => x.id === 'mohn')).toMatchObject({
+      missingFillingG: true,
+      grams: 800,
+      recipe: null,
+    })
+    expect(f.find((x) => x.id === 'nuss').recipe).not.toBeNull()
+  })
+})
+
+describe('R23: Produkte mit Größe', () => {
+  it('Vorbestellung und CAP landen auf ihrer Größe, ohne Sortenfrage', () => {
+    const r = sheetV2(SAT, {
+      preorderItems: [
+        { productId: 'test-korn-500', qty: 2, pickupDate: SAT },
+        { productId: 952, qty: 1, pickupDate: SAT },
+        {
+          productId: 'test-korn-500',
+          variant: 'nuss',
+          qty: 1,
+          pickupDate: SAT,
+        },
+      ],
+      capTemplate: {
+        weekday: 6,
+        items: [{ productSlug: 'test-korn-1000', quantity: 2 }],
+      },
+    })
+    expect(lineAt(r, 'test-korn|g500')).toMatchObject({
+      preorders: 3,
+      total: 11,
+    })
+    expect(lineAt(r, 'test-korn|g1000')).toMatchObject({
+      preorders: 1,
+      cap: 2,
+      total: 6,
+    })
+    expect(lineAt(r, 'test-korn|')).toBeUndefined()
+    expect(r.warnings).toEqual([])
+  })
+
+  it('variantsForProduct → variants [] und size; variantsByProduct lässt sie aus', () => {
+    expect(core.variantsForProduct(configV2(), 'test-korn-500')).toEqual({
+      itemId: 'test-korn',
+      name: 'Testkorn',
+      unit: 'Stück',
+      factor: 1,
+      variants: [],
+      size: 'g500',
+    })
+    expect(core.variantsForProduct(configV2(), 952, PRODUCTS_V2).size).toBe(
+      'g1000'
+    )
+    expect(core.variantsByProduct(configV2())).toEqual({
+      'test-zopf-v2': ['nuss', 'mohn'],
+    })
+  })
+
+  it('Deltas einer Größen-Vorbestellung tragen die Größe', () => {
+    const d = core.computePreorderDeltas({
+      config: configV2(),
+      date: SAT,
+      before: [],
+      after: [
+        { preorderId: 5, productId: 'test-korn-1000', qty: 2, pickupDate: SAT },
+      ],
+    })
+    expect(d).toEqual([
+      expect.objectContaining({
+        key: 'test-korn|g1000',
+        variant: 'g1000',
+        qty: 2,
+      }),
+    ])
+  })
+})
+
+describe('R24 (Core): Deltas nach Teigtag', () => {
+  const cfgN = configCore.normalizeConfig(configV2())
+  const after = [
+    { preorderId: 7, productId: 'test-doppel', qty: 4, pickupDate: NEXT_TUE },
+    { preorderId: 8, productId: 'test-korn-500', qty: 1, pickupDate: SAT },
+    { preorderId: 9, productId: 'test-doppel', qty: 2, pickupDate: SAT },
+  ]
+
+  it('Dienstagsbrötchen sind ein Delta auf dem Samstagszettel (Backtag Di)', () => {
+    const d = core.computePreorderDeltas({
+      config: cfgN,
+      date: SAT,
+      plan: planCore.planForSheet(cfgN, SAT),
+      before: [],
+      after,
+    })
+    expect(d.map((x) => [x.key, x.bakeDate, x.preorderId, x.qty])).toEqual([
+      [`test-doppel|@${NEXT_TUE}`, NEXT_TUE, 7, 4],
+      ['test-korn|g500', SAT, 8, 1],
+    ])
+  })
+
+  it('…und keins auf dem Dienstagszettel selbst', () => {
+    expect(
+      core.computePreorderDeltas({
+        config: cfgN,
+        date: NEXT_TUE,
+        plan: planCore.planForSheet(cfgN, NEXT_TUE),
+        before: [],
+        after,
+      })
+    ).toEqual([])
+  })
+
+  it('der Plan eines alten Tages (legacyPlan) rechnet wie v1, mit bakeDate', () => {
+    const d = core.computePreorderDeltas({
+      config: cfgN,
+      date: NEXT_TUE,
+      plan: planCore.legacyPlan(NEXT_TUE),
+      before: [],
+      after,
+    })
+    expect(d).toEqual([
+      expect.objectContaining({
+        key: 'test-doppel|',
+        bakeDate: NEXT_TUE,
+        qty: 4,
+      }),
+    ])
+  })
+})
+
+describe('R25 (Core): Paare eines anderen freigegebenen Zettels', () => {
+  it('der Samstagsentwurf lässt die Dienstagsbrötchen eines alten Dienstags aus', () => {
+    const cfgN = configCore.normalizeConfig(configV2())
+    // alter, vor dem Umstieg freigegebener Dienstag: alle Posten des Tages
+    const legacy = planCore.legacyPlan(NEXT_TUE)
+    const owned = cfgN.items
+      .filter((i) => planCore.planIncludes(legacy, NEXT_TUE, i.id))
+      .map((i) => planCore.ownedKey(NEXT_TUE, i.id))
+    const r = sheetV2(SAT, { owned })
+    expect(r.lines.some((l) => l.bakeDate === NEXT_TUE)).toBe(false)
+    expect(r.plan.bakeDates[2]).toEqual({ date: NEXT_TUE, itemIds: [] })
+    const w = r.warnings.find((x) => x.code === 'owned_elsewhere')
+    expect(w.message).toMatch(/Testdoppel \(für Dienstag\)/)
+    // Teig nur für Sonntag: 6 Brüche Doppel + 1 Bruch gemischt
+    expect(r.machine.find((m) => m.id === 'test-weck-teig').kg).toBe(9.2)
+    expect(r.bakeDates[2].lineCount).toBe(0)
+  })
+})
+
+describe('R26 (Core): Backliste aus zwei Zetteln', () => {
+  const sat = sheetV2(SAT)
+  const tue = sheetV2(NEXT_TUE)
+  const sources = [
+    {
+      doughDate: SAT,
+      status: 'confirmed',
+      lines: sat.lines,
+      deltas: [
+        {
+          id: 1,
+          itemId: 'test-doppel',
+          variant: null,
+          qty: 3,
+          bakeDate: NEXT_TUE,
+        },
+        { id: 2, itemId: 'test-doppel', variant: null, qty: 1, bakeDate: SUN },
+      ],
+    },
+    { doughDate: NEXT_TUE, status: 'draft', lines: tue.lines, deltas: [] },
+  ]
+
+  it('sammelt die Zeilen des Backtags mit Teigtag und Status, ohne Teigzahlen', () => {
+    const list = core.bakeListFromLines(configV2(), NEXT_TUE, sources)
+    expect(list.date).toBe(NEXT_TUE)
+    expect(list.weekdayName).toBe('Dienstag')
+    expect(list.sections.map((s) => s.id)).toEqual([
+      'brot',
+      'broetchen',
+      'kaffeestueckchen',
+    ])
+    const doppel = list.sections[1].lines[0]
+    expect(doppel).toMatchObject({
+      itemId: 'test-doppel',
+      total: 40,
+      bakeDate: NEXT_TUE,
+      doughDate: SAT,
+      sheetStatus: 'confirmed',
+      madeOn: 'Teig vom Samstag',
+    })
+    expect(list.sections[0].lines[0]).toMatchObject({
+      itemId: 'test-korn',
+      doughDate: NEXT_TUE,
+      sheetStatus: 'draft',
+      madeOn: 'Teig von heute',
+    })
+    // nur die Nachträge dieses Backtags
+    expect(list.deltas).toEqual([
+      {
+        id: 1,
+        itemId: 'test-doppel',
+        variant: null,
+        qty: 3,
+        bakeDate: NEXT_TUE,
+        doughDate: SAT,
+      },
+    ])
+    expect(list.rolls).toHaveLength(1)
+    expect(list.rolls[0]).toMatchObject({ bakeDate: NEXT_TUE, label: 'heute' })
+    expect(list.rolls[0].groups.map((g) => [g.group, g.brueche])).toEqual([
+      ['test-doppel', 4],
+      ['test-gemischt', 1],
+      ['test-flitweck', 1],
+    ])
+    expect(list).not.toHaveProperty('machine')
+    expect(list).not.toHaveProperty('doughs')
+    expect(list.warnings).toEqual([])
+  })
+
+  it('Sonntag: alles vom Samstag, der Sonntagszettel selbst ist leer', () => {
+    const sun = sheetV2(SUN)
+    const list = core.bakeListFromLines(configV2(), SUN, [
+      sources[0],
+      { doughDate: SUN, status: 'draft', lines: sun.lines },
+    ])
+    expect(list.sections.map((s) => s.lines.length)).toEqual([5])
+    expect(list.deltas.map((d) => d.id)).toEqual([2])
+  })
+
+  it('steht ein Posten auf zwei Zetteln, sagt die Liste das', () => {
+    const list = core.bakeListFromLines(configV2(), NEXT_TUE, [
+      sources[0],
+      {
+        doughDate: NEXT_TUE,
+        status: 'draft',
+        lines: [
+          {
+            ...sat.lines.find((l) => l.key === `test-doppel|@${NEXT_TUE}`),
+            key: 'test-doppel|',
+            bakeDate: NEXT_TUE,
+          },
+        ],
+      },
+    ])
+    expect(list.warnings.map((w) => w.code)).toEqual(['duplicate_bake_line'])
+  })
+})
+
+describe('Review Z10 Runde 2: offene Grundmenge in Füllung und Hefeteig-Nachtrag', () => {
+  /** v1-Stammdaten, Zopf gefüllt Mohn ohne Grundmenge am Samstag. */
+  const openMohn = () => {
+    const cfg = config()
+    cfg.items.find((i) => i.id === 'zopf-gefuellt').base[6] = {
+      nuss: 4,
+      mohn: null,
+    }
+    return cfg
+  }
+  const zopfMohn = (qty) => ({
+    productId: 'test-zopf-gefuellt',
+    variant: 'mohn',
+    qty,
+    pickupDate: SAT,
+  })
+
+  it('Füllungsbedarf mit offener Grundmenge ist unvollständig - kein Rezept auf die Teilmenge', () => {
+    const r = sheetV2(SAT, {
+      config: openMohn(),
+      catalog: PRODUCTS,
+      preorderItems: [zopfMohn(3)],
+    })
+    const mohn = r.fillings.find((f) => f.id === 'mohn')
+    // 3 Zopf × 400 g + 1 Kranz × 800 g sind bekannt - als Mindestmenge
+    expect(mohn).toMatchObject({
+      grams: 2000,
+      missingFillingG: false,
+      baseUnset: true,
+      recipe: null,
+    })
+    expect(mohn.openItems).toEqual([expect.stringContaining('Zopf gefüllt')])
+  })
+
+  it('ohne bekannte Stück erscheint die Füllung trotzdem (offen), statt zu fehlen', () => {
+    const cfg = openMohn()
+    // Kranz Mohn auf 0: nur der offene Zopf hängt an der Füllung
+    cfg.items.find((i) => i.id === 'kranz-gefuellt').base[6] = {
+      nuss: 3,
+      mohn: 0,
+    }
+    const r = sheetV2(SAT, { config: cfg, catalog: PRODUCTS })
+    expect(r.fillings.find((f) => f.id === 'mohn')).toMatchObject({
+      grams: 0,
+      baseUnset: true,
+      recipe: null,
+    })
+    // computeDay (v1-Form) bleibt wie vor Z10: ohne Stück keine Füllung
+    const v1 = core.computeDay({ config: cfg, date: SAT, recipes: RECIPES })
+    expect(v1.fillings.find((f) => f.id === 'mohn')).toBeUndefined()
+  })
+
+  it('Hefeteig-Nachtrag bei unvollständigem Teig: Zusatzteig aus Stück × Gramm, Gesamt nur Mindestmenge', () => {
+    const dayCore = require('../../src/services/backzettel-day.core')
+    const args = { config: openMohn(), catalog: PRODUCTS }
+    const before = sheetV2(SAT, args)
+    const after = sheetV2(SAT, {
+      ...args,
+      preorderItems: [
+        {
+          productId: 'test-kranz-gefuellt',
+          variant: 'nuss',
+          qty: 2,
+          pickupDate: SAT,
+        },
+      ],
+    })
+    expect(after.hefeteig.doughs[0].dough_g).toBeNull()
+    const diff = dayCore.hefeteigFillingsDiff(before, after)
+    const d = diff.doughs[0]
+    // 2 Kränze × 2 Teigstücke × 600 g - bekannt, nie „+0 g“
+    expect(d).toMatchObject({
+      pieces: 4,
+      dough_g: 2400,
+      totalDough_g: null,
+      totalPiecesComplete: false,
+    })
+    expect(d.totalPieces).toBe(after.hefeteig.doughs[0].pieces)
+    expect(d.totalDoughKnown_g).toBeGreaterThan(0)
+  })
+})

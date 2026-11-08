@@ -8,6 +8,10 @@
 // Produkt-IDs nicht geprueft (Warnung). Rezeptpfade in `fillings[].recipe`
 // werden relativ zur hq-Wurzel (das Verzeichnis ueber `config/`) aufgeloest.
 //
+// Offene Stammdaten (ausdrueckliches `null`, Z10) stehen als „Offen (n)“ da -
+// weder Fehler noch Warnung. Eine Fuellung ohne `recipe` ist eine Warnung
+// (Fuellung ohne Rezept), eine fehlende oder unlesbare Rezeptdatei ein Fehler.
+//
 // Exit-Code 1 bei Fehlern, 0 sonst (Warnungen brechen nicht ab). Das hq-CI
 // (H2) uebernimmt diese Datei samt Loader und den zwei Cores in src/services
 // (backzettel-config.loader.js, backzettel-config.core.js, backzettel-recipes.core.js).
@@ -45,12 +49,15 @@ function main(argv) {
   const result = loader.loadBackzettelConfig(yamlPath, { products })
   const errors = [...result.errors]
   warnings.push(...result.warnings)
+  const open = result.open || []
 
   if (result.ok) {
     const { missing } = loader.loadFillingRecipes(result.config, hqRoot)
     for (const m of missing) {
       const i = result.config.fillings.findIndex((f) => f.id === m.id)
-      errors.push({ path: `fillings[${i}].recipe`, message: m.message })
+      const entry = { path: `fillings[${i}].recipe`, message: m.message }
+      if (m.noRecipe) warnings.push(entry)
+      else errors.push(entry)
     }
   }
 
@@ -63,6 +70,7 @@ function main(argv) {
           products: products ? products.length : null,
           errors,
           warnings,
+          open,
         },
         null,
         2
@@ -73,12 +81,19 @@ function main(argv) {
       process.stdout.write(`Warnung  ${w.path || '(Datei)'}: ${w.message}\n`)
     for (const e of errors)
       process.stdout.write(`FEHLER   ${e.path || '(Datei)'}: ${e.message}\n`)
+    if (open.length > 0) {
+      process.stdout.write(`Offen (${open.length}):\n`)
+      for (const o of open)
+        process.stdout.write(`Offen    ${o.path}: ${o.message}\n`)
+    }
     const summary =
       errors.length === 0
         ? `OK: ${yamlPath} ist gültig (${result.config.items.length} Posten${
             products ? `, ${products.length} Produkte geprüft` : ''
-          }, ${warnings.length} Warnungen).`
-        : `${errors.length} Fehler in ${yamlPath}.`
+          }, ${warnings.length} Warnungen, ${open.length} offen).`
+        : `${errors.length} Fehler in ${yamlPath}${
+            open.length > 0 ? ` (${open.length} offen)` : ''
+          }.`
     process.stdout.write(summary + '\n')
   }
   return errors.length === 0 ? 0 : 1

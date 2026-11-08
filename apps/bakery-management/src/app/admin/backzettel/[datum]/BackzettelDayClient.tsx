@@ -7,12 +7,14 @@ import {
   AlertTitle,
   Box,
   Button,
+  Checkbox,
   Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogContentText,
   DialogTitle,
+  FormControlLabel,
   IconButton,
   Snackbar,
   Stack,
@@ -33,6 +35,7 @@ import {
   fetchBackzettelConfig,
   fetchBackzettelDay,
   isBackzettelDay,
+  isDoughDaySheet,
   reopenDay,
   setCorrection,
   setSeasonFactor,
@@ -43,6 +46,7 @@ import {
 } from '../../../../lib/backzettelApi'
 import {
   changedTotals,
+  doughsTodayText,
   formatQty,
   lineLabel,
   type ChangedTotal,
@@ -61,6 +65,15 @@ import { HefeteigCard } from '../../../../components/backzettel/HefeteigCard'
 import { PrepCard } from '../../../../components/backzettel/PrepCard'
 import { DeltasCard } from '../../../../components/backzettel/DeltasCard'
 import { BackzettelWarnings } from '../../../../components/backzettel/BackzettelWarnings'
+import { DeltaDoughNote } from '../../../../components/backzettel/DeltaDoughNote'
+import { MachineStrip } from '../../../../components/backzettel/MachineStrip'
+import { OpenMasterDataNote } from '../../../../components/backzettel/OpenMasterDataNote'
+import { BreadTable } from '../../../../components/backzettel/BreadTable'
+import {
+  RollsByBakeDay,
+  linesByKey,
+  v2CoveredKeys,
+} from '../../../../components/backzettel/RollsByBakeDay'
 import { BackzettelStatusChip } from '../../../../components/backzettel/BackzettelStatusChip'
 import {
   BackzettelPrint,
@@ -72,6 +85,30 @@ import {
   PageLayout,
   PageSection,
 } from '../../../../components/layout'
+import { DoughDayPrint } from '../../../../components/backzettel/DoughDayPrint'
+import { hasPrintExtras } from '../../../../components/backzettel/BackzettelPrintExtras'
+
+/**
+ * Gerätespeicher (nur Bequemlichkeit): ob beim Teigtag-Zettel Abwiegeliste,
+ * Rezepte und Vorbereitung mitgedruckt werden. Vorgabe aus (O8: eine Seite).
+ */
+export const PRINT_EXTRAS_KEY = 'bakery-backzettel-print-extras'
+
+function readPrintExtras(): boolean {
+  try {
+    return window.localStorage.getItem(PRINT_EXTRAS_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function writePrintExtras(value: boolean): void {
+  try {
+    window.localStorage.setItem(PRINT_EXTRAS_KEY, value ? '1' : '0')
+  } catch {
+    // Privates Fenster o. ä.: dann gilt die Wahl nur bis zum Neuladen.
+  }
+}
 
 const MIN_TOUCH = { minHeight: 44 }
 
@@ -107,7 +144,8 @@ export interface BackzettelDayClientProps {
 
 /**
  * Tagesplanung eines Produktionstags (Z5, roadmap §5.5 Nr. 2) mit Druckbild
- * (Z7). Zeigt, was `/api/backzettel/:datum` liefert - gerechnet wird nur auf
+ * (Z7; ein Teigtag-Zettel druckt seit Z10 eine Seite, `DoughDayPrint`).
+ * Zeigt, was `/api/backzettel/:datum` liefert - gerechnet wird nur auf
  * dem Server. Planen (Saisonfaktor, Korrekturen, Freigeben) dürfen Inhaber und
  * Backstube; Wieder öffnen nur der Inhaber; alle anderen sehen den Zettel nur.
  */
@@ -127,6 +165,12 @@ export default function BackzettelDayClient({
   const [actionError, setActionError] = React.useState<string | null>(null)
   const [notice, setNotice] = React.useState<string | null>(null)
   const [editingKey, setEditingKey] = React.useState<string | null>(null)
+  /** Vorbelegung des Korrektur-Editors („+1 Bruch“, Z10). */
+  const [prefill, setPrefill] = React.useState<number | null>(null)
+  const editLine = React.useCallback((key: string | null, value?: number) => {
+    setEditingKey(key)
+    setPrefill(value === undefined ? null : value)
+  }, [])
   const [seasonInput, setSeasonInput] = React.useState('')
   const [seasonError, setSeasonError] = React.useState<string | null>(null)
   const [busy, setBusy] = React.useState(false)
@@ -137,6 +181,12 @@ export default function BackzettelDayClient({
   const [confirmChanges, setConfirmChanges] = React.useState<
     ChangedTotal[] | null
   >(null)
+  const [printExtras, setPrintExtras] = React.useState(false)
+  React.useEffect(() => setPrintExtras(readPrintExtras()), [])
+  const togglePrintExtras = (value: boolean) => {
+    setPrintExtras(value)
+    writePrintExtras(value)
+  }
 
   // Reihenfolge der Antworten: ein Laden, das vor einer Änderung (Freigabe,
   // Korrektur, Saisonfaktor, Wieder öffnen) losging und erst danach
@@ -175,10 +225,10 @@ export default function BackzettelDayClient({
   }, [applyDay, date, validDate])
 
   React.useEffect(() => {
-    setEditingKey(null)
+    editLine(null)
     setConfirmChanges(null)
     void load()
-  }, [load])
+  }, [editLine, load])
 
   const days = config?.days ?? null
   const day = isBackzettelDay(result) ? result : null
@@ -234,18 +284,37 @@ export default function BackzettelDayClient({
     // außer der Tag hat sich auf dem Server geändert: dann neu laden.
     let updated: BackzettelDayResult
     try {
-      updated = await setCorrection(
-        date,
-        line.itemId,
-        line.variant,
-        correction,
-        reason,
-        // der Stand, auf dem der Editor geöffnet wurde (W4-verify r4)
-        { correction: line.correction, reason: line.correctionReason }
-      )
+      const expected = {
+        correction: line.correction,
+        reason: line.correctionReason,
+      }
+      // Z10: Brötchen für einen späteren Backtag auf diesem Teigtag-Zettel
+      // tragen ihren Backtag mit, sonst träfe die Korrektur den Zettel-Tag.
+      updated =
+        line.bakeDate && line.bakeDate !== date
+          ? await setCorrection(
+              date,
+              line.itemId,
+              line.variant,
+              correction,
+              reason,
+              expected,
+              { bakeDate: line.bakeDate }
+            )
+          : await setCorrection(
+              date,
+              line.itemId,
+              line.variant,
+              correction,
+              reason,
+              // der Stand, auf dem der Editor geöffnet wurde (W4-verify r4)
+              expected
+            )
     } catch (error) {
       const code = (error as { code?: unknown } | null)?.code
-      if (code === 'correction_changed') {
+      if (code === 'correction_changed' || code === 'owned_elsewhere') {
+        // owned_elsewhere (Z10): die Zeile gehört inzwischen einem anderen,
+        // freigegebenen Zettel - neu laden, der Editor nennt den Grund.
         // Ein anderes Gerät hat gespeichert: den aktuellen Stand laden, der
         // Editor bleibt mit der eigenen Eingabe offen und nennt den neuen
         // Wert - erst ein zweites Speichern ersetzt ihn.
@@ -262,7 +331,7 @@ export default function BackzettelDayClient({
       return
     }
     applyDay(updated)
-    setEditingKey(null)
+    editLine(null)
     setNotice(
       correction === 0 ? 'Korrektur entfernt.' : 'Korrektur gespeichert.'
     )
@@ -415,6 +484,16 @@ export default function BackzettelDayClient({
   const headerActions = (
     <>
       {navButtons}
+      {day && isDoughDaySheet(day) && (
+        <Button
+          component={Link}
+          href={`/admin/backzettel/${date}/backen`}
+          variant="outlined"
+          sx={MIN_TOUCH}
+        >
+          Backliste
+        </Button>
+      )}
       {day && (
         <Button
           variant="outlined"
@@ -424,6 +503,19 @@ export default function BackzettelDayClient({
         >
           Drucken
         </Button>
+      )}
+      {day && isDoughDaySheet(day) && hasPrintExtras(day) && (
+        <FormControlLabel
+          sx={{ ...MIN_TOUCH, mr: 0 }}
+          control={
+            <Checkbox
+              checked={printExtras}
+              onChange={(e) => togglePrintExtras(e.target.checked)}
+              sx={{ width: 44, height: 44 }}
+            />
+          }
+          label="Abwiegeliste & Rezepte mitdrucken"
+        />
       )}
       {day && canReopen && day.status === 'confirmed' && (
         <Button
@@ -465,6 +557,21 @@ export default function BackzettelDayClient({
           }${day.confirmedAt ? ` am ${formatTimestamp(day.confirmedAt)}` : ''}`
         : 'Entwurf – rechnet live mit den Vorbestellungen'
     subtitle = [state, season].filter(Boolean).join(' · ')
+    const doughs = isDoughDaySheet(day) ? doughsTodayText(day) : null
+    if (doughs) {
+      subtitle = (
+        <>
+          {subtitle}
+          <Box
+            component="span"
+            data-testid="doughs-today"
+            sx={{ display: 'block' }}
+          >
+            {doughs}
+          </Box>
+        </>
+      )
+    }
   }
 
   const status = day ? (
@@ -536,6 +643,26 @@ export default function BackzettelDayClient({
       </Alert>
     )
   } else if (day) {
+    const v2 = isDoughDaySheet(day)
+    const covered = v2 ? v2CoveredKeys(day) : new Set<string>()
+    const otherSections = v2
+      ? day.sections
+          .map((s) => ({
+            ...s,
+            lines: s.lines.filter((l) => !covered.has(l.key)),
+          }))
+          .filter((s) => s.lines.length > 0)
+      : day.sections
+    const v2Props = {
+      config,
+      sheetDate: date,
+      lineByKey: linesByKey(day.sections),
+      editable,
+      editingKey,
+      prefill,
+      onEdit: editLine,
+      onSaveCorrection: saveCorrection,
+    }
     body = (
       <>
         {actionError && (
@@ -632,21 +759,45 @@ export default function BackzettelDayClient({
           </PageSection>
         )}
 
+        {v2 && (
+          <>
+            <MachineStrip machine={day.machine ?? []} doughs={day.doughs} />
+            <OpenMasterDataNote open={day.openMasterData} />
+          </>
+        )}
+
         <DeltasCard
           deltas={day.deltas}
           config={config}
           canAck={canPlan}
           ackingId={ackingId}
           onAck={(d) => void doAck(d)}
+          sheetDate={date}
         />
+        {v2 && <DeltaDoughNote day={day} />}
 
-        {day.sections.length === 0 ? (
-          <Alert severity="info">
-            Für diesen Tag steht nichts auf dem Backzettel – keine Grundmengen,
-            Vorbestellungen oder CAP-Lieferungen.
+        {v2 && day.sections.length === 0 && day.isDoughDay === false && (
+          <Alert severity="info" sx={{ mb: 2 }} data-testid="no-dough-day">
+            {formatDateLong(date)} ist kein Teigtag – gebacken wird aus Teig vom
+            Vortag. Was heute in den Ofen kommt, steht in der{' '}
+            <Link href={`/admin/backzettel/${date}/backen`}>Backliste</Link>.
           </Alert>
+        )}
+        {v2 && (
+          <>
+            <BreadTable bread={day.bread} {...v2Props} />
+            <RollsByBakeDay rolls={day.rolls} {...v2Props} />
+          </>
+        )}
+        {day.sections.length === 0 ? (
+          v2 && day.isDoughDay === false ? null : (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Für diesen Tag steht nichts auf dem Backzettel – keine
+              Grundmengen, Vorbestellungen oder CAP-Lieferungen.
+            </Alert>
+          )
         ) : (
-          day.sections.map((section) => (
+          otherSections.map((section) => (
             <BackzettelSectionView
               key={section.id}
               section={section}
@@ -654,7 +805,7 @@ export default function BackzettelDayClient({
               deltas={day.status === 'confirmed' ? day.deltas : undefined}
               editable={editable}
               editingKey={editingKey}
-              onEdit={setEditingKey}
+              onEdit={(key) => editLine(key)}
               onSaveCorrection={saveCorrection}
             />
           ))
@@ -761,7 +912,12 @@ export default function BackzettelDayClient({
           {body}
         </PageLayout>
       </Box>
-      {day && <BackzettelPrint day={day} config={config} />}
+      {day &&
+        (isDoughDaySheet(day) ? (
+          <DoughDayPrint day={day} config={config} withExtras={printExtras} />
+        ) : (
+          <BackzettelPrint day={day} config={config} />
+        ))}
       <Snackbar
         open={!!notice}
         autoHideDuration={3000}

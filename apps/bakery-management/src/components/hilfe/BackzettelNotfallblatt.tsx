@@ -57,7 +57,7 @@ export function notfallSections(
         .flatMap((item) =>
           item.variants && item.variants.length > 0
             ? item.variants.map(
-                (v) => `${item.name} – ${variantLabel(v, config) ?? v}`
+                (v) => `${item.name} – ${variantLabel(v, config, item.id) ?? v}`
               )
             : [item.name]
         )
@@ -221,6 +221,10 @@ const styles = (
       '.nfb-section': { marginBottom: '2mm' },
       '.nfb-section.nfb-keep': { breakInside: 'avoid' },
       '.nfb tr': { breakInside: 'avoid' },
+      // Die leere Zeile am Ende bleibt bei ihrem Abschnitt - sonst stand oben
+      // in der nächsten Spalte eine zweite Überschrift mit nur dieser Zeile
+      // (Review Z10 Runde 1).
+      '.nfb tr.nfb-blank': { breakBefore: 'avoid' },
       '.nfb thead': { display: 'table-header-group' },
       // Die Überschrift steht als erste Kopfzeile in der Tabelle: bricht ein
       // Abschnitt in die nächste Spalte um, steht sie dort noch einmal
@@ -353,6 +357,12 @@ export default function BackzettelNotfallblatt({
                     {section.rows.map((row, index) => (
                       <tr
                         key={`${row}-${index}`}
+                        className={
+                          row === '' &&
+                          section.rows.slice(0, index).some((r) => r !== '')
+                            ? 'nfb-blank'
+                            : undefined
+                        }
                         style={{ height: `${rowHeight}mm` }}
                       >
                         <td className="posten">{row}</td>

@@ -21,9 +21,17 @@
 // `HefezopfCalculator`/`FillingPreparation` aus apps/bakery-management -
 // Teigstuecke und Fuellungsgramm kommen jetzt aus der YAML (der gefuellte
 // Kranz, Q-B3, ist dort einstellbar, nicht hier fest verdrahtet).
+//
+// Backzettel v2 (Z10, docs/backzettel-v2.md §4): `computeDoughDay` rechnet
+// den Zettel eines Teigtags - die Zeilen aller Backtage, deren Teig an dem
+// Tag gemacht wird (`backzettel-plan.core.js`), dazu Teige, Liter, Bruch
+// (`backzettel-dough.core.js`). `computeDay` bleibt die Rechnung eines
+// Backtags; mit v1-Stammdaten liefern beide dasselbe wie vor Z10.
 
 const configCore = require('./backzettel-config.core')
 const recipesCore = require('./backzettel-recipes.core')
+const planCore = require('./backzettel-plan.core')
+const doughCore = require('./backzettel-dough.core')
 
 const { SECTION_LABELS, INTEGER_UNITS, WEEKDAY_NAMES } = configCore
 
@@ -103,24 +111,8 @@ function trayText(tray, total, unit) {
 // Datum, Runden
 // ---------------------------------------------------------------------------
 
-function isValidDate(date) {
-  if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date))
-    return false
-  const [y, m, d] = date.split('-').map(Number)
-  const t = new Date(Date.UTC(y, m - 1, d))
-  return (
-    t.getUTCFullYear() === y &&
-    t.getUTCMonth() === m - 1 &&
-    t.getUTCDate() === d
-  )
-}
-
-/** ISO-Wochentag (1 = Montag ... 7 = Sonntag) eines `YYYY-MM-DD`. */
-function isoWeekday(date) {
-  const [y, m, d] = date.split('-').map(Number)
-  const day = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
-  return day === 0 ? 7 : day
-}
+// Datum: einzige Fassung in `backzettel-plan.core.js`.
+const { isValidDate, isoWeekday } = planCore
 
 function round2(x) {
   return Math.round(x * 100) / 100
@@ -183,7 +175,15 @@ function productIndex(cfg) {
   const index = new Map()
   for (const item of cfg.items) {
     for (const p of item.products)
-      index.set(String(p.id), { item, factor: p.factor })
+      index.set(String(p.id), {
+        item,
+        factor: p.factor,
+        // Z10: Groesse des Produkts bei Posten mit `sizes` (sonst null)
+        size:
+          item.variantKind === 'size' && typeof p.size === 'string'
+            ? p.size
+            : null,
+      })
   }
   return index
 }
@@ -215,15 +215,23 @@ function catalogNamer(catalog) {
   return (productId) => names.get(String(productId)) || String(productId)
 }
 
-function lineKey(itemId, variant) {
-  return `${itemId}|${variant || ''}`
+/**
+ * Schluessel einer Zeile: `itemId|variant`. Z10: liegt der Backtag nicht auf
+ * dem Zettel-Tag (Teig am Vortag), kommt er dazu - `itemId|variant@bakeDate`.
+ * Alle v1-Schluessel bleiben gueltig.
+ */
+function lineKey(itemId, variant, bakeDate, sheetDate) {
+  const base = `${itemId}|${variant || ''}`
+  return bakeDate && sheetDate && bakeDate !== sheetDate
+    ? `${base}@${bakeDate}`
+    : base
 }
 
 /**
  * Loest eine Produkt-ID (hq-Slug oder numerische ID aus dem Katalog) zu
  * Posten und Faktor auf. Einzige Stelle dafuer: `computeDay`,
  * `computePreorderDeltas` und `variantsForProduct` benutzen sie.
- * @returns {(productId: unknown) => ({item: object, factor: number} | null)}
+ * @returns {(productId: unknown) => ({item: object, factor: number, size: string|null} | null)}
  */
 function createProductResolver(config, catalog) {
   const cfg = ensureNormalized(config)
@@ -242,11 +250,25 @@ function createProductResolver(config, catalog) {
  * Welcher Posten, welcher Faktor und welche Varianten gehoeren zu einem
  * Produkt? Fuer die Pruefung von `preorder_items.variant` (B7, roadmap §5.3):
  * `variants` leer heisst, das Produkt nimmt keine Variante an.
- * @returns {{itemId:string, name:string, unit:string, factor:number, variants:string[]} | null}
+ *
+ * Z10: ein Produkt eines Groessen-Postens nennt seine Groesse selbst
+ * (`products[].size`) - `variants: []` (die Vorbestellung speichert `''`) und
+ * `size` dazu.
+ * @returns {{itemId:string, name:string, unit:string, factor:number, variants:string[], size?:string|null} | null}
  */
 function variantsForProduct(config, productId, catalog) {
   const hit = createProductResolver(config, catalog)(productId)
   if (!hit) return null
+  if (hit.item.variantKind === 'size') {
+    return {
+      itemId: hit.item.id,
+      name: hit.item.name,
+      unit: hit.item.unit,
+      factor: hit.factor,
+      variants: [],
+      size: hit.size,
+    }
+  }
   return {
     itemId: hit.item.id,
     name: hit.item.name,
@@ -259,7 +281,8 @@ function variantsForProduct(config, productId, catalog) {
 /**
  * Alle Produkte mit Sorten, fuer die Erfassungsmaske der Vorbestellungen
  * (P1, `GET /api/preorders/variants`): `{ [productId]: ['nuss', ...] }`.
- * Produkte ohne Sorten fehlen - wie bei `variantsForProduct` gewinnt der
+ * Produkte ohne Sorten fehlen - auch Produkte eines Groessen-Postens (Z10,
+ * die Groesse steht am Produkt) -, wie bei `variantsForProduct` gewinnt der
  * letzte Posten, falls ein Produkt in mehreren steht.
  * @returns {Record<string, string[]>}
  */
@@ -268,7 +291,8 @@ function variantsByProduct(config) {
   const index = productIndex(cfg)
   const out = {}
   for (const [productId, hit] of index) {
-    if (hit.item.variants.length > 0) out[productId] = [...hit.item.variants]
+    if (hit.item.variants.length > 0 && hit.item.variantKind !== 'size')
+      out[productId] = [...hit.item.variants]
   }
   return out
 }
@@ -305,23 +329,31 @@ function countablePreorderQty(raw, date) {
 // Tagesrechnung
 // ---------------------------------------------------------------------------
 
+/** Saisonfaktor aus der Eingabe; ungueltig -> 1,0 mit Warnung. */
+function seasonFactorOf(raw, warnings) {
+  const factor = raw === undefined || raw === null ? 1 : Number(raw)
+  if (Number.isFinite(factor) && factor > 0) return factor
+  warnings.push({
+    code: 'invalid_season_factor',
+    message: `Saisonfaktor ${JSON.stringify(
+      raw
+    )} ist ungültig; gerechnet wird mit 1,0.`,
+  })
+  return 1
+}
+
 /**
- * Rechnet den Backzettel eines Tages.
+ * Die Zeilen eines Backtags (ohne Hefeteig, Fuellungen, Vorbereitung).
+ * Gemeinsamer Kern von `computeDay` (v1) und `computeDoughDay` (v2).
  *
- * @param {object} args
- * @param {object} args.config Stammdaten (roh oder normalisiert, vorher geprueft).
- * @param {string} args.date Produktionstag `YYYY-MM-DD`.
- * @param {Array} [args.preorderItems] flach: `{productId|productSlug, qty|quantity,
- *   variant?, pickupDate|date, status?}`; siehe `flattenPreorders`.
- * @param {object|Array} [args.capTemplate] CAP-Liefervorlage(n)
- *   `{weekday, active, items:[{productSlug|productId, quantity}]}`.
- * @param {Array} [args.corrections] `{itemId, variant?, qty, reason?}`.
- * @param {number} [args.seasonFactor=1] Saisonfaktor (D10: Standard 1.0).
- * @param {object} [args.recipes] geparste Fuellungsrezepte je Fuellungs-ID.
- * @param {Array} [args.catalog] hq-Produkte `{id, numeric_id}`, um numerische IDs aufzuloesen.
- * @param {boolean} [args.includeEmpty=false] auch Zeilen ohne jede Menge liefern.
+ * v2-Form, sobald `sheetDate` oder `onlyItems` angegeben ist: nur die Posten
+ * aus `onlyItems`, jede Zeile mit `bakeDate`, `doughDate`, `lead`,
+ * `variantKind`, `variantLabel` (Bruch-Posten auch `bruch`) und dem
+ * Schluessel `lineKey(itemId, variant, bakeDate, sheetDate)`. Hinweise, die
+ * dem Backtag selbst gehoeren (nicht zugeordnete Produkte, Vorbestellungen am
+ * Ruhetag), erscheinen nur auf dessen eigenem Zettel.
  */
-function computeDay(args) {
+function computeLines(args) {
   const a = args || {}
   const date = a.date
   if (!isValidDate(date)) {
@@ -335,20 +367,18 @@ function computeDay(args) {
   const cfg = ensureNormalized(a.config)
   const weekday = isoWeekday(date)
   const warnings = []
+  const v2 = a.sheetDate !== undefined || a.onlyItems !== undefined
+  const sheetDate = v2 && isValidDate(a.sheetDate) ? a.sheetDate : date
+  const only =
+    a.onlyItems === undefined || a.onlyItems === null
+      ? null
+      : new Set(a.onlyItems)
+  const ownDay = sheetDate === date
+  const included = (item) => only === null || only.has(item.id)
 
-  let seasonFactor =
-    a.seasonFactor === undefined || a.seasonFactor === null
-      ? 1
-      : Number(a.seasonFactor)
-  if (!Number.isFinite(seasonFactor) || seasonFactor <= 0) {
-    warnings.push({
-      code: 'invalid_season_factor',
-      message: `Saisonfaktor ${JSON.stringify(
-        a.seasonFactor
-      )} ist ungültig; gerechnet wird mit 1,0.`,
-    })
-    seasonFactor = 1
-  }
+  const seasonFactor = a.seasonFactorChecked
+    ? Number(a.seasonFactor)
+    : seasonFactorOf(a.seasonFactor, warnings)
 
   const open = cfg.days.includes(weekday)
   const resolveProduct = createProductResolver(cfg, a.catalog)
@@ -390,6 +420,10 @@ function computeDay(args) {
     })
     return null
   }
+  // Produkte eines Groessen-Postens tragen ihre Groesse (`products[].size`):
+  // eine Vorbestellung „Testkorn 500 g“ landet ohne Sortenfrage auf `g500`.
+  const variantOf = (hit, variant, source) =>
+    hit.size ? hit.size : resolveVariant(hit.item, variant, source)
 
   // Vorbestellungen
   const unmatched = new Map()
@@ -409,10 +443,8 @@ function computeDay(args) {
       preordersOnClosedDay += qty
       continue
     }
-    const b = bucket(
-      hit.item,
-      resolveVariant(hit.item, raw.variant, 'Vorbestellung')
-    )
+    if (!included(hit.item)) continue
+    const b = bucket(hit.item, variantOf(hit, raw.variant, 'Vorbestellung'))
     b.preorders += qty * hit.factor
     if (
       raw.preorderId !== undefined &&
@@ -423,22 +455,24 @@ function computeDay(args) {
     }
   }
   const productName = catalogNamer(a.catalog)
-  for (const [productId, qty] of unmatched) {
-    warnings.push({
-      code: 'unmapped_product',
-      productId,
-      qty,
-      message: `Vorbestelltes Produkt „${productName(
-        productId
-      )}“ (${qty} Stück) gehört zu keinem Backzettel-Posten.`,
-    })
-  }
-  if (preordersOnClosedDay > 0) {
-    warnings.push({
-      code: 'preorders_on_closed_day',
-      qty: preordersOnClosedDay,
-      message: `${WEEKDAY_NAMES[weekday]} ist kein Produktionstag, es liegen aber Vorbestellungen vor.`,
-    })
+  if (ownDay) {
+    for (const [productId, qty] of unmatched) {
+      warnings.push({
+        code: 'unmapped_product',
+        productId,
+        qty,
+        message: `Vorbestelltes Produkt „${productName(
+          productId
+        )}“ (${qty} Stück) gehört zu keinem Backzettel-Posten.`,
+      })
+    }
+    if (preordersOnClosedDay > 0) {
+      warnings.push({
+        code: 'preorders_on_closed_day',
+        qty: preordersOnClosedDay,
+        message: `${WEEKDAY_NAMES[weekday]} ist kein Produktionstag, es liegen aber Vorbestellungen vor.`,
+      })
+    }
   }
 
   // CAP-Liefervorlage
@@ -458,6 +492,7 @@ function computeDay(args) {
         const productId = raw.productSlug || raw.productId
         const hit = resolveProduct(productId)
         if (!hit) {
+          if (!ownDay) continue
           warnings.push({
             code: 'unmapped_cap_product',
             productId: String(productId),
@@ -468,15 +503,23 @@ function computeDay(args) {
           })
           continue
         }
-        bucket(hit.item, null).cap += qty * hit.factor
+        if (!included(hit.item)) continue
+        bucket(hit.item, hit.size || null).cap += qty * hit.factor
       }
     }
   }
 
-  // Korrekturen
+  // Korrekturen (je Backtag: `bakeDate`, ohne Angabe der Tag selbst)
   if (open) {
     for (const c of Array.isArray(a.corrections) ? a.corrections : []) {
       if (!c) continue
+      if (
+        c.bakeDate !== undefined &&
+        c.bakeDate !== null &&
+        c.bakeDate !== '' &&
+        c.bakeDate !== date
+      )
+        continue
       const item = itemsById.get(c.itemId)
       const qty = Number(c.qty)
       if (!item) {
@@ -487,6 +530,7 @@ function computeDay(args) {
         })
         continue
       }
+      if (!included(item)) continue
       if (!Number.isFinite(qty)) continue
       const variant =
         c.variant === undefined || c.variant === '' ? null : c.variant
@@ -506,14 +550,10 @@ function computeDay(args) {
     }
   }
 
-  // Sortenname wie in der Oberfläche („Zopf gefüllt – Nussfüllung“): der
-  // Füllungsname aus den Stammdaten, sonst die ID mit grossem Anfang - nie die
-  // rohe YAML-ID in Klammern.
-  const variantDisplayName = (c, v) => {
-    const f = (c.fillings || []).find((x) => x.id === v)
-    if (f && f.name) return f.name
-    return v.charAt(0).toUpperCase() + v.slice(1)
-  }
+  // Sortenname wie in der Oberfläche („Zopf gefüllt – Nussfüllung“,
+  // „Testkorn – 500 g“): Groesse, Füllungsname aus den Stammdaten, sonst die
+  // ID mit grossem Anfang - nie die rohe YAML-ID in Klammern.
+  const displayName = (item, v) => configCore.variantDisplayName(cfg, item, v)
 
   // Zeilen. `null` als Grundmenge heisst „noch nicht festgelegt“ (anders als
   // 0 = „wird nicht gebacken“): die Zeile erscheint mit `baseUnset: true`,
@@ -521,12 +561,15 @@ function computeDay(args) {
   const lines = []
   const unset = []
   const clamped = []
+  const noDoughDay = []
   if (open) {
     for (const item of cfg.items) {
+      if (!included(item)) continue
       const hasDay = Object.prototype.hasOwnProperty.call(item.base, weekday)
       const baseDay = item.base[weekday]
       const variants =
         item.variants.length > 0 ? [...item.variants, null] : [null]
+      const dough = v2 ? planCore.resolveDoughDate(cfg, item, date) : null
       for (const variant of variants) {
         let base = 0
         let baseUnset = false
@@ -546,9 +589,7 @@ function computeDay(args) {
         }
         if (baseUnset)
           unset.push(
-            variant
-              ? `${item.name} – ${variantDisplayName(cfg, variant)}`
-              : item.name
+            variant ? `${item.name} – ${displayName(item, variant)}` : item.name
           )
         const b = acc.get(lineKey(item.id, variant)) || {
           preorders: 0,
@@ -589,14 +630,16 @@ function computeDay(args) {
         if (raw < 0) {
           clamped.push({
             name: variant
-              ? `${item.name} – ${variantDisplayName(cfg, variant)}`
+              ? `${item.name} – ${displayName(item, variant)}`
               : item.name,
             subtotal: pooledSubtotal,
             correction,
           })
         }
         const line = {
-          key: lineKey(item.id, variant),
+          key: v2
+            ? lineKey(item.id, variant, date, sheetDate)
+            : lineKey(item.id, variant),
           itemId: item.id,
           name: item.name,
           section: item.section,
@@ -622,6 +665,14 @@ function computeDay(args) {
         }
         if (item.unit === 'Liter' && item.pieces_per_liter) {
           line.loavesEstimate = Math.round(total * item.pieces_per_liter)
+        }
+        if (v2) {
+          Object.assign(line, v2LineFields(cfg, item, variant, date, dough))
+          // Grundmenge offen (ohne Korrektur): `total` ist nur das Bekannte -
+          // eine Mindestmenge („≥ 4“), keine fertige Zahl (Regel 8).
+          line.totalIsMinimum = doughCore.qtyUnknown(line)
+          if (!dough.found && !noDoughDay.includes(item.name))
+            noDoughDay.push(item.name)
         }
         lines.push(line)
       }
@@ -658,6 +709,18 @@ function computeDay(args) {
     })
   }
 
+  if (noDoughDay.length > 0) {
+    warnings.push({
+      code: 'no_dough_day',
+      items: noDoughDay,
+      message: `Kein Teigtag in den ${planCore.LOOKAHEAD_DAYS} Tagen vor ${
+        WEEKDAY_NAMES[weekday]
+      } gefunden: ${noDoughDay.join(
+        ', '
+      )} - steht deshalb auf dem Zettel des Backtags.`,
+    })
+  }
+
   const sections = cfg.sections
     .map((id) => ({
       id,
@@ -668,9 +731,73 @@ function computeDay(args) {
   // Zeilen in Abschnittsreihenfolge
   const ordered = sections.flatMap((s) => s.lines)
 
-  const hefeteig = computeHefeteig(cfg, ordered)
-  const fillings = computeFillings(cfg, ordered, a.recipes || {}, warnings)
-  const prep = open ? computePrep(cfg, ordered, weekday) : []
+  return {
+    cfg,
+    date,
+    weekday,
+    open,
+    seasonFactor,
+    sections,
+    lines: ordered,
+    warnings,
+  }
+}
+
+/** `2026-11-28` → „Samstag, 28.11.“ (Hinweise). */
+function dayLabel(date) {
+  const [, m, d] = String(date).split('-')
+  return `${WEEKDAY_NAMES[isoWeekday(date)]}, ${d}.${m}.`
+}
+
+/** Die v2-Felder einer Zeile (Backtag, Teigtag, Sortenname, Bruch). */
+function v2LineFields(cfg, item, variant, bakeDate, dough) {
+  const d = dough || planCore.resolveDoughDate(cfg, item, bakeDate)
+  return {
+    bakeDate,
+    doughDate: d.date,
+    lead: d.lead,
+    variantKind: item.variantKind === undefined ? null : item.variantKind,
+    variantLabel: configCore.variantDisplayName(cfg, item, variant),
+    ...(item.bruch
+      ? {
+          bruch: {
+            group: item.bruch.group,
+            perProduct: item.bruch.per_product,
+          },
+        }
+      : {}),
+  }
+}
+
+/**
+ * Rechnet den Backzettel eines Tages.
+ *
+ * @param {object} args
+ * @param {object} args.config Stammdaten (roh oder normalisiert, vorher geprueft).
+ * @param {string} args.date Produktionstag `YYYY-MM-DD`.
+ * @param {Array} [args.preorderItems] flach: `{productId|productSlug, qty|quantity,
+ *   variant?, pickupDate|date, status?}`; siehe `flattenPreorders`.
+ * @param {object|Array} [args.capTemplate] CAP-Liefervorlage(n)
+ *   `{weekday, active, items:[{productSlug|productId, quantity}]}`.
+ * @param {Array} [args.corrections] `{itemId, variant?, qty, reason?, bakeDate?}`;
+ *   eine Korrektur mit anderem `bakeDate` zaehlt hier nicht.
+ * @param {number} [args.seasonFactor=1] Saisonfaktor (D10: Standard 1.0).
+ * @param {object} [args.recipes] geparste Fuellungsrezepte je Fuellungs-ID.
+ * @param {Array} [args.catalog] hq-Produkte `{id, numeric_id}`, um numerische IDs aufzuloesen.
+ * @param {boolean} [args.includeEmpty=false] auch Zeilen ohne jede Menge liefern.
+ * @param {Iterable<string>} [args.onlyItems] Z10: nur Zeilen dieser Posten.
+ * @param {string} [args.sheetDate] Z10: der Teigtag, fuer den gerechnet wird;
+ *   mit `onlyItems` oder `sheetDate` tragen die Zeilen die v2-Felder.
+ */
+function computeDay(args) {
+  const a = args || {}
+  const r = computeLines(a)
+  if (r.error) return r
+  const { cfg, date, weekday, open, seasonFactor, sections, lines, warnings } =
+    r
+  const hefeteig = computeHefeteig(cfg, lines)
+  const fillings = computeFillings(cfg, lines, a.recipes || {}, warnings)
+  const prep = open ? computePrep(cfg, lines, weekday) : []
 
   return {
     date,
@@ -679,7 +806,7 @@ function computeDay(args) {
     open,
     seasonFactor,
     sections,
-    lines: ordered,
+    lines,
     hefeteig,
     fillings,
     prep,
@@ -690,17 +817,39 @@ function computeDay(args) {
 /**
  * Hefeteig-Zusammenfassung: Teigstuecke, Teiggewicht, Chargen und eine
  * Abwiegeliste je Teig und Stueckgewicht.
+ *
+ * Gezaehlt werden Posten mit Teigstuecken (`dough.piece_g`); Brot je Groesse
+ * und Broetchen in Bruch (Z10) rechnet `backzettel-dough.core.js`. Ist das
+ * Stueckgewicht oder die Stueckzahl je Produkt offen (`null`), ist das
+ * Teiggewicht des Teigs unbekannt (`dough_g: null`, keine Chargen) - nie 0.
+ *
+ * Mit `{ withLiters: true }` (der Zettel je Teigtag, Z10) traegt jeder Teig
+ * dazu `kg`, `kgKnown`, `complete`, `missing` und `liters` (kg ÷ kg je Liter,
+ * Regel 2), das Ganze `complete`.
  */
-function computeHefeteig(cfg, lines) {
+function computeHefeteig(cfg, lines, options) {
+  const withLiters = Boolean(options && options.withLiters)
+  // Z10: die Teigsummen des Zettels (`summarizeDoughs`) - kg, Liter,
+  // Chargen und Vollständigkeit kommen von dort, damit Hefeteig-Karte und
+  // Maschinenleiste dieselbe Zahl zeigen (eine Regel).
+  const summaries = new Map(
+    (options && Array.isArray(options.summaries) ? options.summaries : []).map(
+      (d) => [d.id, d]
+    )
+  )
   const itemsById = new Map(cfg.items.map((i) => [i.id, i]))
   const byDough = new Map()
   for (const line of lines) {
     const item = itemsById.get(line.itemId)
-    if (!item || !item.dough || !(line.total > 0)) continue
+    if (!item || !doughCore.isPieceItem(item)) continue
+    const unknownQty = withLiters && doughCore.qtyUnknown(line)
+    if (!(line.total > 0) && !unknownQty) continue
     const dough = cfg.doughs.find((d) => d.id === item.dough.id) || {
       id: item.dough.id,
-      name: item.dough.id,
+      name: item.dough.id === null ? 'Teig offen' : item.dough.id,
       batch_max_kg: null,
+      kg_per_liter: null,
+      liter_rounding: null,
     }
     let entry = byDough.get(dough.id)
     if (!entry) {
@@ -708,31 +857,92 @@ function computeHefeteig(cfg, lines) {
         id: dough.id,
         name: dough.name,
         batch_max_kg: dough.batch_max_kg,
+        record: dough,
         pieces: 0,
+        piecesKnown: true,
         dough_g: 0,
+        missing: [],
         batches: null,
         weights: new Map(),
       }
       byDough.set(dough.id, entry)
     }
-    const pieces = line.total * item.dough.pieces
-    entry.pieces += pieces
-    entry.dough_g += pieces * item.dough.piece_g
-    let w = entry.weights.get(item.dough.piece_g)
-    if (!w) {
-      w = { piece_g: item.dough.piece_g, pieces: 0, items: new Map() }
-      entry.weights.set(item.dough.piece_g, w)
+    if (unknownQty) {
+      // Grundmenge offen: der Teig ist unvollständig, nie „0“ (Regel 8)
+      entry.missing.push({
+        itemId: item.id,
+        name: item.name,
+        field: 'base',
+        code: 'base_unset',
+        message: `„${
+          line.variantLabel ? `${item.name} – ${line.variantLabel}` : item.name
+        }“: Grundmenge ist noch nicht festgelegt.`,
+      })
+      entry.baseUnset = true
     }
-    w.pieces += pieces
+    const perProduct = item.dough.pieces
+    const pieceG = item.dough.piece_g
+    if (unknownQty) {
+      // Abwiegeliste: die Gewichtsstufe und der Posten sind nur „mindestens“
+      // (Regel 8) - auch wenn vom Posten noch nichts bekannt ist.
+      const mw = entry.weights.get(pieceG) || {
+        piece_g: pieceG,
+        pieces: 0,
+        items: new Map(),
+      }
+      mw.isMinimum = true
+      entry.weights.set(pieceG, mw)
+      const mi = mw.items.get(item.id) || {
+        itemId: item.id,
+        name: item.name,
+        products: 0,
+        piecesPerProduct: perProduct,
+        pieces: 0,
+      }
+      mi.isMinimum = true
+      mw.items.set(item.id, mi)
+      if (!(line.total > 0)) continue
+    }
+    const pieces =
+      typeof perProduct === 'number' ? line.total * perProduct : null
+    if (pieces === null) {
+      entry.piecesKnown = false
+      entry.missing.push({
+        itemId: item.id,
+        name: item.name,
+        field: 'dough.pieces',
+        code: 'pieces_unknown',
+        message: `„${item.name}“: Teigstücke je Produkt sind noch offen – das Teiggewicht bleibt unbekannt.`,
+      })
+    } else {
+      entry.pieces += pieces
+      if (typeof pieceG === 'number') entry.dough_g += pieces * pieceG
+      else
+        entry.missing.push({
+          itemId: item.id,
+          name: item.name,
+          field: 'dough.piece_g',
+          code: 'piece_g_unknown',
+          message: `„${item.name}“: Gramm je Teigstück sind noch offen.`,
+        })
+    }
+    let w = entry.weights.get(pieceG)
+    if (!w) {
+      w = { piece_g: pieceG, pieces: 0, items: new Map() }
+      entry.weights.set(pieceG, w)
+    }
+    if (pieces !== null) w.pieces += pieces
+    else w.piecesUnknown = true
     const wi = w.items.get(item.id) || {
       itemId: item.id,
       name: item.name,
       products: 0,
-      piecesPerProduct: item.dough.pieces,
+      piecesPerProduct: perProduct,
       pieces: 0,
     }
     wi.products += line.total
-    wi.pieces += pieces
+    if (pieces !== null && wi.pieces !== null) wi.pieces += pieces
+    else wi.pieces = null
     w.items.set(item.id, wi)
   }
   const doughs = cfg.doughs
@@ -743,40 +953,82 @@ function computeHefeteig(cfg, lines) {
     .filter((id) => byDough.has(id))
     .map((id) => {
       const e = byDough.get(id)
-      return {
+      const complete = e.missing.length === 0
+      const doughG = complete ? e.dough_g : null
+      const out = {
         id: e.id,
         name: e.name,
         batch_max_kg: e.batch_max_kg,
-        pieces: e.pieces,
-        dough_g: e.dough_g,
-        batches: e.batch_max_kg
-          ? Math.ceil(e.dough_g / (e.batch_max_kg * 1000) - EPSILON)
-          : null,
+        pieces: e.piecesKnown ? e.pieces : null,
+        dough_g: doughG,
+        batches:
+          e.batch_max_kg && doughG !== null
+            ? Math.ceil(doughG / (e.batch_max_kg * 1000) - EPSILON)
+            : null,
         weighing: [...e.weights.values()]
-          .sort((x, y) => y.piece_g - x.piece_g)
+          .sort((x, y) => (y.piece_g || 0) - (x.piece_g || 0))
           .map((w) => ({
             piece_g: w.piece_g,
-            pieces: w.pieces,
+            pieces: w.piecesUnknown ? null : w.pieces,
             items: [...w.items.values()],
+            ...(w.isMinimum ? { isMinimum: true } : {}),
           })),
       }
+      if (withLiters) {
+        const kg = doughG === null ? null : Math.round(doughG) / 1000
+        Object.assign(out, {
+          kg,
+          kgKnown: Math.round(e.dough_g) / 1000,
+          complete,
+          missing: e.missing,
+          liters: doughCore.litersFor(e.record, kg),
+          // Teigstücke ohne die Posten mit offener Grundmenge
+          piecesComplete: !e.baseUnset && e.piecesKnown,
+        })
+        const s = summaries.get(e.id)
+        if (s) {
+          Object.assign(out, {
+            kg: s.kg,
+            kgKnown: s.kgKnown,
+            complete: s.complete,
+            missing: s.missing,
+            liters: s.liters,
+            batches: s.batches,
+            dough_g: s.kg === null ? null : Math.round(s.kg * 1000),
+          })
+        }
+      }
+      return out
     })
-  return {
+  const sum = (field) =>
+    doughs.some((d) => d[field] === null)
+      ? null
+      : doughs.reduce((s, d) => s + d[field], 0)
+  const out = {
     doughs,
-    pieces: doughs.reduce((s, d) => s + d.pieces, 0),
-    dough_g: doughs.reduce((s, d) => s + d.dough_g, 0),
+    pieces: sum('pieces'),
+    dough_g: sum('dough_g'),
   }
+  if (withLiters) out.complete = doughs.every((d) => d.complete)
+  return out
 }
 
 /**
  * Fuellungsbedarf je Fuellung (= Variante) und das darauf skalierte Rezept.
  */
-function computeFillings(cfg, lines, recipes, warnings) {
+function computeFillings(cfg, lines, recipes, warnings, options) {
+  // Z10 (Teigtag-Zettel): ein gefüllter Posten mit offener Grundmenge macht
+  // den Bedarf seiner Füllung unvollständig (Regel 1/8) - auch mit 0 Stück,
+  // damit die Füllung als „offen“ erscheint statt zu fehlen.
+  const withOpen = Boolean(options && options.withOpenBase)
   const itemsById = new Map(cfg.items.map((i) => [i.id, i]))
   const byFilling = new Map()
   for (const line of lines) {
     const item = itemsById.get(line.itemId)
-    if (!item || !item.filling_g || !(line.total > 0)) continue
+    if (!item || !item.filling_g) continue
+    const openBase =
+      withOpen && line.variant !== null && doughCore.qtyUnknown(line)
+    if (!(line.total > 0) && !openBase) continue
     if (line.variant === null) {
       warnings.push({
         code: 'filling_unassigned',
@@ -798,6 +1050,16 @@ function computeFillings(cfg, lines, recipes, warnings) {
         items: [],
       }
       byFilling.set(line.variant, entry)
+    }
+    if (openBase) {
+      // nur dann gesetzt: ohne offene Grundmenge bleibt die Form wie v1
+      entry.baseUnset = true
+      if (!entry.openItems) entry.openItems = []
+      const label = line.variantLabel
+        ? `${item.name} – ${line.variantLabel}`
+        : item.name
+      if (!entry.openItems.includes(label)) entry.openItems.push(label)
+      if (!(line.total > 0)) continue
     }
     const grams = perPiece ? line.total * perPiece : null
     if (grams === null) entry.missingFillingG = true
@@ -821,8 +1083,10 @@ function computeFillings(cfg, lines, recipes, warnings) {
       const recipe = recipes[e.id] || null
       return {
         ...e,
+        // Regel 7 (Z10): ohne alle Gramm kein hochgerechnetes Rezept - eine
+        // Teilmenge saehe aus wie der ganze Bedarf.
         recipe:
-          recipe && e.grams > 0
+          recipe && e.grams > 0 && !e.missingFillingG && !e.baseUnset
             ? recipesCore.scaleRecipe(recipe, e.grams)
             : null,
         recipeMissing: !recipe,
@@ -889,30 +1153,52 @@ function computePrep(cfg, lines, weekday) {
  * @param {Array} args.before Positionen zum Zeitpunkt der Freigabe.
  * @param {Array} args.after Positionen jetzt (flach oder `{id, items}`).
  * @param {Array} [args.catalog] hq-Produkte fuer numerische IDs.
- * @returns {Array<{key, itemId, name, unit, variant, preorderId, before, after, qty, kind}>}
+ * @param {object} [args.plan] Z10: Plan des Zettels (`planForSheet`). Eine
+ *   Position zaehlt, wenn ihr Abholtag ein Backtag des Plans ist und der Plan
+ *   den Posten an diesem Backtag traegt; jede Zeile traegt dann `bakeDate`,
+ *   der Schluessel `itemId|variant@bakeDate`, wenn der Backtag nicht der
+ *   Zettel-Tag ist. Ohne Plan wie v1 (`legacyPlan(date)`, ohne `bakeDate`).
+ * @returns {Array<{key, itemId, name, unit, variant, preorderId, before, after, qty, kind, bakeDate?}>}
  *   `kind`: `added` (vorher 0), `cancelled` (jetzt 0) oder `changed`.
  */
 function computePreorderDeltas(args) {
   const a = args || {}
   if (!isValidDate(a.date)) return []
   const cfg = ensureNormalized(a.config)
-  if (!cfg.days.includes(isoWeekday(a.date))) return []
+  const plan = a.plan || null
+  if (!plan && !cfg.days.includes(isoWeekday(a.date))) return []
   const resolve = createProductResolver(cfg, a.catalog)
+  const bakeDates = plan
+    ? planCore
+        .planBakeDates(plan)
+        .filter((d) => isValidDate(d) && cfg.days.includes(isoWeekday(d)))
+    : [a.date]
 
   const sum = (list) => {
     const out = new Map()
     for (const raw of asPreorderItems(list)) {
-      const qty = countablePreorderQty(raw, a.date)
+      const pickup = raw && (raw.pickupDate || raw.date)
+      if (!bakeDates.includes(pickup)) continue
+      const qty = countablePreorderQty(raw, pickup)
       if (qty === null) continue
       const hit = resolve(raw.productSlug || raw.productId)
       if (!hit) continue // unbekannte Produkte meldet computeDay
-      const variant = cleanVariant(hit.item, raw.variant)
+      if (plan && !planCore.planCovers(cfg, plan, pickup, hit.item)) continue
+      const variant = hit.size ? hit.size : cleanVariant(hit.item, raw.variant)
       const preorderId =
         raw.preorderId === undefined || raw.preorderId === null
           ? null
           : raw.preorderId
-      const k = `${String(preorderId)}#${lineKey(hit.item.id, variant)}`
-      const e = out.get(k) || { item: hit.item, variant, preorderId, qty: 0 }
+      const k = `${String(preorderId)}#${lineKey(hit.item.id, variant)}${
+        plan ? `@${pickup}` : ''
+      }`
+      const e = out.get(k) || {
+        item: hit.item,
+        variant,
+        preorderId,
+        bakeDate: pickup,
+        qty: 0,
+      }
       e.qty += qty * hit.factor
       out.set(k, e)
     }
@@ -935,7 +1221,9 @@ function computePreorderDeltas(args) {
     const qty = round2(qtyAfter - qtyBefore)
     if (qty === 0) continue
     deltas.push({
-      key: lineKey(ref.item.id, ref.variant),
+      key: plan
+        ? lineKey(ref.item.id, ref.variant, ref.bakeDate, plan.doughDate)
+        : lineKey(ref.item.id, ref.variant),
       itemId: ref.item.id,
       name: ref.item.name,
       unit: ref.item.unit,
@@ -946,6 +1234,7 @@ function computePreorderDeltas(args) {
       qty,
       kind:
         qtyBefore === 0 ? 'added' : qtyAfter === 0 ? 'cancelled' : 'changed',
+      ...(plan ? { bakeDate: ref.bakeDate } : {}),
     })
   }
   return deltas
@@ -1022,10 +1311,516 @@ function computeDeltas(confirmedLines, newLines) {
   return deltas
 }
 
+// ---------------------------------------------------------------------------
+// Zettel je Teigtag (Z10, docs/backzettel-v2.md §4.3) und Backliste (§4.4)
+// ---------------------------------------------------------------------------
+
+/** Zeilen-Reihenfolge eines Zettels: Abschnitt, Backtag, Stammdaten. */
+function sortSheetLines(cfg, tagged) {
+  const sectionIndex = (id) => {
+    const i = cfg.sections.indexOf(id)
+    return i === -1 ? Infinity : i
+  }
+  return tagged
+    .sort(
+      (x, y) =>
+        sectionIndex(x.line.section) - sectionIndex(y.line.section) ||
+        String(x.line.bakeDate || '').localeCompare(
+          String(y.line.bakeDate || '')
+        ) ||
+        x.index - y.index
+    )
+    .map((t) => t.line)
+}
+
+function sectionsOf(cfg, lines) {
+  return cfg.sections
+    .map((id) => ({
+      id,
+      label: SECTION_LABELS[id] || id,
+      lines: lines.filter((l) => l.section === id),
+    }))
+    .filter((s) => s.lines.length > 0)
+}
+
+/** Lücken der Füllungen: gefüllte Posten auf dem Zettel ohne Gramm. */
+function fillingGaps(cfg, fillings) {
+  const out = []
+  for (const f of Array.isArray(fillings) ? fillings : []) {
+    for (const it of f.items || []) {
+      if (it.grams !== null) continue
+      const index = cfg.items.findIndex((i) => i.id === it.itemId)
+      out.push({
+        path: `items[${index}].filling_g`,
+        code: 'filling_g_unknown',
+        message: `Posten „${it.name}“: Füllungsgramm ist noch offen – der Füllungsbedarf steht nur in Stück.`,
+      })
+    }
+  }
+  return out
+}
+
+/**
+ * Hefeteig, Füllungen, Teige, Brot- und Brötchen-Ansicht und offene
+ * Stammdaten aus den Zeilen eines Zettels - gemeinsam für den Entwurf und
+ * (aus den eingefrorenen Zeilen) für einen freigegebenen Zettel.
+ */
+function sheetParts(cfg, lines, sheetDate, recipes, warnings) {
+  const doughs = doughCore.computeSheetDoughs(cfg, lines, sheetDate)
+  const hefeteig = computeHefeteig(
+    cfg,
+    lines.filter((l) => l.section === 'hefeteig'),
+    { withLiters: true, summaries: doughs.doughs }
+  )
+  const fillings = computeFillings(cfg, lines, recipes || {}, warnings, {
+    withOpenBase: true,
+  })
+  return {
+    hefeteig,
+    fillings,
+    doughs: doughs.doughs,
+    machine: doughs.machine,
+    bread: doughCore.breadView(cfg, lines, doughs.parts, sheetDate),
+    rolls: doughCore.rollsView(cfg, lines, doughs.groups, sheetDate),
+    openMasterData: doughCore.dedupeGaps([
+      ...doughs.gaps,
+      ...fillingGaps(cfg, fillings),
+    ]),
+  }
+}
+
+/**
+ * Der Zettel eines Teigtags D: alle Zeilen, deren Teig an D gemacht wird -
+ * die Posten mit lead 0, die an D gebacken werden, und die Posten mit
+ * lead > 0, deren Teigtag D ist (Samstag: Brötchen für Sonntag und Dienstag).
+ * Vorbestellungen und CAP gehören zum Backtag; Saisonfaktor und Vorbereitung
+ * zum Zettel. Eine Superset-Form von `computeDay` (v1-Felder plus Z10).
+ *
+ * @param {object} args
+ * @param {object} args.config Stammdaten.
+ * @param {string} args.date Teigtag D.
+ * @param {number} [args.seasonFactor] Saisonfaktor des Zettels (für alle Backtage).
+ * @param {Record<string, {preorderItems?: Array, capTemplate?: object|Array}>} [args.bakeInputs]
+ *   je Backtag; fehlt ein Backtag, gelten `preorderItems`/`capTemplate` (nach
+ *   Abholtag bzw. Wochentag gefiltert).
+ * @param {Array} [args.preorderItems]
+ * @param {object|Array} [args.capTemplate]
+ * @param {Array} [args.corrections] `{bakeDate?, itemId, variant?, qty, reason?}`;
+ *   ohne `bakeDate` gilt D.
+ * @param {Iterable<string>} [args.owned] `${bakeDate}|${itemId}`, die ein
+ *   anderer freigegebener Zettel trägt (§5.4) - hier ausgelassen.
+ * @param {object} [args.recipes]
+ * @param {Array} [args.catalog]
+ * @param {boolean} [args.includeEmpty]
+ */
+function computeDoughDay(args) {
+  const a = args || {}
+  const date = a.date
+  if (!isValidDate(date)) {
+    return {
+      error: 'invalid_date',
+      message: `Ungültiges Datum ${JSON.stringify(
+        date
+      )}; erwartet wird JJJJ-MM-TT.`,
+    }
+  }
+  const cfg = ensureNormalized(a.config)
+  const weekday = isoWeekday(date)
+  const warnings = []
+  const seasonFactor = seasonFactorOf(a.seasonFactor, warnings)
+  const owned = new Set(a.owned || [])
+  // Posten des eigenen Backtags, die sonst auf keinem Zettel stünden (§5.4)
+  const adopted = (Array.isArray(a.adopted) ? a.adopted : [])
+    .map((x) => (typeof x === 'string' ? { itemId: x, doughDate: null } : x))
+    .filter(
+      (x) =>
+        x &&
+        cfg.items.some((i) => i.id === x.itemId) &&
+        !owned.has(planCore.ownedKey(date, x.itemId))
+    )
+  const adoptedIds = new Set(adopted.map((x) => x.itemId))
+  const plan = planCore.planForSheet(cfg, date, owned, adoptedIds)
+
+  // Paare, die ein anderer freigegebener Zettel schon trägt (§5.4)
+  const full = owned.size > 0 ? planCore.planForSheet(cfg, date) : plan
+  const skipped = []
+  for (const b of full.bakeDates) {
+    const kept = plan.bakeDates.find((x) => x.date === b.date)
+    for (const itemId of b.itemIds) {
+      if (!kept || !kept.itemIds.includes(itemId))
+        skipped.push({ date: b.date, itemId })
+    }
+  }
+
+  const corrections = (Array.isArray(a.corrections) ? a.corrections : [])
+    .filter(Boolean)
+    .map((c) => ({
+      ...c,
+      bakeDate:
+        c.bakeDate === undefined || c.bakeDate === null || c.bakeDate === ''
+          ? date
+          : c.bakeDate,
+    }))
+  const inputsFor = (b) => {
+    const own = a.bakeInputs && a.bakeInputs[b] ? a.bakeInputs[b] : {}
+    return {
+      preorderItems:
+        own.preorderItems !== undefined ? own.preorderItems : a.preorderItems,
+      capTemplate:
+        own.capTemplate !== undefined ? own.capTemplate : a.capTemplate,
+    }
+  }
+
+  // Der Teigtag selbst zählt immer (Hinweise des Tages), auch als Ruhetag.
+  const runs = plan.bakeDates.some((b) => b.date === date)
+    ? plan.bakeDates
+    : [{ date, itemIds: [] }, ...plan.bakeDates]
+  const tagged = []
+  const lineCounts = new Map()
+  for (const b of runs) {
+    const r = computeLines({
+      config: cfg,
+      date: b.date,
+      ...inputsFor(b.date),
+      corrections: corrections.filter((c) => c.bakeDate === b.date),
+      seasonFactor,
+      seasonFactorChecked: true,
+      catalog: a.catalog,
+      includeEmpty: a.includeEmpty,
+      onlyItems: b.itemIds,
+      sheetDate: date,
+    })
+    lineCounts.set(b.date, r.lines.length)
+    r.lines.forEach((line, index) => tagged.push({ line, index }))
+    for (const w of r.warnings) {
+      warnings.push(b.date === date ? w : { ...w, bakeDate: b.date })
+    }
+  }
+  // Übernommene Posten: auf diesem Zettel, Teig am Backtag selbst
+  if (adopted.length > 0) {
+    for (const { line } of tagged) {
+      if (line.bakeDate === date && adoptedIds.has(line.itemId)) {
+        line.doughDate = date
+        line.lead = 0
+        line.adopted = true
+      }
+    }
+    const byDough = new Map()
+    for (const x of adopted) {
+      const k = x.doughDate || ''
+      if (!byDough.has(k)) byDough.set(k, [])
+      const item = cfg.items.find((i) => i.id === x.itemId)
+      byDough.get(k).push(item ? item.name : x.itemId)
+    }
+    for (const [dd, names] of byDough) {
+      warnings.push({
+        code: 'adopted_orphans',
+        doughDate: dd || null,
+        items: adopted
+          .filter((x) => (x.doughDate || '') === dd)
+          .map((x) => x.itemId),
+        message: `${names.join(', ')} ${
+          names.length === 1 ? 'steht' : 'stehen'
+        } hier, weil ${
+          dd
+            ? `der Zettel vom ${dayLabel(dd)} schon freigegeben ist und ${
+                names.length === 1 ? 'ihn' : 'sie'
+              } nicht enthält`
+            : 'sie sonst auf keinem Zettel stünden'
+        }. Soll${names.length === 1 ? '' : 'en'} ${
+          names.length === 1 ? 'er' : 'sie'
+        } dort gemacht werden: dort „Wieder öffnen“ und neu freigeben.`,
+      })
+    }
+  }
+  // Korrekturen für Paare, die dieser Zettel nicht trägt: nie still weg
+  const planned = (b, itemId) =>
+    plan.bakeDates.some((x) => x.date === b && x.itemIds.includes(itemId))
+  const foreign = corrections.filter(
+    (c) =>
+      Number(c.qty) !== 0 &&
+      Number.isFinite(Number(c.qty)) &&
+      cfg.items.some((i) => i.id === c.itemId) &&
+      isValidDate(c.bakeDate) &&
+      cfg.days.includes(isoWeekday(c.bakeDate)) &&
+      !planned(c.bakeDate, c.itemId)
+  )
+  if (foreign.length > 0) {
+    warnings.push({
+      code: 'correction_not_on_sheet',
+      items: foreign.map((c) => ({
+        itemId: c.itemId,
+        variant: c.variant === undefined ? null : c.variant,
+        bakeDate: c.bakeDate,
+        qty: Number(c.qty),
+      })),
+      message: `Korrektur ${foreign
+        .map((c) => {
+          const item = cfg.items.find((i) => i.id === c.itemId)
+          const n = Number(c.qty)
+          return `${n > 0 ? '+' : ''}${String(n).replace('.', ',')} ${
+            item ? item.name : c.itemId
+          } (für ${WEEKDAY_NAMES[isoWeekday(c.bakeDate)]})`
+        })
+        .join(
+          ', '
+        )} gehört nicht mehr zu diesem Zettel und wird hier nicht gerechnet - beim Freigeben fällt sie weg. Bitte auf dem Zettel eintragen, der die Ware jetzt trägt.`,
+    })
+  }
+  if (skipped.length > 0) {
+    const names = skipped.map((s) => {
+      const item = cfg.items.find((i) => i.id === s.itemId)
+      return `${item ? item.name : s.itemId} (für ${
+        WEEKDAY_NAMES[isoWeekday(s.date)]
+      })`
+    })
+    warnings.push({
+      code: 'owned_elsewhere',
+      items: skipped,
+      message: `Schon auf einem anderen freigegebenen Zettel: ${names.join(
+        ', '
+      )} - hier nicht noch einmal gerechnet.`,
+    })
+  }
+
+  const lines = sortSheetLines(cfg, tagged)
+  const open = cfg.days.includes(weekday)
+  const parts = sheetParts(cfg, lines, date, a.recipes, warnings)
+  const prep = open ? computePrep(cfg, lines, weekday) : []
+
+  return {
+    date,
+    weekday,
+    weekdayName: WEEKDAY_NAMES[weekday],
+    open,
+    seasonFactor,
+    sections: sectionsOf(cfg, lines),
+    lines,
+    hefeteig: parts.hefeteig,
+    fillings: parts.fillings,
+    prep,
+    warnings,
+    sheetVersion: 2,
+    isDoughDay: planCore.isDoughDay(cfg, date),
+    bakeDates: plan.bakeDates.map((b) => ({
+      date: b.date,
+      weekday: isoWeekday(b.date),
+      weekdayName: WEEKDAY_NAMES[isoWeekday(b.date)],
+      label: doughCore.bakeDayLabel(b.date, date),
+      lineCount: lineCounts.get(b.date) || 0,
+    })),
+    // Posten, die es beim Freigeben gab: ein später in hq ergänzter Posten
+    // bleibt mit seinen Vorbestellungen bei diesem Zettel (`planCovers`).
+    plan: { ...plan, knownItems: cfg.items.map((i) => i.id) },
+    doughs: parts.doughs,
+    machine: parts.machine,
+    bread: parts.bread,
+    rolls: parts.rolls,
+    openMasterData: parts.openMasterData,
+  }
+}
+
+/**
+ * Übergang (§5.4, docs/backzettel-v2.md §9.2): was an Posten auf keinem
+ * Zettel stünde, weil ihr Teigtag ein freigegebener Zettel ist, der sie nicht
+ * trägt. Ein Entwurf ihres Backtags nimmt sie auf (`adopted`, an
+ * `computeDoughDay`); ist auch der freigegeben, stehen sie auf keinem Zettel
+ * (`not_on_confirmed_sheet`). Ein freigegebener Teigtag-Zettel sagt, wohin
+ * seine Posten gewandert sind (`moved_to_bake_day`).
+ *
+ * @param {object} config Stammdaten.
+ * @param {string} date der Zettel (Teigtag) bzw. Backtag.
+ * @param {Array<{date: string, plan: object}>} confirmed freigegebene Zettel
+ *   in [date − 14, date + 14] (Plan aus `computed_snapshot`, alte Tage `legacyPlan`).
+ * @returns {{ adopted: Array<{itemId, name, doughDate}>, warnings: Array, lostOwn: Array }}
+ *   `adopted` für den Entwurf des Zettels `date`; `warnings` für den Zettel
+ *   `date` (nur wenn er freigegeben ist); `lostOwn` = Posten des Backtags
+ *   `date`, die auf keinem Zettel stehen (für die Backliste).
+ */
+function transitionFor(config, date, confirmed) {
+  const cfg = ensureNormalized(config)
+  const list = Array.isArray(confirmed) ? confirmed : []
+  const isConfirmed = (d) => list.some((c) => c.date === d)
+  const own = planCore.orphanedItems(cfg, date, list)
+  const lostText = (items, bakeDate) =>
+    `${items.map((i) => i.name).join(', ')} für ${dayLabel(bakeDate)} ${
+      items.length === 1 ? 'steht' : 'stehen'
+    } auf keinem Zettel: der Zettel vom ${dayLabel(
+      items[0].doughDate
+    )} wurde vor der Umstellung freigegeben. Bitte einen der Zettel „Wieder öffnen“ und neu freigeben.`
+  const warnings = []
+  const lostOwn = isConfirmed(date) ? own : []
+  if (isConfirmed(date)) {
+    const byDough = new Map()
+    for (const o of own) {
+      if (!byDough.has(o.doughDate)) byDough.set(o.doughDate, [])
+      byDough.get(o.doughDate).push(o)
+    }
+    for (const [dd, items] of byDough) {
+      warnings.push({
+        code: 'not_on_confirmed_sheet',
+        bakeDate: date,
+        doughDate: dd,
+        items: items.map((i) => i.itemId),
+        message: lostText(items, date),
+      })
+    }
+    for (const b of planCore.bakeDatesFor(cfg, date)) {
+      if (b === date) continue
+      const items = planCore
+        .orphanedItems(cfg, b, list)
+        .filter((o) => o.doughDate === date)
+      if (items.length === 0) continue
+      warnings.push(
+        isConfirmed(b)
+          ? {
+              code: 'not_on_confirmed_sheet',
+              bakeDate: b,
+              doughDate: date,
+              items: items.map((i) => i.itemId),
+              message: lostText(items, b),
+            }
+          : {
+              code: 'moved_to_bake_day',
+              bakeDate: b,
+              doughDate: date,
+              items: items.map((i) => i.itemId),
+              message: `${items.map((i) => i.name).join(', ')} für ${dayLabel(
+                b
+              )} ${
+                items.length === 1 ? 'steht' : 'stehen'
+              } nicht auf diesem Zettel (vor der Umstellung freigegeben), sondern auf dem Zettel vom ${dayLabel(
+                b
+              )}.`,
+            }
+      )
+    }
+  }
+  return { adopted: isConfirmed(date) ? [] : own, warnings, lostOwn }
+}
+
+/**
+ * Backliste eines Backtags (§4.4): was an `bakeDate` gebacken wird, aus allen
+ * Zetteln, die dafür Teig machen - ohne Teigzahlen. Für die Person, die nur
+ * backt (Sonntag).
+ *
+ * @param {object} config Stammdaten.
+ * @param {string} bakeDate Backtag.
+ * @param {Array<{doughDate: string, status: 'draft'|'confirmed', lines: Array, deltas?: Array, rolls?: Array}>} sources
+ *   die Zettel (Entwurf live gerechnet, freigegeben aus den gespeicherten
+ *   Zeilen); Zeilen und Nachträge anderer Backtage werden ausgelassen.
+ *   Ohne Stammdaten (`config` null) kommen die Brötchen aus den
+ *   eingefrorenen `rolls` der Zettel.
+ */
+function bakeListFromLines(config, bakeDate, sources) {
+  const cfg = ensureNormalized(config)
+  const warnings = []
+  const lines = []
+  const deltas = []
+  const seen = new Map()
+  const itemOrder = new Map(cfg.items.map((item, i) => [item.id, i]))
+  for (const src of Array.isArray(sources) ? sources : []) {
+    if (!src) continue
+    const doughDate = src.doughDate
+    for (const line of Array.isArray(src.lines) ? src.lines : []) {
+      if (!line) continue
+      const b = line.bakeDate || doughDate
+      if (b !== bakeDate) continue
+      const id = `${line.itemId}|${line.variant || ''}`
+      if (seen.has(id) && seen.get(id) !== doughDate) {
+        warnings.push({
+          code: 'duplicate_bake_line',
+          itemId: line.itemId,
+          variant: line.variant === undefined ? null : line.variant,
+          message: `„${
+            line.name
+          }“ steht für diesen Backtag auf zwei Zetteln (${seen.get(
+            id
+          )} und ${doughDate}) - bitte prüfen.`,
+        })
+      }
+      seen.set(id, doughDate)
+      lines.push({
+        ...line,
+        bakeDate,
+        doughDate,
+        sheetStatus: src.status,
+        madeOn:
+          doughDate === bakeDate
+            ? 'Teig von heute'
+            : `Teig vom ${WEEKDAY_NAMES[isoWeekday(doughDate)]}`,
+      })
+    }
+    for (const d of Array.isArray(src.deltas) ? src.deltas : []) {
+      if (!d || (d.bakeDate || doughDate) !== bakeDate) continue
+      deltas.push({ ...d, bakeDate, doughDate })
+    }
+  }
+  const variantRank = (line) => {
+    const item = cfg.items.find((i) => i.id === line.itemId)
+    if (!item) return 0
+    const i =
+      line.variant === null || line.variant === undefined
+        ? item.variants.length
+        : item.variants.indexOf(line.variant)
+    return i === -1 ? item.variants.length + 1 : i
+  }
+  const sectionIndex = (id) => {
+    const i = cfg.sections.indexOf(id)
+    return i === -1 ? Infinity : i
+  }
+  lines.sort((x, y) => {
+    const sx = sectionIndex(x.section)
+    const sy = sectionIndex(y.section)
+    if (sx !== sy) return sx - sy
+    const ix = itemOrder.has(x.itemId) ? itemOrder.get(x.itemId) : Infinity
+    const iy = itemOrder.has(y.itemId) ? itemOrder.get(y.itemId) : Infinity
+    if (ix !== iy) return ix - iy
+    return variantRank(x) - variantRank(y)
+  })
+  const sectionIds = [...cfg.sections]
+  for (const l of lines)
+    if (l.section && !sectionIds.includes(l.section)) sectionIds.push(l.section)
+  const groups = doughCore.bruchGroups(cfg, lines, bakeDate)
+  return {
+    date: bakeDate,
+    weekday: isoWeekday(bakeDate),
+    weekdayName: WEEKDAY_NAMES[isoWeekday(bakeDate)],
+    sections: sectionIds
+      .map((id) => ({
+        id,
+        label: SECTION_LABELS[id] || id,
+        lines: lines.filter((l) => l.section === id),
+      }))
+      .filter((s) => s.lines.length > 0),
+    // Ohne Stammdaten (nur freigegebene Zettel): die eingefrorenen
+    // Brötchen-Blöcke dieses Backtags, nie neu gerechnet.
+    rolls: config
+      ? doughCore.rollsView(cfg, lines, groups, bakeDate)
+      : (Array.isArray(sources) ? sources : []).flatMap((src) =>
+          (src && Array.isArray(src.rolls) ? src.rolls : [])
+            .filter((r) => r && r.bakeDate === bakeDate)
+            .map((r) => ({
+              ...r,
+              label:
+                src.doughDate === bakeDate
+                  ? 'heute'
+                  : `Teig vom ${WEEKDAY_NAMES[isoWeekday(src.doughDate)]}`,
+            }))
+        ),
+    deltas,
+    warnings,
+  }
+}
+
 module.exports = {
   computeDay,
+  computeDoughDay,
+  bakeListFromLines,
+  sheetParts,
   computeDeltas,
   computePreorderDeltas,
+  transitionFor,
   createProductResolver,
   variantsForProduct,
   variantsByProduct,

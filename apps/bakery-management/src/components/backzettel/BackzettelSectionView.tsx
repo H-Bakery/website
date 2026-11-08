@@ -30,7 +30,7 @@ import {
   formatNumber,
   formatOrDash,
   deltaBadgeText,
-  formatQty,
+  minQtyText,
   formatSigned,
   lineLabel,
   previouslyDoneText,
@@ -69,7 +69,8 @@ function deltaSx(line: BackzettelLine, reopened = false) {
   }
 }
 
-function DeltaChip({ line }: { line: BackzettelLine }) {
+/** Abzeichen „Nachtrag +N“ einer Zeile (offen farbig, quittiert umrandet). */
+export function DeltaChip({ line }: { line: BackzettelLine }) {
   if (!line.delta || line.delta.count === 0) return null
   const open = line.delta.open > 0
   return (
@@ -377,7 +378,7 @@ export function BackzettelSectionView({
                         sx={TOTAL_SX}
                         data-testid={`line-total-${line.key}`}
                       >
-                        {formatQty(line.total, line.unit)}
+                        {minQtyText(line, line.unit)}
                       </Typography>
                     </TableCell>
                   </TableRow>
@@ -436,7 +437,7 @@ export function BackzettelSectionView({
                   sx={{ ...TOTAL_SX, fontSize: '1.5rem', whiteSpace: 'nowrap' }}
                   aria-label={`Gesamt ${label}`}
                 >
-                  {formatQty(line.total, line.unit)}
+                  {minQtyText(line, line.unit)}
                 </Typography>
               </Stack>
               <SourcesLine line={line} />

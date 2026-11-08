@@ -111,6 +111,27 @@ describe('Notfallblatt: Abschnittsname wiederholt sich beim Spaltenumbruch (W4-v
   })
 })
 
+describe('Notfallblatt: Leerzeile bleibt beim Abschnitt (Z10 Review)', () => {
+  it('die Leerzeile nach den Posten bricht nicht allein in die nächste Spalte', () => {
+    const { container } = render(
+      <BackzettelNotfallblatt config={TEST_CONFIG} />
+    )
+    const tables = Array.from(container.querySelectorAll('.nfb-section table'))
+    tables.forEach((table) => {
+      const rows = Array.from(table.querySelectorAll('tbody tr'))
+      const last = rows[rows.length - 1]
+      expect(last.textContent).toBe('')
+      expect(last).toHaveClass('nfb-blank')
+      expect(rows[0]).not.toHaveClass('nfb-blank')
+    })
+    // Ohne Stammdaten sind alle Zeilen leer - dort darf alles umbrechen.
+    const { container: empty } = render(
+      <BackzettelNotfallblatt config={null} />
+    )
+    expect(empty.querySelectorAll('tr.nfb-blank')).toHaveLength(0)
+  })
+})
+
 describe('Notfallblatt: Posten stehen ganz da (W4-verify r5)', () => {
   it('Spaltenbreiten per <colgroup>, nicht über die erste Zeile (die ist die Überschrift)', () => {
     const { container } = render(

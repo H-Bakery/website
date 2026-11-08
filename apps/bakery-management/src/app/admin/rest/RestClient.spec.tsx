@@ -126,7 +126,7 @@ describe('Rest am Abend - Zählung', () => {
     )
     // Kornbrot is counted in pieces, the line is in litres: row label shown.
     const korn = screen.getByTestId('rest-line-kornbrot|')
-    expect(within(korn).getByText('gebacken 4 l')).toBeTruthy()
+    expect(within(korn).getByText('gebacken 4 L')).toBeTruthy()
     expect(mocked.fetchRestDay).toHaveBeenCalledWith(undefined)
   })
 

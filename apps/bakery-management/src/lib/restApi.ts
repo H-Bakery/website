@@ -28,7 +28,7 @@ export interface RestCountRow {
   label: string
   /** Einheit, in der gezählt wird (meist „Stück“). */
   unit: string
-  /** Umrechnung in die Einheit des Postens (½ Laib = 0,5 l, 1 Stück Kuchen = ¼ Blech). */
+  /** Umrechnung in die Einheit des Postens (½ Laib = 0,5 L, 1 Stück Kuchen = ¼ Blech). */
   factor: number
   /** Nur ganze Zahlen (Stück, Blech). */
   integer: boolean
@@ -468,7 +468,7 @@ export function formatRate(rate: number | null | undefined): string {
 
 export const UNIT_SHORT: Record<string, string> = {
   Stück: 'St.',
-  Liter: 'l',
+  Liter: 'L',
   Blech: 'Blech',
   kg: 'kg',
 }

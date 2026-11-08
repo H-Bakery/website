@@ -165,9 +165,9 @@ describe('Nachträge im Ausdruck: gesehen und ohne Zeile (W4-verify r6)', () => 
     // Seite 1 sagt dasselbe an der Zeile (die Testzeilen sind Liter-Posten)
     const page1 = container.textContent ?? ''
     expect(page1).toContain(
-      'Nachtrag offen +9 l (von +48 l, Rest schon gesehen; Liste unten)'
+      'Nachtrag offen +9 L (von +48 L, Rest schon gesehen; Liste unten)'
     )
-    expect(page1).toContain('Nachtrag +1 l · gesehen')
+    expect(page1).toContain('Nachtrag +1 L · gesehen')
   })
 
   it('ein Nachtrag ohne freigegebene Zeile bekommt seine Backmenge aus deltaTotals', () => {

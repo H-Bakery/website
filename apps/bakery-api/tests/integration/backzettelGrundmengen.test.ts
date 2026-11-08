@@ -704,6 +704,79 @@ describe('GET /reference', () => {
     expect(nc.body.data).toMatchObject({ status: 'no-config', weekdays: [] })
   })
 
+  it('Z10: bread with loaf sizes gets a median per size (sizes[].plu)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const v2 = require('../fixtures/backzettel.synthetic')
+    const dir = tempDir('bz-ref-v2-')
+    fs.mkdirSync(path.join(dir, 'config'), { recursive: true })
+    fs.mkdirSync(path.join(dir, 'products'), { recursive: true })
+    fs.mkdirSync(path.join(dir, 'data', 'recipes', 'fillings'), {
+      recursive: true,
+    })
+    fs.writeFileSync(
+      path.join(dir, 'data', 'recipes', 'fillings', 'test.md'),
+      v2.RECIPE_MD
+    )
+    for (const p of v2.PRODUCTS_V2) {
+      fs.writeFileSync(
+        path.join(dir, 'products', `${p.numeric_id}-${p.id}.md`),
+        `---\nid: ${p.id}\nnumeric_id: ${p.numeric_id}\nname: Test ${p.id}\nprice: 1.5\navailable: true\n---\n\nText\n`
+      )
+    }
+    const cfg = v2.configV2()
+    const korn = cfg.items.find((i: any) => i.id === 'test-korn')
+    // invented register numbers: 971 = 500 g, 972 = 1 kg, Kasten unknown
+    korn.plu = [971, 972]
+    korn.sizes[0].plu = [971]
+    korn.sizes[1].plu = [972]
+    // JSON is valid YAML.
+    fs.writeFileSync(path.join(dir, CONFIG_REL), JSON.stringify(cfg, null, 2))
+    const reports = tempDir('bz-ref-v2-reports-')
+    fs.mkdirSync(path.join(reports, 'converted'))
+    for (const [date, small, large] of [
+      ['2026-11-28', 5, 2],
+      ['2026-11-21', 3, 4],
+      ['2026-11-14', 7, 0],
+    ] as const) {
+      fs.writeFileSync(
+        path.join(reports, 'converted', `${date}_90000001.json`),
+        JSON.stringify(
+          fixture.convertedReport(date, [
+            {
+              items: [
+                [971, small],
+                [972, large],
+              ],
+            },
+          ])
+        )
+      )
+    }
+    const v2App = app({
+      backzettel: { hqDir: dir, cacheMs: 0 },
+      hqProducts: { productsDir: path.join(dir, 'products'), writeDir: null },
+      hq: { reportsDir: reports },
+    })
+    const res = await as(v2App, 'backstube').get(
+      '/api/backzettel/reference?weekday=6'
+    )
+    expect(res.status).toBe(200)
+    const items = res.body.data.weekdays[0].items
+    const k = items.find((i: any) => i.itemId === 'test-korn')
+    expect(k).toMatchObject({ median: 7, samples: [7, 7, 7], status: 'ok' })
+    expect(
+      k.sizes.map((s: any) => [s.sizeId, s.status, s.median, s.samples])
+    ).toEqual([
+      ['g500', 'ok', 5, [5, 3, 7]],
+      ['g1000', 'ok', 2, [2, 4, 0]],
+      ['kasten', 'unknown', null, []],
+    ])
+    // items without sizes have no sizes field
+    expect(
+      items.find((i: any) => i.itemId === 'test-hafer')
+    ).not.toHaveProperty('sizes')
+  })
+
   it('"reference" is never read as a date by GET /:date', async () => {
     const res = await as(a, 'backstube').get('/api/backzettel/reference')
     expect(res.body.data.status).toBe('ok')

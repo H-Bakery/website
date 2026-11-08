@@ -12,7 +12,13 @@ import type {
   BackzettelLine,
   BackzettelLineDelta,
   BackzettelUnit,
+  BruchGroup,
   DeltaExtras,
+  DoughAddon,
+  DoughLiters,
+  FillingNeed,
+  MachineBox,
+  RollsBlock,
   ScaledIngredient,
   ScaledRecipe,
 } from './backzettelApi'
@@ -170,15 +176,58 @@ export function formatNumber(n: number): string {
 }
 
 const UNIT_SUFFIX: Record<string, string> = {
-  Liter: 'l',
+  Liter: 'L',
   kg: 'kg',
   Blech: 'Bl.',
 }
 
-/** Menge mit Einheit; Stück ohne Zusatz („40“, „4,5 l“, „3 Bl.“). */
+/** Menge mit Einheit; Stück ohne Zusatz („40“, „4,5 L“, „3 Bl.“). */
 export function formatQty(n: number, unit: BackzettelUnit | null): string {
   const suffix = unit ? UNIT_SUFFIX[unit] : undefined
   return suffix ? `${formatNumber(n)} ${suffix}` : formatNumber(n)
+}
+
+/**
+ * Menge einer Zeile, Zelle oder eines Bruch-Mitglieds, deren Grundmenge offen
+ * sein kann (Review Z10 Runde 2) - eine Regel für Planung, Tablet, Backliste
+ * und Druck: „12“; mit `totalIsMinimum` (Server: Grundmenge offen, bekannt
+ * sind nur Vorbestellt/CAP) „≥ 4“ bzw. „offen“, wenn noch nichts bekannt
+ * ist. Nie eine nackte Zahl, die sich wie die ganze Backmenge liest.
+ */
+export function minQtyText(
+  q: { total: number | null; totalIsMinimum?: boolean },
+  unit: BackzettelUnit | null = null
+): string {
+  if (q.total === null || q.total === undefined) return 'offen'
+  if (!q.totalIsMinimum) return formatQty(q.total, unit)
+  return q.total > 0 ? `≥ ${formatQty(q.total, unit)}` : 'offen'
+}
+
+/**
+ * Zusammensetzung in Kurzform, nur Bestandteile ≠ 0: „Basis 60 · CAP 10 ·
+ * Korr. −5“, „Basis offen · Vorb. 7“ - Tablet und Planung (Brötchen).
+ */
+export function lineBreakdown(line: BackzettelLine): string {
+  const parts: string[] = []
+  parts.push(
+    line.baseUnset ? 'Basis offen' : `Basis ${formatNumber(line.base)}`
+  )
+  if (line.seasonal) parts.push(`Saison ${formatSigned(line.seasonal)}`)
+  if (line.preorders) parts.push(`Vorb. ${formatNumber(line.preorders)}`)
+  if (line.cap) parts.push(`CAP ${formatNumber(line.cap)}`)
+  if (line.correction) {
+    parts.push(
+      `Korr. ${formatSigned(line.correction)}${
+        line.correctionReason ? ` (${line.correctionReason})` : ''
+      }`
+    )
+  }
+  return parts.join(' · ')
+}
+
+/** Hinweis zu `minQtyText`: „Grundmenge offen“ oder `null`. */
+export function minQtyHint(q: { totalIsMinimum?: boolean }): string | null {
+  return q.totalIsMinimum ? 'Grundmenge offen' : null
 }
 
 /**
@@ -188,8 +237,25 @@ export function formatQty(n: number, unit: BackzettelUnit | null): string {
  * abgehakt ist.
  */
 export function previouslyDoneText(line: BackzettelLine): string | null {
-  const prev = line.previouslyDone
-  if (!prev || line.doneAt) return null
+  if (line.doneAt) return null
+  return previousTickText(line, line.previouslyDone, 'erledigt')
+}
+
+/**
+ * Z10 O5: dasselbe für den gebacken-Haken der Backliste - eine erneute
+ * Freigabe mit mehr Stück hat ihn entfernt („bereits 66 gebacken … - noch +5“).
+ */
+export function previouslyBakedText(line: BackzettelLine): string | null {
+  if (line.bakedAt) return null
+  return previousTickText(line, line.previouslyBaked, 'gebacken')
+}
+
+function previousTickText(
+  line: BackzettelLine,
+  prev: BackzettelLine['previouslyDone'],
+  verb: string
+): string | null {
+  if (!prev) return null
   const who = [formatTimestamp(prev.at), prev.by?.displayName]
     .filter(Boolean)
     .join(' · ')
@@ -200,7 +266,7 @@ export function previouslyDoneText(line: BackzettelLine): string | null {
       : rest < 0
       ? `jetzt ${formatQty(-rest, line.unit)} weniger nötig`
       : 'Menge unverändert'
-  return `bereits ${formatQty(prev.qty, line.unit)} erledigt${
+  return `bereits ${formatQty(prev.qty, line.unit)} ${verb}${
     who ? ` (${who})` : ''
   } - ${tail}`
 }
@@ -277,7 +343,7 @@ export function formatSigned(n: number): string {
   return n > 0 ? `+${formatNumber(n)}` : `−${formatNumber(Math.abs(n))}`
 }
 
-/** Zu- und Abschläge mit Einheit: „+1 l“, „−2“, „+0,5 kg“; „–“ für 0. */
+/** Zu- und Abschläge mit Einheit: „+1 L“, „−2“, „+0,5 kg“; „–“ für 0. */
 export function formatSignedQty(
   n: number,
   unit: BackzettelUnit | null
@@ -288,7 +354,7 @@ export function formatSignedQty(
 
 /**
  * Text des Nachtrag-Abzeichens einer Zeile (W4-Verifikation): mit Einheit
- * („Nachtrag +1 l“) und - wenn das Aufrunden etwas anderes ergibt als der
+ * („Nachtrag +1 L“) und - wenn das Aufrunden etwas anderes ergibt als der
  * Nachtrag selbst (Viertel) - was zusätzlich zu backen ist
  * („Nachtrag +0,25 · 1 mehr backen“, „… · nichts mehr backen“).
  */
@@ -326,17 +392,19 @@ export function deltaExtrasLines(
     // W4-Verifikation Runde 3: eine Abnahme liest sich als „weniger“ - ein
     // „−2 × 600 g abwiegen“ übersieht man aus 1,5 m leicht.
     const weighing = d.weighing
-      .filter((w) => w.pieces)
+      .filter((w): w is typeof w & { pieces: number } => Boolean(w.pieces))
       .map(
         (w) =>
-          `${formatNumber(Math.abs(w.pieces))} × ${formatNumber(w.piece_g)} g ${
-            w.pieces > 0 ? 'zusätzlich' : 'weniger'
-          } abwiegen`
+          `${formatNumber(Math.abs(w.pieces))} × ${
+            w.piece_g === null ? '? g' : `${formatNumber(w.piece_g)} g`
+          } ${w.pieces > 0 ? 'zusätzlich' : 'weniger'} abwiegen`
       )
       .join(', ')
-    const dough = `${d.dough_g < 0 ? '−' : '+'}${formatGrams(
-      Math.abs(d.dough_g)
-    )} Teig`
+    // Unbekanntes bleibt unbekannt (Review Z10 Runde 2): nie „+0 g Teig“.
+    const dough =
+      d.dough_g === null
+        ? 'Zusatzteig unbekannt'
+        : `${d.dough_g < 0 ? '−' : '+'}${formatGrams(Math.abs(d.dough_g))} Teig`
     // Chargen (W4-Verifikation Runde 2): ändert sich ihre Zahl, steht es
     // da - und ist der Zusatzteig selbst größer als eine Charge, wie er sich
     // aufteilt.
@@ -350,22 +418,25 @@ export function deltaExtrasLines(
           )}${max ? ` (je max. ${formatNumber(max)} kg)` : ''}`
         : ''
     const extraBatches =
-      max && d.dough_g > max * 1000
+      max && d.dough_g !== null && d.dough_g > max * 1000
         ? `; den Zusatzteig in ${formatNumber(
             Math.ceil(d.dough_g / (max * 1000) - 1e-9)
           )} Chargen ansetzen`
         : ''
-    const pieces = d.pieces
-      ? `${formatNumber(Math.abs(d.pieces))} Teigstücke ${
-          d.pieces > 0 ? 'mehr' : 'weniger'
-        }`
-      : 'Teigstücke unverändert'
+    const pieces =
+      d.pieces === null
+        ? 'Teigstücke unbekannt'
+        : d.pieces
+        ? `${formatNumber(Math.abs(d.pieces))} Teigstücke ${
+            d.pieces > 0 ? 'mehr' : 'weniger'
+          }`
+        : 'Teigstücke unverändert'
     out.push(
       `${d.name}: ${pieces} (${dough})${
         weighing ? `: ${weighing}` : ''
-      }; mit Nachträgen ${formatNumber(
-        d.totalPieces
-      )} Teigstücke, ${formatGrams(d.totalDough_g)}${batchNote}${extraBatches}`
+      }; mit Nachträgen ${deltaTotalPiecesText(d)}, ${deltaTotalDoughText(
+        d
+      )}${batchNote}${extraBatches}`
     )
   }
   for (const f of extras.fillings) {
@@ -380,13 +451,39 @@ export function deltaExtrasLines(
             )
             .join(', ')}`
         : ''
+    const total =
+      f.totalComplete === false
+        ? f.totalGrams > 0
+          ? `≥ ${formatGrams(f.totalGrams)} (Grundmenge offen)`
+          : 'unbekannt (Grundmenge offen)'
+        : formatGrams(f.totalGrams)
     out.push(
       `${f.name}: ${f.grams > 0 ? '+' : '−'}${formatGrams(
         Math.abs(f.grams)
-      )}; mit Nachträgen ${formatGrams(f.totalGrams)}${recipe}`
+      )}; mit Nachträgen ${total}${recipe}`
     )
   }
   return out
+}
+
+type DeltaDough = DeltaExtras['doughs'][number]
+
+/** „37 Teigstücke“, „≥ 37 Teigstücke“ (Grundmenge offen) oder unbekannt. */
+function deltaTotalPiecesText(d: DeltaDough): string {
+  if (d.totalPieces === null) return 'Teigstücke unbekannt'
+  if (d.totalPiecesComplete === false) {
+    return d.totalPieces > 0
+      ? `≥ ${formatNumber(d.totalPieces)} Teigstücke`
+      : 'Teigstücke unbekannt'
+  }
+  return `${formatNumber(d.totalPieces)} Teigstücke`
+}
+
+/** „16,5 kg“, „≥ 16,5 kg Teig“ (Teig unvollständig) oder „Teig unbekannt“. */
+function deltaTotalDoughText(d: DeltaDough): string {
+  if (d.totalDough_g !== null) return formatGrams(d.totalDough_g)
+  const known = d.totalDoughKnown_g ?? null
+  return known ? `≥ ${formatGrams(known)} Teig` : 'Teig gesamt unbekannt'
 }
 
 /**
@@ -403,12 +500,12 @@ export function deltaExtrasHighlights(
   const out: Array<{ key: string; label: string; amounts: string[] }> = []
   for (const d of extras.doughs) {
     const amounts = d.weighing
-      .filter((w) => w.pieces)
+      .filter((w): w is typeof w & { pieces: number } => Boolean(w.pieces))
       .map(
         (w) =>
-          `${sign(w.pieces)}${formatNumber(
-            Math.abs(w.pieces)
-          )} × ${formatNumber(w.piece_g)} g`
+          `${sign(w.pieces)}${formatNumber(Math.abs(w.pieces))} × ${
+            w.piece_g === null ? '?' : formatNumber(w.piece_g)
+          } g`
       )
     if (d.dough_g) {
       amounts.push(`${sign(d.dough_g)}${formatGrams(Math.abs(d.dough_g))} Teig`)
@@ -490,15 +587,25 @@ export function isIntegerUnit(unit: BackzettelUnit | null): boolean {
 }
 
 /**
- * Name einer Sorte: der Füllungsname aus den Stammdaten („Nussfüllung“),
- * sonst die ID mit großem Anfangsbuchstaben. `null` an einem Posten mit
- * Sorten heißt: Vorbestellung ohne Füllungsangabe.
+ * Name einer Sorte: die Laibgröße („500 g“, Z10) bzw. der Füllungsname aus
+ * den Stammdaten („Nussfüllung“), sonst die ID mit großem Anfangsbuchstaben.
+ * `null` an einem Posten mit Sorten heißt: Vorbestellung ohne Füllungsangabe.
+ * `itemId` braucht es nur für Größen (die gehören einem Posten).
  */
 export function variantLabel(
   variant: string | null,
-  config?: Pick<BackzettelConfigData, 'fillings'> | null
+  config?:
+    | (Pick<BackzettelConfigData, 'fillings'> &
+        Partial<Pick<BackzettelConfigData, 'items'>>)
+    | null,
+  itemId?: string
 ): string | null {
   if (!variant) return null
+  if (itemId) {
+    const item = config?.items?.find((i) => i.id === itemId)
+    const size = item?.sizes?.find((sz) => sz.id === variant)
+    if (size?.label) return size.label
+  }
   const filling = config?.fillings?.find((f) => f.id === variant)
   if (filling?.name) return filling.name
   return variant.charAt(0).toUpperCase() + variant.slice(1)
@@ -513,16 +620,43 @@ export function itemHasVariants(
   return !!item && Array.isArray(item.variants) && item.variants.length > 0
 }
 
-/** Zeilenname mit Sorte: „Zopf gefüllt – Nussfüllung“. */
+/** Posten mit Laibgrößen (Z10). */
+function itemHasSizes(
+  itemId: string,
+  config?: Pick<BackzettelConfigData, 'items'> | null
+): boolean {
+  const item = config?.items?.find((i) => i.id === itemId)
+  return !!item && Array.isArray(item.sizes) && item.sizes.length > 0
+}
+
+/**
+ * Zeilenname mit Sorte: „Zopf gefüllt – Nussfüllung“, „Testkorn – 500 g“.
+ * Steht die Zeile auf dem Zettel eines anderen Tages als ihrem Backtag
+ * (Z10: Teig heute, gebacken später), mit „· für Di 01.12.“.
+ */
 export function lineLabel(
-  line: Pick<BackzettelLine, 'name' | 'variant' | 'itemId'>,
+  line: Pick<BackzettelLine, 'name' | 'variant' | 'itemId'> &
+    Partial<
+      Pick<
+        BackzettelLine,
+        'variantLabel' | 'variantKind' | 'bakeDate' | 'doughDate'
+      >
+    >,
   config?: Pick<BackzettelConfigData, 'fillings' | 'items'> | null
 ): string {
-  const v = variantLabel(line.variant, config)
-  if (v) return `${line.name} – ${v}`
-  if (itemHasVariants(line.itemId, config))
-    return `${line.name} – ohne Füllungsangabe`
-  return line.name
+  const v = line.variant
+    ? line.variantLabel || variantLabel(line.variant, config, line.itemId)
+    : null
+  const base = v
+    ? `${line.name} – ${v}`
+    : line.variantKind === 'size' || itemHasSizes(line.itemId, config)
+    ? `${line.name} – ohne Größe`
+    : itemHasVariants(line.itemId, config)
+    ? `${line.name} – ohne Füllungsangabe`
+    : line.name
+  return line.bakeDate && line.doughDate && line.bakeDate !== line.doughDate
+    ? `${base} · für ${formatDateShort(line.bakeDate)}`
+    : base
 }
 
 export const DELTA_KIND_LABELS: Record<string, string> = {
@@ -689,4 +823,492 @@ export function ingredientAmount(
         : `${ing.raw} (nicht skaliert)`,
     scaled: false,
   }
+}
+
+// ------------------------------------------------------------ Z10 (v2)
+
+/**
+ * Eine Zahl, die unbekannt sein kann (Stammdaten offen): „–“ für `null`,
+ * sonst deutsch mit Einheit. Nie 0 für unbekannt (docs/backzettel-v2.md §3).
+ */
+export function formatKnown(
+  value: number | null | undefined,
+  unit?: string | null
+): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return '–'
+  }
+  return unit ? `${formatNumber(value)} ${unit}` : formatNumber(value)
+}
+
+/** Gramm, die unbekannt sein können: „–“ für `null`. */
+export function formatKnownGrams(value: number | null | undefined): string {
+  return value === null || value === undefined ? '–' : formatGrams(value)
+}
+
+/**
+ * Liter an der Maschine: „6,5 L“, ohne Rundung „6,47 L (Rundung offen)“,
+ * ohne kg je Liter oder bei unvollständigem Teig „unbekannt“.
+ */
+export function litersText(liters: DoughLiters | null | undefined): string {
+  if (!liters || liters.exact === null) return 'unbekannt'
+  if (liters.rounded === null) {
+    return `${formatNumber(liters.exact)} L (Rundung offen)`
+  }
+  return `${formatNumber(liters.rounded)} L`
+}
+
+/**
+ * Nur die Zahl für die große Anzeige (Maschinenleiste, Hefeteig-Karte,
+ * Tablet): „6,5 L“, ohne Rundung die genauen „6,47 L“, sonst „unbekannt“.
+ * Der Zusatz („Rundung offen …“) steht klein darunter (`litersHint`), wie im
+ * Druck - nicht in der großen Schrift.
+ */
+export function litersFigure(liters: DoughLiters | null | undefined): string {
+  if (!liters || liters.exact === null) return 'unbekannt'
+  return `${formatNumber(liters.rounded ?? liters.exact)} L`
+}
+
+/** Warum die Liter fehlen oder ungerundet sind - `null`, wenn alles bekannt ist. */
+export function litersHint(
+  liters: DoughLiters | null | undefined
+): string | null {
+  if (!liters) return 'Liter: unbekannt'
+  switch (liters.reason) {
+    case 'kg_per_liter_unknown':
+      return 'Liter: unbekannt (kg je Liter offen)'
+    case 'dough_incomplete':
+      return 'Liter: unbekannt (Teig unvollständig – ein Gewicht offen)'
+    case 'rounding_unknown':
+      return 'Rundung offen – angezeigt sind die genauen Liter'
+    default:
+      return liters.exact === null ? 'Liter: unbekannt' : null
+  }
+}
+
+/**
+ * kg eines Teigs: „12,4 kg“; unvollständig „≥ 12,4 kg“ (nur wenn schon
+ * etwas bekannt ist), sonst „unbekannt“.
+ */
+export function kgText(d: {
+  kg: number | null
+  kgKnown?: number | null
+  complete?: boolean
+}): string {
+  if (d.kg !== null && d.kg !== undefined) return `${formatNumber(d.kg)} kg`
+  if (d.kgKnown && d.kgKnown > 0) return `≥ ${formatNumber(d.kgKnown)} kg`
+  return 'unbekannt'
+}
+
+/**
+ * Stück einer Gewichtsstufe der Abwiegeliste: „15“, „≥ 15“, wenn ein Posten
+ * dieser Stufe eine offene Grundmenge hat (Regel 8), „–“ wenn unbekannt oder
+ * noch nichts bekannt ist (nie das leere „≥ 0“).
+ */
+export function weighingPiecesText(w: {
+  pieces: number | null
+  isMinimum?: boolean
+}): string {
+  if (w.pieces === null) return '–'
+  if (w.isMinimum) return w.pieces > 0 ? `≥ ${formatNumber(w.pieces)}` : '–'
+  return formatNumber(w.pieces)
+}
+
+/**
+ * Posten einer Gewichtsstufe: „Zopf gefüllt 15“, „Kranz gefüllt 14 × 2“, mit
+ * offener Grundmenge „Zopf gefüllt ≥ 6“ bzw. „Zopf gefüllt offen“.
+ */
+export function weighingItemsText(
+  items: Array<{
+    name: string
+    products: number
+    piecesPerProduct: number | null
+    isMinimum?: boolean
+  }>
+): string {
+  return items
+    .map((i) => {
+      if (i.isMinimum && !(i.products > 0)) return `${i.name} offen`
+      const count = `${i.isMinimum ? '≥ ' : ''}${formatNumber(i.products)}`
+      return i.piecesPerProduct === 1
+        ? `${i.name} ${count}`
+        : `${i.name} ${count} × ${i.piecesPerProduct ?? '?'}`
+    })
+    .join(', ')
+}
+
+/**
+ * Teigstücke einer Hefeteig-Karte: „≥ 12“, wenn eine Grundmenge des Teigs
+ * offen ist (Regel 8), „–“ wenn unbekannt.
+ */
+export function hefeteigPiecesText(d: {
+  pieces: number | null
+  piecesComplete?: boolean
+}): string {
+  if (d.pieces === null) return '–'
+  if (d.piecesComplete === false) {
+    // nichts bekannt: „–“ wie beim Teiggewicht, nie das leere „≥ 0“
+    return d.pieces > 0 ? `≥ ${formatNumber(d.pieces)}` : '–'
+  }
+  return formatNumber(d.pieces)
+}
+
+/**
+ * Teig gesamt einer Hefeteig-Karte - dieselbe Zahl wie die Maschinenleiste
+ * (Teigtag-Zettel: `kg`/`kgKnown` vom Server, „≥ 16,5 kg“ bei offenen Teilen);
+ * ältere Tage in Gramm.
+ */
+export function hefeteigDoughText(d: {
+  dough_g: number | null
+  kg?: number | null
+  kgKnown?: number
+}): string {
+  if (d.kg === undefined) return formatKnownGrams(d.dough_g)
+  if (d.kg !== null) return formatGrams(Math.round(d.kg * 1000))
+  return d.kgKnown && d.kgKnown > 0
+    ? `≥ ${formatGrams(Math.round(d.kgKnown * 1000))}`
+    : '–'
+}
+
+/** Chargen: Zahl, sonst „unbekannt“ mit Grund. */
+export function batchesText(
+  box: Pick<MachineBox, 'batches' | 'batch_max_kg'>
+): {
+  text: string
+  hint: string | null
+} {
+  if (box.batches !== null && box.batches !== undefined) {
+    return {
+      text: `${formatNumber(box.batches)} ${
+        box.batches === 1 ? 'Charge' : 'Chargen'
+      }`,
+      hint:
+        box.batch_max_kg !== null && box.batch_max_kg !== undefined
+          ? `je max. ${formatNumber(box.batch_max_kg)} kg`
+          : null,
+    }
+  }
+  return {
+    text: 'Chargen: unbekannt',
+    hint:
+      box.batch_max_kg === null || box.batch_max_kg === undefined
+        ? 'Chargengröße offen'
+        : 'Teiggewicht unbekannt',
+  }
+}
+
+/** Bezeichnung der Literzahl: Hefeteig „Wasser“, sonst nur „Liter“. */
+export function litersLabel(box: Pick<MachineBox, 'section'>): string {
+  return box.section === 'hefeteig' ? 'Wasser' : 'Liter'
+}
+
+/** Zugabe (z. B. Sauer): „Testsauer 20 g“ bzw. „Testsauer: unbekannt“. */
+export function addonText(addon: DoughAddon): {
+  text: string
+  hint: string | null
+} {
+  if (!addon.grams) {
+    return {
+      text: `${addon.name}: unbekannt`,
+      hint:
+        addon.reason === 'g_per_liter_unknown'
+          ? 'Gramm je Liter offen'
+          : 'Liter des Teigs unbekannt',
+    }
+  }
+  if (addon.grams.rounded === null) {
+    return {
+      text: `${addon.name} ${formatNumber(addon.grams.exact)} g`,
+      hint: 'Rundung offen – genaue Gramm',
+    }
+  }
+  return {
+    text: `${addon.name} ${formatNumber(addon.grams.rounded)} g`,
+    hint: null,
+  }
+}
+
+/** Backtag für eine Überschrift: „heute backen“ bzw. „für Sonntag, 29.11.“. */
+export function bakeDayLabel(bakeDate: string, sheetDate: string): string {
+  if (bakeDate === sheetDate) return 'heute backen'
+  return `für ${WEEKDAY_NAMES[isoWeekday(bakeDate)]}, ${formatDate(
+    bakeDate
+  ).slice(0, 6)}`
+}
+
+/**
+ * Bruch-Gruppe in einer Zeile: „7 Bruch × 1250 g – 12 Teststern, 8 Testkäse
+ * · +8 frei“. Unbekanntes bleibt sichtbar: eine offene Grundmenge macht
+ * „≥ 1 Bruch“ bzw. „? Bruch“ und „Testkäse offen“, nie „0“ (Regel 8). „frei“
+ * steht in Produkten; haben die Mitglieder verschieden viele Teigstücke je
+ * Produkt, in Teigstücken.
+ */
+export function bruchGroupText(group: BruchGroup): string {
+  const weight =
+    group.g === null ? '? g (Bruchgewicht offen)' : `${formatNumber(group.g)} g`
+  return `${bruchCountText(group)} × ${weight} – ${bruchSplitText(
+    group
+  )}${bruchSpareText(group)}`
+}
+
+/** „7 Bruch“, „≥ 1 Bruch“ (Grundmenge offen) oder „? Bruch“. */
+export function bruchCountText(group: BruchGroup): string {
+  const known = group.bruecheKnown ?? null
+  if (group.brueche !== null) return `${formatNumber(group.brueche)} Bruch`
+  return known ? `≥ ${formatNumber(known)} Bruch` : '? Bruch'
+}
+
+/**
+ * Aufteilung „12 Teststern, Testkäse offen“; mit `lineByKey` (Druck) je
+ * Mitglied auch die Korrektur mit Grund: „42 Testdoppel (Korr. +30 Fest)“.
+ */
+export function bruchSplitText(
+  group: BruchGroup,
+  lineByKey?: Map<string, BackzettelLine>
+): string {
+  return group.split
+    .map((s) => {
+      // Grundmenge offen: die bekannten Stück als Mindestmenge („≥ 7
+      // Roggen“), „offen“ nur, wenn noch nichts bekannt ist.
+      const qty = minQtyText(s)
+      const base = qty === 'offen' ? `${s.name} offen` : `${qty} ${s.name}`
+      const line = lineByKey ? lineByKey.get(s.key) : undefined
+      const corr = line && line.correction ? line.correction : 0
+      if (!corr) return base
+      return `${base} (Korr. ${formatSigned(corr)}${
+        line && line.correctionReason ? ` ${line.correctionReason}` : ''
+      })`
+    })
+    .join(', ')
+}
+
+/**
+ * „ · +4 frei“ (Produkte) bzw. „ · +9 Teigstücke frei“; leer, wenn unbekannt.
+ * Ergeben die freien Teigstücke kein ganzes Produkt (Doppelweck, 1 Stück
+ * übrig), stehen sie in Teigstücken - nie „+0 frei“ neben freiem Teig.
+ * Bildschirm und Druck nehmen genau diesen Text.
+ */
+export function bruchSpareText(group: BruchGroup): string {
+  if (group.spare === null) return ''
+  if (group.spareProducts !== undefined && group.spareProducts !== null) {
+    if (group.spareProducts === 0 && group.spare > 0) {
+      return ` · +${formatNumber(group.spare)} ${
+        group.spare === 1 ? 'Teigstück' : 'Teigstücke'
+      } frei`
+    }
+    return ` · +${formatNumber(group.spareProducts)} frei`
+  }
+  if (group.spareProducts === null && group.perProduct !== 1) {
+    return ` · +${formatNumber(group.spare)} Teigstücke frei`
+  }
+  return ` · +${formatNumber(group.spare)} frei`
+}
+
+/** „Teig: 2,4 kg“, „Teig: ≥ 2 kg“ (Grundmenge offen) oder „Teig: – kg“. */
+export function bruchKgText(group: BruchGroup): string {
+  if (group.kg !== null) return `Teig: ${formatKnown(group.kg, 'kg')}`
+  if (group.kgKnown) return `Teig: ≥ ${formatKnown(group.kgKnown, 'kg')}`
+  return 'Teig: – kg'
+}
+
+/**
+ * Was die Nachträge eines freigegebenen Teigtag-Zettels für Teilmaschine und
+ * Teige heißen (Review Z10 Runde 1) - nur Text aus den Server-Zahlen
+ * (`deltaBruch`, `deltaMachine`), gerechnet wird hier nichts:
+ * „Testdoppel für Di: +6 Teigstücke – 1 Bruch mehr (jetzt 6)“,
+ * „… – passt in die freien Stücke (noch +2 frei)“,
+ * „Testweck: +1,2 kg Teig (jetzt 17,2 kg) · Liter 5,5 L → 6 L“.
+ */
+export function deltaDoughLines(
+  day: Pick<BackzettelDay, 'date' | 'deltaBruch' | 'deltaMachine'>
+): string[] {
+  const out: string[] = []
+  for (const g of day.deltaBruch ?? []) {
+    const when =
+      g.bakeDate && g.bakeDate !== day.date
+        ? ` für ${WEEKDAY_SHORT[isoWeekday(g.bakeDate)]}`
+        : ''
+    const pieces = `${formatSigned(g.piecesDelta)} Teigstücke`
+    let effect: string
+    if (g.bruecheDelta === null) {
+      effect = 'Brüche unbekannt (Stammdaten offen)'
+    } else if (g.bruecheDelta > 0) {
+      effect = `${formatNumber(
+        g.bruecheDelta
+      )} Bruch mehr (jetzt ${formatNumber(g.brueche as number)})`
+    } else if (g.bruecheDelta < 0) {
+      effect = `${formatNumber(
+        Math.abs(g.bruecheDelta)
+      )} Bruch weniger (jetzt ${formatNumber(g.brueche as number)})`
+    } else if (g.piecesDelta > 0) {
+      const free = g.spareProducts ?? g.spare
+      effect = `passt in die freien Stücke${
+        free !== null ? ` (noch +${formatNumber(free)} frei)` : ''
+      }`
+    } else {
+      effect = 'gleich viele Brüche'
+    }
+    out.push(`${g.name}${when}: ${pieces} – ${effect}`)
+  }
+  for (const m of day.deltaMachine ?? []) {
+    const parts = [
+      `${formatSigned(m.kgDelta)} kg Teig${
+        m.kg !== null ? ` (jetzt ${formatKnown(m.kg, 'kg')})` : ''
+      }`,
+    ]
+    // Liter: gerundet, sonst die genauen mit „Rundung offen“ (Review Z10
+    // Runde 2 - die Maschinenleiste darüber zeigt sie auch); „unbekannt“ nur,
+    // wenn kg je Liter offen oder der Teig unvollständig ist.
+    const liters = m.liters
+    const exactOnly = liters?.rounded == null && liters?.exact != null
+    const value = (l: DoughLiters | null | undefined) =>
+      l == null ? null : exactOnly ? l.exact : l.rounded
+    const before = value(m.litersBefore)
+    const after = value(liters)
+    if (after === null) {
+      parts.push(
+        liters?.reason === 'kg_per_liter_unknown'
+          ? 'Liter unbekannt (kg je Liter offen)'
+          : liters?.reason === 'dough_incomplete'
+          ? 'Liter unbekannt (Teig unvollständig)'
+          : 'Liter unbekannt'
+      )
+    } else if (before !== after) {
+      parts.push(
+        `Liter ${
+          before === null ? '–' : `${formatNumber(before)} L`
+        } → ${formatNumber(after)} L${exactOnly ? ' (Rundung offen)' : ''}`
+      )
+    }
+    if (
+      m.batches !== null &&
+      m.batchesBefore !== null &&
+      m.batches !== m.batchesBefore
+    ) {
+      parts.push(
+        `${formatNumber(m.batchesBefore)} → ${formatNumber(m.batches)} Chargen`
+      )
+    }
+    out.push(`${m.name}: ${parts.join(' · ')}`)
+  }
+  return out
+}
+
+/**
+ * Stück für „+1 Bruch“: so viele Brötchen ergibt ein Druck der Teilmaschine
+ * (Stück je Bruch ÷ Teigstücke je Brötchen). `null`, wenn die Stückzahl je
+ * Bruch offen ist oder es nicht aufgeht - dann gibt es den Knopf nicht.
+ */
+export function bruchStep(
+  piecesPerBruch: number | null | undefined,
+  perProduct: number | null | undefined
+): number | null {
+  if (!piecesPerBruch || !perProduct) return null
+  const step = piecesPerBruch / perProduct
+  return Number.isInteger(step) ? step : null
+}
+
+/**
+ * Kopfzeile eines Teigtag-Zettels: „Teige heute: Korn + Holz · Testweck für
+ * So + Di · Testhefe“ - aus `machine` und den Teilen der Teige (Server).
+ */
+export function doughsTodayText(
+  day: Pick<BackzettelDay, 'date' | 'machine' | 'doughs'>
+): string | null {
+  const boxes = day.machine ?? []
+  if (boxes.length === 0) return null
+  const names = boxes.map((box) => {
+    const dates = new Set<string>()
+    for (const d of day.doughs ?? []) {
+      if (!box.doughIds.includes(d.id)) continue
+      for (const p of d.parts) if (p.bakeDate) dates.add(p.bakeDate)
+    }
+    const later = Array.from(dates)
+      .filter((d) => d !== day.date)
+      .sort()
+    if (later.length === 0) return box.name
+    const days = later.map((d) => WEEKDAY_SHORT[isoWeekday(d)])
+    if (dates.has(day.date)) days.unshift('heute')
+    return `${box.name} für ${days.join(' + ')}`
+  })
+  return `Teige heute: ${names.join(' · ')}`
+}
+
+/**
+ * Füllungsbedarf mit offenen Gramm (Z10, Regel 7): „Gramm unbekannt“, wenn
+ * kein Posten Gramm hat; „≥ 1,2 kg“, wenn nur ein Teil bekannt ist.
+ */
+export function fillingGramsText(
+  filling: Pick<
+    FillingNeed,
+    'grams' | 'missingFillingG' | 'items' | 'baseUnset'
+  >
+): string {
+  const open = filling.baseUnset === true
+  if (!filling.missingFillingG && !open) return formatGrams(filling.grams)
+  const known = filling.items.some((i) => i.grams !== null)
+  if (!known || !filling.grams) return open ? 'offen' : 'Gramm unbekannt'
+  return `≥ ${formatGrams(filling.grams)}`
+}
+
+/**
+ * Hinweis zu einer Füllung, deren gefüllter Posten keine Grundmenge hat
+ * (Review Z10 Runde 2): „Grundmenge offen: Zopf gefüllt – Apfel – …“.
+ */
+export function fillingOpenNote(
+  filling: Pick<FillingNeed, 'baseUnset' | 'openItems'>
+): string | null {
+  if (!filling.baseUnset) return null
+  const names = (filling.openItems ?? []).join(', ')
+  return `Grundmenge offen${
+    names ? `: ${names}` : ''
+  } – die Menge ist nur der bekannte Teil (Vorbestellungen, CAP), das Rezept wird nicht hochgerechnet.`
+}
+
+/**
+ * Quelle einer Backliste (Z10): „Teig von heute · Entwurf“,
+ * „Teig vom Samstag · freigegeben“.
+ */
+export function bakeSourceText(
+  source: {
+    doughDate: string
+    weekdayName?: string | null
+    status: 'draft' | 'confirmed'
+  },
+  date: string
+): string {
+  const day =
+    source.doughDate === date
+      ? 'Teig von heute'
+      : `Teig vom ${source.weekdayName || formatDateShort(source.doughDate)}`
+  return `${day} · ${source.status === 'confirmed' ? 'freigegeben' : 'Entwurf'}`
+}
+
+/** Schlüssel aller Zeilen, die Brot-Tabelle und Brötchen-Blöcke zeigen. */
+export function v2CoveredKeys(day: {
+  bread?: {
+    rows: {
+      cells: Record<string, { key: string } | null>
+      single: { key: string } | null
+    }[]
+  } | null
+  rolls?: RollsBlock[] | null
+}): Set<string> {
+  const keys = new Set<string>()
+  for (const row of day.bread?.rows ?? []) {
+    if (row.single) keys.add(row.single.key)
+    for (const c of Object.values(row.cells)) if (c) keys.add(c.key)
+  }
+  for (const block of day.rolls ?? []) {
+    for (const g of block.groups) for (const s of g.split) keys.add(s.key)
+    for (const s of block.singles) keys.add(s.key)
+  }
+  return keys
+}
+
+/** Für Specs und andere Ansichten: die Zeile zu einem Schlüssel. */
+export function linesByKey(
+  sections: { lines: BackzettelLine[] }[]
+): Map<string, BackzettelLine> {
+  return new Map(sections.flatMap((s) => s.lines).map((l) => [l.key, l]))
 }

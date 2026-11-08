@@ -1,0 +1,632 @@
+{
+  "gueltig": {
+    "ok": true,
+    "errors": [],
+    "warnings": []
+  },
+  "version-2": {
+    "ok": false,
+    "errors": [
+      {
+        "path": "version",
+        "message": "version muss 1 sein."
+      }
+    ],
+    "warnings": []
+  },
+  "days-leer": {
+    "ok": false,
+    "errors": [
+      {
+        "path": "days",
+        "message": "days muss eine nicht-leere Liste von ISO-Wochentagen (1–7) sein."
+      },
+      {
+        "path": "items[0].base.2",
+        "message": "Dienstag (2) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[0].base.3",
+        "message": "Mittwoch (3) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[0].base.4",
+        "message": "Donnerstag (4) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[0].base.5",
+        "message": "Freitag (5) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[0].base.6",
+        "message": "Samstag (6) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[1].base.3",
+        "message": "Mittwoch (3) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[2].base.2",
+        "message": "Dienstag (2) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[2].base.3",
+        "message": "Mittwoch (3) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[2].base.4",
+        "message": "Donnerstag (4) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[2].base.5",
+        "message": "Freitag (5) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[2].base.6",
+        "message": "Samstag (6) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[2].base.7",
+        "message": "Sonntag (7) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[3].base.2",
+        "message": "Dienstag (2) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[3].base.3",
+        "message": "Mittwoch (3) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[3].base.4",
+        "message": "Donnerstag (4) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[3].base.5",
+        "message": "Freitag (5) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[3].base.6",
+        "message": "Samstag (6) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[4].base.2",
+        "message": "Dienstag (2) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[4].base.3",
+        "message": "Mittwoch (3) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[4].base.4",
+        "message": "Donnerstag (4) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[4].base.5",
+        "message": "Freitag (5) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[5].base.6",
+        "message": "Samstag (6) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[6].base.6",
+        "message": "Samstag (6) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[7].base.6",
+        "message": "Samstag (6) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "prep[0].by_weekday.3",
+        "message": "„3“ ist kein Produktionstag und nicht „default“."
+      },
+      {
+        "path": "prep[0].by_weekday.6",
+        "message": "„6“ ist kein Produktionstag und nicht „default“."
+      },
+      {
+        "path": "prep[2].days[0]",
+        "message": "2 ist kein Produktionstag (days)."
+      },
+      {
+        "path": "prep[2].days[1]",
+        "message": "3 ist kein Produktionstag (days)."
+      },
+      {
+        "path": "prep[2].days[2]",
+        "message": "4 ist kein Produktionstag (days)."
+      },
+      {
+        "path": "prep[2].days[3]",
+        "message": "5 ist kein Produktionstag (days)."
+      },
+      {
+        "path": "prep[3].by_weekday.6",
+        "message": "„6“ ist kein Produktionstag und nicht „default“."
+      }
+    ],
+    "warnings": []
+  },
+  "days-doppelt-und-ausserhalb": {
+    "ok": false,
+    "errors": [
+      {
+        "path": "days[0]",
+        "message": "Ungültiger Wochentag 0; erlaubt sind 1 (Montag) bis 7 (Sonntag)."
+      },
+      {
+        "path": "days[2]",
+        "message": "Wochentag 2 steht doppelt in days."
+      },
+      {
+        "path": "days[4]",
+        "message": "Ungültiger Wochentag 8; erlaubt sind 1 (Montag) bis 7 (Sonntag)."
+      },
+      {
+        "path": "items[0].base.4",
+        "message": "Donnerstag (4) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[0].base.5",
+        "message": "Freitag (5) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[0].base.6",
+        "message": "Samstag (6) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[2].base.4",
+        "message": "Donnerstag (4) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[2].base.5",
+        "message": "Freitag (5) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[2].base.6",
+        "message": "Samstag (6) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[2].base.7",
+        "message": "Sonntag (7) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[3].base.4",
+        "message": "Donnerstag (4) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[3].base.5",
+        "message": "Freitag (5) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[3].base.6",
+        "message": "Samstag (6) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[4].base.4",
+        "message": "Donnerstag (4) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[4].base.5",
+        "message": "Freitag (5) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[5].base.6",
+        "message": "Samstag (6) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[6].base.6",
+        "message": "Samstag (6) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[7].base.6",
+        "message": "Samstag (6) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "prep[0].by_weekday.6",
+        "message": "„6“ ist kein Produktionstag und nicht „default“."
+      },
+      {
+        "path": "prep[2].days[2]",
+        "message": "4 ist kein Produktionstag (days)."
+      },
+      {
+        "path": "prep[2].days[3]",
+        "message": "5 ist kein Produktionstag (days)."
+      },
+      {
+        "path": "prep[3].by_weekday.6",
+        "message": "„6“ ist kein Produktionstag und nicht „default“."
+      }
+    ],
+    "warnings": []
+  },
+  "abschnitt-unbekannt": {
+    "ok": false,
+    "errors": [
+      {
+        "path": "sections[1]",
+        "message": "Unbekannter Abschnitt \"torten\"; erlaubt: vorbereitung, brot, broetchen, laugen, kaffeestueckchen, kuchen, hefeteig."
+      },
+      {
+        "path": "sections[2]",
+        "message": "Abschnitt „brot“ steht doppelt in sections."
+      },
+      {
+        "path": "items[2].section",
+        "message": "Posten „weck“: Abschnitt \"broetchen\" steht nicht in sections."
+      },
+      {
+        "path": "items[3].section",
+        "message": "Posten „plunder“: Abschnitt \"kaffeestueckchen\" steht nicht in sections."
+      },
+      {
+        "path": "items[4].section",
+        "message": "Posten „schnecke“: Abschnitt \"kaffeestueckchen\" steht nicht in sections."
+      }
+    ],
+    "warnings": []
+  },
+  "unbekannte-schluessel": {
+    "ok": true,
+    "errors": [],
+    "warnings": [
+      {
+        "path": "extra",
+        "message": "Unbekannter Schlüssel „extra“ wird ignoriert."
+      },
+      {
+        "path": "items[0].bsae",
+        "message": "Unbekannter Schlüssel „bsae“ wird ignoriert."
+      },
+      {
+        "path": "prep[0].wann",
+        "message": "Unbekannter Schlüssel „wann“ wird ignoriert."
+      }
+    ]
+  },
+  "teig-ohne-chargengroesse-fehlt": {
+    "ok": true,
+    "errors": [],
+    "warnings": [
+      {
+        "path": "doughs[0].batch_max_kg",
+        "message": "Teig „hefeteig-test“ hat keine Chargengröße; Chargen werden nicht berechnet."
+      }
+    ]
+  },
+  "teig-chargengroesse-ungueltig": {
+    "ok": false,
+    "errors": [
+      {
+        "path": "doughs[0].batch_max_kg",
+        "message": "batch_max_kg muss eine positive Zahl oder null sein."
+      }
+    ],
+    "warnings": []
+  },
+  "produkt-unbekannt-und-doppelt": {
+    "ok": false,
+    "errors": [
+      {
+        "path": "items[0].products[0].id",
+        "message": "Produkt „gibt-es-nicht“ gibt es im hq-Katalog nicht."
+      },
+      {
+        "path": "items[0].products[0].factor",
+        "message": "factor muss eine Zahl größer 0 sein."
+      },
+      {
+        "path": "items[3].products[0].id",
+        "message": "Produkt „test-plunder“ ist schon Posten „weck“ zugeordnet; Vorbestellungen würden doppelt gezählt."
+      }
+    ],
+    "warnings": []
+  },
+  "produkt-nicht-verfuegbar": {
+    "ok": true,
+    "errors": [],
+    "warnings": [
+      {
+        "path": "items[0].products[0].id",
+        "message": "Produkt „test-alt“ ist im Katalog nicht verfügbar."
+      }
+    ]
+  },
+  "varianten-kaputt": {
+    "ok": false,
+    "errors": [
+      {
+        "path": "items[5].variants[1]",
+        "message": "Variante „nuss“ ist doppelt."
+      },
+      {
+        "path": "items[5].variants[2]",
+        "message": "Variante \"Mohn\" ist kein Slug."
+      },
+      {
+        "path": "items[5].base.6.mohn",
+        "message": "Variante „mohn“ steht nicht in variants."
+      }
+    ],
+    "warnings": []
+  },
+  "grundmengen-kaputt": {
+    "ok": false,
+    "errors": [
+      {
+        "path": "items[2].base.1",
+        "message": "Montag (1) ist kein Produktionstag (days)."
+      },
+      {
+        "path": "items[2].base.2",
+        "message": "Menge 10,5 muss bei der Einheit Stück ganzzahlig sein."
+      },
+      {
+        "path": "items[2].base.3",
+        "message": "Menge -1 muss eine Zahl ≥ 0 sein."
+      },
+      {
+        "path": "items[2].base.4",
+        "message": "Menge \"10\" muss eine Zahl ≥ 0 sein."
+      },
+      {
+        "path": "items[2].base.montag",
+        "message": "Ungültiger Wochentag „montag“ in base."
+      }
+    ],
+    "warnings": []
+  },
+  "grundmenge-je-variante-ohne-varianten": {
+    "ok": false,
+    "errors": [
+      {
+        "path": "items[2].base.2",
+        "message": "Posten „weck“ hat keine variants; base braucht hier eine Zahl."
+      }
+    ],
+    "warnings": []
+  },
+  "gefuellt-ohne-variante-je-tag": {
+    "ok": false,
+    "errors": [
+      {
+        "path": "items[5].base.6",
+        "message": "Posten „zopf-gefuellt“ ist gefüllt (filling_g); die Grundmenge braucht eine Menge je Variante, z. B. { nuss: 5 }."
+      }
+    ],
+    "warnings": []
+  },
+  "gefuellt-grundmenge-null": {
+    "ok": true,
+    "errors": [],
+    "warnings": []
+  },
+  "variante-unbekannt": {
+    "ok": false,
+    "errors": [
+      {
+        "path": "items[5].base.6.marzipan",
+        "message": "Variante „marzipan“ steht nicht in variants."
+      },
+      {
+        "path": "items[5].base.6.marzipan",
+        "message": "Menge 2,5 muss bei der Einheit Stück ganzzahlig sein."
+      }
+    ],
+    "warnings": []
+  },
+  "teig-kaputt": {
+    "ok": false,
+    "errors": [
+      {
+        "path": "items[5].dough.id",
+        "message": "Teig \"unbekannt\" steht nicht in doughs."
+      },
+      {
+        "path": "items[5].dough.piece_g",
+        "message": "piece_g (Gramm je Teigstück) muss größer 0 sein."
+      },
+      {
+        "path": "items[5].dough.pieces",
+        "message": "pieces (Teigstücke je Produkt) muss eine positive ganze Zahl sein."
+      }
+    ],
+    "warnings": []
+  },
+  "teig-kein-objekt": {
+    "ok": false,
+    "errors": [
+      {
+        "path": "items[5].dough",
+        "message": "dough muss {id, piece_g, pieces} sein."
+      }
+    ],
+    "warnings": []
+  },
+  "fuellung-kaputt": {
+    "ok": false,
+    "errors": [
+      {
+        "path": "items[5].filling_g.nuss",
+        "message": "Füllungsgramm muss größer 0 sein."
+      },
+      {
+        "path": "items[5].filling_g.schoko",
+        "message": "Variante „schoko“ steht nicht in variants."
+      }
+    ],
+    "warnings": []
+  },
+  "fuellung-ohne-varianten": {
+    "ok": false,
+    "errors": [
+      {
+        "path": "items[2].filling_g",
+        "message": "Posten „weck“ hat filling_g, aber keine variants (Füllungen)."
+      },
+      {
+        "path": "items[2].base.2",
+        "message": "Posten „weck“ ist gefüllt (filling_g); die Grundmenge braucht eine Menge je Variante, z. B. { nuss: 40 }."
+      },
+      {
+        "path": "items[2].base.3",
+        "message": "Posten „weck“ ist gefüllt (filling_g); die Grundmenge braucht eine Menge je Variante, z. B. { nuss: 30 }."
+      },
+      {
+        "path": "items[2].base.4",
+        "message": "Posten „weck“ ist gefüllt (filling_g); die Grundmenge braucht eine Menge je Variante, z. B. { nuss: 40 }."
+      },
+      {
+        "path": "items[2].base.5",
+        "message": "Posten „weck“ ist gefüllt (filling_g); die Grundmenge braucht eine Menge je Variante, z. B. { nuss: 40 }."
+      },
+      {
+        "path": "items[2].base.6",
+        "message": "Posten „weck“ ist gefüllt (filling_g); die Grundmenge braucht eine Menge je Variante, z. B. { nuss: 60 }."
+      },
+      {
+        "path": "items[2].base.7",
+        "message": "Posten „weck“ ist gefüllt (filling_g); die Grundmenge braucht eine Menge je Variante, z. B. { nuss: 80 }."
+      }
+    ],
+    "warnings": []
+  },
+  "fuellung-variante-null": {
+    "ok": true,
+    "errors": [],
+    "warnings": []
+  },
+  "fuellung-ohne-rezept": {
+    "ok": true,
+    "errors": [],
+    "warnings": [
+      {
+        "path": "items[5].variants",
+        "message": "Für Variante „mohn“ gibt es keine Füllung in fillings; ihr Füllungsbedarf wird ohne Rezept ausgegeben."
+      },
+      {
+        "path": "items[6].variants",
+        "message": "Für Variante „mohn“ gibt es keine Füllung in fillings; ihr Füllungsbedarf wird ohne Rezept ausgegeben."
+      }
+    ]
+  },
+  "blech-kaputt-und-doppelt": {
+    "ok": false,
+    "errors": [
+      {
+        "path": "items[3].tray.no",
+        "message": "tray.no enthält eine Blechnummer doppelt."
+      },
+      {
+        "path": "items[3].tray.per_tray",
+        "message": "per_tray muss eine positive ganze Zahl sein."
+      }
+    ],
+    "warnings": []
+  },
+  "blech-doppelt-vergeben": {
+    "ok": true,
+    "errors": [],
+    "warnings": [
+      {
+        "path": "items[4].tray.no",
+        "message": "Blech 8 ist auch Posten „plunder“ zugeordnet."
+      }
+    ]
+  },
+  "plu-kaputt-und-doppelt": {
+    "ok": false,
+    "errors": [
+      {
+        "path": "items[3].plu[0]",
+        "message": "PLU \"906\" muss eine positive ganze Zahl sein."
+      }
+    ],
+    "warnings": [
+      {
+        "path": "items[3].plu[1]",
+        "message": "PLU 906 ist auch Posten „weck“ zugeordnet."
+      }
+    ]
+  },
+  "stueck-je-liter": {
+    "ok": true,
+    "errors": [],
+    "warnings": [
+      {
+        "path": "items[2].pieces_per_liter",
+        "message": "pieces_per_liter wirkt nur bei der Einheit Liter."
+      }
+    ]
+  },
+  "stueck-je-liter-ungueltig": {
+    "ok": false,
+    "errors": [
+      {
+        "path": "items[0].pieces_per_liter",
+        "message": "pieces_per_liter muss eine Zahl größer 0 oder null sein."
+      }
+    ],
+    "warnings": []
+  },
+  "posten-ohne-alles": {
+    "ok": true,
+    "errors": [],
+    "warnings": [
+      {
+        "path": "items[4]",
+        "message": "Posten „schnecke“ hat weder Grundmengen noch Produkte und erscheint nur mit einer Korrektur."
+      }
+    ]
+  },
+  "rezeptpfad-ausserhalb": {
+    "ok": false,
+    "errors": [
+      {
+        "path": "fillings[0].recipe",
+        "message": "Rezeptpfad \"../../../etc/passwd\" muss relativ unter data/recipes/ liegen und auf .md enden (kein „..“, kein absoluter Pfad)."
+      },
+      {
+        "path": "fillings[1].recipe",
+        "message": "recipe muss ein Pfad (Text) sein."
+      }
+    ],
+    "warnings": []
+  },
+  "vorbereitung-kaputt": {
+    "ok": false,
+    "errors": [
+      {
+        "path": "prep[4].id",
+        "message": "Vorbereitungs-ID „sauerteig“ ist doppelt."
+      },
+      {
+        "path": "prep[5].when_item",
+        "message": "Posten \"gibt-es-nicht\" gibt es nicht."
+      },
+      {
+        "path": "prep[6].by_weekday.1",
+        "message": "„1“ ist kein Produktionstag und nicht „default“."
+      },
+      {
+        "path": "prep[6].by_weekday.sonntag",
+        "message": "„sonntag“ ist kein Produktionstag und nicht „default“."
+      },
+      {
+        "path": "prep[7].days[0]",
+        "message": "1 ist kein Produktionstag (days)."
+      },
+      {
+        "path": "prep[8].variant_labels",
+        "message": "variant_labels muss eine Zuordnung Variante → Anzeigename sein."
+      },
+      {
+        "path": "prep[9].variant_labels.gross",
+        "message": "Anzeigename muss ein nicht-leerer Text sein."
+      }
+    ],
+    "warnings": []
+  }
+}

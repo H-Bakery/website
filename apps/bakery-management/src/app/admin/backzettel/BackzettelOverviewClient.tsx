@@ -21,12 +21,15 @@ import {
   fetchBackzettelConfig,
   fetchBackzettelDay,
   isBackzettelDay,
+  isDoughDaySheet,
   type BackzettelConfigResponse,
+  type BackzettelDay,
   type BackzettelDayResult,
 } from '../../../lib/backzettelApi'
 import {
   describeProductionDays,
   formatDateLong,
+  formatDateShort,
   formatTimestamp,
   isIsoDate,
   nextProductionDay,
@@ -87,6 +90,32 @@ function summaryText(result: BackzettelDayResult): string {
 }
 
 /**
+ * Z10: für welche Backtage an diesem Tag Teig gemacht wird
+ * („Teig für heute, Sonntag, Dienstag“) - oder dass nur gebacken wird.
+ */
+export function doughForText(day: BackzettelDay): string | null {
+  if (!isDoughDaySheet(day)) return null
+  if (day.isDoughDay === false) {
+    // Kein Teigtag - aber Posten mit lead 0 werden trotzdem heute gemacht
+    // (Maschinen-Kästen vom Server). „Kein Teig“ nur, wenn es keine gibt.
+    const boxes = day.machine ?? []
+    if (boxes.length === 0) return 'Kein Teig – nur backen (Backliste)'
+    return `Teig für heute (${boxes
+      .map((b) => b.name)
+      .join(', ')}) – sonst nur backen (Backliste)`
+  }
+  const dates = (day.bakeDates ?? []).filter((b) => b.lineCount > 0)
+  if (dates.length === 0) return null
+  return `Teig für ${dates
+    .map((b) =>
+      b.date === day.date
+        ? 'heute'
+        : `${b.weekdayName || formatDateShort(b.date)}`
+    )
+    .join(', ')}`
+}
+
+/**
  * Status eines Tages: höchstens zwei Chips (Entwurf/Freigegeben und offene
  * Nachträge) - alles Weitere steht als Text darunter (Layout-Kit: Nebenwerte
  * als zweite Zeile, nicht als eigener Chip).
@@ -139,11 +168,23 @@ function DayStatus({ entry }: { entry: DayEntry }) {
 function DaySummaryLine({ entry }: { entry: DayEntry }) {
   if (entry.state !== 'loaded') return null
   const text = summaryText(entry.result)
-  if (!text) return null
+  const doughFor = isBackzettelDay(entry.result)
+    ? doughForText(entry.result)
+    : null
+  if (!text && !doughFor) return null
   return (
-    <Typography variant="body2" color="text.secondary">
-      {text}
-    </Typography>
+    <>
+      {doughFor && (
+        <Typography variant="body2" data-testid={`dough-for-${entry.date}`}>
+          {doughFor}
+        </Typography>
+      )}
+      {text && (
+        <Typography variant="body2" color="text.secondary">
+          {text}
+        </Typography>
+      )}
+    </>
   )
 }
 
@@ -431,6 +472,21 @@ export default function BackzettelOverviewClient({
                       sx={{ color: 'text.secondary', flexShrink: 0 }}
                     />
                   </ListItemButton>
+                  {entry.state === 'loaded' &&
+                    isBackzettelDay(entry.result) &&
+                    isDoughDaySheet(entry.result) && (
+                      <Box sx={{ px: { xs: 2, md: 3 }, pb: 1 }}>
+                        <Button
+                          component={Link}
+                          href={`/admin/backzettel/${entry.date}/backen`}
+                          variant="text"
+                          aria-label={`Backliste ${formatDateLong(entry.date)}`}
+                          sx={{ minHeight: 44, ml: -1 }}
+                        >
+                          Backliste
+                        </Button>
+                      </Box>
+                    )}
                 </Box>
               ))}
             </Box>

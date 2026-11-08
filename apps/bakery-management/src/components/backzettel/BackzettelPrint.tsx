@@ -14,26 +14,19 @@ import {
   deltaAfterDone,
   deltaCodeText,
   deltaBadgeText,
-  deltaExtrasLines,
   formatDateLong,
   formatFactor,
-  formatGrams,
   formatNumber,
   formatOrDash,
   formatQty,
   formatSigned,
   formatSignedQty,
   formatTimestamp,
-  hasHefeteig,
   type DeltaAfterDone,
-  ingredientAmount,
   lineLabel,
   previouslyDoneText,
-  recipeHeading,
-  recipeIncompleteNote,
 } from '../../lib/backzettelFormat'
-import { batchText } from './HefeteigCard'
-import { prepTaskLabel } from './PrepCard'
+import { BackzettelPrintExtras } from './BackzettelPrintExtras'
 
 /**
  * Druckbild des Backzettels (Z7, roadmap §5.5 Nr. 4) - A4, schwarz auf weiß.
@@ -47,6 +40,10 @@ import { prepTaskLabel } from './PrepCard'
  *   S. 1  Backzettel: alle Abschnitte, Gesamt groß, Kästchen zum Abhaken
  *   S. 2  (wenn Hefeteig/Füllungen) Abwiegeliste + skalierte Füllungsrezepte
  *   S. 3  (wenn Vorbereitungen) Vorbereitung am Vortag
+ *
+ * Seit Z10 druckt so nur noch ein Tag, der vor Z10 freigegeben wurde
+ * (`sheetVersion: 1`); S. 2-3 stehen in `BackzettelPrintExtras`. Ein
+ * Teigtag-Zettel druckt `DoughDayPrint` (eine Seite).
  */
 export const backzettelPrintStyles = (
   <GlobalStyles
@@ -367,11 +364,7 @@ function printDeltaDetail(
 
 export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
   const confirmed = day.status === 'confirmed'
-  const doughs = day.hefeteig?.doughs ?? []
-  const fillings = day.fillings ?? []
-  const prep = day.prep ?? []
-  const withPage2 = hasHefeteig(day)
-  const withPage3 = prep.length > 0
+  const withPage3 = (day.prep ?? []).length > 0
   const deltas = day.deltas ?? []
   const deltaGroups = groupDeltasForPrint(deltas, deltaTotalsByKey(day))
   // Nachträge nach dem Haken je Zeile (UI-Runde 1).
@@ -588,163 +581,7 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
         )}
       </section>
 
-      {/* Seite 2: Hefeteig & Füllungen */}
-      {withPage2 && (
-        <section className="bz-page bz-break" data-testid="print-page-2">
-          <h1>Hefeteig &amp; Füllungen – {formatDateLong(day.date)}</h1>
-          {!confirmed && (
-            <p className="banner">ENTWURF – noch nicht freigegeben</p>
-          )}
-          {deltaExtrasLines(day.deltaExtras).length > 0 && (
-            <div className="extras avoid" data-testid="print-delta-extras">
-              <strong>
-                Nachträge seit der Freigabe – zusätzlich zu den Mengen unten:
-              </strong>
-              <ul>
-                {deltaExtrasLines(day.deltaExtras).map((text) => (
-                  <li key={text}>
-                    <span className="box" /> {text}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {doughs.map((dough) => (
-            <div key={dough.id} className="avoid">
-              <h2>{dough.name}</h2>
-              <div className="figures">
-                <span>
-                  Teigstücke <strong>{formatNumber(dough.pieces)}</strong>
-                </span>
-                <span>
-                  Teig <strong>{formatGrams(dough.dough_g)}</strong>
-                </span>
-                <span>{batchText(dough)}</span>
-              </div>
-              <h3>Abwiegeliste</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Stückgewicht</th>
-                    <th className="num">Stück</th>
-                    <th>für</th>
-                    <th className="num">✓</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dough.weighing.map((w) => (
-                    <tr key={w.piece_g}>
-                      <td className="total">{formatNumber(w.piece_g)} g</td>
-                      <td className="num total">{formatNumber(w.pieces)}</td>
-                      <td>
-                        {w.items
-                          .map((i) =>
-                            i.piecesPerProduct === 1
-                              ? `${i.name} ${formatNumber(i.products)}`
-                              : `${i.name} ${formatNumber(i.products)} × ${
-                                  i.piecesPerProduct
-                                }`
-                          )
-                          .join(', ')}
-                      </td>
-                      <td className="num">
-                        <span className="box" />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ))}
-          {fillings.length > 0 && <h2>Füllungen</h2>}
-          {fillings.map((f) => (
-            <div key={f.id} className="avoid">
-              <h3>
-                {f.name}: {formatGrams(f.grams)}
-              </h3>
-              <p className="small">
-                {f.items
-                  .map(
-                    (i) =>
-                      `${i.name} ${formatNumber(i.pieces)} × ${
-                        i.filling_g === null
-                          ? '? g'
-                          : `${formatNumber(i.filling_g)} g`
-                      }`
-                  )
-                  .join(', ')}
-                {f.missingFillingG
-                  ? ' · Füllungsgewicht fehlt bei mindestens einem Posten – Menge zu klein!'
-                  : ''}
-              </p>
-              {/* Vor der Tabelle: der Hinweis sagt „Unten das Grundrezept“
-                  (UI-Runde 1 - vorher stand er darunter). */}
-              {f.recipe && recipeIncompleteNote(f.recipe) && (
-                <p className="small">
-                  <strong>{recipeIncompleteNote(f.recipe)}</strong>
-                </p>
-              )}
-              {f.recipe ? (
-                <table>
-                  <thead>
-                    <tr>
-                      <th>{recipeHeading(f.recipe)}</th>
-                      <th className="num">Menge</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {f.recipe.ingredients.map((ing, idx) => (
-                      <tr key={`${ing.name}-${idx}`}>
-                        <td>{ing.name}</td>
-                        <td className="num">
-                          {ing.scaled_g === null ? (
-                            ingredientAmount(ing, f.recipe).text
-                          ) : (
-                            <strong>{formatGrams(ing.scaled_g)}</strong>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <p className="small">Kein Rezept hinterlegt.</p>
-              )}
-            </div>
-          ))}
-        </section>
-      )}
-
-      {/* Seite 3: Vorbereitung */}
-      {withPage3 && (
-        <section className="bz-page bz-break" data-testid="print-page-3">
-          <h1>Vorbereitung für {formatDateLong(day.date)}</h1>
-          <p className="meta">
-            am Vortag, {formatDateLong(day.prepDate)}, ab 14 Uhr
-            {day.prepDateProvisional
-              ? ' – der Vortag ist Ruhetag, wer vorbereitet ist noch offen'
-              : ''}
-          </p>
-          {/* Wird abgerissen und am Vortag abgearbeitet - auch hier muss
-              ein Entwurf als Entwurf erkennbar sein (W4-verify r5). */}
-          {!confirmed && (
-            <p className="banner">ENTWURF – noch nicht freigegeben</p>
-          )}
-          <table>
-            <tbody>
-              {prep.map((t) => (
-                <tr key={t.id}>
-                  <td className="num" style={{ width: '8mm' }}>
-                    <span className="box" />
-                  </td>
-                  <td className="total">{prepTaskLabel(t)}</td>
-                  <td>{t.note || ''}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      )}
+      <BackzettelPrintExtras day={day} />
     </div>
   )
 }

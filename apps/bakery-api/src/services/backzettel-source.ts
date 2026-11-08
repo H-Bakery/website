@@ -34,6 +34,12 @@ export interface ConfigReason {
   message: string
 }
 
+export interface OpenMasterDataEntry {
+  path: string
+  code: string
+  message: string
+}
+
 export interface CatalogProduct {
   id: string
   numeric_id?: number
@@ -48,6 +54,12 @@ export interface LoadedBackzettelConfig {
   /** Validation errors / why there is no config. */
   reasons: ConfigReason[]
   warnings: ConfigReason[]
+  /**
+   * Z10: open master data - every explicit `null` on a value that is still
+   * unknown (`{ path, code, message }`, docs/backzettel-v2.md §3). Not an
+   * error, not a warning: shown as „offen“.
+   */
+  open: OpenMasterDataEntry[]
   /** Parsed filling recipes per filling id. */
   recipes: Record<string, unknown>
   recipesMissing: { id: string; message: string }[]
@@ -128,6 +140,7 @@ export function createBackzettelSource(
           },
         ],
         warnings: [],
+        open: [],
         catalog: undefined,
       }
     }
@@ -157,6 +170,7 @@ export function createBackzettelSource(
         config: null,
         reasons: result.errors,
         warnings: [...warnings, ...result.warnings],
+        open: Array.isArray(result.open) ? result.open : [],
         catalog,
       }
     }
@@ -170,6 +184,7 @@ export function createBackzettelSource(
       config: result.config,
       reasons: [],
       warnings: [...warnings, ...result.warnings],
+      open: Array.isArray(result.open) ? result.open : [],
       recipes,
       recipesMissing: missing,
       catalog,

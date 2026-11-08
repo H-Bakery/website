@@ -31,6 +31,11 @@ export interface DeltasCardProps {
   canAck: boolean
   ackingId: number | null
   onAck: (delta: BackzettelDeltaEntry) => void
+  /**
+   * Z10: Datum des Zettels - Nachträge für einen anderen Backtag (Brötchen
+   * für Dienstag auf dem Samstags-Zettel) heißen dann „· für Di 01.12.“.
+   */
+  sheetDate?: string
 }
 
 function DeltaRow({
@@ -39,12 +44,14 @@ function DeltaRow({
   canAck,
   acking,
   onAck,
+  sheetDate,
 }: {
   delta: BackzettelDeltaEntry
   config: BackzettelConfigData | null
   canAck: boolean
   acking: boolean
   onAck: (delta: BackzettelDeltaEntry) => void
+  sheetDate?: string
 }) {
   const isOpen = !d.acknowledgedAt
   return (
@@ -84,7 +91,13 @@ function DeltaRow({
       </Typography>
       <Typography fontWeight={600} sx={{ gridColumn: 2, gridRow: 1 }}>
         {lineLabel(
-          { name: d.name, variant: d.variant, itemId: d.itemId },
+          {
+            name: d.name,
+            variant: d.variant,
+            itemId: d.itemId,
+            bakeDate: d.bakeDate,
+            doughDate: sheetDate,
+          },
           config
         )}
       </Typography>
@@ -142,6 +155,7 @@ export function DeltasCard({
   canAck,
   ackingId,
   onAck,
+  sheetDate,
 }: DeltasCardProps) {
   const [showDone, setShowDone] = React.useState(false)
   const headingId = React.useId()
@@ -157,6 +171,7 @@ export function DeltasCard({
       canAck={canAck}
       acking={ackingId === d.id}
       onAck={onAck}
+      sheetDate={sheetDate}
     />
   )
   const listSx = { m: 0, p: 0, display: 'grid', gap: 1 }

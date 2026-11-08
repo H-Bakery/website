@@ -535,6 +535,108 @@ describe('Erneute Freigabe und eingefrorene Berechnung', () => {
     expect(day.frozenQtyChanged(null, stored)).toBe(false)
   })
 
+  it('ticksAfterConfirm (O5): erledigt und gebacken nach derselben Regel, je für sich', () => {
+    const at = '2026-11-28T04:00:00.000Z'
+    const both = { ...stored, doneAt: at, bakedAt: at }
+    // Gleiche Menge oder weniger: beide Haken bleiben.
+    expect(day.ticksAfterConfirm(both, { ...stored })).toEqual({
+      done: true,
+      baked: true,
+    })
+    expect(day.ticksAfterConfirm(both, { ...stored, total: 24 })).toEqual({
+      done: true,
+      baked: true,
+    })
+    // Mehr nötig: beide fallen weg.
+    expect(day.ticksAfterConfirm(both, { ...stored, total: 36 })).toEqual({
+      done: false,
+      baked: false,
+    })
+    // Nur gebacken gesetzt (nicht „gemacht“ getippt) - unabhängig.
+    expect(
+      day.ticksAfterConfirm(
+        { ...stored, doneAt: null, bakedAt: at },
+        { ...stored, total: 36 }
+      )
+    ).toEqual({ done: null, baked: false })
+    expect(
+      day.ticksAfterConfirm({ ...stored, doneAt: at }, { ...stored })
+    ).toEqual({ done: true, baked: null })
+  })
+
+  it('bakedAfterConfirm (O5): gebackene Nachträge zählen nach Wieder öffnen mit', () => {
+    const at = '2026-11-28T04:00:00.000Z'
+    const row = { ...stored, bakedAt: at }
+    const more = { ...stored, total: stored.total + 8 }
+    // Zeile gebacken, +8 als Nachtrag gebacken: deckt die neue Menge.
+    expect(day.bakedAfterConfirm(row, more, 8)).toEqual({
+      baked: true,
+      qty: stored.total + 8,
+    })
+    // Nur +5 der +8 gebacken: Haken fällt, schon gebacken ist Zeile + 5.
+    expect(day.bakedAfterConfirm(row, more, 5)).toEqual({
+      baked: false,
+      qty: stored.total + 5,
+    })
+    // Zeile nicht gebacken, nur der Nachtrag: teils gebacken.
+    expect(day.bakedAfterConfirm({ ...stored }, more, 8)).toEqual({
+      baked: false,
+      qty: 8,
+    })
+    // Neue Zeile nur aus einem gebackenen Nachtrag: gesetzt.
+    expect(day.bakedAfterConfirm(null, { total: 6 }, 6)).toEqual({
+      baked: true,
+      qty: 6,
+    })
+    // Ohne gebackene Nachträge die Regel von „erledigt“; nie unter 0.
+    expect(day.bakedAfterConfirm(row, more, 0).baked).toBe(false)
+    expect(day.bakedAfterConfirm(row, { ...stored }, -3)).toEqual({
+      baked: true,
+      qty: stored.total,
+    })
+    expect(day.bakedAfterConfirm({ ...stored }, more, null)).toEqual({
+      baked: null,
+      qty: 0,
+    })
+    expect(day.ticksAfterConfirm(row, more, 8)).toEqual({
+      done: null,
+      baked: true,
+    })
+    expect(day.ticksAfterConfirm(null, more, 8)).toEqual({
+      done: null,
+      baked: false,
+    })
+  })
+
+  it('deltaBakedUpdate (O5): gebacken heißt auch gesehen, zurücknehmen nur den Haken', () => {
+    const at = new Date('2026-11-29T05:00:00Z')
+    const open = { bakedAt: null, acknowledgedAt: null }
+    expect(day.deltaBakedUpdate(open, true, at, 7)).toEqual({
+      bakedAt: at,
+      bakedBy: 7,
+      acknowledgedAt: at,
+      acknowledgedBy: 7,
+    })
+    const seen = { bakedAt: null, acknowledgedAt: '2026-11-28T10:00:00Z' }
+    expect(day.deltaBakedUpdate(seen, true, at, 7)).toEqual({
+      bakedAt: at,
+      bakedBy: 7,
+    })
+    // Schon gebacken / nicht gebacken: nichts zu tun.
+    const baked = { ...seen, bakedAt: at }
+    expect(day.deltaBakedUpdate(baked, true, at, 7)).toBeNull()
+    expect(day.deltaBakedUpdate(open, false, at, 7)).toBeNull()
+    expect(day.deltaBakedUpdate(baked, false, at, 7)).toEqual({
+      bakedAt: null,
+      bakedBy: null,
+    })
+    // Ohne Person (Skript): null, nie undefined.
+    expect(day.deltaBakedUpdate(seen, true, at, undefined)).toEqual({
+      bakedAt: at,
+      bakedBy: null,
+    })
+  })
+
   it('computedSnapshot: Hefeteig, Füllungen, Vorbereitung und Hinweise als JSON', () => {
     const result = core.computeDay({
       config: cfg,
@@ -612,6 +714,181 @@ describe('Erneute Freigabe und eingefrorene Berechnung', () => {
     )
     expect(day.snapshotDiffers(a, { ...a, prep: [{ id: 'p' }] })).toBe(true)
     expect(day.snapshotDiffers(null, a)).toBe(false)
+  })
+
+  it('snapshotDiffers (Z10): ein Teigtag-Zettel vergleicht auch Teige, Maschine, Brot, Brötchen und Plan', () => {
+    const plan = {
+      version: 2,
+      doughDate: '2026-11-28',
+      bakeDates: [{ date: '2026-11-28', itemIds: ['a'] }],
+    }
+    const snap = {
+      hefeteig: null,
+      fillings: [],
+      prep: [],
+      plan,
+      doughs: [{ id: 'd', kg: 6, liters: 2 }],
+      machine: [{ id: 'd', kg: 6 }],
+      bread: null,
+      rolls: [],
+      openMasterData: [],
+    }
+    const same = {
+      // andere Reihenfolge der Felder: gleich
+      machine: [{ kg: 6, id: 'd' }],
+      doughs: [{ liters: 2, kg: 6, id: 'd' }],
+      prep: [],
+      fillings: [],
+      hefeteig: null,
+      bread: null,
+      rolls: [],
+      openMasterData: [],
+      planDrift: { bakeDates: ['2026-11-28'], moved: [], added: [] },
+    }
+    expect(day.snapshotDiffers(snap, same)).toBe(false)
+    expect(
+      day.snapshotDiffers(snap, { ...same, machine: [{ id: 'd', kg: 8 }] })
+    ).toBe(true)
+    expect(
+      day.snapshotDiffers(snap, {
+        ...same,
+        planDrift: {
+          bakeDates: ['2026-11-28'],
+          moved: ['2026-11-28|a'],
+          added: [],
+        },
+      })
+    ).toBe(true)
+    expect(
+      day.snapshotDiffers(snap, {
+        ...same,
+        planDrift: {
+          bakeDates: ['2026-11-28'],
+          moved: [],
+          added: ['2026-11-28|b'],
+        },
+      })
+    ).toBe(true)
+    // ein alter Tag (ohne Plan) vergleicht wie bisher nur Hefeteig & Co.
+    const { plan: _p, ...old } = snap
+    void _p
+    expect(
+      day.snapshotDiffers(old, { ...same, machine: [{ id: 'd', kg: 8 }] })
+    ).toBe(false)
+  })
+
+  it('planDrift: Backtage und verschobene Paare, übernommene Posten zählen nicht', () => {
+    const c = {
+      days: [2, 3, 4, 5, 6, 7],
+      dough_days: [2, 3, 4, 5, 6],
+      items: [{ id: 'weck', lead: 1 }, { id: 'brot' }],
+    }
+    const plan = {
+      version: 2,
+      doughDate: '2026-11-28',
+      bakeDates: [
+        { date: '2026-11-28', itemIds: ['brot', 'alt'] },
+        { date: '2026-11-29', itemIds: ['weck'] },
+      ],
+    }
+    const adopted = [{ code: 'adopted_orphans', items: ['alt'] }]
+    expect(day.planDrift(null, plan)).toEqual({
+      bakeDates: ['2026-11-28', '2026-11-29'],
+      moved: [],
+      added: [],
+    })
+    // „alt“ fehlt in hq, ist aber übernommen; sonst passt alles
+    expect(day.planDrift(c, plan, adopted).moved).toEqual([])
+    expect(day.planDrift(c, plan, []).moved).toEqual(['2026-11-28|alt'])
+    // lead 0: der Sonntags-Weck wäre jetzt am Sonntag dran
+    const moved = day.planDrift(
+      { ...c, items: [{ id: 'weck' }, { id: 'brot' }] },
+      plan,
+      adopted
+    )
+    expect(moved).toEqual({
+      bakeDates: ['2026-11-28'],
+      moved: ['2026-11-29|weck'],
+      added: [],
+    })
+  })
+
+  it('planDrift: Paare, die neu auf den Teigtag fallen (lead), ohne Fehlalarm', () => {
+    // Samstag 2026-11-28: Weck für Sonntag und Dienstag, Brot am Samstag
+    const c = {
+      days: [2, 3, 4, 5, 6, 7],
+      dough_days: [2, 3, 4, 5, 6],
+      items: [{ id: 'weck', lead: 1 }, { id: 'brot' }, { id: 'sonntag-x' }],
+    }
+    const plan = {
+      version: 2,
+      doughDate: '2026-11-28',
+      bakeDates: [
+        { date: '2026-11-28', itemIds: ['brot', 'sonntag-x'] },
+        { date: '2026-11-29', itemIds: ['weck'] },
+        { date: '2026-12-01', itemIds: ['weck'] },
+      ],
+      knownItems: ['weck', 'brot', 'sonntag-x'],
+    }
+    // unverändert: nichts verschoben, nichts neu
+    expect(day.planDrift(c, plan, [])).toEqual({
+      bakeDates: ['2026-11-28', '2026-11-29', '2026-12-01'],
+      moved: [],
+      added: [],
+    })
+    // der Sonntags-Posten wird jetzt am Samstag gemacht (lead 1 nur sonntags)
+    const sundayOnly = {
+      ...c,
+      items: [
+        { id: 'weck', lead: 1 },
+        { id: 'brot' },
+        { id: 'sonntag-x', lead: { 7: 1 } },
+      ],
+    }
+    expect(day.planDrift(sundayOnly, plan, [])).toEqual({
+      bakeDates: ['2026-11-28', '2026-11-29', '2026-12-01'],
+      moved: [],
+      added: ['2026-11-29|sonntag-x'],
+    })
+    // trägt ein anderer freigegebener Zettel das Paar, bleibt es dort
+    expect(
+      day.planDrift(sundayOnly, plan, [], new Set(['2026-11-29|sonntag-x']))
+        .added
+    ).toEqual([])
+    expect(
+      day.planDrift(
+        sundayOnly,
+        plan,
+        [],
+        new Map([['2026-11-29|sonntag-x', '2026-11-29']])
+      ).added
+    ).toEqual([])
+    // trug es schon beim Freigeben ein anderer Zettel, fehlt es nicht wegen
+    // der Stammdaten - auch wenn jener Zettel inzwischen wieder offen ist
+    const skipped = [
+      {
+        code: 'owned_elsewhere',
+        items: [{ date: '2026-11-29', itemId: 'sonntag-x' }],
+      },
+    ]
+    expect(day.planDrift(sundayOnly, plan, skipped).added).toEqual([])
+    // ein später in hq ergänzter Posten deckt der Plan ohnehin (planCovers)
+    const neu = { ...c, items: [...c.items, { id: 'neu', lead: 1 }] }
+    expect(day.planDrift(neu, plan, []).added).toEqual([])
+    // ohne knownItems lässt sich neu und verschoben nicht unterscheiden
+    const { knownItems: _k, ...noKnown } = plan
+    void _k
+    expect(day.planDrift(sundayOnly, noKnown, []).added).toEqual([])
+    // der Vergleich sieht es
+    const snap = { plan, warnings: [] }
+    expect(
+      day.snapshotDiffers(snap, { planDrift: day.planDrift(c, plan, []) })
+    ).toBe(false)
+    expect(
+      day.snapshotDiffers(snap, {
+        planDrift: day.planDrift(sundayOnly, plan, []),
+      })
+    ).toBe(true)
   })
 
   it('prepDateFor: Vortag, offen wenn der Vortag kein Produktionstag ist (Q-B2)', () => {
@@ -822,5 +1099,454 @@ describe('Nachträge in Backmengen (W4-Verifikation)', () => {
         ],
       }).preordersExact
     ).toEqual({ a: 0.75 })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Backzettel v2 (Z10): Zettel je Teigtag, Deltas nach Plan, Freigabe v2
+// ---------------------------------------------------------------------------
+
+const planCore = require('../../src/services/backzettel-plan.core')
+const { configV2, PRODUCTS_V2 } = require('../fixtures/backzettel.synthetic')
+
+describe('Z10: Teigtag-Zettel im Tages-Core', () => {
+  const cfgV2 = configCore.normalizeConfig(configV2())
+  const SUN = '2026-11-29'
+  const NEXT_TUE = '2026-12-01'
+  const satPlan = planCore.planForSheet(cfgV2, SAT)
+  const tuePlan = planCore.planForSheet(cfgV2, NEXT_TUE)
+  const confirmedSnapshot = [
+    {
+      preorderId: 1,
+      productId: 'test-doppel',
+      variant: '',
+      qty: 2,
+      pickupDate: NEXT_TUE,
+    },
+    {
+      preorderId: 2,
+      productId: 'test-stern',
+      variant: '',
+      qty: 5,
+      pickupDate: SUN,
+    },
+  ]
+
+  it('snapshotFromPreorders nimmt den Abholtag mit, toCorePreorderItems behält ihn', () => {
+    const snap = day.snapshotFromPreorders([
+      {
+        id: 4,
+        status: 'offen',
+        pickupDate: NEXT_TUE,
+        items: [{ productId: 'test-doppel', variant: '', quantity: 3 }],
+      },
+      {
+        id: 5,
+        status: 'offen',
+        items: [{ productId: 'test-weck', quantity: 1 }],
+      },
+    ])
+    expect(snap).toEqual([
+      {
+        preorderId: 4,
+        productId: 'test-doppel',
+        variant: '',
+        qty: 3,
+        pickupDate: NEXT_TUE,
+      },
+      { preorderId: 5, productId: 'test-weck', variant: '', qty: 1 },
+    ])
+    expect(day.toCorePreorderItems(snap, SAT).map((p) => p.pickupDate)).toEqual(
+      [NEXT_TUE, SAT]
+    )
+  })
+
+  it('eine Bestellung zieht zwischen zwei Backtagen desselben Zettels um: „verschoben“, nicht „entfernt“ (Review Z10 Runde 2)', () => {
+    const rows = day.reconcileDeltas({
+      config: cfgV2,
+      date: SAT,
+      plan: satPlan,
+      snapshot: [confirmedSnapshot[0]],
+      current: [{ ...confirmedSnapshot[0], pickupDate: SUN }],
+      recorded: [],
+      catalog: PRODUCTS_V2,
+      orders: { 1: { status: 'offen', pickupDate: SUN } },
+    })
+    expect(rows).toEqual([
+      expect.objectContaining({ qty: 2, kind: 'added', bakeDate: SUN }),
+      expect.objectContaining({ qty: -2, kind: 'moved', bakeDate: NEXT_TUE }),
+    ])
+    // dieselbe Bestellung, nur die Position gestrichen: entfernt
+    const removed = day.reconcileDeltas({
+      config: cfgV2,
+      date: SAT,
+      plan: satPlan,
+      snapshot: [confirmedSnapshot[0]],
+      current: [],
+      recorded: [],
+      catalog: PRODUCTS_V2,
+      orders: { 1: { status: 'offen', pickupDate: NEXT_TUE } },
+    })
+    expect(removed).toEqual([
+      expect.objectContaining({ qty: -2, kind: 'removed' }),
+    ])
+    expect(
+      day.reconcileDeltas({
+        config: cfgV2,
+        date: SAT,
+        plan: satPlan,
+        snapshot: [confirmedSnapshot[0]],
+        current: [],
+        recorded: [],
+        catalog: PRODUCTS_V2,
+        orders: { 1: { status: 'storniert', pickupDate: SUN } },
+      })[0].kind
+    ).toBe('cancelled')
+  })
+
+  it('R24: neue Dienstagsbrötchen nach der Samstagsfreigabe → Delta am Samstag, Backtag Di', () => {
+    const current = [
+      ...confirmedSnapshot,
+      {
+        preorderId: 3,
+        productId: 'test-doppel',
+        variant: '',
+        qty: 4,
+        pickupDate: NEXT_TUE,
+      },
+    ]
+    const rows = day.reconcileDeltas({
+      config: cfgV2,
+      date: SAT,
+      plan: satPlan,
+      snapshot: confirmedSnapshot,
+      current,
+      recorded: [],
+      catalog: PRODUCTS_V2,
+    })
+    expect(rows).toEqual([
+      {
+        itemId: 'test-doppel',
+        variant: '',
+        preorderId: 3,
+        qty: 4,
+        kind: 'added',
+        bakeDate: NEXT_TUE,
+      },
+    ])
+    // gespeichert (mit Backtag) → nichts mehr offen
+    expect(
+      day.reconcileDeltas({
+        config: cfgV2,
+        date: SAT,
+        plan: satPlan,
+        snapshot: confirmedSnapshot,
+        current,
+        recorded: rows,
+      })
+    ).toEqual([])
+    // gespeicherte Zeilen ohne Backtag gehören zum Zettel-Tag, nicht zum Dienstag
+    expect(
+      day.reconcileDeltas({
+        config: cfgV2,
+        date: SAT,
+        plan: satPlan,
+        snapshot: confirmedSnapshot,
+        current,
+        recorded: [
+          { itemId: 'test-doppel', variant: '', preorderId: 3, qty: 4 },
+        ],
+      })
+    ).toHaveLength(2)
+    // …und kein Delta auf dem Dienstagszettel selbst
+    expect(
+      day.reconcileDeltas({
+        config: cfgV2,
+        date: NEXT_TUE,
+        plan: tuePlan,
+        snapshot: [],
+        current,
+        recorded: [],
+      })
+    ).toEqual([])
+  })
+
+  it('R24: Verschieben vom Sonntag auf den Dienstag sind zwei Zeilen desselben Zettels', () => {
+    const current = [
+      confirmedSnapshot[0],
+      { ...confirmedSnapshot[1], pickupDate: NEXT_TUE },
+    ]
+    const rows = day.reconcileDeltas({
+      config: cfgV2,
+      date: SAT,
+      plan: satPlan,
+      snapshot: confirmedSnapshot,
+      current,
+      recorded: [],
+      orders: { 1: 'offen', 2: 'offen' },
+    })
+    expect(rows.map((r) => [r.preorderId, r.bakeDate, r.qty, r.kind])).toEqual([
+      [2, NEXT_TUE, 5, 'added'],
+      [2, SUN, -5, 'removed'],
+    ])
+  })
+
+  it('R25: ein alter, freigegebener Dienstag behält seine Brötchen - kein doppeltes Delta', () => {
+    const legacy = planCore.legacyPlan(NEXT_TUE)
+    const oldSnapshot = [confirmedSnapshot[0]]
+    const current = [
+      confirmedSnapshot[0],
+      {
+        preorderId: 3,
+        productId: 'test-doppel',
+        variant: '',
+        qty: 4,
+        pickupDate: NEXT_TUE,
+      },
+    ]
+    // der alte Dienstag (Plan: alle Posten des Tages) sieht nur die neue Bestellung
+    expect(
+      day.reconcileDeltas({
+        config: cfgV2,
+        date: NEXT_TUE,
+        plan: legacy,
+        snapshot: oldSnapshot,
+        current,
+        recorded: [],
+      })
+    ).toEqual([
+      {
+        itemId: 'test-doppel',
+        variant: '',
+        preorderId: 3,
+        qty: 4,
+        kind: 'added',
+        bakeDate: NEXT_TUE,
+      },
+    ])
+    // mit dem neuen Plan sähe er die neue Bestellung gar nicht - und der
+    // Samstag nimmt sie wegen des Besitzes auch nicht: sie ginge verloren.
+    // Deshalb rechnet ein alter Tag mit seinem eingefrorenen legacyPlan.
+    expect(
+      day.reconcileDeltas({
+        config: cfgV2,
+        date: NEXT_TUE,
+        plan: tuePlan,
+        snapshot: oldSnapshot,
+        current,
+        recorded: [],
+      })
+    ).toEqual([])
+    // der Samstag (ohne die Paare des alten Dienstags) bucht nichts
+    const owned = cfgV2.items.map((i) => planCore.ownedKey(NEXT_TUE, i.id))
+    expect(
+      day.reconcileDeltas({
+        config: cfgV2,
+        date: SAT,
+        plan: planCore.planForSheet(cfgV2, SAT, owned),
+        snapshot: [],
+        current,
+        recorded: [],
+      })
+    ).toEqual([])
+    expect(day.planOfSnapshot({ plan: satPlan }, SAT)).toBe(satPlan)
+    expect(day.planOfSnapshot({ hefeteig: null }, NEXT_TUE)).toEqual(legacy)
+    expect(day.planOfSnapshot(null, NEXT_TUE)).toEqual(legacy)
+  })
+
+  it('Freigabe v2: Zeilen mit Backtag, Schluessel wie im Entwurf, Reihenfolge nach Backtag', () => {
+    const sheet = core.computeDoughDay({
+      config: cfgV2,
+      date: SAT,
+      catalog: PRODUCTS_V2,
+      corrections: [
+        { itemId: 'test-doppel', bakeDate: SUN, qty: 2, reason: 'Fest' },
+      ],
+    })
+    const rows = day
+      .linesForConfirm(sheet.lines)
+      .map((r, i) => ({ id: i + 1, date: SAT, ...r }))
+    const doppelTue = rows.find(
+      (r) => r.itemId === 'test-doppel' && r.bakeDate === NEXT_TUE
+    )
+    expect(doppelTue).toMatchObject({
+      bakeDate: NEXT_TUE,
+      variant: '',
+      total: 40,
+    })
+    expect(day.correctionsFromRows(rows)).toEqual([
+      {
+        bakeDate: SUN,
+        itemId: 'test-doppel',
+        variant: null,
+        qty: 2,
+        reason: 'Fest',
+      },
+    ])
+    const frozen = day
+      .frozenSections([...rows].reverse(), cfgV2)
+      .flatMap((s) => s.lines.map((l) => l.line))
+    expect(frozen.map((l) => [l.key, l.total])).toEqual(
+      sheet.lines.map((l) => [l.key, l.total])
+    )
+    expect(
+      frozen.find((l) => l.key === `test-doppel|@${NEXT_TUE}`)
+    ).toMatchObject({
+      bakeDate: NEXT_TUE,
+      doughDate: SAT,
+      lead: 1,
+      variantKind: null,
+      variantLabel: null,
+      bruch: { group: 'test-doppel', perProduct: 2 },
+    })
+    expect(frozen.find((l) => l.key === 'test-korn|g500').variantLabel).toBe(
+      '500 g'
+    )
+    // die Teig-Ansichten aus den eingefrorenen Zeilen = Entwurf
+    const parts = core.sheetParts(cfgV2, frozen, SAT, {}, [])
+    expect(parts.machine).toEqual(sheet.machine)
+    expect(parts.rolls).toEqual(sheet.rolls)
+    expect(parts.bread).toEqual(sheet.bread)
+  })
+
+  it('computedSnapshot v2 friert Plan, Teige, Kästen, Brot, Brötchen und Lücken ein', () => {
+    const sheet = core.computeDoughDay({
+      config: cfgV2,
+      date: SAT,
+      catalog: PRODUCTS_V2,
+    })
+    const snap = day.computedSnapshot(sheet)
+    expect(snap).toMatchObject({
+      sheetVersion: 2,
+      plan: satPlan,
+      bakeDates: sheet.bakeDates,
+      doughs: sheet.doughs,
+      machine: sheet.machine,
+      bread: sheet.bread,
+      rolls: sheet.rolls,
+      openMasterData: sheet.openMasterData,
+    })
+    expect(Object.keys(snap.subtotalExact)).toContain(
+      `test-doppel|@${NEXT_TUE}`
+    )
+    // v1-Ergebnis: kein Plan (alter Tag)
+    expect(
+      day.computedSnapshot(core.computeDay({ config: cfg, date: SAT }))
+    ).not.toHaveProperty('plan')
+  })
+
+  it('machineDeltaExtras: was ein Nachtrag für die Maschine heißt', () => {
+    const sheet = core.computeDoughDay({
+      config: cfgV2,
+      date: SAT,
+      catalog: PRODUCTS_V2,
+    })
+    const extras = { [`test-doppel|@${NEXT_TUE}`]: 3 }
+    expect(day.machineDeltaExtras(cfgV2, sheet.lines, extras, SAT)).toEqual([
+      {
+        id: 'test-weck-teig',
+        name: 'Testweck',
+        doughIds: ['test-weck-teig'],
+        kgBefore: 16,
+        kg: 17.2,
+        kgDelta: 1.2,
+        complete: true,
+        litersBefore: { exact: 5.33, rounded: 5.5, reason: null },
+        liters: { exact: 5.73, rounded: 5.5, reason: null },
+        batchesBefore: 1,
+        batches: 1,
+      },
+    ])
+    expect(day.machineDeltaExtras(cfgV2, sheet.lines, {}, SAT)).toEqual([])
+    expect(day.machineDeltaExtras(null, sheet.lines, extras, SAT)).toEqual([])
+  })
+
+  it('bruchDeltaExtras: „+1 Bruch“ oder „passt in die freien Stücke“', () => {
+    const sheet = core.computeDoughDay({
+      config: cfgV2,
+      date: SAT,
+      catalog: PRODUCTS_V2,
+    })
+    const before = sheet.rolls
+      .flatMap((r) => r.groups)
+      .find((g) => g.key === `${NEXT_TUE}|test-doppel`)
+    expect(before).toBeDefined()
+    // So viele Brötchen, wie gerade noch in die freien Stücke passen …
+    const fits = before.spareProducts
+    if (fits > 0) {
+      const [g] = day.bruchDeltaExtras(
+        cfgV2,
+        sheet.lines,
+        { [`test-doppel|@${NEXT_TUE}`]: fits },
+        SAT
+      )
+      expect(g).toMatchObject({
+        key: `${NEXT_TUE}|test-doppel`,
+        bruecheBefore: before.brueche,
+        brueche: before.brueche,
+        bruecheDelta: 0,
+        spareProducts: 0,
+      })
+    }
+    // … und eins mehr braucht einen Bruch mehr.
+    const [more] = day.bruchDeltaExtras(
+      cfgV2,
+      sheet.lines,
+      { [`test-doppel|@${NEXT_TUE}`]: fits + 1 },
+      SAT
+    )
+    expect(more).toMatchObject({
+      key: `${NEXT_TUE}|test-doppel`,
+      piecesBefore: before.pieces,
+      piecesDelta: (fits + 1) * before.perProduct,
+      bruecheBefore: before.brueche,
+      brueche: before.brueche + 1,
+      bruecheDelta: 1,
+      complete: true,
+    })
+    expect(day.bruchDeltaExtras(cfgV2, sheet.lines, {}, SAT)).toEqual([])
+    expect(day.bruchDeltaExtras(null, sheet.lines, { x: 1 }, SAT)).toEqual([])
+  })
+
+  it('bruchDeltaExtras: Stück je Bruch offen - Brüche bleiben unbekannt, nie 0', () => {
+    const cfg = configCore.normalizeConfig(configV2({ bruch_pieces: null }))
+    const sheet = core.computeDoughDay({
+      config: cfg,
+      date: SAT,
+      catalog: PRODUCTS_V2,
+    })
+    const [g] = day.bruchDeltaExtras(
+      cfg,
+      sheet.lines,
+      { [`test-doppel|@${NEXT_TUE}`]: 3 },
+      SAT
+    )
+    expect(g).toMatchObject({ brueche: null, bruecheDelta: null })
+    expect(g.piecesDelta).toBe(6)
+  })
+
+  it('linesForDeltas: ein Nachtrag für einen anderen Backtag bekommt eine Zeile mit seinem Schlüssel (S3)', () => {
+    const key = `test-kaese|@${NEXT_TUE}`
+    const delta = {
+      key,
+      itemId: 'test-kaese',
+      variant: null,
+      bakeDate: NEXT_TUE,
+      qty: 3,
+    }
+    const out = day.linesForDeltas([], [delta], cfgV2, SAT)
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({
+      key,
+      bakeDate: NEXT_TUE,
+      doughDate: SAT,
+      total: 0,
+    })
+    // Backmenge je Zeile, über den passenden Schlüssel
+    expect(day.deltaBakeExtras(out, { [key]: { qty: 3 } }, null, null)).toEqual(
+      { [key]: 3 }
+    )
+    // ohne Zettel-Tag wie bisher (v1-Schlüssel)
+    expect(day.linesForDeltas([], [delta], cfgV2)[0].key).toBe('test-kaese|')
   })
 })
