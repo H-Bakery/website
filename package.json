@@ -237,6 +237,9 @@
     "@module-federation/dts-plugin": {
       "ws": "^8.21.0"
     },
-    "picomatch@4": "^4.0.4"
+    "picomatch@4": "^4.0.4",
+    "sequelize": {
+      "uuid": "$uuid"
+    }
   }
 }
