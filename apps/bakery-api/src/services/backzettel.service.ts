@@ -621,7 +621,7 @@ export function createBackzettelService(
     const snap = day.computedSnapshot
     // Z10: a snapshot with a plan is a dough-day sheet (v2); without, a day
     // confirmed before Z10 - its v1 layout stays (`sheetVersion: 1`).
-    const v2 = !!(snap && snap.plan && Array.isArray(snap.plan.bakeDates))
+    const v2 = dayCore.isSheetSnapshot(snap)
     const [rows, deltaRows, confirmAudits] = await Promise.all([
       BackzettelLine.findAll({ where: { date }, order: [['id', 'ASC']] }),
       BackzettelDelta.findAll({ where: { date }, order: [['id', 'ASC']] }),
@@ -798,32 +798,38 @@ export function createBackzettelService(
     // Frozen at confirm; the current master data only says whether it would
     // now compute something else (`configChangedSinceConfirm`). Days
     // confirmed before the snapshot column existed fall back to recomputing.
-    // Z10: a v2 sheet computes Hefeteig (with litres) and fillings like
-    // `computeDoughDay` (`sheetParts`), an old day like v1 `computeDay`.
-    const hefeteigAndFillings = (cfg: any, list: any[], w: unknown[]) =>
+    // Z10: a v2 sheet computes all its parts like `computeDoughDay`
+    // (`sheetParts`: Hefeteig with litres, fillings, doughs, machine strip,
+    // bread, rolls, open master data) and checks its plan (`planDrift`); an
+    // old day computes Hefeteig and fillings like v1 `computeDay`.
+    const partsOf = (cfg: any, list: any[], w: unknown[]) =>
       v2
-        ? (() => {
-            const parts = core.sheetParts(
-              cfg,
-              list,
-              date,
-              loaded.recipes || {},
-              w
-            )
-            return { hefeteig: parts.hefeteig, fillings: parts.fillings }
-          })()
+        ? core.sheetParts(cfg, list, date, loaded.recipes || {}, w)
         : {
             hefeteig: core.computeHefeteig(cfg, list),
             fillings: core.computeFillings(cfg, list, loaded.recipes || {}, w),
           }
+    const hefeteigAndFillings = (cfg: any, list: any[], w: unknown[]) => {
+      const parts = partsOf(cfg, list, w)
+      return { hefeteig: parts.hefeteig, fillings: parts.fillings }
+    }
     const recomputed =
       config && !light
         ? (() => {
             const w: unknown[] = []
             return {
-              ...hefeteigAndFillings(config, lines, w),
+              ...partsOf(config, lines, w),
               prep: core.computePrep(config, lines, weekday),
               warnings: w,
+              ...(v2
+                ? {
+                    planDrift: dayCore.planDrift(
+                      config,
+                      snap.plan,
+                      snap.warnings
+                    ),
+                  }
+                : {}),
             }
           })()
         : null

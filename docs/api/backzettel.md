@@ -175,8 +175,14 @@ later bake day (Saturday: Sunday's and Tuesday's rolls). With today's hq file (n
   confirmed before Z10: `sheetVersion: 1`, `plan = legacyPlan(date)` (every item of that date),
   no `doughs`/`machine`/`bread`/`rolls`, lines with `lead: 0` - the screens keep the v1 layout.
   `configChangedSinceConfirm` recomputes the way the day was computed (`sheetParts` for v2, v1
-  `computeHefeteig` for old days). `deltaExtras` keeps its v1 shape; `deltaMachine` lists the
-  machine boxes a Nachtrag changes (v2 only, `machineDeltaExtras`), `deltaBruch` the Bruch groups
+  `computeHefeteig` for old days) and compares it with the snapshot (`snapshotDiffers`, key-order
+  independent `stableJson`): v1 days Hefeteig, fillings and prep as before; v2 sheets also
+  `doughs`, `machine`, `bread`, `rolls`, `openMasterData` and the plan (`planDrift`: the bake days
+  the dough day feeds, and frozen pairs whose dough day moved via `lead`/`dough_days` or whose item
+  is gone; adopted items excepted). So `kg_per_liter`, liter rounding, add-ons, `combined_with`,
+  Bruch weight/pieces, size `dough_g`, `from_dough` and a swap back to v1 master data all show.
+  Not covered: an item that would _newly_ move onto this dough day (other sheets may own it).
+  `deltaExtras` keeps its v1 shape; `deltaMachine` lists the machine boxes a Nachtrag changes (v2 only, `machineDeltaExtras`), `deltaBruch` the Bruch groups
   whose dough pieces change (`bruchDeltaExtras`: pieces, Brüche and free pieces before/after,
   `bruecheDelta` `null` while Stück je Bruch or a base is open) - "1 Bruch mehr" or "passt in die
   freien Stücke". Planning screen, tablet and print show both as one note under the Nachträge.

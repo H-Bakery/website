@@ -893,6 +893,97 @@ describe('transition: a legacy Tuesday reopened after Saturday’s v2 confirm', 
   })
 })
 
+describe('configChangedSinceConfirm on a dough-day sheet', () => {
+  // Saturday 2027-01-02: bread, Hefeteig, rolls for Sunday and Tuesday.
+  const SAT6 = '2027-01-02'
+  const writeConfig = (cfg: unknown) =>
+    fs.writeFileSync(
+      path.join(hqDir, 'config', 'backzettel.yaml'),
+      JSON.stringify(cfg, null, 2)
+    )
+  const changedAfter = async (edit: (cfg: any) => unknown) => {
+    const cfg = fixture.configV2()
+    writeConfig(edit(cfg) ?? cfg)
+    const res = await as('backstube').get(`/api/backzettel/${SAT6}`)
+    expect(res.status).toBe(200)
+    expect(res.body.data).toMatchObject({
+      status: 'confirmed',
+      sheetVersion: 2,
+    })
+    return res.body.data.configChangedSinceConfirm
+  }
+  const byId = (list: any[], id: string) => list.find((x) => x.id === id)
+
+  beforeAll(async () => {
+    const res = await as('backstube').post(`/api/backzettel/${SAT6}/confirm`)
+    expect(res.status).toBe(200)
+    expect(res.body.data.configChangedSinceConfirm).toBe(false)
+  })
+  afterEach(() => writeHq(hqDir))
+
+  it('stays false while the master data are unchanged', async () => {
+    expect(await changedAfter(() => undefined)).toBe(false)
+  })
+
+  it('a changed kg_per_liter (machine strip)', async () => {
+    expect(
+      await changedAfter((cfg) => {
+        byId(cfg.doughs, 'test-weck-teig').kg_per_liter = 4
+      })
+    ).toBe(true)
+  })
+
+  it('a changed Bruch weight (rolls)', async () => {
+    expect(
+      await changedAfter((cfg) => {
+        byId(cfg.items, 'test-doppel').bruch.g = 1300
+      })
+    ).toBe(true)
+  })
+
+  it('a changed dough_g of a bread size', async () => {
+    expect(
+      await changedAfter((cfg) => {
+        byId(cfg.items, 'test-korn').sizes[0].dough_g = 650
+      })
+    ).toBe(true)
+  })
+
+  it('a changed lead (the rolls would now be made on their bake day)', async () => {
+    expect(
+      await changedAfter((cfg) => {
+        byId(cfg.items, 'test-doppel').lead = 0
+      })
+    ).toBe(true)
+  })
+
+  it('master data swapped back to v1 (no doughs, sizes, Bruch or lead)', async () => {
+    expect(
+      await changedAfter((cfg) => {
+        const { dough_days, bruch_pieces, ...rest } = cfg
+        void dough_days
+        void bruch_pieces
+        return {
+          ...rest,
+          items: cfg.items
+            .filter((i: any) => !i.sizes)
+            .map((i: any) => {
+              const { lead, bruch, dough, ...item } = i
+              void lead
+              void bruch
+              return i.section === 'hefeteig' ? { ...item, dough } : item
+            }),
+          // Hefeteig unchanged: only the v2 parts tell the difference
+          doughs: cfg.doughs.filter((d: any) => d.id === 'test-hefe'),
+        }
+      })
+    ).toBe(true)
+    // the swapped config is valid - the answer is a real comparison
+    const day = (await as('backstube').get(`/api/backzettel/${SAT6}`)).body.data
+    expect(day.configStatus).toBe('ok')
+  })
+})
+
 describe('an item added to hq after a sheet was confirmed', () => {
   const SAT5 = '2027-01-09'
   afterAll(() => writeHq(hqDir))

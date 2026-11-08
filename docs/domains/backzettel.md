@@ -75,7 +75,8 @@ die Überarbeitung „Backzettel v2" (Z10) ist dort geplant - dieses Dokument be
 - **Freigeben friert ein:** Zeilen, Vorbestellungs-Schnappschuss und - in `computed_snapshot` -
   Hefeteig, Füllungen, Vorbereitung und Hinweise. Eine spätere Änderung an YAML oder Rezepten ändert
   einen freigegebenen Zettel nicht; `configChangedSinceConfirm: true` sagt nur, dass die aktuellen
-  Stammdaten jetzt etwas anderes ergäben. Nach jeder Freigabe schreibt die API einen Schnappschuss nach
+  Stammdaten jetzt etwas anderes ergäben - beim Teigtag-Zettel (Z10) auch für Teige,
+  Maschinen-Streifen, Brot, Brötchen (Bruch) und die Backtage des Plans (`lead`, `dough_days`). Nach jeder Freigabe schreibt die API einen Schnappschuss nach
   hq `data/production/backzettel/` (Z9, `hq-snapshots.service.ts`, ohne Personendaten). Ein
   Teigtag-Zettel (Z10, `sheetVersion: 2`) wird mit `schema_version: 2` geschrieben - zusätzlich
   `bakeDate`/`doughDate`/`variantLabel` je Zeile, `bakeDates`, `doughs`, `machine`, `rolls`

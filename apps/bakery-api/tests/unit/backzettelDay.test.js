@@ -614,6 +614,87 @@ describe('Erneute Freigabe und eingefrorene Berechnung', () => {
     expect(day.snapshotDiffers(null, a)).toBe(false)
   })
 
+  it('snapshotDiffers (Z10): ein Teigtag-Zettel vergleicht auch Teige, Maschine, Brot, Brötchen und Plan', () => {
+    const plan = {
+      version: 2,
+      doughDate: '2026-11-28',
+      bakeDates: [{ date: '2026-11-28', itemIds: ['a'] }],
+    }
+    const snap = {
+      hefeteig: null,
+      fillings: [],
+      prep: [],
+      plan,
+      doughs: [{ id: 'd', kg: 6, liters: 2 }],
+      machine: [{ id: 'd', kg: 6 }],
+      bread: null,
+      rolls: [],
+      openMasterData: [],
+    }
+    const same = {
+      // andere Reihenfolge der Felder: gleich
+      machine: [{ kg: 6, id: 'd' }],
+      doughs: [{ liters: 2, kg: 6, id: 'd' }],
+      prep: [],
+      fillings: [],
+      hefeteig: null,
+      bread: null,
+      rolls: [],
+      openMasterData: [],
+      planDrift: { bakeDates: ['2026-11-28'], moved: [] },
+    }
+    expect(day.snapshotDiffers(snap, same)).toBe(false)
+    expect(
+      day.snapshotDiffers(snap, { ...same, machine: [{ id: 'd', kg: 8 }] })
+    ).toBe(true)
+    expect(
+      day.snapshotDiffers(snap, {
+        ...same,
+        planDrift: { bakeDates: ['2026-11-28'], moved: ['2026-11-28|a'] },
+      })
+    ).toBe(true)
+    // ein alter Tag (ohne Plan) vergleicht wie bisher nur Hefeteig & Co.
+    const { plan: _p, ...old } = snap
+    void _p
+    expect(
+      day.snapshotDiffers(old, { ...same, machine: [{ id: 'd', kg: 8 }] })
+    ).toBe(false)
+  })
+
+  it('planDrift: Backtage und verschobene Paare, übernommene Posten zählen nicht', () => {
+    const c = {
+      days: [2, 3, 4, 5, 6, 7],
+      dough_days: [2, 3, 4, 5, 6],
+      items: [{ id: 'weck', lead: 1 }, { id: 'brot' }],
+    }
+    const plan = {
+      version: 2,
+      doughDate: '2026-11-28',
+      bakeDates: [
+        { date: '2026-11-28', itemIds: ['brot', 'alt'] },
+        { date: '2026-11-29', itemIds: ['weck'] },
+      ],
+    }
+    const adopted = [{ code: 'adopted_orphans', items: ['alt'] }]
+    expect(day.planDrift(null, plan)).toEqual({
+      bakeDates: ['2026-11-28', '2026-11-29'],
+      moved: [],
+    })
+    // „alt“ fehlt in hq, ist aber übernommen; sonst passt alles
+    expect(day.planDrift(c, plan, adopted).moved).toEqual([])
+    expect(day.planDrift(c, plan, []).moved).toEqual(['2026-11-28|alt'])
+    // lead 0: der Sonntags-Weck wäre jetzt am Sonntag dran
+    const moved = day.planDrift(
+      { ...c, items: [{ id: 'weck' }, { id: 'brot' }] },
+      plan,
+      adopted
+    )
+    expect(moved).toEqual({
+      bakeDates: ['2026-11-28'],
+      moved: ['2026-11-29|weck'],
+    })
+  })
+
   it('prepDateFor: Vortag, offen wenn der Vortag kein Produktionstag ist (Q-B2)', () => {
     expect(day.prepDateFor(TUE, cfg.days)).toEqual({
       prepDate: '2026-11-23',

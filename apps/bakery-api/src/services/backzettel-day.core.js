@@ -961,20 +961,108 @@ function hefeteigFillingsDiff(before, after) {
   return doughs.length || fillings.length ? { doughs, fillings } : null
 }
 
+/** Ist der Schnappschuss ein Teigtag-Zettel (Z10, mit eingefrorenem Plan)? */
+function isSheetSnapshot(snapshot) {
+  return !!(snapshot && snapshot.plan && Array.isArray(snapshot.plan.bakeDates))
+}
+
+/**
+ * Der Plan eines freigegebenen Teigtag-Zettels, wie ihn die aktuellen
+ * Stammdaten saehen (Z10, fuer `snapshotDiffers`): welche Backtage der Teigtag
+ * beliefert (`bakeDatesFor`) und welche eingefrorenen Paare (Backtag ×
+ * Posten) ihren Teig jetzt an einem anderen Tag haetten (`lead`,
+ * `dough_days`) oder in hq fehlen. Uebernommene Posten (`adopted_orphans`)
+ * stehen ohnehin am Backtag selbst und zaehlen nicht als verschoben.
+ *
+ * Mit `config` null: der eingefrorene Plan selbst (`moved` leer) - die Seite
+ * des Schnappschusses im Vergleich.
+ *
+ * @returns {{ bakeDates: string[], moved: string[] } | null}
+ */
+function planDrift(config, plan, warnings) {
+  if (!plan || !Array.isArray(plan.bakeDates)) return null
+  const frozenDates = plan.bakeDates.map((b) => b && b.date)
+  if (!config) return { bakeDates: frozenDates, moved: [] }
+  const adopted = new Set()
+  for (const w of Array.isArray(warnings) ? warnings : []) {
+    if (w && w.code === 'adopted_orphans' && Array.isArray(w.items)) {
+      for (const id of w.items) adopted.add(id)
+    }
+  }
+  const items = new Map((config.items || []).map((i) => [i.id, i]))
+  const moved = []
+  for (const b of plan.bakeDates) {
+    if (!b || !Array.isArray(b.itemIds)) continue
+    for (const id of b.itemIds) {
+      if (b.date === plan.doughDate && adopted.has(id)) continue
+      const item = items.get(id)
+      if (
+        !item ||
+        planCore.doughDateFor(config, item, b.date) !== plan.doughDate
+      ) {
+        moved.push(planCore.ownedKey(b.date, id))
+      }
+    }
+  }
+  return {
+    bakeDates: planCore.bakeDatesFor(config, plan.doughDate),
+    moved,
+  }
+}
+
+/**
+ * JSON mit sortierten Schluesseln: zwei Objekte mit denselben Werten ergeben
+ * denselben Text, egal in welcher Reihenfolge ihre Felder entstanden sind
+ * (der Schnappschuss kommt aus der Datenbank, die Neuberechnung frisch).
+ * `undefined` faellt wie bei `JSON.stringify` weg.
+ */
+function stableJson(value) {
+  return JSON.stringify(value, (_key, v) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(
+          Object.keys(v)
+            .sort()
+            .map((k) => [k, v[k]])
+        )
+      : v
+  )
+}
+
 /**
  * Wuerden die aktuellen Stammdaten fuer dieselben freigegebenen Mengen etwas
- * anderes ergeben (Hefeteig, Fuellungen, Vorbereitung)? Nur ein Hinweis -
- * der freigegebene Zettel bleibt, wie er ist.
+ * anderes ergeben? Nur ein Hinweis - der freigegebene Zettel bleibt, wie er
+ * ist. Ein alter Tag (v1) vergleicht Hefeteig, Fuellungen und Vorbereitung;
+ * ein Teigtag-Zettel (Z10) dazu alles, was die Stammdaten aus den Zeilen
+ * machen: Teige und Maschinen-Streifen (`kg_per_liter`, Liter-Rundung,
+ * Zugaben, `combined_with`), Brot (Groessen, `dough_g`, `from_dough`),
+ * Broetchen (Bruch-Gewichte und -Stueck), offene Stammdaten und die Backtage
+ * des Plans (`planDrift`: `lead`, `dough_days`). `recomputed` traegt dafuer
+ * `sheetParts` der aktuellen Stammdaten und `planDrift`.
  */
 function snapshotDiffers(snapshot, recomputed) {
   if (!snapshot || !recomputed) return false
-  const pick = (x) =>
-    JSON.stringify({
-      hefeteig: x.hefeteig === undefined ? null : x.hefeteig,
-      fillings: x.fillings === undefined ? null : x.fillings,
-      prep: x.prep === undefined ? null : x.prep,
+  const sheet = isSheetSnapshot(snapshot)
+  const field = (x, k, empty) => (x[k] === undefined ? empty : x[k])
+  const pick = (x, plan) =>
+    stableJson({
+      hefeteig: field(x, 'hefeteig', null),
+      fillings: field(x, 'fillings', null),
+      prep: field(x, 'prep', null),
+      ...(sheet
+        ? {
+            doughs: field(x, 'doughs', []),
+            machine: field(x, 'machine', []),
+            bread: field(x, 'bread', null),
+            rolls: field(x, 'rolls', []),
+            openMasterData: field(x, 'openMasterData', []),
+            plan,
+          }
+        : {}),
     })
-  return pick(snapshot) !== pick(recomputed)
+  return (
+    pick(snapshot, sheet ? planDrift(null, snapshot.plan) : null) !==
+    pick(recomputed, sheet ? field(recomputed, 'planDrift', null) : null)
+  )
 }
 
 function shiftDate(date, days) {
@@ -1027,6 +1115,9 @@ module.exports = {
   planOfSnapshot,
   prepWithDeltas,
   hefeteigFillingsDiff,
+  isSheetSnapshot,
+  planDrift,
+  stableJson,
   snapshotDiffers,
   prepDateFor,
 }
