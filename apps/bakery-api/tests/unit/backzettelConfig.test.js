@@ -14,7 +14,12 @@ const {
   PRODUCTS,
   config,
   RECIPE_MD,
+  PRODUCTS_V2,
+  configV2,
+  OPEN_V2,
 } = require('../fixtures/backzettel.synthetic')
+const { V1_CASES } = require('../fixtures/backzettel-v1-cases')
+const V1_RECORDED = require('../fixtures/backzettel-v1-validation.recorded.json')
 
 function validate(obj, products = PRODUCTS) {
   return core.validateBackzettelConfig(obj, { products })
@@ -304,7 +309,7 @@ describe('validateBackzettelConfig', () => {
 
   it('warnt bei Teig ohne Chargengroesse und bei unbekannten Schluesseln', () => {
     const cfg = config({ extra: 1 })
-    cfg.doughs[0].batch_max_kg = null
+    delete cfg.doughs[0].batch_max_kg
     cfg.items[0].bsae = { 2: 1 }
     const r = validate(cfg)
     expect(r.ok).toBe(true)
@@ -316,6 +321,22 @@ describe('validateBackzettelConfig', () => {
         'items[0].bsae',
       ])
     )
+  })
+
+  it('Z10: batch_max_kg null ist offen, keine Warnung', () => {
+    const cfg = config()
+    cfg.doughs[0].batch_max_kg = null
+    const r = validate(cfg)
+    expect(r.ok).toBe(true)
+    expect(r.warnings).toEqual([])
+    expect(r.open).toEqual([
+      {
+        path: 'doughs[0].batch_max_kg',
+        code: 'batch_max_kg_unknown',
+        message:
+          'Teig „hefeteig-test“: Chargengröße ist noch offen – Chargen werden nicht berechnet.',
+      },
+    ])
   })
 
   it('verlangt Rezeptpfade relativ unter data/recipes/ mit .md (nie ausserhalb von hq)', () => {
@@ -679,5 +700,961 @@ describe('Loader und CLI', () => {
       .mockImplementation(() => true)
     expect(cli.main([])).toBe(2)
     spy.mockRestore()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Backzettel v2 (Z10): Schema, offene Stammdaten, Normalisierung
+// (docs/backzettel-v2.md §2, §3, R28). Nur erfundene Werte.
+// ---------------------------------------------------------------------------
+
+const ALL_PRODUCTS = [...PRODUCTS, ...PRODUCTS_V2]
+
+function v2(mutate) {
+  const cfg = configV2()
+  if (mutate) mutate(cfg)
+  return core.validateBackzettelConfig(cfg, { products: ALL_PRODUCTS })
+}
+
+function item(cfg, id) {
+  return cfg.items.find((i) => i.id === id)
+}
+
+function dough(cfg, id) {
+  return cfg.doughs.find((d) => d.id === id)
+}
+
+const errorPaths = (r) => r.errors.map((e) => e.path)
+const warningPaths = (r) => r.warnings.map((w) => w.path)
+const openPaths = (r) => r.open.map((o) => o.path)
+
+/** Genau ein Fehler, an `path`. */
+function expectOnlyError(r, path) {
+  expect(errorPaths(r)).toEqual([path])
+}
+
+describe('Z10: v1-Dateien bleiben unverändert', () => {
+  it.each(Object.keys(V1_CASES))(
+    '%s: dieselben Fehler und Warnungen wie vor Z10',
+    (name) => {
+      const r = validate(V1_CASES[name]())
+      expect({ ok: r.ok, errors: r.errors, warnings: r.warnings }).toEqual(
+        V1_RECORDED[name]
+      )
+    }
+  )
+
+  it('die Aufnahme deckt jeden Fall ab', () => {
+    expect(Object.keys(V1_RECORDED).sort()).toEqual(
+      Object.keys(V1_CASES).sort()
+    )
+  })
+
+  it('eine v1-Datei hat nichts offen und keine Teig-Warnungen fuer kg_per_liter/liter_rounding', () => {
+    const r = validate(config())
+    expect(r.open).toEqual([])
+    expect(r.warnings).toEqual([])
+  })
+
+  it('nur ein ausdrueckliches null ist offen (filling_g je Sorte)', () => {
+    const r = validate(V1_CASES['fuellung-variante-null']())
+    expect(r.open.map((o) => [o.path, o.code])).toEqual([
+      ['items[5].filling_g.nuss', 'filling_g_unknown'],
+    ])
+  })
+})
+
+describe('Z10: validateBackzettelConfig fuer v2', () => {
+  it('nimmt configV2 ohne Fehler und Warnungen an und listet das Offene', () => {
+    const r = v2()
+    expect(r.errors).toEqual([])
+    expect(r.warnings).toEqual([])
+    expect(r.ok).toBe(true)
+    expect(r.open.map((o) => [o.path, o.code])).toEqual(OPEN_V2)
+    for (const o of r.open) expect(o.message).toMatch(/offen/)
+  })
+
+  it('liefert open auch fuer eine Nicht-Konfiguration', () => {
+    expect(core.validateBackzettelConfig(null).open).toEqual([])
+  })
+
+  describe('dough_days', () => {
+    it('muss eine nicht-leere Teilmenge von days ohne Doppelte sein', () => {
+      expectOnlyError(
+        v2((c) => (c.dough_days = [])),
+        'dough_days'
+      )
+      expectOnlyError(
+        v2((c) => (c.dough_days = 'di-sa')),
+        'dough_days'
+      )
+      expectOnlyError(
+        v2((c) => (c.dough_days = [1, 2])),
+        'dough_days[0]'
+      )
+      expectOnlyError(
+        v2((c) => (c.dough_days = [2, 2])),
+        'dough_days[1]'
+      )
+      expectOnlyError(
+        v2((c) => (c.dough_days = [2, 8])),
+        'dough_days[1]'
+      )
+    })
+
+    it('fehlt es bei lead > 0, warnt der Validator (es gelten days)', () => {
+      const r = v2((c) => delete c.dough_days)
+      expect(r.errors).toEqual([])
+      expect(warningPaths(r)).toEqual(['dough_days'])
+      // ohne lead > 0 keine Warnung
+      const r2 = v2((c) => {
+        delete c.dough_days
+        for (const it of c.items) delete it.lead
+      })
+      expect(warningPaths(r2)).toEqual([])
+    })
+  })
+
+  describe('bruch_pieces', () => {
+    it('null ist offen, fehlend eine Warnung, sonst positive ganze Zahl', () => {
+      const r = v2((c) => (c.bruch_pieces = null))
+      expect(r.errors).toEqual([])
+      expect(openPaths(r)).toContain('bruch_pieces')
+      expect(r.open.find((o) => o.path === 'bruch_pieces').code).toBe(
+        'bruch_pieces_unknown'
+      )
+      const r2 = v2((c) => delete c.bruch_pieces)
+      expect(r2.errors).toEqual([])
+      expect(warningPaths(r2)).toEqual(['bruch_pieces'])
+      for (const bad of [0, 2.5, '20', -1])
+        expectOnlyError(
+          v2((c) => (c.bruch_pieces = bad)),
+          'bruch_pieces'
+        )
+    })
+
+    it('ohne bruch_pieces keine Warnung, wenn jeder Bruch-Posten eigene pieces hat', () => {
+      const r = v2((c) => {
+        delete c.bruch_pieces
+        for (const it of c.items) if (it.bruch) it.bruch.pieces = 20
+      })
+      expect(r.errors).toEqual([])
+      expect(r.warnings).toEqual([])
+    })
+  })
+
+  describe('lead', () => {
+    it('fehlend gilt 0, null und alles ausser 0..3 ist ein Fehler', () => {
+      expect(v2((c) => delete item(c, 'test-doppel').lead).errors).toEqual([])
+      expectOnlyError(
+        v2((c) => (item(c, 'test-doppel').lead = null)),
+        'items[5].lead'
+      )
+      for (const bad of [4, -1, 1.5, '1', true])
+        expectOnlyError(
+          v2((c) => (item(c, 'test-doppel').lead = bad)),
+          'items[5].lead'
+        )
+      expect(v2((c) => (item(c, 'test-doppel').lead = 3)).errors).toEqual([])
+      expect(v2((c) => (item(c, 'test-doppel').lead = 0)).errors).toEqual([])
+    })
+
+    it('eine Zuordnung braucht Backtage aus days oder default', () => {
+      expectOnlyError(
+        v2((c) => (item(c, 'test-flitweck').lead = { default: 1, 1: 2 })),
+        'items[8].lead.1'
+      )
+      expectOnlyError(
+        v2((c) => (item(c, 'test-flitweck').lead = { default: 1, montag: 2 })),
+        'items[8].lead.montag'
+      )
+      expectOnlyError(
+        v2((c) => (item(c, 'test-flitweck').lead = { default: 1, 6: 5 })),
+        'items[8].lead.6'
+      )
+      expectOnlyError(
+        v2((c) => (item(c, 'test-flitweck').lead = { default: null })),
+        'items[8].lead.default'
+      )
+    })
+  })
+
+  describe('sizes', () => {
+    it('nicht-leere Liste, nicht zusammen mit variants', () => {
+      // ohne gueltige Groessen sind auch die Grundmengen je Groesse falsch
+      for (const bad of [[], { g500: 600 }]) {
+        const r = v2((c) => (item(c, 'test-holz').sizes = bad))
+        expect(errorPaths(r)).toEqual([
+          'items[1].sizes',
+          'items[1].base.2',
+          'items[1].base.6',
+        ])
+      }
+      const r = v2((c) => (item(c, 'test-holz').variants = ['nuss']))
+      expect(errorPaths(r)).toContain('items[1].sizes')
+    })
+
+    it('IDs sind Slugs mit Buchstaben vorn, eindeutig, mit label', () => {
+      const r = v2((c) =>
+        item(c, 'test-korn').sizes.push({
+          id: 'g500',
+          label: 'doppelt',
+          dough_g: 600,
+        })
+      )
+      expectOnlyError(r, 'items[0].sizes[3].id')
+      expect(
+        errorPaths(
+          v2((c) => {
+            const korn = item(c, 'test-korn')
+            korn.sizes[0].id = '500'
+          })
+        )
+      ).toContain('items[0].sizes[0].id')
+      expectOnlyError(
+        v2((c) => (item(c, 'test-korn').sizes[1].label = '  ')),
+        'items[0].sizes[1].label'
+      )
+      expectOnlyError(
+        v2((c) => (item(c, 'test-korn').sizes[1].label = 1)),
+        'items[0].sizes[1].label'
+      )
+      expect(core.isSizeId('g500')).toBe(true)
+      expect(core.isSizeId('500')).toBe(false)
+      expect(core.isSizeId('Kasten')).toBe(false)
+    })
+
+    it('dough_g: null offen, fehlend Warnung, ≤ 0 oder Text Fehler', () => {
+      const missing = v2((c) => delete item(c, 'test-korn').sizes[0].dough_g)
+      expect(missing.errors).toEqual([])
+      expect(warningPaths(missing)).toEqual(['items[0].sizes[0].dough_g'])
+      expect(openPaths(v2())).toContain('items[0].sizes[2].dough_g')
+      for (const bad of [0, -600, '600'])
+        expectOnlyError(
+          v2((c) => (item(c, 'test-korn').sizes[0].dough_g = bad)),
+          'items[0].sizes[0].dough_g'
+        )
+    })
+
+    it('Grundmengen stehen je Groesse; eine blosse Zahl oder fremde Groesse ist ein Fehler', () => {
+      const r = v2((c) => (item(c, 'test-korn').base[3] = 4))
+      expectOnlyError(r, 'items[0].base.3')
+      expect(r.errors[0].message).toMatch(/je Größe, z\. B\. \{ g500: 4 \}/)
+      const r2 = v2((c) => (item(c, 'test-korn').base[3] = { g750: 2 }))
+      expectOnlyError(r2, 'items[0].base.3.g750')
+      expect(r2.errors[0].message).toBe('Größe „g750“ steht nicht in sizes.')
+      expectOnlyError(
+        v2((c) => (item(c, 'test-korn').base[3] = { g500: 1.5 })),
+        'items[0].base.3.g500'
+      )
+    })
+  })
+
+  describe('products[].size', () => {
+    it('ist bei Groessen Pflicht und muss eine Groesse des Postens sein', () => {
+      expectOnlyError(
+        v2((c) => delete item(c, 'test-korn').products[0].size),
+        'items[0].products[0].size'
+      )
+      expectOnlyError(
+        v2((c) => (item(c, 'test-korn').products[0].size = null)),
+        'items[0].products[0].size'
+      )
+      expectOnlyError(
+        v2((c) => (item(c, 'test-korn').products[0].size = 'g750')),
+        'items[0].products[0].size'
+      )
+    })
+
+    it('ist ohne Groessen verboten', () => {
+      expectOnlyError(
+        v2((c) => (item(c, 'test-doppel').products[0].size = 'g500')),
+        'items[5].products[0].size'
+      )
+      expect(
+        v2((c) => (item(c, 'test-doppel').products[0].size = null)).errors
+      ).toEqual([])
+    })
+  })
+
+  describe('dough', () => {
+    it('id: null offen, fehlend Warnung, unbekannt Fehler', () => {
+      const r = v2((c) => (item(c, 'test-doppel').dough.id = null))
+      expect(r.errors).toEqual([])
+      expect(r.open.find((o) => o.path === 'items[5].dough.id').code).toBe(
+        'dough_unknown'
+      )
+      const r2 = v2((c) => delete item(c, 'test-doppel').dough.id)
+      expect(r2.errors).toEqual([])
+      expect(warningPaths(r2)).toEqual(['items[5].dough.id'])
+      expectOnlyError(
+        v2((c) => (item(c, 'test-doppel').dough.id = 'gibt-es-nicht')),
+        'items[5].dough.id'
+      )
+    })
+
+    it('piece_g: null offen, fehlend oder ≤ 0 Fehler, bei sizes/bruch verboten', () => {
+      const r = v2((c) => (item(c, 'test-flit-klein').dough.piece_g = null))
+      expect(r.errors).toEqual([])
+      expect(r.open.find((o) => o.path === 'items[9].dough.piece_g').code).toBe(
+        'piece_g_unknown'
+      )
+      expectOnlyError(
+        v2((c) => delete item(c, 'test-flit-klein').dough.piece_g),
+        'items[9].dough.piece_g'
+      )
+      expectOnlyError(
+        v2((c) => (item(c, 'test-flit-klein').dough.piece_g = 0)),
+        'items[9].dough.piece_g'
+      )
+      expectOnlyError(
+        v2((c) => (item(c, 'test-korn').dough.piece_g = 600)),
+        'items[0].dough.piece_g'
+      )
+      expectOnlyError(
+        v2((c) => (item(c, 'test-doppel').dough.piece_g = null)),
+        'items[5].dough.piece_g'
+      )
+    })
+
+    it('pieces: null offen, fehlend 1, sonst positive ganze Zahl', () => {
+      expect(openPaths(v2())).toContain('items[10].dough.pieces')
+      expect(
+        v2((c) => delete item(c, 'test-party').dough.pieces).errors
+      ).toEqual([])
+      expectOnlyError(
+        v2((c) => (item(c, 'test-party').dough.pieces = 1.5)),
+        'items[10].dough.pieces'
+      )
+    })
+
+    it('kein Objekt ist ein Fehler', () => {
+      expectOnlyError(
+        v2((c) => (item(c, 'test-flit-klein').dough = 'test-flit-teig')),
+        'items[9].dough'
+      )
+    })
+  })
+
+  describe('bruch', () => {
+    it('muss ein Objekt sein, nicht mit sizes, nicht ohne dough', () => {
+      expectOnlyError(
+        v2((c) => (item(c, 'test-doppel').bruch = 1200)),
+        'items[5].bruch'
+      )
+      const r = v2((c) => (item(c, 'test-korn').bruch = { g: 1200 }))
+      expect(errorPaths(r)).toContain('items[0].bruch')
+      expectOnlyError(
+        v2((c) => delete item(c, 'test-doppel').dough),
+        'items[5].bruch'
+      )
+    })
+
+    it('g: null offen, fehlend Warnung, ≤ 0 Fehler', () => {
+      const r = v2((c) => (item(c, 'test-doppel').bruch.g = null))
+      expect(r.errors).toEqual([])
+      expect(r.open.find((o) => o.path === 'items[5].bruch.g').code).toBe(
+        'bruch_g_unknown'
+      )
+      const r2 = v2((c) => delete item(c, 'test-doppel').bruch.g)
+      expect(r2.errors).toEqual([])
+      expect(warningPaths(r2)).toEqual(['items[5].bruch.g'])
+      for (const bad of [0, -5, '1200'])
+        expectOnlyError(
+          v2((c) => (item(c, 'test-doppel').bruch.g = bad)),
+          'items[5].bruch.g'
+        )
+    })
+
+    it('g je Backtag: Wochentage aus days oder default, Werte > 0 oder null', () => {
+      expectOnlyError(
+        v2(
+          (c) => (item(c, 'test-flitweck').bruch.g = { 1: 1000, default: null })
+        ),
+        'items[8].bruch.g.1'
+      )
+      expectOnlyError(
+        v2((c) => (item(c, 'test-flitweck').bruch.g = { 7: 0, default: null })),
+        'items[8].bruch.g.7'
+      )
+      const r = v2(
+        (c) => (item(c, 'test-flitweck').bruch.g = { 7: 1000, 2: null })
+      )
+      expect(r.errors).toEqual([])
+      expect(warningPaths(r)).toEqual(['items[8].bruch.g.default'])
+      expect(openPaths(r)).toContain('items[8].bruch.g.2')
+      expect(r.open.find((o) => o.path === 'items[8].bruch.g.2').message).toBe(
+        'Posten „test-flitweck“: Bruchgewicht am Dienstag ist noch offen.'
+      )
+    })
+
+    it('per_product: fehlend 1, null oder keine positive ganze Zahl Fehler', () => {
+      expect(
+        v2((c) => delete item(c, 'test-doppel').bruch.per_product).errors
+      ).toEqual([])
+      for (const bad of [null, 0, 1.5])
+        expectOnlyError(
+          v2((c) => (item(c, 'test-doppel').bruch.per_product = bad)),
+          'items[5].bruch.per_product'
+        )
+    })
+
+    it('pieces: null offen, sonst positive ganze Zahl', () => {
+      const r = v2((c) => (item(c, 'test-doppel').bruch.pieces = null))
+      expect(r.errors).toEqual([])
+      expect(r.open.find((o) => o.path === 'items[5].bruch.pieces').code).toBe(
+        'bruch_pieces_unknown'
+      )
+      expectOnlyError(
+        v2((c) => (item(c, 'test-doppel').bruch.pieces = 0)),
+        'items[5].bruch.pieces'
+      )
+    })
+
+    it('group: Slug; Mitglieder brauchen gleichen Teig, Gewicht, Stück je Bruch, lead und Abschnitt', () => {
+      expectOnlyError(
+        v2((c) => (item(c, 'test-stern').bruch.group = 'Gemischt')),
+        // ohne gueltige Gruppe ist Teststern seine eigene Gruppe
+        'items[6].bruch.group'
+      )
+      const cases = [
+        [(k) => (k.dough.id = 'test-flit-teig'), /Teig/],
+        [(k) => (k.bruch.g = 1900), /Bruchgewicht/],
+        [(k) => (k.bruch.pieces = 10), /Stück je Bruch/],
+        [(k) => (k.lead = 2), /lead/],
+        [(k) => (k.section = 'brot'), /Abschnitt/],
+      ]
+      for (const [mutate, re] of cases) {
+        const r = v2((c) => mutate(item(c, 'test-kaese')))
+        expectOnlyError(r, 'items[7].bruch.group')
+        expect(r.errors[0].message).toMatch(re)
+        expect(r.errors[0].message).toMatch(/„test-gemischt“ mit „test-stern“/)
+      }
+      // lead 1 und { default: 1 } sind dasselbe
+      expect(
+        v2((c) => (item(c, 'test-kaese').lead = { default: 1 })).errors
+      ).toEqual([])
+    })
+
+    it('ein eigenes pieces, das dem bruch_pieces der Datei gleicht, passt zur Gruppe', () => {
+      expect(
+        v2((c) => (item(c, 'test-kaese').bruch.pieces = 20)).errors
+      ).toEqual([])
+    })
+  })
+
+  describe('from_dough', () => {
+    const kerb = (c) => item(c, 'test-kerb')
+
+    it('braucht sizes und einen bekannten Teig', () => {
+      expectOnlyError(
+        v2((c) => (kerb(c).from_dough.id = 'gibt-es-nicht')),
+        'items[3].from_dough.id'
+      )
+      expectOnlyError(
+        v2((c) => (kerb(c).from_dough.id = null)),
+        'items[3].from_dough.id'
+      )
+      const r = v2(
+        (c) =>
+          (item(c, 'test-doppel').from_dough = {
+            id: 'test-misch-teig',
+            mode: 'fixed',
+            dough_kg: 5,
+          })
+      )
+      expectOnlyError(r, 'items[5].from_dough')
+      expectOnlyError(
+        v2((c) => (kerb(c).from_dough = 'test-misch-teig')),
+        'items[3].from_dough'
+      )
+    })
+
+    it('mode: null offen, fehlend Warnung, anderer Text Fehler', () => {
+      const r = v2((c) => (kerb(c).from_dough.mode = null))
+      expect(r.errors).toEqual([])
+      expect(
+        r.open.find((o) => o.path === 'items[3].from_dough.mode').code
+      ).toBe('from_dough_mode_unknown')
+      const r2 = v2((c) => delete kerb(c).from_dough.mode)
+      expect(warningPaths(r2)).toEqual(['items[3].from_dough.mode'])
+      expectOnlyError(
+        v2((c) => (kerb(c).from_dough.mode = 'je-laib')),
+        'items[3].from_dough.mode'
+      )
+      expect(v2((c) => (kerb(c).from_dough.mode = 'per_dough')).errors).toEqual(
+        []
+      )
+    })
+
+    it('dough_kg und extras[].kg: null offen, fehlend Warnung, ≤ 0 Fehler', () => {
+      const r = v2((c) => {
+        kerb(c).from_dough.dough_kg = null
+        kerb(c).from_dough.extras[0].kg = null
+      })
+      expect(r.errors).toEqual([])
+      expect(
+        r.open
+          .filter((o) => o.path.startsWith('items[3]'))
+          .map((o) => [o.path, o.code])
+      ).toEqual([
+        ['items[3].from_dough.dough_kg', 'from_dough_kg_unknown'],
+        ['items[3].from_dough.extras[0].kg', 'extra_kg_unknown'],
+      ])
+      const r2 = v2((c) => {
+        delete kerb(c).from_dough.dough_kg
+        delete kerb(c).from_dough.extras[0].kg
+      })
+      expect(warningPaths(r2)).toEqual([
+        'items[3].from_dough.dough_kg',
+        'items[3].from_dough.extras[0].kg',
+      ])
+      expectOnlyError(
+        v2((c) => (kerb(c).from_dough.dough_kg = 0)),
+        'items[3].from_dough.dough_kg'
+      )
+      expectOnlyError(
+        v2((c) => (kerb(c).from_dough.extras[0].kg = -1)),
+        'items[3].from_dough.extras[0].kg'
+      )
+      expectOnlyError(
+        v2((c) => (kerb(c).from_dough.extras = { name: 'Körner' })),
+        'items[3].from_dough.extras'
+      )
+      expectOnlyError(
+        v2((c) => (kerb(c).from_dough.extras[0].name = '')),
+        'items[3].from_dough.extras[0].name'
+      )
+    })
+  })
+
+  describe('filling_g (null = gefuellt, Gramm unbekannt)', () => {
+    it('ist offen und verlangt weiter die Grundmenge je Sorte', () => {
+      const r = v2((c) => (item(c, 'test-zopf').base = { 6: 5 }))
+      expectOnlyError(r, 'items[12].base.6')
+      expect(r.errors[0].message).toMatch(/je Variante/)
+      expect(openPaths(r)).toContain('items[12].filling_g')
+    })
+
+    it('braucht auch mit null Sorten (variants)', () => {
+      const r = v2((c) => (item(c, 'test-kranz').filling_g = null))
+      expect(errorPaths(r)).toContain('items[13].filling_g')
+    })
+  })
+
+  describe('doughs', () => {
+    it('kg_per_liter: null offen, fehlend Warnung (nur in v2-Dateien), ≤ 0 Fehler', () => {
+      const r = v2((c) => delete dough(c, 'test-hefe').kg_per_liter)
+      expect(r.errors).toEqual([])
+      expect(warningPaths(r)).toEqual(['doughs[5].kg_per_liter'])
+      for (const bad of [0, -2, '2'])
+        expectOnlyError(
+          v2((c) => (dough(c, 'test-hefe').kg_per_liter = bad)),
+          'doughs[5].kg_per_liter'
+        )
+      // eine v1-Datei mit kg_per_liter an einem Teig ist eine v2-Datei
+      const cfg = config()
+      cfg.doughs[0].kg_per_liter = 5
+      const r2 = validate(cfg)
+      expect(warningPaths(r2)).toEqual(['doughs[0].liter_rounding'])
+    })
+
+    it('liter_rounding: null offen, fehlend Warnung am Kopf, unvollständig Fehler', () => {
+      expect(openPaths(v2())).toContain('doughs[4].liter_rounding')
+      const r = v2((c) => delete dough(c, 'test-hefe').liter_rounding)
+      expect(warningPaths(r)).toEqual(['doughs[5].liter_rounding'])
+      // Mitglied einer Gruppe: keine Warnung (rundet nach dem Kopf)
+      expect(v2().warnings).toEqual([])
+      expectOnlyError(
+        v2(
+          (c) =>
+            (dough(c, 'test-hefe').liter_rounding = { step: 0, mode: 'up' })
+        ),
+        'doughs[5].liter_rounding.step'
+      )
+      expectOnlyError(
+        v2(
+          (c) =>
+            (dough(c, 'test-hefe').liter_rounding = { step: 1, mode: 'auf' })
+        ),
+        'doughs[5].liter_rounding.mode'
+      )
+      expectOnlyError(
+        v2((c) => (dough(c, 'test-hefe').liter_rounding = { step: 1 })),
+        'doughs[5].liter_rounding.mode'
+      )
+      expectOnlyError(
+        v2((c) => (dough(c, 'test-hefe').liter_rounding = 'up')),
+        'doughs[5].liter_rounding'
+      )
+      for (const mode of core.ROUNDING_MODES)
+        expect(
+          v2((c) => (dough(c, 'test-hefe').liter_rounding = { step: 1, mode }))
+            .errors
+        ).toEqual([])
+    })
+
+    it('combined_with: bekannter anderer Teig, keine Kette; eigene Rundung wird ignoriert', () => {
+      expectOnlyError(
+        v2((c) => (dough(c, 'test-holz-teig').combined_with = 'gibt-es-nicht')),
+        'doughs[1].combined_with'
+      )
+      expectOnlyError(
+        v2(
+          (c) => (dough(c, 'test-holz-teig').combined_with = 'test-holz-teig')
+        ),
+        'doughs[1].combined_with'
+      )
+      expectOnlyError(
+        v2(
+          (c) => (dough(c, 'test-misch-teig').combined_with = 'test-holz-teig')
+        ),
+        'doughs[2].combined_with'
+      )
+      const r = v2(
+        (c) =>
+          (dough(c, 'test-holz-teig').liter_rounding = { step: 1, mode: 'up' })
+      )
+      expect(r.errors).toEqual([])
+      expect(warningPaths(r)).toEqual(['doughs[1].liter_rounding'])
+      const r2 = v2((c) => (dough(c, 'test-holz-teig').combined_name = 'X'))
+      expect(warningPaths(r2)).toEqual(['doughs[1].combined_name'])
+      expectOnlyError(
+        v2((c) => (dough(c, 'test-korn-teig').combined_name = 3)),
+        'doughs[0].combined_name'
+      )
+    })
+
+    it('addons: eindeutige IDs, g_per_liter > 0 oder null, Rundung oder null', () => {
+      const add = (c) => dough(c, 'test-holz-teig').addons
+      expectOnlyError(
+        v2((c) => add(c).push({ ...add(c)[0] })),
+        'doughs[1].addons[1].id'
+      )
+      expectOnlyError(
+        v2((c) => (add(c)[0].g_per_liter = 0)),
+        'doughs[1].addons[0].g_per_liter'
+      )
+      const r = v2((c) => {
+        add(c)[0].g_per_liter = null
+        add(c)[0].rounding = null
+      })
+      expect(r.errors).toEqual([])
+      expect(
+        r.open
+          .filter((o) => o.path.startsWith('doughs[1].addons'))
+          .map((o) => o.code)
+      ).toEqual(['addon_unknown', 'addon_rounding_unknown'])
+      const r2 = v2((c) => {
+        delete add(c)[0].g_per_liter
+        delete add(c)[0].rounding
+      })
+      expect(warningPaths(r2)).toEqual([
+        'doughs[1].addons[0].g_per_liter',
+        'doughs[1].addons[0].rounding',
+      ])
+      expectOnlyError(
+        v2((c) => (add(c)[0].rounding = { step: 5, mode: 'rund' })),
+        'doughs[1].addons[0].rounding.mode'
+      )
+      expectOnlyError(
+        v2((c) => (dough(c, 'test-holz-teig').addons = { id: 'x' })),
+        'doughs[1].addons'
+      )
+    })
+
+    it('batch_max_kg: null offen, fehlend Warnung', () => {
+      const r = v2((c) => delete dough(c, 'test-weck-teig').batch_max_kg)
+      expect(warningPaths(r)).toEqual(['doughs[3].batch_max_kg'])
+    })
+  })
+
+  it('warnt bei unbekannten Schluesseln in sizes, bruch, from_dough und addons', () => {
+    const r = v2((c) => {
+      item(c, 'test-korn').sizes[0].gewicht = 1
+      item(c, 'test-doppel').bruch.gramm = 1
+      item(c, 'test-kerb').from_dough.modus = 'fixed'
+      dough(c, 'test-holz-teig').addons[0].menge = 1
+    })
+    expect(r.errors).toEqual([])
+    expect(warningPaths(r)).toEqual([
+      'doughs[1].addons[0].menge',
+      'items[0].sizes[0].gewicht',
+      'items[3].from_dough.modus',
+      'items[5].bruch.gramm',
+    ])
+  })
+})
+
+describe('Z10: normalizeConfig fuer v2', () => {
+  const n = () => core.normalizeConfig(configV2())
+
+  it('macht Groessen zu Varianten (variantKind size) und Produkte mit size', () => {
+    const korn = n().items.find((i) => i.id === 'test-korn')
+    expect(korn.variants).toEqual(['g500', 'g1000', 'kasten'])
+    expect(korn.variantKind).toBe('size')
+    expect(korn.sizes).toEqual([
+      { id: 'g500', label: '500 g', dough_g: 600 },
+      { id: 'g1000', label: '1 kg', dough_g: 1000 },
+      { id: 'kasten', label: 'Kasten', dough_g: null },
+    ])
+    expect(korn.products).toEqual([
+      { id: 'test-korn-500', factor: 1, size: 'g500' },
+      { id: 'test-korn-1000', factor: 1, size: 'g1000' },
+    ])
+    expect(korn.dough).toEqual({
+      id: 'test-korn-teig',
+      piece_g: null,
+      pieces: 1,
+    })
+    expect(korn.base[2]).toEqual({ g500: 4, g1000: 2, kasten: null })
+    expect(korn.lead).toEqual({ default: 0 })
+    expect(korn.bruch).toBeNull()
+    expect(korn.from_dough).toBeNull()
+  })
+
+  it('normalisiert lead, bruch und Bruchgewicht je Backtag', () => {
+    const items = n().items
+    const doppel = items.find((i) => i.id === 'test-doppel')
+    expect(doppel.lead).toEqual({ default: 1 })
+    expect(doppel.variantKind).toBeNull()
+    expect(doppel.bruch).toEqual({
+      g: { default: 1200 },
+      per_product: 2,
+      group: 'test-doppel',
+      piecesPerBruch: 20,
+    })
+    expect(items.find((i) => i.id === 'test-stern').bruch.group).toBe(
+      'test-gemischt'
+    )
+    const flit = items.find((i) => i.id === 'test-flitweck')
+    expect(flit.lead).toEqual({ default: 1, 6: 2 })
+    expect(flit.bruch.g).toEqual({ 2: 1200, 7: 1000, default: null })
+    expect(flit.bruch.per_product).toBe(1)
+    expect(items.find((i) => i.id === 'test-party').dough).toEqual({
+      id: 'test-flit-teig',
+      piece_g: 250,
+      pieces: null,
+    })
+  })
+
+  it('bruch.pieces: eigener Wert vor bruch_pieces, null bleibt unbekannt', () => {
+    const cfg = configV2()
+    item(cfg, 'test-doppel').bruch.pieces = 10
+    item(cfg, 'test-stern').bruch.pieces = null
+    cfg.items = cfg.items.filter((i) => i.id !== 'test-kaese')
+    const out = core.normalizeConfig(cfg)
+    expect(
+      out.items.find((i) => i.id === 'test-doppel').bruch.piecesPerBruch
+    ).toBe(10)
+    expect(
+      out.items.find((i) => i.id === 'test-stern').bruch.piecesPerBruch
+    ).toBeNull()
+    const noTop = core.normalizeConfig(configV2({ bruch_pieces: null }))
+    expect(noTop.bruch_pieces).toBeNull()
+    expect(
+      noTop.items.find((i) => i.id === 'test-doppel').bruch.piecesPerBruch
+    ).toBeNull()
+  })
+
+  it('setzt kein Bruchgewicht ein, wenn es fehlt', () => {
+    const cfg = configV2()
+    delete item(cfg, 'test-doppel').bruch.g
+    expect(
+      core.normalizeConfig(cfg).items.find((i) => i.id === 'test-doppel').bruch
+        .g
+    ).toEqual({ default: null })
+  })
+
+  it('from_dough und Teigfelder bleiben, wie sie sind; offene Werte null', () => {
+    const out = n()
+    expect(out.items.find((i) => i.id === 'test-kerb').from_dough).toEqual({
+      id: 'test-misch-teig',
+      mode: 'fixed',
+      dough_kg: 5,
+      extras: [{ name: 'Körner', kg: 1 }],
+    })
+    expect(out.doughs.find((d) => d.id === 'test-holz-teig')).toEqual({
+      id: 'test-holz-teig',
+      name: 'Testholz',
+      batch_max_kg: null,
+      kg_per_liter: 2,
+      liter_rounding: null,
+      combined_with: 'test-korn-teig',
+      combined_name: null,
+      addons: [
+        {
+          id: 'test-sauer',
+          name: 'Testsauer',
+          g_per_liter: 10,
+          rounding: { step: 5, mode: 'nearest' },
+        },
+      ],
+    })
+    expect(out.doughs.find((d) => d.id === 'test-flit-teig')).toMatchObject({
+      kg_per_liter: null,
+      liter_rounding: null,
+      batch_max_kg: null,
+    })
+    expect(
+      out.doughs.find((d) => d.id === 'test-korn-teig').combined_name
+    ).toBe('Korn + Holz')
+    expect(out.dough_days).toEqual([2, 3, 4, 5, 6])
+    expect(out.bruch_pieces).toBe(20)
+  })
+
+  it('filling_g: null heisst gefuellt mit unbekannten Gramm, ohne Schluessel nicht gefuellt', () => {
+    const out = n()
+    const zopf = out.items.find((i) => i.id === 'test-zopf')
+    expect(zopf.filling_g).toEqual({ nuss: null, mohn: null })
+    expect(zopf.variantKind).toBe('filling')
+    const kranz = out.items.find((i) => i.id === 'test-kranz')
+    expect(kranz.filling_g).toBeNull()
+    expect(kranz.variantKind).toBeNull()
+  })
+
+  it('ist idempotent, auch nach einem JSON-Umweg (gefuellt bleibt gefuellt, ungefuellt ungefuellt)', () => {
+    for (const cfg of [configV2(), config()]) {
+      const once = core.normalizeConfig(cfg)
+      expect(core.normalizeConfig(once)).toEqual(once)
+      const viaJson = JSON.parse(JSON.stringify(once))
+      expect(core.normalizeConfig(viaJson)).toEqual(once)
+    }
+  })
+
+  it('v1: neue Felder mit neutralen Werten, Teigtage = days', () => {
+    const out = core.normalizeConfig(config())
+    expect(out.dough_days).toEqual([2, 3, 4, 5, 6, 7])
+    expect(out.bruch_pieces).toBeNull()
+    const zopf = out.items.find((i) => i.id === 'zopf-gefuellt')
+    expect(zopf).toMatchObject({
+      variantKind: 'filling',
+      sizes: [],
+      lead: { default: 0 },
+      bruch: null,
+      from_dough: null,
+      filling_g: { nuss: 400, mohn: 400 },
+    })
+    expect(out.items.find((i) => i.id === 'weck').products).toEqual([
+      { id: 'test-weck', factor: 1, size: null },
+    ])
+    expect(out.doughs[0]).toEqual({
+      id: 'hefeteig-test',
+      name: 'Hefeteig (Test)',
+      batch_max_kg: 10,
+      kg_per_liter: null,
+      liter_rounding: null,
+      combined_with: null,
+      combined_name: null,
+      addons: [],
+    })
+  })
+})
+
+describe('Z10: variantDisplayName', () => {
+  const cfg = core.normalizeConfig(configV2())
+  const korn = cfg.items.find((i) => i.id === 'test-korn')
+  const zopf = cfg.items.find((i) => i.id === 'test-zopf')
+
+  it('Groesse → Label, Fuellung → Name, sonst ID mit grossem Anfangsbuchstaben', () => {
+    expect(core.variantDisplayName(cfg, korn, 'g500')).toBe('500 g')
+    expect(core.variantDisplayName(cfg, korn, 'kasten')).toBe('Kasten')
+    expect(core.variantDisplayName(cfg, zopf, 'nuss')).toBe('Nussfüllung')
+    expect(core.variantDisplayName(cfg, zopf, 'marzipan')).toBe('Marzipan')
+    expect(core.variantDisplayName(null, null, 'nuss')).toBe('Nuss')
+  })
+
+  it('keine Variante → null', () => {
+    expect(core.variantDisplayName(cfg, korn, null)).toBeNull()
+    expect(core.variantDisplayName(cfg, korn, '')).toBeNull()
+    expect(core.variantDisplayName(cfg, korn, undefined)).toBeNull()
+  })
+})
+
+describe('Z10: Loader und CLI', () => {
+  let dir
+  beforeAll(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'backzettel-v2-'))
+    fs.mkdirSync(path.join(dir, 'config'))
+    fs.mkdirSync(path.join(dir, 'products'))
+    fs.mkdirSync(path.join(dir, 'data', 'recipes', 'fillings'), {
+      recursive: true,
+    })
+    fs.writeFileSync(
+      path.join(dir, 'data', 'recipes', 'fillings', 'test.md'),
+      RECIPE_MD
+    )
+    for (const p of ALL_PRODUCTS) {
+      fs.writeFileSync(
+        path.join(dir, 'products', `${p.numeric_id}-${p.id}.md`),
+        `---\nid: ${p.id}\nnumeric_id: ${p.numeric_id}\nname: Test\n---\n\nText\n`
+      )
+    }
+    // JSON ist gueltiges YAML
+    fs.writeFileSync(
+      path.join(dir, 'config', 'v2.yaml'),
+      JSON.stringify(configV2(), null, 2)
+    )
+    const noRecipe = configV2()
+    delete noRecipe.fillings[1].recipe
+    fs.writeFileSync(
+      path.join(dir, 'config', 'ohne-rezept.yaml'),
+      JSON.stringify(noRecipe, null, 2)
+    )
+  })
+  afterAll(() => fs.rmSync(dir, { recursive: true, force: true }))
+
+  function runCli(args) {
+    const out = []
+    const spy = jest.spyOn(process.stdout, 'write').mockImplementation((s) => {
+      out.push(String(s))
+      return true
+    })
+    try {
+      return { code: cli.main(args), out: out.join('') }
+    } finally {
+      spy.mockRestore()
+    }
+  }
+
+  it('Loader liefert open und die normalisierte v2-Konfiguration', () => {
+    const r = loader.loadBackzettelConfig(path.join(dir, 'config', 'v2.yaml'), {
+      productsDir: path.join(dir, 'products'),
+    })
+    expect(r.errors).toEqual([])
+    expect(r.open.map((o) => [o.path, o.code])).toEqual(OPEN_V2)
+    expect(r.config.items.find((i) => i.id === 'test-korn').variantKind).toBe(
+      'size'
+    )
+    expect(
+      loader.loadBackzettelConfig(path.join(dir, 'config', 'nein.yaml')).open
+    ).toEqual([])
+  })
+
+  it('CLI: druckt „Offen (n)“ und zählt sie in der Zusammenfassung', () => {
+    const { code, out } = runCli([path.join(dir, 'config', 'v2.yaml')])
+    expect(code).toBe(0)
+    expect(out).toContain(`Offen (${OPEN_V2.length}):\n`)
+    expect(out).toMatch(
+      /Offen {4}items\[0\]\.sizes\[2\]\.dough_g: Posten „test-korn“, Größe „kasten“: Teig je Laib ist noch offen\./
+    )
+    expect(out).toMatch(
+      new RegExp(
+        `ist gültig \\(14 Posten, ${ALL_PRODUCTS.length} Produkte geprüft, 0 Warnungen, ${OPEN_V2.length} offen\\)`
+      )
+    )
+    const json = JSON.parse(
+      runCli([path.join(dir, 'config', 'v2.yaml'), '--json']).out
+    )
+    expect(json.ok).toBe(true)
+    expect(json.open.map((o) => o.path)).toEqual(OPEN_V2.map(([p]) => p))
+  })
+
+  it('CLI: eine Fuellung ohne recipe ist eine Warnung, kein Fehler', () => {
+    const { code, out } = runCli([path.join(dir, 'config', 'ohne-rezept.yaml')])
+    expect(code).toBe(0)
+    expect(out).toMatch(
+      /Warnung {2}fillings\[1\]\.recipe: Für „Mohnfüllung“ ist kein Rezept hinterlegt\./
+    )
   })
 })
