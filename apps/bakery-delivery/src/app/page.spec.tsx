@@ -1342,6 +1342,14 @@ describe('DeliveryDashboard: Tour planen (Abschluss-Verifikation next)', () => {
 
   async function openPlanning() {
     render(<DeliveryDashboard />)
+    // Erst nach dem Fahrerwechsel (Fahrerliste geladen → erster Fahrer): der
+    // leert die Liste kurz (`shownKeyRef`), ein früherer Klick ging auf
+    // langsamen Rechnern (CI mit Coverage) ins Leere.
+    await waitFor(() =>
+      expect(api.tours).toHaveBeenCalledWith(
+        expect.objectContaining({ driverId: 1 })
+      )
+    )
     fireEvent.click(await screen.findByRole('button', { name: 'Tour planen' }))
   }
 
