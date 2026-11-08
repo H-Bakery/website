@@ -38,6 +38,9 @@ jobs:
             # Die E2E-Suiten, ihr gemeinsames Werkzeug (tools/e2e) und dieser
             # Workflow zaehlen mit - sonst laeuft eine geaenderte Suite erst,
             # wenn zufaellig auch die App angefasst wird.
+            # package-lock.json zaehlt ueberall mit: ein Abhaengigkeits-Update
+            # (Next, Express, sqlite3 ...) aendert das Verhalten aller Apps, auch
+            # wenn kein Quelltext angefasst wird.
             shop:
               - 'apps/bakery-shop/**'
               - 'apps/bakery-shop-e2e/**'
@@ -47,6 +50,7 @@ jobs:
               - 'apps/bakery-api/**'
               - 'tools/e2e/**'
               - '.github/workflows/ci.yml'
+              - 'package-lock.json'
             management:
               - 'apps/bakery-management/**'
               - 'apps/bakery-management-e2e/**'
@@ -56,17 +60,20 @@ jobs:
               - 'apps/bakery-api/**'
               - 'tools/e2e/**'
               - '.github/workflows/ci.yml'
+              - 'package-lock.json'
             landing:
               - 'apps/bakery-landing/**'
               - 'apps/bakery-landing-e2e/**'
               - 'libs/shared/**'
               - 'tools/e2e/**'
               - '.github/workflows/ci.yml'
+              - 'package-lock.json'
             libs:
               - 'libs/**'
             api:
               - 'apps/bakery-api/**'
               - 'libs/shared/**'
+              - 'package-lock.json'
 
   # Lint and type check
   quality:
