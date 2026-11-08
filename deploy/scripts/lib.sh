@@ -123,6 +123,109 @@ now_epoch() {
   date +%s
 }
 
+# Alter einer Datei in Minuten; Rückgabe 1 (keine Ausgabe), wenn sie fehlt.
+file_age_min() {
+  [ -e "$1" ] || return 1
+  echo $((($(now_epoch) - $(file_mtime "$1")) / 60))
+}
+
+# GitHub-Token für das private hq-Repo (Q3), zum Zeitpunkt der Verwendung
+# gelesen: HQ_GITHUB_TOKEN (fester Token), sonst die erste Zeile von
+# HQ_GITHUB_TOKEN_FILE (GitHub-App-Token, alle 30 min neu von hq-token.sh).
+# Schreibt das Token nach stdout - nur in eine Variable übernehmen, nie loggen.
+# Rückgabe 1 ohne Token (Datei fehlt, leer, unlesbar oder kein Token-Format).
+# Dieselben Regeln wie apps/bakery-api/src/services/github-token.ts.
+hq_github_token() {
+  if [ -n "${HQ_GITHUB_TOKEN:-}" ]; then
+    printf '%s' "$HQ_GITHUB_TOKEN"
+    return 0
+  fi
+  local file="${HQ_GITHUB_TOKEN_FILE:-}" token=""
+  [ -n "$file" ] && [ -f "$file" ] && [ -r "$file" ] || return 1
+  token="$(<"$file")" || return 1
+  # Leerraum vorn und hinten weg (auch \r\n), innen ist er ein Fehler.
+  token="${token#"${token%%[![:space:]]*}"}"
+  token="${token%"${token##*[![:space:]]}"}"
+  # GitHub-Tokens: druckbares ASCII ohne Leerzeichen; eine zweite Zeile
+  # landete sonst im Credential-Protokoll von git (password=...).
+  case "$token" in
+  '' | *[!!-~]*) return 1 ;;
+  esac
+  printf '%s' "$token"
+}
+
+# Warum hq_github_token nichts liefert - für Warnungen (ohne das Token).
+hq_github_token_hint() {
+  local file="${HQ_GITHUB_TOKEN_FILE:-}"
+  if [ -n "${HQ_GITHUB_TOKEN:-}" ]; then
+    echo "HQ_GITHUB_TOKEN ist gesetzt"
+  elif [ -z "$file" ]; then
+    echo "HQ_GITHUB_TOKEN und HQ_GITHUB_TOKEN_FILE sind leer"
+  elif [ ! -e "$file" ]; then
+    echo "HQ_GITHUB_TOKEN_FILE $file fehlt (bakery-hq-token.timer, GitHub-App-Schlüssel?)"
+  elif [ ! -r "$file" ]; then
+    echo "HQ_GITHUB_TOKEN_FILE $file ist nicht lesbar"
+  else
+    echo "HQ_GITHUB_TOKEN_FILE $file ist leer oder enthält kein gültiges Token"
+  fi
+}
+
+# git-Optionen, die das Token über einen Credential-Helper aus der Umgebung
+# (BAKERY_HQ_GIT_TOKEN) an git geben - nie in einer Argumentliste, einer URL
+# oder .git/config. Aufruf: hq_git_auth_args; dann "${HQ_GIT_AUTH[@]}".
+# Ohne Token bleibt HQ_GIT_AUTH leer (öffentliche URL oder SSH-Schlüssel).
+HQ_GIT_AUTH=()
+hq_git_auth_args() {
+  HQ_GIT_AUTH=()
+  local token=""
+  token="$(hq_github_token)" || token=""
+  if [ -z "$token" ]; then
+    unset BAKERY_HQ_GIT_TOKEN
+    return 1
+  fi
+  export BAKERY_HQ_GIT_TOKEN="$token"
+  # shellcheck disable=SC2016 # $1 und $BAKERY_HQ_GIT_TOKEN wertet der Helper aus
+  HQ_GIT_AUTH=(-c credential.helper= -c 'credential.helper=!f() { test "$1" = get || exit 0; echo username=x-access-token; echo "password=${BAKERY_HQ_GIT_TOKEN}"; }; f')
+}
+
+# Wert eines Schlüssels aus einer Env-Datei (letzte Zuweisung gewinnt), ohne
+# sie zu sourcen; umschließende Anführungszeichen fallen weg.
+env_file_value() {
+  local file="$1" key="$2" line=""
+  [ -r "$file" ] || return 0
+  line="$(grep -E "^[[:space:]]*(export[[:space:]]+)?$key=" "$file" | tail -n 1 || true)"
+  line="${line#*=}"
+  line="${line%"${line##*[![:space:]]}"}"
+  case "$line" in
+  \"*\") line="${line#\"}" && line="${line%\"}" ;;
+  \'*\') line="${line#\'}" && line="${line%\'}" ;;
+  esac
+  printf '%s' "$line"
+}
+
+# Welche Caddyfile auf die Box gehört (Q2): "lan-http" (Caddyfile.lan-http,
+# Port 80 ohne TLS), solange BAKERY_LAN_HTTP=1 gesetzt ist oder BAKERY_DOMAIN
+# leer bzw. noch der Platzhalter aus der Vorlage ist; sonst "https".
+# $1 = Env-Datei von Caddy, Vorgabe /etc/caddy/bakery.env.
+caddy_mode() {
+  local file="${1:-${CADDY_ENV_FILE:-/etc/caddy/bakery.env}}" lan domain
+  lan="$(env_file_value "$file" BAKERY_LAN_HTTP)"
+  domain="$(env_file_value "$file" BAKERY_DOMAIN)"
+  case "$lan" in
+  1 | true | yes | ja)
+    echo lan-http
+    return 0
+    ;;
+  esac
+  case "$domain" in
+  '' | example.* | *.example.*)
+    echo lan-http
+    return 0
+    ;;
+  esac
+  echo https
+}
+
 # Telegram-Nachricht über die Bot-API. TELEGRAM_API_URL ist nur für Tests da
 # (lokaler Stub statt api.telegram.org). Rückgabe != 0, wenn nicht gesendet.
 telegram_configured() {

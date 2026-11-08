@@ -1,0 +1,16 @@
+# GitHub-App-Token für hq: kurz nach dem Start und alle 30 Minuten (Q3).
+# Ein Installationstoken gilt 60 min - so bleiben nach jeder Erneuerung
+# mindestens 30 min, und ein einzelner Fehlschlag fällt nicht auf.
+
+[Unit]
+Description=Bäckerei Heusser - GitHub-App-Token für hq alle 30 min
+
+[Timer]
+OnBootSec=20s
+OnCalendar=*-*-* *:00,30:00
+# War die Box zur vollen/halben Stunde aus, läuft die Erneuerung beim Start nach.
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

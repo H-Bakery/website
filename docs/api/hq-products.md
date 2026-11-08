@@ -168,7 +168,17 @@ origin <sha>:refs/heads/app/edits` - the sha prepared under the local lock; a sa
    push and while `prUrl` is unknown (`github_failed` keeps the push).
 
 **Disabled** without `HQ_WRITE_DIR` or without a token (`HQ_GITHUB_TOKEN`, fallback
-`GITHUB_TOKEN`): saves still commit locally, the status says why. `createApp()` without `hqSync`
+`GITHUB_TOKEN`): saves still commit locally, the status says why.
+
+**GitHub App token file (Q3).** With `HQ_GITHUB_TOKEN_FILE` (and no `HQ_GITHUB_TOKEN`, which
+wins) the token is read from that file **at every use** (`src/services/github-token.ts`,
+`GitHubTokenProvider`, shared by `HqEditsSync` and `HqSnapshotWriter`); the box's
+`bakery-hq-token.timer` rewrites it every 30 min (App tokens live 1 h). Missing, empty, unreadable
+or malformed = no token (`enabled: false`, never a crash), and `status().token` reports
+`{ source, file, updatedAt, problem }` - never the token. The timer keeps running while the file is
+missing, so a token minted after start is picked up.
+
+`createApp()` without `hqSync`
 builds disabled instances (tests stay hermetic); `server.ts` builds the real ones from
 `loadHqSyncConfig()` (`HQ_GITHUB_REPO` default `H-Bakery/hq`, `GITHUB_API_URL`,
 `HQ_SYNC_RETRY_MS` ≥ 1000), calls `edits.init()` (reads `origin/main` without fetching), starts both

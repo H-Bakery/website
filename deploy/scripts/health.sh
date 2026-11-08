@@ -12,8 +12,13 @@
 #   management  GET HEALTH_MGMT_URL  (Vorgabe http://127.0.0.1:4201/; 3xx zählt als ok)
 #   backup      letztes erfolgreiches Off-site-Backup jünger als BACKUP_MAX_AGE_HOURS (36)
 #   hq-sync     letzter erfolgreicher hq-Sync jünger als HQ_SYNC_MAX_AGE_MIN (90)
+#   hq-token    GitHub-App-Token (HQ_GITHUB_TOKEN_FILE) jünger als HQ_TOKEN_MAX_AGE_MIN
+#               (70) - es gilt 60 min, bakery-hq-token.timer erneuert alle 30 min.
+#               Übersprungen (zählt als ok) ohne GH_APP_ID oder HQ_GITHUB_TOKEN_FILE
+#               und mit festem HQ_GITHUB_TOKEN.
 #   disk        Belegung von BAKERY_VAR unter DISK_MAX_PERCENT (90)
 #   tls         HTTPS über Caddy wie ein Gerät im WLAN: https://HEALTH_TLS_HOST/
+#               (im LAN-HTTP-Betrieb bis Q2 bleibt HEALTH_TLS_HOST leer)
 #               mit --resolve auf 127.0.0.1, Zertifikat gültig und noch mindestens
 #               HEALTH_TLS_MIN_DAYS (14) Tage - fällt die DNS-01-Erneuerung aus,
 #               kommt der Alarm Wochen vor dem Ablauf. Ohne HEALTH_TLS_HOST
@@ -33,7 +38,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib.sh"
 load_env_files
 
-HEALTH_CHECKS="${HEALTH_CHECKS:-api management backup hq-sync disk tls}"
+HEALTH_CHECKS="${HEALTH_CHECKS:-api management backup hq-sync hq-token disk tls}"
 HEALTH_TLS_HOST="${HEALTH_TLS_HOST:-}"
 HEALTH_TLS_PORT="${HEALTH_TLS_PORT:-443}"
 HEALTH_TLS_MIN_DAYS="${HEALTH_TLS_MIN_DAYS:-14}"
@@ -47,6 +52,7 @@ HEALTH_HOST_LABEL="${HEALTH_HOST_LABEL:-$(hostname -s 2>/dev/null || hostname)}"
 BACKUP_DIR="${BACKUP_DIR:-$BAKERY_VAR/backup}"
 BACKUP_MAX_AGE_HOURS="${BACKUP_MAX_AGE_HOURS:-36}"
 HQ_SYNC_MAX_AGE_MIN="${HQ_SYNC_MAX_AGE_MIN:-90}"
+HQ_TOKEN_MAX_AGE_MIN="${HQ_TOKEN_MAX_AGE_MIN:-70}"
 DISK_MAX_PERCENT="${DISK_MAX_PERCENT:-90}"
 MAINTENANCE_MAX_MIN="${MAINTENANCE_MAX_MIN:-30}"
 
@@ -86,6 +92,21 @@ check_age() {
     return 1
   fi
   return 0
+}
+
+# GitHub-App-Token (Q3): die Datei schreibt hq-token.sh nur nach Erfolg neu,
+# ihr Alter ist also das des Tokens. Ohne App (oder mit festem Token) nichts zu prüfen.
+check_hq_token() {
+  if [ -z "${GH_APP_ID:-}" ] || [ -z "${HQ_GITHUB_TOKEN_FILE:-}" ] || [ -n "${HQ_GITHUB_TOKEN:-}" ]; then
+    log "GitHub-Token-Prüfung übersprungen (keine GitHub-App eingerichtet oder fester HQ_GITHUB_TOKEN)"
+    return 0
+  fi
+  local reason
+  if reason="$(check_age "$HQ_GITHUB_TOKEN_FILE" $((HQ_TOKEN_MAX_AGE_MIN * 60)) "GitHub-App-Token")"; then
+    return 0
+  fi
+  echo "$reason - hq-Abgleich und Pull-Requests stehen (journalctl -u bakery-hq-token)"
+  return 1
 }
 
 check_disk() {
@@ -144,6 +165,7 @@ run_check() {
   management) check_http "$HEALTH_MGMT_URL" ;;
   backup) check_age "$BACKUP_DIR/last-success" $((BACKUP_MAX_AGE_HOURS * 3600)) "Backup" ;;
   hq-sync) check_age "$STATE_DIR/hq-sync.ok" $((HQ_SYNC_MAX_AGE_MIN * 60)) "hq-Sync" ;;
+  hq-token) check_hq_token ;;
   disk) check_disk ;;
   tls) check_tls ;;
   *)
@@ -159,6 +181,7 @@ label_for() {
   management) echo "Verwaltung (Web-App)" ;;
   backup) echo "Backup" ;;
   hq-sync) echo "hq-Sync" ;;
+  hq-token) echo "GitHub-Token (hq)" ;;
   disk) echo "Speicherplatz" ;;
   tls) echo "HTTPS/Zertifikat" ;;
   *) echo "$1" ;;

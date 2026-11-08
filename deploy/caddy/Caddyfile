@@ -4,6 +4,10 @@
 #     /api/*  -> bakery-api         127.0.0.1:5000
 #     sonst   -> bakery-management  127.0.0.1:4201
 #
+# Bis das Zertifikat da ist (Q2), installiert install.sh stattdessen
+# Caddyfile.lan-http (BAKERY_LAN_HTTP=1 oder noch keine Domain in
+# /etc/caddy/bakery.env): dieselbe Weiterleitung über http://<Box>:80.
+#
 # Die Box ist nur im Bäckerei-WLAN erreichbar. Das Zertifikat kommt trotzdem
 # von Let's Encrypt, über die DNS-01-Challenge: Caddy legt einen TXT-Eintrag
 # über die API des DNS-Anbieters an, kein Port muss ins Internet offen sein.
@@ -37,9 +41,14 @@
 	# Admin-API nur lokal (Standard), Logs ins Journal.
 }
 
-(security_headers) {
+# >>> gemeinsam: in Caddyfile und Caddyfile.lan-http gleich halten
+# (deploy/tests/run-tests.sh vergleicht diesen Block).
+(bakery_site) {
+	# Nur aus dem LAN (und über Tailscale, O4). Alles andere wird ohne Antwort getrennt.
+	@outside not remote_ip private_ranges 100.64.0.0/10
+	abort @outside
+
 	header {
-		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "same-origin"
@@ -51,7 +60,26 @@
 		-Server
 		-X-Powered-By
 	}
+	encode zstd gzip
+
+	request_body {
+		max_size 5MB
+	}
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:5000
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:4201
+	}
+
+	log {
+		output stderr
+		format console
+	}
 }
+# <<< gemeinsam
 
 intern.{$BAKERY_DOMAIN} {
 	tls {
@@ -72,29 +100,9 @@ intern.{$BAKERY_DOMAIN} {
 		resolvers 1.1.1.1 9.9.9.9
 	}
 
-	# Nur aus dem LAN (und über Tailscale, O4). Alles andere wird ohne Antwort getrennt.
-	@outside not remote_ip private_ranges 100.64.0.0/10
-	abort @outside
-
-	import security_headers
-	encode zstd gzip
-
-	request_body {
-		max_size 5MB
-	}
-
-	handle /api/* {
-		reverse_proxy 127.0.0.1:5000
-	}
-
-	handle {
-		reverse_proxy 127.0.0.1:4201
-	}
-
-	log {
-		output stderr
-		format console
-	}
+	# HSTS nur hier: über HTTPS. Caddyfile.lan-http schickt es nicht.
+	header Strict-Transport-Security "max-age=31536000"
+	import bakery_site
 }
 
 # http:// leitet Caddy automatisch auf https:// um.

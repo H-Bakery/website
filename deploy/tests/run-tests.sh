@@ -8,12 +8,13 @@
 # Umgebung:
 #   TEST_TMP        Arbeitsverzeichnis (Vorgabe: mktemp -d, wird am Ende gelöscht;
 #                   KEEP_TEST_TMP=1 behält es zur Fehlersuche)
-#   TEST_PORT_BASE  fünf Ports ab hier: API-Stub, Verwaltungs-Stub, Telegram-Stub,
-#                   zwei garantiert geschlossene (Vorgabe 5120)
+#   TEST_PORT_BASE  fünf Ports ab hier: API-Stub, Verwaltungs-Stub, Telegram-Stub
+#                   (davor die GitHub-Attrappe), zwei garantiert geschlossene (Vorgabe 5120)
 #   TEST_PID_DIR    wohin die PID-Dateien der Stubs geschrieben werden
 #
-# Nicht abgedeckt (braucht die Box): install.sh, systemd-Units, Caddy, restic
-# gegen ein echtes Repository, npm ci/Build im Release.
+# Nicht abgedeckt (braucht die Box): install.sh (nur caddy_mode aus lib.sh),
+# systemd-Units, Caddy selbst, restic gegen ein echtes Repository, npm ci/Build
+# im Release, GitHub (hq-token.sh läuft gegen tests/fake_github_app.mjs).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -102,16 +103,34 @@ start_stub() {
   local port="$1" logfile="$2"
   shift 2
   python3 "$HERE/stub_server.py" "$port" "$logfile" "$@" &
-  local pid=$!
+  wait_stub "$port" $!
+}
+
+wait_stub() {
+  local port="$1" pid="$2"
   STUB_PIDS="$STUB_PIDS $pid"
   echo "$pid" >"$TEST_PID_DIR/stub-$port.pid"
   local _
-  for _ in 1 2 3 4 5 6 7 8 9 10; do
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
     port_open "$port" && return 0
     sleep 0.2
   done
   echo "Stub auf Port $port startet nicht" >&2
   exit 1
+}
+
+stop_stub() {
+  local port="$1" pid
+  pid="$(cat "$TEST_PID_DIR/stub-$port.pid" 2>/dev/null || true)"
+  [ -n "$pid" ] || return 0
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  rm -f "$TEST_PID_DIR/stub-$port.pid"
+}
+
+# Datei-Rechte als Oktalzahl (GNU- und BSD-stat).
+file_mode() {
+  stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"
 }
 
 # gemeinsame Umgebung: nichts aus /etc/bakery laden, alles im Temp-Verzeichnis
@@ -124,7 +143,9 @@ export GIT_COMMITTER_NAME="Test" GIT_COMMITTER_EMAIL="test@example.invalid"
 export GIT_CONFIG_NOSYSTEM=1
 export HOME="$TEST_TMP/home"
 mkdir -p "$BAKERY_ETC" "$BAKERY_VAR" "$HOME"
-unset TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID RESTIC_REPOSITORY RESTIC_PASSWORD RESTIC_PASSWORD_FILE HQ_GITHUB_TOKEN
+unset TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID RESTIC_REPOSITORY RESTIC_PASSWORD RESTIC_PASSWORD_FILE HQ_GITHUB_TOKEN \
+  HQ_GITHUB_TOKEN_FILE GITHUB_TOKEN GH_APP_ID GH_APP_KEY GH_APP_PERMISSIONS GITHUB_API_URL HQ_TOKEN_REPO \
+  HQ_REPO_URL BAKERY_LAN_HTTP CADDY_ENV_FILE BAKERY_HQ_GIT_TOKEN
 
 for p in "$P_CLOSED" "$P_CLOSED2"; do
   if port_open "$p"; then
@@ -193,6 +214,70 @@ expect 0 "load_env_files ohne Präfixe lädt alles" env -u BAKERY_ENV_LOADED BAK
   . "$1"; load_env_files; echo "aws=${AWS_SECRET_ACCESS_KEY:-leer}"' _ "$SCRIPTS/lib.sh"
 check "ops.env vollständig" log_has "aws=sentinel-aws-0815"
 
+# GitHub-Token für hq (Q3): HQ_GITHUB_TOKEN > HQ_GITHUB_TOKEN_FILE, Datei bei jeder Verwendung gelesen
+TOKF="$TEST_TMP/tok/hq-token"
+mkdir -p "$TEST_TMP/tok"
+# shellcheck disable=SC2016
+tok() { env HQ_GITHUB_TOKEN="${1:-}" HQ_GITHUB_TOKEN_FILE="$TOKF" bash -c '. "$1"; if t="$(hq_github_token)"; then echo "token=[$t]"; else echo "kein Token: $(hq_github_token_hint)"; fi' _ "$SCRIPTS/lib.sh"; }
+expect 0 "Token-Datei fehlt" tok
+check "kein Token, Hinweis nennt die Datei und den Timer" log_has "kein Token: HQ_GITHUB_TOKEN_FILE $TOKF fehlt (bakery-hq-token.timer"
+: >"$TOKF"
+expect 0 "Token-Datei leer" tok
+check "leer = kein Token" log_has "kein Token: .*ist leer oder enthält kein gültiges Token"
+printf '  ghs_synthetic_lib1\r\n\n' >"$TOKF"
+expect 0 "Token-Datei mit Leerraum" tok
+check "Leerraum und CRLF entfernt" log_has "token=\[ghs_synthetic_lib1\]"
+expect 0 "fester Token gewinnt" tok fest-0815
+check "HQ_GITHUB_TOKEN vor der Datei" log_has "token=\[fest-0815\]"
+printf 'ghs_eins\nusername=zwei\n' >"$TOKF"
+expect 0 "zweite Zeile in der Datei" tok
+check "zwei Zeilen = kein Token (Credential-Protokoll)" log_has "kein Token"
+printf 'ghs eins' >"$TOKF"
+expect 0 "Leerzeichen im Token" tok
+check "Leerzeichen = kein Token" log_has "kein Token"
+printf 'ghs_synthetic_helper\n' >"$TOKF"
+# Der Credential-Helper gibt git das Token aus der Umgebung, nie aus argv/.git/config.
+# shellcheck disable=SC2016
+expect 0 "Credential-Helper liefert das Token" env HQ_GITHUB_TOKEN_FILE="$TOKF" bash -c '
+  . "$1"; hq_git_auth_args || exit 9
+  case "${HQ_GIT_AUTH[*]}" in *ghs_synthetic_helper*) echo "TOKEN IN ARGV"; exit 8 ;; esac
+  printf "protocol=https\nhost=github.com\npath=H-Bakery/hq.git\n\n" | git "${HQ_GIT_AUTH[@]}" credential fill' _ "$SCRIPTS/lib.sh"
+check "username=x-access-token, password aus der Datei" sh -c "grep -q '^username=x-access-token' '$TEST_TMP/last.log' && grep -q '^password=ghs_synthetic_helper' '$TEST_TMP/last.log'"
+# shellcheck disable=SC2016
+expect 1 "ohne Token keine Credential-Optionen" env HQ_GITHUB_TOKEN_FILE="$TEST_TMP/tok/nix" bash -c '
+  . "$1"; hq_git_auth_args && exit 0; echo "args=${#HQ_GIT_AUTH[@]} env=${BAKERY_HQ_GIT_TOKEN:-leer}"; exit 1' _ "$SCRIPTS/lib.sh"
+check "keine Optionen, keine Variable" log_has "args=0 env=leer"
+
+# Caddy-Betriebsart (Q2): LAN-HTTP bis Domain + Zertifikat da sind
+CADDY_ENV="$TEST_TMP/caddy.env"
+# shellcheck disable=SC2016
+cmode() { bash -c '. "$1"; caddy_mode "$2"' _ "$SCRIPTS/lib.sh" "$CADDY_ENV"; }
+check_mode() {
+  local want="$1" content="$2" got
+  printf '%b' "$content" >"$CADDY_ENV"
+  got="$(cmode)"
+  if [ "$got" = "$want" ]; then ok "caddy_mode $want: $(printf '%b' "$content" | tr '\n' ' ')"; else nok "caddy_mode: $got statt $want bei $(printf '%b' "$content" | tr '\n' ' ')"; fi
+}
+check_mode lan-http 'BAKERY_LAN_HTTP=1\nBAKERY_DOMAIN=baeckerei.test\n'
+check_mode lan-http 'BAKERY_LAN_HTTP=0\nBAKERY_DOMAIN=example.de\n'
+check_mode lan-http 'BAKERY_DOMAIN=\n'
+check_mode https 'BAKERY_LAN_HTTP=0\nBAKERY_DOMAIN=baeckerei.test\n'
+check_mode https 'BAKERY_DOMAIN="baeckerei.test"\n'
+check_mode https '# BAKERY_LAN_HTTP=1\nBAKERY_LAN_HTTP=1\nBAKERY_LAN_HTTP=0\nBAKERY_DOMAIN=baeckerei.test\n'
+rm -f "$CADDY_ENV"
+check "caddy_mode ohne Datei: lan-http" test "$(cmode)" = "lan-http"
+check "Vorlage caddy.env.example: lan-http" test "$(bash -c '. "$1"; caddy_mode "$2"' _ "$SCRIPTS/lib.sh" "$REPO_ROOT/deploy/caddy/caddy.env.example")" = "lan-http"
+
+# Beide Caddyfiles: dieselbe Weiterleitung und dieselben Header, HSTS nur bei HTTPS
+CADDY_DIR="$REPO_ROOT/deploy/caddy"
+check "gemeinsamer Block in beiden Caddyfiles gleich" sh -c "test -n \"\$(sed -n '/^# >>> gemeinsam/,/^# <<< gemeinsam/p' '$CADDY_DIR/Caddyfile')\" && test \"\$(sed -n '/^# >>> gemeinsam/,/^# <<< gemeinsam/p' '$CADDY_DIR/Caddyfile')\" = \"\$(sed -n '/^# >>> gemeinsam/,/^# <<< gemeinsam/p' '$CADDY_DIR/Caddyfile.lan-http')\""
+check "gemeinsamer Block: /api -> 5000, sonst -> 4201" sh -c "sed -n '/^# >>> gemeinsam/,/^# <<< gemeinsam/p' '$CADDY_DIR/Caddyfile' | grep -q 'reverse_proxy 127.0.0.1:5000' && sed -n '/^# >>> gemeinsam/,/^# <<< gemeinsam/p' '$CADDY_DIR/Caddyfile' | grep -q 'reverse_proxy 127.0.0.1:4201'"
+check "HTTPS-Caddyfile setzt HSTS" sh -c "grep -v '^[[:space:]]*#' '$CADDY_DIR/Caddyfile' | grep -q 'Strict-Transport-Security'"
+check "LAN-HTTP ohne HSTS, ohne TLS, auf :80" sh -c "! grep -v '^[[:space:]]*#' '$CADDY_DIR/Caddyfile.lan-http' | grep -q 'Strict-Transport-Security\|tls ' && grep -q '^:80 {' '$CADDY_DIR/Caddyfile.lan-http' && grep -q 'auto_https off' '$CADDY_DIR/Caddyfile.lan-http'"
+if command -v caddy >/dev/null 2>&1; then
+  expect 0 "caddy adapt Caddyfile.lan-http" caddy adapt --adapter caddyfile --config "$CADDY_DIR/Caddyfile.lan-http"
+fi
+
 # ---------------------------------------------------------------------------
 echo "hq-sync.sh"
 
@@ -235,11 +320,104 @@ git -C "$HQ_DIR" checkout --quiet -b irgendwas
 expect 0 "anderer Branch ausgecheckt -> zurück auf main" "$SCRIPTS/hq-sync.sh"
 check "Branch ist main" test "$(git -C "$HQ_DIR" rev-parse --abbrev-ref HEAD)" = "main"
 
+# Q3: Token-Datei fehlt -> Warnung, Sync versucht es ohne (hier lokales origin)
+expect 0 "Token-Datei fehlt -> Sync ohne Token" env HQ_GITHUB_TOKEN_FILE="$TEST_TMP/tok/nix" "$SCRIPTS/hq-sync.sh"
+check "Warnung nennt die fehlende Datei" log_has "kein GitHub-Token: HQ_GITHUB_TOKEN_FILE .*fehlt"
+printf 'ghs_synthetic_sync\n' >"$TOKF"
+expect 0 "Sync mit Token-Datei" env HQ_GITHUB_TOKEN_FILE="$TOKF" "$SCRIPTS/hq-sync.sh"
+check "keine Token-Warnung, Token nicht im Log" sh -c "! grep -q 'kein GitHub-Token' '$TEST_TMP/last.log' && ! grep -q ghs_synthetic_sync '$TEST_TMP/last.log'"
+check "Token nicht in .git/config" sh -c "! grep -rq ghs_synthetic_sync '$HQ_DIR/.git/config'"
+
 mv "$ORIGIN" "$ORIGIN.weg"
 expect 3 "origin nicht erreichbar -> exit 3" "$SCRIPTS/hq-sync.sh"
 mv "$ORIGIN.weg" "$ORIGIN"
 
 expect 2 "HQ_DIR ohne Klon -> exit 2" env HQ_DIR="$TEST_TMP/nix" "$SCRIPTS/hq-sync.sh"
+
+# ---------------------------------------------------------------------------
+echo "gh-app-token.mjs / hq-token.sh"
+
+# Synthetischer App-Schlüssel; die GitHub-Attrappe läuft vorübergehend auf P_TG
+# (der Telegram-Stub startet erst danach).
+GH_DIR="$TEST_TMP/gh"
+mkdir -p "$GH_DIR"
+openssl genrsa -out "$GH_DIR/app.pem" 2048 >/dev/null 2>&1
+openssl rsa -in "$GH_DIR/app.pem" -pubout -out "$GH_DIR/app.pub" >/dev/null 2>&1
+openssl genrsa -out "$GH_DIR/fremd.pem" 2048 >/dev/null 2>&1
+openssl ecparam -name prime256v1 -genkey -noout -out "$GH_DIR/ec.pem" >/dev/null 2>&1
+chmod 600 "$GH_DIR"/*.pem
+GH_LOG="$GH_DIR/github.log"
+GH_MODE="$GH_DIR/mode"
+FAKE_TOKEN="ghs_syntheticFakeToken0815"
+: >"$GH_LOG"
+node "$HERE/fake_github_app.mjs" "$P_TG" "$GH_LOG" "$GH_DIR/app.pub" "$GH_MODE" &
+wait_stub "$P_TG" $!
+GH_ENV=(GH_APP_ID=123456 GH_APP_KEY="$GH_DIR/app.pem" GITHUB_API_URL="http://127.0.0.1:$P_TG")
+gh_mode() { printf '%s\n' "$1" >"$GH_MODE"; }
+
+gh_mode ok
+# stdout (das Token) in eine eigene Datei, stderr landet in last.log
+gh_token_to_file() { env "${GH_ENV[@]}" node "$SCRIPTS/gh-app-token.mjs" H-Bakery/hq >"$GH_DIR/out"; }
+expect 0 "gh-app-token.mjs holt ein Token" gh_token_to_file
+check "stdout ist genau das Token" test "$(cat "$GH_DIR/out")" = "$FAKE_TOKEN"
+check "stderr ohne Token" sh -c "! grep -q '$FAKE_TOKEN' '$TEST_TMP/last.log' && grep -q 'gültig bis' '$TEST_TMP/last.log'"
+check "GET /repos/H-Bakery/hq/installation mit gültigem RS256-JWT" grep -q "^GET /repos/H-Bakery/hq/installation jwt=ok iss=123456 span=600 backdated=6[01] " "$GH_LOG"
+check "Header: Accept, API-Version, User-Agent" grep -q "accept=application/vnd.github+json api=2022-11-28 ua=bakery-box-hq-token" "$GH_LOG"
+check "POST access_tokens nur für hq, nur Contents + PRs" grep -q '^POST /app/installations/4242/access_tokens jwt=ok .*type=application/json body={"repositories":\["hq"\],"permissions":{"contents":"write","pull_requests":"write"}}$' "$GH_LOG"
+: >"$GH_LOG"
+expect 0 "GH_APP_PERMISSIONS=- (alle Rechte der Installation)" env "${GH_ENV[@]}" GH_APP_PERMISSIONS=- node "$SCRIPTS/gh-app-token.mjs" H-Bakery/hq
+check "Body ohne permissions" grep -q 'body={"repositories":\["hq"\]}$' "$GH_LOG"
+expect 2 "GH_APP_PERMISSIONS ungültig" env "${GH_ENV[@]}" GH_APP_PERMISSIONS="contents=write" node "$SCRIPTS/gh-app-token.mjs" H-Bakery/hq
+expect 2 "Aufruf ohne OWNER/REPO" env "${GH_ENV[@]}" node "$SCRIPTS/gh-app-token.mjs" hq
+expect 2 "GH_APP_ID leer" env "${GH_ENV[@]}" GH_APP_ID= node "$SCRIPTS/gh-app-token.mjs" H-Bakery/hq
+expect 2 "Schlüssel fehlt" env "${GH_ENV[@]}" GH_APP_KEY="$GH_DIR/nix.pem" node "$SCRIPTS/gh-app-token.mjs" H-Bakery/hq
+expect 2 "kein RSA-Schlüssel" env "${GH_ENV[@]}" GH_APP_KEY="$GH_DIR/ec.pem" node "$SCRIPTS/gh-app-token.mjs" H-Bakery/hq
+expect 2 "falscher Schlüssel -> GitHub 401" env "${GH_ENV[@]}" GH_APP_KEY="$GH_DIR/fremd.pem" node "$SCRIPTS/gh-app-token.mjs" H-Bakery/hq
+check "Attrappe hat die Signatur abgelehnt" grep -q "jwt=FEHLER(signatur)" "$GH_LOG"
+check "Meldung: App-ID und Schlüssel" log_has "passen GH_APP_ID und Schlüssel zusammen"
+
+HQT_OUT="$BAKERY_ETC/hq-token"
+HQT_ENV=("${GH_ENV[@]}" HQ_GITHUB_TOKEN_FILE="$HQT_OUT" HQ_TOKEN_GROUP="$(id -gn)" NODE_BIN="$(command -v node)")
+expect 0 "hq-token.sh ohne GH_APP_ID: nichts zu tun" env "${HQT_ENV[@]}" GH_APP_ID= "$SCRIPTS/hq-token.sh"
+check "Log: nicht eingerichtet, keine Datei" sh -c "grep -q 'nicht eingerichtet' '$TEST_TMP/last.log' && test ! -e '$HQT_OUT'"
+: >"$GH_LOG"
+expect 0 "hq-token.sh erneuert das Token" env "${HQT_ENV[@]}" "$SCRIPTS/hq-token.sh"
+check "Token-Datei enthält das Token" test "$(cat "$HQT_OUT")" = "$FAKE_TOKEN"
+check "Token-Datei 0640" test "$(file_mode "$HQT_OUT")" = "640"
+check "Token-Datei Gruppe $(id -gn)" test "$(stat -c %G "$HQT_OUT" 2>/dev/null || stat -f %Sg "$HQT_OUT")" = "$(id -gn)"
+check "Token nicht im Log" sh -c "! grep -q '$FAKE_TOKEN' '$TEST_TMP/last.log' && grep -q 'erneuert' '$TEST_TMP/last.log'"
+check "Repo aus HQ_REPO_URL-Vorgabe: H-Bakery/hq" grep -q "^GET /repos/H-Bakery/hq/installation jwt=ok" "$GH_LOG"
+check "keine Temp-Datei übrig" sh -c "! ls -A '$BAKERY_ETC' | grep -q '^\.hq-token\.'"
+: >"$GH_LOG"
+expect 0 "Repo aus SSH-URL" env "${HQT_ENV[@]}" HQ_REPO_URL=git@github.com:Beispiel-Org/hq-test.git "$SCRIPTS/hq-token.sh"
+check "GET /repos/Beispiel-Org/hq-test/installation" grep -q "^GET /repos/Beispiel-Org/hq-test/installation " "$GH_LOG"
+check "repositories: [hq-test]" grep -q 'body={"repositories":\["hq-test"\]' "$GH_LOG"
+expect 2 "HQ_REPO_URL ohne GitHub" env "${HQT_ENV[@]}" HQ_REPO_URL=https://git.example.invalid/hq.git "$SCRIPTS/hq-token.sh"
+
+touch -t 202001010000 "$HQT_OUT"
+gh_mode not-installed
+expect 4 "App nicht installiert -> exit 4" env "${HQT_ENV[@]}" "$SCRIPTS/hq-token.sh"
+check "alte Datei bleibt, Log nennt ihr Alter" sh -c "test \"\$(cat '$HQT_OUT')\" = '$FAKE_TOKEN' && grep -q 'bleibt (vor [0-9]* min erneuert' '$TEST_TMP/last.log'"
+gh_mode forbidden
+expect 4 "Rechte fehlen (422) -> exit 4" env "${HQT_ENV[@]}" "$SCRIPTS/hq-token.sh"
+gh_mode bad-token
+expect 3 "zweizeiliges Token von GitHub -> exit 3" env "${HQT_ENV[@]}" "$SCRIPTS/hq-token.sh"
+check "Datei unverändert (alt)" sh -c "test \"\$(cat '$HQT_OUT')\" = '$FAKE_TOKEN' && ! grep -q zwei '$HQT_OUT'"
+gh_mode error
+expect 3 "GitHub 502 -> exit 3" env "${HQT_ENV[@]}" "$SCRIPTS/hq-token.sh"
+gh_mode ok
+expect 3 "GitHub nicht erreichbar -> exit 3" env "${HQT_ENV[@]}" GITHUB_API_URL="http://127.0.0.1:$P_CLOSED" "$SCRIPTS/hq-token.sh"
+check "keine Temp-Datei nach Fehlern" sh -c "! ls -A '$BAKERY_ETC' | grep -q '^\.hq-token\.'"
+chmod 640 "$GH_DIR/app.pem"
+expect 2 "Schlüssel für die Gruppe lesbar -> exit 2" env "${HQT_ENV[@]}" "$SCRIPTS/hq-token.sh"
+check "Meldung: chmod 600" log_has "chmod 600"
+chmod 600 "$GH_DIR/app.pem"
+expect 2 "Schlüssel fehlt -> exit 2" env "${HQT_ENV[@]}" GH_APP_KEY="$GH_DIR/nix.pem" "$SCRIPTS/hq-token.sh"
+expect 0 "danach wieder frisch" env "${HQT_ENV[@]}" "$SCRIPTS/hq-token.sh"
+check "Datei wieder jung" test "$(bash -c '. "$1"; file_age_min "$2"' _ "$SCRIPTS/lib.sh" "$HQT_OUT")" -lt 2
+check "Attrappe hat das Token nie geloggt" sh -c "! grep -q '$FAKE_TOKEN' '$GH_LOG'"
+stop_stub "$P_TG"
+rm -f "$HQT_OUT"
 
 # ---------------------------------------------------------------------------
 echo "health.sh"
@@ -301,6 +479,16 @@ expect 0 "hq-Sync-Prüfung: frisch" env HEALTH_CHECKS="hq-sync" "$SCRIPTS/health
 expect 0 "Platten-Prüfung" env HEALTH_CHECKS="disk" "$SCRIPTS/health.sh"
 expect 1 "Platten-Prüfung mit Grenze 0 %" env HEALTH_CHECKS="disk" DISK_MAX_PERCENT=0 "$SCRIPTS/health.sh"
 expect 2 "unbekannte Prüfung" env HEALTH_CHECKS="quatsch" "$SCRIPTS/health.sh"
+expect 0 "hq-token-Prüfung ohne GitHub-App übersprungen" env HEALTH_CHECKS="hq-token" HQ_GITHUB_TOKEN_FILE="$TOKF" "$SCRIPTS/health.sh"
+check "Log: übersprungen" log_has "GitHub-Token-Prüfung übersprungen"
+expect 1 "hq-token: Datei fehlt" env HEALTH_CHECKS="hq-token" GH_APP_ID=123456 HQ_GITHUB_TOKEN_FILE="$TEST_TMP/tok/nix" "$SCRIPTS/health.sh"
+check "Meldung nennt journalctl -u bakery-hq-token" log_has "GitHub-Token (hq): GESTÖRT - GitHub-App-Token: noch nie erfolgreich .*journalctl -u bakery-hq-token"
+touch -t 202001010000 "$TOKF"
+expect 1 "hq-token: älter als 70 min" env HEALTH_CHECKS="hq-token" GH_APP_ID=123456 HQ_GITHUB_TOKEN_FILE="$TOKF" "$SCRIPTS/health.sh"
+expect 0 "hq-token: fester HQ_GITHUB_TOKEN -> übersprungen" env HEALTH_CHECKS="hq-token" GH_APP_ID=123456 HQ_GITHUB_TOKEN=fest HQ_GITHUB_TOKEN_FILE="$TOKF" "$SCRIPTS/health.sh"
+touch "$TOKF"
+expect 0 "hq-token: frisch" env HEALTH_CHECKS="hq-token" GH_APP_ID=123456 HQ_GITHUB_TOKEN_FILE="$TOKF" "$SCRIPTS/health.sh"
+check "Token nicht im Log" sh -c "! grep -q ghs_synthetic '$TEST_TMP/last.log'"
 
 # HTTPS über "Caddy" (Stub mit selbst signiertem Zertifikat auf P_TLS)
 TLS_HOST="intern.baeckerei.test"
@@ -355,6 +543,9 @@ chmod +x "$FAKEBIN/restic"
 printf 'testpasswort\n' >"$BAKERY_ETC/restic-password"
 printf 'TELEGRAM_CHAT_ID=1\n' >"$BAKERY_ETC/ops.env"
 printf 'PORT=5000\n' >"$BAKERY_ETC/bakery.env"
+printf 'ghs_synthetic_backup\n' >"$BAKERY_ETC/hq-token"
+printf 'kein echter Schlüssel\n' >"$BAKERY_ETC/github-app.pem"
+printf 'ghs_synthetic_backup2\n' >"$BAKERY_ETC/anderes-token"
 
 expect 11 "restic da, Ziel fehlt -> exit 11" env PATH="$FAKEBIN:$PATH" "$SCRIPTS/backup.sh"
 check "Meldung nennt Q4" log_has "Q4"
@@ -364,6 +555,10 @@ expect 0 "voller Lauf mit restic-Attrappe" env PATH="$FAKEBIN:$PATH" RESTIC_REPO
 check "restic backup mit current/bakery.db" grep -q "restic backup .*backup/current/bakery.db" "$TEST_TMP/restic.log"
 check "Passwortdatei nicht im Backup" sh -c "! grep -q 'restic-password' '$TEST_TMP/restic.log'"
 check "ops.env nicht im Backup" sh -c "! grep -q 'ops.env' '$TEST_TMP/restic.log'"
+check "GitHub-App-Schlüssel und Token nicht im Backup" sh -c "! grep -q 'github-app.pem\|hq-token' '$TEST_TMP/restic.log'"
+: >"$TEST_TMP/restic.log"
+expect 0 "abweichende HQ_GITHUB_TOKEN_FILE/GH_APP_KEY nicht im Backup" env PATH="$FAKEBIN:$PATH" HQ_GITHUB_TOKEN_FILE="$BAKERY_ETC/anderes-token" RESTIC_REPOSITORY="$TEST_TMP/repo" RESTIC_PASSWORD_FILE="$BAKERY_ETC/restic-password" "$SCRIPTS/backup.sh"
+check "anderes-token fehlt im restic-Aufruf" sh -c "grep -q 'restic backup' '$TEST_TMP/restic.log' && ! grep -q 'anderes-token' '$TEST_TMP/restic.log'"
 check "bakery.env im Backup" grep -q "restic backup .*$BAKERY_ETC/bakery.env" "$TEST_TMP/restic.log"
 check "forget --keep-daily 14 --keep-weekly 8 --prune" grep -q "restic forget .*--keep-daily 14 --keep-weekly 8 --prune" "$TEST_TMP/restic.log"
 check "last-success geschrieben" test -f "$BACKUP_DIR/last-success"
@@ -455,6 +650,10 @@ expect 3 "leeres NEXT_PUBLIC_API_URL ist erlaubt (gleiche Origin)" env "${DEPLOY
 expect 2 "NEXT_PUBLIC_API_URL aus der Vorlage -> Abbruch" env "${DEPLOY_ENV[@]}" NEXT_PUBLIC_API_URL=https://intern.example.de "$SCRIPTS/deploy.sh" main
 check "Meldung nennt den Platzhalter" log_has "Platzhalter aus der Vorlage"
 expect 2 "CORS_ORIGIN aus der Vorlage -> Abbruch" env "${DEPLOY_ENV[@]}" CORS_ORIGIN=https://intern.example.de "$SCRIPTS/deploy.sh" main
+check "Meldung nennt den LAN-HTTP-Weg" log_has "LAN-HTTP-Betrieb (bis Q2) http://<IP oder Name der Box>"
+# Q2: LAN-HTTP ohne Domain - CORS_ORIGIN http://<Box> bricht nicht ab (bis zur REF-Suche)
+expect 3 "CORS_ORIGIN=http://<Box> (LAN-HTTP) ist erlaubt" env "${DEPLOY_ENV[@]}" NEXT_PUBLIC_API_URL= CORS_ORIGIN=http://192.0.2.10 "$SCRIPTS/deploy.sh" gibtsnicht
+check "bis zur REF-Suche gekommen" log_has "REF nicht gefunden"
 expect 2 "ungültiger REF" env "${DEPLOY_ENV[@]}" "$SCRIPTS/deploy.sh" "main;rm"
 expect 3 "unbekannter REF" env "${DEPLOY_ENV[@]}" "$SCRIPTS/deploy.sh" gibtsnicht
 # Erstes Deploy liest bakery.env/ops.env aus ETC2 (mit Geheimnis-Attrappen)

@@ -5,11 +5,16 @@
  * of the GitHub pulls API (never the real GitHub). Synthetic products only.
  */
 import * as fs from 'fs'
+import * as os from 'os'
 import * as path from 'path'
 import request from 'supertest'
 import type { Application } from 'express'
 
 import { createApp } from '../../src/app'
+import {
+  createGitHubTokenProvider,
+  GitHubTokenProvider,
+} from '../../src/services/github-token'
 import { HqEditsSync } from '../../src/services/hq-edits-sync.service'
 import { HqGit, runHqGit } from '../../src/services/hq-git'
 import { bearer, createUser, login, sessionFor } from '../helpers/auth'
@@ -69,11 +74,18 @@ interface Setup {
   app: Application
 }
 
-function setup(options: { token?: string | null; git?: HqGit } = {}): Setup {
+function setup(
+  options: {
+    token?: string | null
+    tokenProvider?: GitHubTokenProvider
+    git?: HqGit
+  } = {}
+): Setup {
   const remote = makeHqRemote()
   const edits = new HqEditsSync({
     writeDir: remote.write,
     token: options.token === undefined ? 'test-token' : options.token,
+    tokenProvider: options.tokenProvider,
     githubRepo: REPO,
     githubApiUrl: github.url,
     git: options.git,
@@ -618,5 +630,133 @@ describe('locks: the network never blocks a save', () => {
       await request(app).get('/api/hq-products/musterweck').set(owner)
     ).body.data
     expect(weck.approved).toMatchObject({ name: 'Neu' })
+  })
+})
+
+describe('GitHub App token file (HQ_GITHUB_TOKEN_FILE, Q3)', () => {
+  const tokenDirs: string[] = []
+  const tokenFile = () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bakery-hq-token-'))
+    tokenDirs.push(dir)
+    return path.join(dir, 'hq-token')
+  }
+  /** Like hq-token.sh: tmp file + rename. */
+  const mint = (file: string, token: string) => {
+    const tmp = `${file}.tmp`
+    fs.writeFileSync(tmp, `${token}\n`)
+    fs.renameSync(tmp, file)
+  }
+
+  afterAll(() => {
+    for (const dir of tokenDirs)
+      fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('reads the file at the time of use: missing = off, minted = pushed, renewed = the new token', async () => {
+    const file = tokenFile()
+    const seen: (string | null | undefined)[] = []
+    const recording: HqGit = (cwd, args, options) => {
+      if (args[0] === 'fetch' || args[0] === 'push') seen.push(options?.token)
+      return runHqGit(cwd, args, options)
+    }
+    const { app, edits, remote } = setup({
+      tokenProvider: createGitHubTokenProvider({ tokenFile: file }),
+      git: recording,
+    })
+    await edits.init()
+
+    // before the first mint: like "no token" - off, says why, save is local
+    expect(await status(app)).toMatchObject({
+      enabled: false,
+      reason: expect.stringContaining(`HQ_GITHUB_TOKEN_FILE: ${file} fehlt`),
+      token: { source: 'file', file, problem: 'missing', updatedAt: null },
+    })
+    expect((await put(app, KORNBROT, { price: 7.01 })).status).toBe(200)
+    expect(originFile(remote, 'app/edits', `products/${KORNBROT}`)).toBeNull()
+    expect(seen).toHaveLength(0)
+    expect(github.requests).toHaveLength(0)
+
+    mint(file, 'ghs_synthetic_first')
+    let s = await edits.sync()
+    expect(s).toMatchObject({
+      enabled: true,
+      reason: null,
+      lastError: null,
+      pendingCommits: 0,
+      token: { source: 'file', problem: null },
+    })
+    expect(originFile(remote, 'app/edits', `products/${KORNBROT}`)).toContain(
+      'price: 7.01'
+    )
+    expect(seen.length).toBeGreaterThan(0)
+    expect(seen.every((t) => t === 'ghs_synthetic_first')).toBe(true)
+    expect(github.requests.length).toBeGreaterThan(0)
+    expect(
+      github.requests.every((r) => r.auth === 'Bearer ghs_synthetic_first')
+    ).toBe(true)
+    expect(JSON.stringify(s)).not.toContain('ghs_synthetic')
+
+    // renewed by the timer: the next push and PR call use the new token
+    seen.splice(0)
+    github.requests.splice(0)
+    mint(file, 'ghs_synthetic_second')
+    expect((await put(app, WECK, { price: 7.02 })).status).toBe(200)
+    s = await edits.sync()
+    expect(s.lastError).toBeNull()
+    expect(originFile(remote, 'app/edits', `products/${WECK}`)).toContain(
+      'price: 7.02'
+    )
+    expect(seen.length).toBeGreaterThan(0)
+    expect(seen.every((t) => t === 'ghs_synthetic_second')).toBe(true)
+    expect(github.requests.length).toBeGreaterThan(0)
+    expect(
+      github.requests.every((r) => r.auth === 'Bearer ghs_synthetic_second')
+    ).toBe(true)
+
+    // emptied: off again, nothing thrown, saves still commit locally
+    fs.writeFileSync(file, '')
+    expect(await status(app)).toMatchObject({
+      enabled: false,
+      reason: expect.stringContaining(`${file} ist leer`),
+      token: { problem: 'empty' },
+    })
+    expect((await put(app, KORNBROT, { price: 7.03 })).status).toBe(200)
+  })
+
+  it('the retry timer runs while the file is missing and pushes once the first token is there', async () => {
+    const file = tokenFile()
+    const { app, remote } = setup({ token: null })
+    expect((await put(app, KORNBROT, { price: 8.01 })).status).toBe(200)
+    const timed = new HqEditsSync({
+      writeDir: remote.write,
+      tokenProvider: createGitHubTokenProvider({ tokenFile: file }),
+      githubRepo: REPO,
+      githubApiUrl: github.url,
+      retryMs: 100,
+      log: QUIET,
+    })
+    timed.start()
+    try {
+      await new Promise((r) => setTimeout(r, 400))
+      expect(originFile(remote, 'app/edits', `products/${KORNBROT}`)).toBeNull()
+      expect(timed.status()).toMatchObject({ enabled: false })
+      mint(file, 'ghs_synthetic_late')
+      const deadline = Date.now() + 15000
+      while (
+        Date.now() < deadline &&
+        originFile(remote, 'app/edits', `products/${KORNBROT}`) === null
+      ) {
+        await new Promise((r) => setTimeout(r, 100))
+      }
+    } finally {
+      timed.stop()
+      await timed.sync()
+    }
+    expect(originFile(remote, 'app/edits', `products/${KORNBROT}`)).toContain(
+      'price: 8.01'
+    )
+    expect(
+      github.requests.every((r) => r.auth === 'Bearer ghs_synthetic_late')
+    ).toBe(true)
   })
 })

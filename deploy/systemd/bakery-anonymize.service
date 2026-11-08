@@ -30,7 +30,8 @@ UMask=0027
 NoNewPrivileges=yes
 ProtectSystem=strict
 ReadWritePaths=/var/lib/bakery
-InaccessiblePaths=-/etc/bakery/ops.env -/etc/bakery/restic-password -/etc/caddy
+# Das hq-Token (GitHub-App, 1 h) braucht dieser Dienst nicht.
+InaccessiblePaths=-/etc/bakery/ops.env -/etc/bakery/restic-password -/etc/bakery/github-app.pem -/etc/bakery/hq-token -/etc/caddy
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes

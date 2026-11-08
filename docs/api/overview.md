@@ -212,7 +212,7 @@ business days and delivery time windows are local times, CI runners are UTC).
   `bearer(token)` from `tests/helpers/auth.ts`.
 - `tests/setup-ts.js` points every hq path (`HQ_DIR`, `HQ_PRODUCTS_DIR`, `HQ_REPORTS_DIR`,
   `HQ_FINANCE_DIR`, `HQ_BACKZETTEL_CONFIG`) nowhere, unsets `HQ_WRITE_DIR`, `HQ_WRITE_BRANCH`,
-  `HQ_SNAPSHOT_DIR`, `HQ_GITHUB_TOKEN`, `GITHUB_TOKEN`, `GITHUB_API_URL`, `HQ_GITHUB_REPO`, and
+  `HQ_SNAPSHOT_DIR`, `HQ_GITHUB_TOKEN`, `HQ_GITHUB_TOKEN_FILE`, `GITHUB_TOKEN`, `GITHUB_API_URL`, `HQ_GITHUB_REPO`, and
   points `NOMINATIM_URL`/`OSRM_URL` at a closed port, so tests stay hermetic. Fixtures are synthetic (`tests/fixtures/*.synthetic.*`) - the repo is public.
 - See also `apps/bakery-api/tests/README.md`.
 - `scripts/boot-smoke.sh`: bundle → `cli.js create-user` twice (create, idempotent reset) on a

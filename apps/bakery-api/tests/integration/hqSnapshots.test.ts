@@ -12,7 +12,13 @@ import * as path from 'path'
 import request from 'supertest'
 
 import { Preorder, PreorderItem, RestCount, User } from '../../src/models'
-import { commonGitDir, NETWORK_LOCK_FILE } from '../../src/services/hq-git'
+import { createGitHubTokenProvider } from '../../src/services/github-token'
+import {
+  commonGitDir,
+  HqGit,
+  NETWORK_LOCK_FILE,
+  runHqGit,
+} from '../../src/services/hq-git'
 import { HqSnapshotWriter } from '../../src/services/hq-snapshots.service'
 import { bearer, createUser, login } from '../helpers/auth'
 import { createTestApp, TestApp } from '../helpers/createTestApp'
@@ -496,5 +502,48 @@ describe('Rest am Abend → hq (M4)', () => {
     })
     expect(git(fresh.bare, 'rev-list', '--count', 'main')).toBe(before)
     await w.idle()
+  })
+})
+
+describe('GitHub App token file (HQ_GITHUB_TOKEN_FILE, Q3)', () => {
+  it('every push reads the token file anew; a missing file pushes without a token', async () => {
+    const fresh = makeHqRemote()
+    const tokenDir = fs.mkdtempSync(path.join(os.tmpdir(), 'z9-hq-token-'))
+    const file = path.join(tokenDir, 'hq-token')
+    const pushed: (string | null | undefined)[] = []
+    const recording: HqGit = (cwd, args, options) => {
+      if (args[0] === 'push') pushed.push(options?.token)
+      return runHqGit(cwd, args, options)
+    }
+    const w = new HqSnapshotWriter({
+      snapshotDir: fresh.snapshot,
+      tokenProvider: createGitHubTokenProvider({ tokenFile: file }),
+      git: recording,
+      log: QUIET,
+    })
+    const commitLocal = (name: string) => {
+      const rel = `data/production/test/${name}.json`
+      fs.mkdirSync(path.join(fresh.snapshot, 'data/production/test'), {
+        recursive: true,
+      })
+      fs.writeFileSync(path.join(fresh.snapshot, rel), '{}\n')
+      git(fresh.snapshot, 'add', rel)
+      git(fresh.snapshot, 'commit', '-q', '-m', name)
+    }
+    try {
+      commitLocal('a')
+      expect(await w.retry()).toMatchObject({ pushed: true, error: null })
+      fs.writeFileSync(file, 'ghs_snapshot_one\n')
+      commitLocal('b')
+      expect(await w.retry()).toMatchObject({ pushed: true, error: null })
+      fs.writeFileSync(`${file}.tmp`, 'ghs_snapshot_two\n')
+      fs.renameSync(`${file}.tmp`, file)
+      commitLocal('c')
+      expect(await w.retry()).toMatchObject({ pushed: true, error: null })
+      expect(pushed).toEqual([null, 'ghs_snapshot_one', 'ghs_snapshot_two'])
+      expect(JSON.stringify(w.status())).not.toContain('ghs_snapshot')
+    } finally {
+      fs.rmSync(tokenDir, { recursive: true, force: true })
+    }
   })
 })

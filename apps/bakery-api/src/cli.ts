@@ -88,6 +88,7 @@ import {
   formatDeliveryImportReport,
   importDeliveryTours,
 } from './services/delivery-import.service'
+import { createGitHubTokenProvider } from './services/github-token'
 import { HqSnapshotWriter } from './services/hq-snapshots.service'
 import { createVariantsHook } from './services/preorder-variants'
 import { isFailure, PreordersService } from './services/preorders.service'
@@ -478,7 +479,7 @@ async function snapshotPreorders(
   const sync = loadHqSyncConfig()
   const writer = new HqSnapshotWriter({
     snapshotDir: hq.snapshotDir,
-    token: sync.token,
+    tokenProvider: createGitHubTokenProvider(sync),
     // The server holds the local lock for seconds only; wait generously
     // rather than lose the night's snapshot (the timer does not re-run).
     lockWaitMs: 5 * 60_000,
