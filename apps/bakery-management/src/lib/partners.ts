@@ -1,12 +1,13 @@
 /**
  * Produktkatalog für die Verkaufspartner-Erfassung.
  *
- * Server-only (liest über `products.ts` das Dateisystem). Seiten laden den
- * Katalog als Server-Komponente und reichen ihn an die Client-Komponenten
- * weiter - genauso wie `admin/products/page.tsx`.
+ * Server-only (liest über `hqProductsFs.ts` das Dateisystem). Seiten laden
+ * den Katalog als Server-Komponente und reichen ihn an die Client-Komponenten
+ * weiter.
  */
 
-import { getHQProducts, CATEGORY_LABELS } from './products'
+import { getHQProducts } from './hqProductsFs'
+import { CATEGORY_LABELS } from './products'
 import { CatalogueProduct, categoryRank } from './partnerTypes'
 
 /**

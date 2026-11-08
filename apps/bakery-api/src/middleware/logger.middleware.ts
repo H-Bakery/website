@@ -26,7 +26,7 @@ export function loggerMiddleware(
 
   // Log request
   logger.info(
-    `${req.method} ${req.path} - ${req.ip} - ${
+    `${req.method} ${req.originalUrl} - ${req.ip} - ${
       req.headers['user-agent'] || 'Unknown User Agent'
     }`
   )
@@ -34,7 +34,7 @@ export function loggerMiddleware(
   // Log response when finished
   res.on('finish', () => {
     const duration = req.timestamp ? Date.now() - req.timestamp : 0
-    const message = `${req.method} ${req.path} - ${res.statusCode} - ${duration}ms`
+    const message = `${req.method} ${req.originalUrl} - ${res.statusCode} - ${duration}ms`
 
     if (res.statusCode >= 400) {
       logger.error(message)

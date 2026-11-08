@@ -1,3 +1,5 @@
+> **Superseded (2026-11-05)** by [roadmap.md](roadmap.md) (pilot plan, decisions D1–D12). Kept for history.
+
 <context>
 # Overview
 The Bakery Management System (BMS) is an open-source software solution designed specifically for small bakeries (3-20 employees) in rural German towns. It aims to help these traditional businesses run healthy, efficient, and fair operations while embracing digital transformation. The system serves as both a standalone toolkit and a digital extension of a broader strategic business guide ("Leitfaden").

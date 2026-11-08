@@ -1,0 +1,43 @@
+# Vorbestellungs-Snapshot nach hq (roadmap Z9, D14): Summen je Produkt/Sorte
+# und Zahlen je Kanal/Sammelstelle des Tages - ohne Namen, Telefonnummern,
+# Anmerkungen - nach data/production/vorbestellungen/<Tag>.json im
+# Snapshot-Worktree (HQ_SNAPSHOT_DIR), Commit nur dieses Pfads, Push nach main.
+# Offline bleibt der Commit lokal; die API überträgt ihn alle 15 Minuten.
+# Migriert nie (stehen Migrationen aus, Exit 1).
+# Gestartet von bakery-snapshot-preorders.timer (22:15). Bericht im Journal:
+#   journalctl -u bakery-snapshot-preorders -n 50
+
+[Unit]
+Description=Bäckerei Heusser - Vorbestellungs-Summen nach hq schreiben
+Documentation=https://github.com/H-Bakery/website/blob/main/docs/runbook.md
+After=bakery-api.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=bakery
+Group=bakery
+WorkingDirectory=/opt/bakery/current
+EnvironmentFile=/etc/bakery/bakery.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node dist/apps/bakery-api/bundle/cli.js snapshot-preorders
+TimeoutStartSec=10min
+Nice=10
+
+UMask=0027
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/bakery
+InaccessiblePaths=-/etc/bakery/ops.env -/etc/bakery/restic-password -/etc/bakery/github-app.pem -/etc/caddy
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+# git push braucht das Netz (GitHub), anders als bakery-anonymize.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=

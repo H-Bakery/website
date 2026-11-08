@@ -44,7 +44,7 @@ import Link from 'next/link'
 import {
   fetchPartner,
   fetchStats,
-  reportCsvUrl,
+  downloadReportCsv,
 } from '../../../../../lib/partnerApi'
 import {
   Partner,
@@ -53,6 +53,8 @@ import {
   formatCurrency,
   formatDate,
   formatPercent,
+  formatUnitPrice,
+  plural,
   shiftDate,
   toBusinessDate,
   weekdayOf,
@@ -269,6 +271,8 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
   const [stats, setStats] = useState<PartnerStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [csvBusy, setCsvBusy] = useState(false)
+  const [csvError, setCsvError] = useState<string | null>(null)
 
   // Erst nach dem Mount: `new Date()` auf dem Server und im Browser kann
   // auseinanderlaufen und würde die Hydration zerlegen.
@@ -361,8 +365,26 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
       : 'Abrechnung: Kommission - vergütet wird die verkaufte Ware'
 
   const isEmpty = Boolean(stats && stats.byDay.length === 0)
-  const csvHref =
-    rangeReady && !rangeInvalid ? reportCsvUrl(partnerId, range) : ''
+  const csvReady = rangeReady && !rangeInvalid
+
+  // F4: Download über fetch mit Token - ein schlichter Link bekäme von der
+  // echten API 401 (jede Route braucht eine Sitzung).
+  const exportCsv = async () => {
+    if (!csvReady || csvBusy) return
+    setCsvBusy(true)
+    setCsvError(null)
+    try {
+      await downloadReportCsv(partnerId, range)
+    } catch (err) {
+      setCsvError(
+        err instanceof Error && err.message
+          ? err.message
+          : 'Der CSV-Export ist fehlgeschlagen.'
+      )
+    } finally {
+      setCsvBusy(false)
+    }
+  }
 
   return (
     <Box className="report-root">
@@ -419,11 +441,11 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
             <Button
               size="small"
               variant="outlined"
-              startIcon={<DownloadIcon />}
-              component="a"
-              href={csvHref || undefined}
-              download={`partner-report-${range.from}-bis-${range.to}.csv`}
-              disabled={!csvHref}
+              startIcon={
+                csvBusy ? <CircularProgress size={16} /> : <DownloadIcon />
+              }
+              onClick={exportCsv}
+              disabled={!csvReady || csvBusy}
             >
               CSV exportieren
             </Button>
@@ -492,6 +514,17 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
         <Alert severity="warning" className="report-no-print" sx={{ mb: 2 }}>
           Das Startdatum liegt nach dem Enddatum - bitte den Zeitraum
           korrigieren.
+        </Alert>
+      )}
+
+      {csvError && (
+        <Alert
+          severity="error"
+          className="report-no-print"
+          sx={{ mb: 2 }}
+          onClose={() => setCsvError(null)}
+        >
+          CSV-Export fehlgeschlagen: {csvError}
         </Alert>
       )}
 
@@ -573,9 +606,18 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                 </Typography>
                 <Typography variant="body2">{settlementText}</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {formatQty(stats.totals.dayCount)} Geschäftstage ·{' '}
-                  {formatQty(stats.totals.visitCount)} Besuche · davon{' '}
-                  {formatQty(stats.totals.refillCount)} Nachlieferungen
+                  {plural(
+                    stats.totals.dayCount,
+                    'Geschäftstag',
+                    'Geschäftstage'
+                  )}{' '}
+                  · {plural(stats.totals.visitCount, 'Besuch', 'Besuche')} ·
+                  davon{' '}
+                  {plural(
+                    stats.totals.refillCount,
+                    'Nachlieferung',
+                    'Nachlieferungen'
+                  )}
                 </Typography>
                 {createdAt && (
                   <Typography variant="body2" color="text.secondary">
@@ -597,7 +639,13 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                   - dort wurde noch keine Abholung erfasst. Verkauf, Retoure und
                   Umsatz sind an diesen Tagen deshalb vorläufig und können sich
                   noch ändern:{' '}
-                  <strong>{stats.openDates.map(formatDate).join(', ')}</strong>
+                  <strong>{stats.openDates.map(formatDate).join(', ')}</strong>.
+                  Die Abverkaufsquote rechnet nur Tage mit Abholung
+                  {(stats.totals.openQty ?? 0) > 0 &&
+                    `; ${formatQty(
+                      stats.totals.openQty ?? 0
+                    )} Stück aus diesen Tagen liegen noch im Schrank (Kachel „Offen“)`}
+                  .
                 </Box>
               )}
               {(stats.incompleteDates ?? []).length > 0 && (
@@ -621,6 +669,28 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                   </strong>
                 </Box>
               )}
+            </Alert>
+          )}
+
+          {(stats.totals.discrepancyQty ?? 0) > 0 && (
+            <Alert
+              severity="warning"
+              sx={{ mb: { xs: 2, md: 3 } }}
+              data-testid="report-discrepancy"
+            >
+              <AlertTitle>
+                Abweichung: {stats.totals.discrepancyQty} Stück mehr gezählt,
+                als im Schrank sein konnten
+              </AlertTitle>
+              Sie sind weder als verkauft noch als Retoure gebucht. Meist fehlt
+              eine Lieferung, oder es wurde verzählt - bitte die Besuche dieser
+              Tage prüfen:{' '}
+              <strong>
+                {stats.byDay
+                  .filter((d) => d.discrepancyQty > 0)
+                  .map((d) => formatDate(d.businessDate))
+                  .join(', ')}
+              </strong>
             </Alert>
           )}
 
@@ -654,8 +724,22 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                     label: 'Retoure',
                     value: `${formatQty(stats.totals.returnedQty)} Stück`,
                   },
+                  // W4-verify r5: Geliefert = Verkauft + Retoure + Offen.
+                  ...((stats.totals.openQty ?? 0) > 0
+                    ? [
+                        {
+                          label: 'Offen (ohne Abholung)',
+                          value: `${formatQty(
+                            stats.totals.openQty ?? 0
+                          )} Stück`,
+                        },
+                      ]
+                    : []),
                   {
-                    label: 'Abverkaufsquote',
+                    label:
+                      stats.openDates.length > 0
+                        ? 'Abverkaufsquote (Tage mit Abholung)'
+                        : 'Abverkaufsquote',
                     value: formatPercent(stats.totals.sellThroughRate),
                   },
                   {
@@ -694,6 +778,13 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                   <Typography variant="body2" color="text.secondary">
                     Umsatz = verkaufte Menge × Einzelpreis zum Zeitpunkt der
                     Lieferung
+                    {stats.byProduct.some(
+                      (p) =>
+                        p.unitPriceMin != null &&
+                        p.unitPriceMax != null &&
+                        p.unitPriceMin !== p.unitPriceMax
+                    ) &&
+                      '. Eine Preisspanne (von–bis) heißt: der Preis hat sich im Zeitraum geändert, jedes Stück zählt zu seinem Preis.'}
                   </Typography>
                 </Box>
                 <TableContainer>
@@ -742,13 +833,35 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                                 {product.uncountedQty} Stück ungezählt
                               </Typography>
                             )}
+                            {(product.openQty ?? 0) > 0 && (
+                              <Typography
+                                component="span"
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: 'block' }}
+                              >
+                                {product.openQty} Stück noch offen (Tag ohne
+                                Abholung)
+                              </Typography>
+                            )}
+                            {(product.discrepancyQty ?? 0) > 0 && (
+                              <Typography
+                                component="span"
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: 'block' }}
+                              >
+                                {product.discrepancyQty} Stück Abweichung (mehr
+                                gezählt als möglich)
+                              </Typography>
+                            )}
                           </TableCell>
                           <TableCell
                             align="right"
                             className="report-col-md"
                             sx={mdOnlyCell}
                           >
-                            {formatCurrency(product.unitPrice)}
+                            {formatUnitPrice(product)}
                           </TableCell>
                           <TableCell align="right">
                             {formatQty(product.deliveredQty)}
@@ -987,10 +1100,11 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                     Durchschnitt je Wochentag
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Mittelwerte über alle Geschäftstage des Zeitraums - die
-                    Grundlage für spätere Mengenempfehlungen (&bdquo;dienstags
-                    werden im Schnitt 12 von 20 Broten verkauft, also 14
-                    liefern&ldquo;).
+                    Mittelwerte über die abgeschlossenen Geschäftstage des
+                    Zeitraums (mit Abholung) - die Grundlage für spätere
+                    Mengenempfehlungen (&bdquo;dienstags werden im Schnitt 12
+                    von 20 Broten verkauft, also 14 liefern&ldquo;). Offene Tage
+                    zählen erst nach der Abholung mit.
                   </Typography>
                 </Box>
                 <TableContainer>
@@ -1062,7 +1176,9 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                             {formatPercent(day.sellThroughRate)}
                           </TableCell>
                           <TableCell align="right">
-                            {formatCurrency(day.avgRevenue)}
+                            {day.avgRevenue == null
+                              ? '–'
+                              : formatCurrency(day.avgRevenue)}
                           </TableCell>
                         </TableRow>
                       ))}

@@ -10,18 +10,10 @@ import {
   Button,
   LinearProgress,
   Chip,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
   Alert,
 } from '@mui/material'
 import {
   Dashboard as DashboardIcon,
-  ShoppingBasket as OrdersIcon,
-  Inventory as InventoryIcon,
-  LocalShipping as DeliveryIcon,
-  Factory as ProductionIcon,
   ListAlt as BakingListIcon,
   Store as ProductsIcon,
   Assessment as ReportsIcon,
@@ -29,20 +21,25 @@ import {
   Category as CategoryIcon,
   CheckCircle as CheckCircleIcon,
   Cancel as CancelIcon,
-  Circle as CircleIcon,
   Refresh as RefreshIcon,
   PointOfSale as CashRegisterIcon,
+  EventNote as PreordersIcon,
+  FactCheck as AbhollisteIcon,
+  Assignment as BackzettelIcon,
+  Storefront as PartnerIcon,
 } from '@mui/icons-material'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { apiClient } from '@bakery/shared/data-access'
-import { useNotifications } from '@bakery/shared/contexts'
 import {
   formatEuro,
   formatPercent,
   formatReportDateLong,
 } from '../../lib/reportFormat'
 import TargetsTile from '../../components/targets/TargetsTile'
+import { isPilotMode, isPilotPathAllowed } from '../../lib/pilotMode'
+import { useOptionalSession } from '../../lib/session'
+import { isPathAllowedForRole } from '../../lib/roles'
 
 /** Kennzahlen des jüngsten Kassentags, vom Server geladen. */
 export interface LatestReportTile {
@@ -61,45 +58,58 @@ interface Props {
   reportsAvailable: boolean
 }
 
-const quickLinks = [
+interface QuickLink {
+  title: string
+  description: string
+  /** Text für Rollen, die nur lesen (W4-verify r2: Verkauf am Backzettel). */
+  readOnly?: { roles: readonly string[]; description: string }
+  icon: React.ReactNode
+  href: string
+  color: string
+}
+
+const quickLinks: QuickLink[] = [
+  // Pilot-Bildschirme zuerst (W4-Verifikation: Verkauf und Backstube hatten
+  // keinen einzigen Schnellzugriff); `allowed()` filtert nach Rolle.
   {
-    title: 'Bestellungen',
-    description: 'Bestellungen verwalten und bearbeiten',
-    icon: <OrdersIcon fontSize="large" />,
-    href: '/admin/orders',
-    color: '#4CAF50',
+    title: 'Vorbestellungen',
+    description: 'Erfassen, Liste und Tagesübersicht',
+    icon: <PreordersIcon fontSize="large" />,
+    href: '/admin/preorders',
+    color: '#3F51B5',
   },
   {
-    title: 'Inventar',
-    description: 'Lagerbestände und Rohstoffe verwalten',
-    icon: <InventoryIcon fontSize="large" />,
-    href: '/admin/inventory',
-    color: '#FF9800',
+    title: 'Abholliste',
+    description: 'Übergeben und kassieren',
+    icon: <AbhollisteIcon fontSize="large" />,
+    href: '/admin/preorders/abholliste',
+    color: '#009688',
   },
   {
-    title: 'Produktion',
-    description: 'Produktionsplanung und -steuerung',
-    icon: <ProductionIcon fontSize="large" />,
-    href: '/admin/production',
-    color: '#2196F3',
+    title: 'Backzettel',
+    description: 'Planen, freigeben, drucken',
+    readOnly: { roles: ['verkauf'], description: 'Tagesplan ansehen, drucken' },
+    icon: <BackzettelIcon fontSize="large" />,
+    href: '/admin/backzettel',
+    color: '#8D6E63',
   },
   {
-    title: 'Lieferungen',
-    description: 'Lieferstatus und Routen verwalten',
-    icon: <DeliveryIcon fontSize="large" />,
-    href: '/admin/delivery',
-    color: '#9C27B0',
-  },
-  {
-    title: 'Backliste',
-    description: 'Tägliche Produktion planen',
+    title: 'Backstube',
+    description: 'Tablet-Ansicht zum Abhaken',
     icon: <BakingListIcon fontSize="large" />,
-    href: '/admin/baking-list',
-    color: '#00BCD4',
+    href: '/backstube',
+    color: '#FF7043',
+  },
+  {
+    title: 'Backschrank',
+    description: 'Besuche beim Verkaufspartner',
+    icon: <PartnerIcon fontSize="large" />,
+    href: '/admin/partners',
+    color: '#7CB342',
   },
   {
     title: 'Produkte',
-    description: 'Produktkatalog verwalten',
+    description: 'Produktkatalog',
     icon: <ProductsIcon fontSize="large" />,
     href: '/admin/products',
     color: '#E91E63',
@@ -124,55 +134,18 @@ interface ProductSummary {
   available?: boolean
 }
 
-interface OrderSummary {
-  status?: string
-}
-
-interface ProductionSummary {
-  status?: string
-}
-
 interface DashboardStats {
-  ordersTotal: number
-  ordersOpen: number
   productsTotal: number
   productsAvailable: number
   productsUnavailable: number
-  productionTotal: number
-  productionCompleted: number
 }
 
 type ApiStatus = 'checking' | 'online' | 'offline'
 
 const EMPTY_STATS: DashboardStats = {
-  ordersTotal: 0,
-  ordersOpen: 0,
   productsTotal: 0,
   productsAvailable: 0,
   productsUnavailable: 0,
-  productionTotal: 0,
-  productionCompleted: 0,
-}
-
-const OPEN_ORDER_STATES = new Set(['pending', 'confirmed', 'processing'])
-
-const notificationColor: Record<string, string> = {
-  success: 'success.main',
-  warning: 'warning.main',
-  error: 'error.main',
-  info: 'info.main',
-}
-
-function formatRelativeTime(value: Date | string): string {
-  const date = new Date(value)
-  const diffMs = Date.now() - date.getTime()
-  const minutes = Math.round(diffMs / 60000)
-  if (Number.isNaN(minutes)) return ''
-  if (minutes < 1) return 'gerade eben'
-  if (minutes < 60) return `vor ${minutes} Min.`
-  const hours = Math.round(minutes / 60)
-  if (hours < 24) return `vor ${hours} Std.`
-  return date.toLocaleDateString('de-DE')
 }
 
 export default function DashboardClient({
@@ -180,7 +153,20 @@ export default function DashboardClient({
   reportsAvailable,
 }: Props) {
   const router = useRouter()
-  const { notifications, isLoading: notificationsLoading } = useNotifications()
+  // Pilotbetrieb (F2): Schnellzugriffe auf gesperrte Seiten entfallen.
+  const pilot = isPilotMode()
+  // F1: das Dashboard ist auch Ausweich-Startseite für Verkauf und Backstube
+  // - Kasse, Tagesziel und Schnellzugriffe nur, wenn die Rolle die Seite
+  // dahinter öffnen darf (ROLE_ACCESS). Ohne Sitzung (Specs) wie bisher.
+  const session = useOptionalSession()
+  const role = session?.user?.role ?? null
+  const sessionKind = session?.sessionKind ?? null
+  const allowed = (href: string) =>
+    isPilotPathAllowed(href, pilot) &&
+    (role === null || isPathAllowedForRole(href, role, sessionKind))
+  const visibleQuickLinks = quickLinks.filter((link) => allowed(link.href))
+  const showCash = allowed('/admin/reports')
+  const showTargets = allowed('/admin/finance/tagesziel')
 
   const [stats, setStats] = React.useState<DashboardStats>(EMPTY_STATS)
   const [loading, setLoading] = React.useState(true)
@@ -191,38 +177,22 @@ export default function DashboardClient({
     setLoading(true)
     setApiStatus('checking')
 
-    const safe = <T,>(request: Promise<T>) => request.catch(() => null)
-    const [orders, products, production] = await Promise.all([
-      safe(apiClient.get<OrderSummary[]>('/api/orders')),
-      safe(apiClient.get<ProductSummary[]>('/api/products')),
-      safe(apiClient.get<ProductionSummary[]>('/api/production')),
-    ])
-
-    // If none of the requests came back, the API is unreachable.
-    const anySuccess = [orders, products, production].some((r) => r?.success)
-    setApiStatus(anySuccess ? 'online' : 'offline')
+    // B12: Bestellungen und Produktion (Mock-Daten) gibt es nicht mehr; der
+    // Produktkatalog ist zugleich die Erreichbarkeitsprüfung der API.
+    const products = await apiClient
+      .get<ProductSummary[]>('/api/products')
+      .catch(() => null)
+    setApiStatus(products?.success ? 'online' : 'offline')
     setLastCheck(new Date())
 
-    const ordersData = Array.isArray(orders?.data) ? orders.data : []
     const productsData = Array.isArray(products?.data) ? products.data : []
-    const productionData = Array.isArray(production?.data)
-      ? production.data
-      : []
 
     setStats({
-      ordersTotal: ordersData.length,
-      ordersOpen: ordersData.filter((o) =>
-        OPEN_ORDER_STATES.has(o.status ?? '')
-      ).length,
       productsTotal: productsData.length,
       productsAvailable: productsData.filter((p) => p.available === true)
         .length,
       productsUnavailable: productsData.filter((p) => p.available === false)
         .length,
-      productionTotal: productionData.length,
-      productionCompleted: productionData.filter(
-        (p) => p.status === 'completed'
-      ).length,
     })
     setLoading(false)
   }, [])
@@ -230,18 +200,6 @@ export default function DashboardClient({
   React.useEffect(() => {
     loadDashboard()
   }, [loadDashboard])
-
-  const productionProgress =
-    stats.productionTotal > 0
-      ? Math.round((stats.productionCompleted / stats.productionTotal) * 100)
-      : 0
-
-  const recentNotifications = [...notifications]
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    )
-    .slice(0, 5)
 
   return (
     <Box>
@@ -267,13 +225,13 @@ export default function DashboardClient({
 
       {loading && <LinearProgress sx={{ mb: 2 }} />}
 
-      {/* Statistics Cards */}
+      {/* Produktkatalog: drei Kacheln */}
       <Grid
         container
         spacing={{ xs: 1.5, md: 3 }}
         sx={{ mb: { xs: 2, md: 4 } }}
       >
-        <Grid item xs={6} sm={6} md={3}>
+        <Grid item xs={6} sm={6} md={4}>
           <Paper sx={{ p: { xs: 2, md: 3 } }}>
             <Box
               sx={{
@@ -301,13 +259,26 @@ export default function DashboardClient({
                 }}
               />
             </Box>
-            <Button size="small" onClick={() => router.push('/admin/products')}>
-              Produkte verwalten
-            </Button>
+            {/* Nur für Rollen, die die Produktliste öffnen dürfen (Backstube
+                landete sonst auf „Kein Zugriff“). */}
+            {allowed('/admin/products') ? (
+              <Button
+                size="small"
+                onClick={() => router.push('/admin/products')}
+              >
+                {role === null || role === 'inhaber'
+                  ? 'Produkte verwalten'
+                  : 'Produkte ansehen'}
+              </Button>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                Freigegebener Stand
+              </Typography>
+            )}
           </Paper>
         </Grid>
 
-        <Grid item xs={6} sm={6} md={3}>
+        <Grid item xs={6} sm={6} md={4}>
           <Paper sx={{ p: { xs: 2, md: 3 } }}>
             <Box
               sx={{
@@ -341,12 +312,13 @@ export default function DashboardClient({
               color="text.secondary"
               sx={{ display: { xs: 'none', sm: 'block' } }}
             >
-              Im Sortiment aktiv
+              Freigegeben, inkl. Saisonware
             </Typography>
           </Paper>
         </Grid>
 
-        <Grid item xs={6} sm={6} md={3}>
+        {/* Dritte Kachel: unter md volle Breite, sonst stünde sie allein in einer halben Zeile. */}
+        <Grid item xs={12} sm={12} md={4}>
           <Paper sx={{ p: { xs: 2, md: 3 } }}>
             <Box
               sx={{
@@ -384,175 +356,151 @@ export default function DashboardClient({
             </Typography>
           </Paper>
         </Grid>
-
-        <Grid item xs={6} sm={6} md={3}>
-          <Paper sx={{ p: { xs: 2, md: 3 } }}>
-            <Box
-              sx={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                mb: 2,
-              }}
-            >
-              <Box>
-                <Typography color="text.secondary" variant="body2">
-                  Offene Bestellungen
-                </Typography>
-                <Typography
-                  variant="h4"
-                  sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
-                >
-                  {stats.ordersOpen}
-                </Typography>
-              </Box>
-              <OrdersIcon
-                sx={{
-                  color: 'primary.main',
-                  fontSize: { xs: 28, md: 40 },
-                }}
-              />
-            </Box>
-            <Button size="small" onClick={() => router.push('/admin/orders')}>
-              {stats.ordersTotal} Bestellungen gesamt
-            </Button>
-          </Paper>
-        </Grid>
       </Grid>
 
-      {/* Kasse: jüngster Tagesabschluss aus hq/data/reports */}
-      <Typography
-        variant="h5"
-        gutterBottom
-        sx={{
-          mb: { xs: 1.5, md: 2 },
-          fontSize: { xs: '1.25rem', md: '1.5rem' },
-        }}
-      >
-        Kasse
-        {latestReport && (
+      {showCash && (
+        <>
+          {/* Kasse: jüngster Tagesabschluss aus hq/data/reports */}
           <Typography
-            component="span"
-            variant="body2"
-            color="text.secondary"
-            sx={{ ml: 1.5 }}
+            variant="h5"
+            gutterBottom
+            sx={{
+              mb: { xs: 1.5, md: 2 },
+              fontSize: { xs: '1.25rem', md: '1.5rem' },
+            }}
           >
-            Stand:{' '}
-            {formatReportDateLong(latestReport.date, latestReport.weekday)}
-          </Typography>
-        )}
-      </Typography>
-      {latestReport ? (
-        <Grid
-          container
-          spacing={{ xs: 1.5, md: 3 }}
-          sx={{ mb: { xs: 2, md: 4 } }}
-        >
-          <Grid item xs={6} sm={6} md={3}>
-            <Paper sx={{ p: { xs: 2, md: 3 } }}>
-              <Box
-                sx={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  mb: 2,
-                }}
+            Kasse
+            {latestReport && (
+              <Typography
+                component="span"
+                variant="body2"
+                color="text.secondary"
+                sx={{ ml: 1.5 }}
               >
-                <Box>
+                Stand:{' '}
+                {formatReportDateLong(latestReport.date, latestReport.weekday)}
+              </Typography>
+            )}
+          </Typography>
+          {latestReport ? (
+            <Grid
+              container
+              spacing={{ xs: 1.5, md: 3 }}
+              sx={{ mb: { xs: 2, md: 4 } }}
+            >
+              <Grid item xs={6} sm={6} md={3}>
+                <Paper sx={{ p: { xs: 2, md: 3 } }}>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      mb: 2,
+                    }}
+                  >
+                    <Box>
+                      <Typography color="text.secondary" variant="body2">
+                        Tagesumsatz
+                      </Typography>
+                      <Typography
+                        variant="h4"
+                        sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
+                      >
+                        {formatEuro(latestReport.revenue)}
+                      </Typography>
+                    </Box>
+                    <CashRegisterIcon
+                      sx={{
+                        color: 'success.main',
+                        fontSize: { xs: 28, md: 40 },
+                      }}
+                    />
+                  </Box>
+                  <Button
+                    size="small"
+                    component={Link}
+                    href={`/admin/reports/${latestReport.date}`}
+                  >
+                    Tagesbericht öffnen
+                  </Button>
+                </Paper>
+              </Grid>
+              <Grid item xs={6} sm={6} md={3}>
+                <Paper sx={{ p: { xs: 2, md: 3 } }}>
                   <Typography color="text.secondary" variant="body2">
-                    Tagesumsatz
+                    Bons
                   </Typography>
                   <Typography
                     variant="h4"
-                    sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
+                    sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' }, mb: 2 }}
                   >
-                    {formatEuro(latestReport.revenue)}
+                    {latestReport.receiptCount}
                   </Typography>
-                </Box>
-                <CashRegisterIcon
-                  sx={{ color: 'success.main', fontSize: { xs: 28, md: 40 } }}
-                />
-              </Box>
-              <Button
-                size="small"
-                component={Link}
-                href={`/admin/reports/${latestReport.date}`}
-              >
-                Tagesbericht öffnen
-              </Button>
-            </Paper>
-          </Grid>
-          <Grid item xs={6} sm={6} md={3}>
-            <Paper sx={{ p: { xs: 2, md: 3 } }}>
-              <Typography color="text.secondary" variant="body2">
-                Bons
-              </Typography>
-              <Typography
-                variant="h4"
-                sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' }, mb: 2 }}
-              >
-                {latestReport.receiptCount}
-              </Typography>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ display: { xs: 'none', sm: 'block' } }}
-              >
-                Kassenbons am {latestReport.weekday}
-              </Typography>
-            </Paper>
-          </Grid>
-          <Grid item xs={6} sm={6} md={3}>
-            <Paper sx={{ p: { xs: 2, md: 3 } }}>
-              <Typography color="text.secondary" variant="body2">
-                Ø Bon
-              </Typography>
-              <Typography
-                variant="h4"
-                sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' }, mb: 2 }}
-              >
-                {formatEuro(latestReport.avgReceipt)}
-              </Typography>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ display: { xs: 'none', sm: 'block' } }}
-              >
-                Umsatz je Bon
-              </Typography>
-            </Paper>
-          </Grid>
-          <Grid item xs={6} sm={6} md={3}>
-            <Paper sx={{ p: { xs: 2, md: 3 } }}>
-              <Typography color="text.secondary" variant="body2">
-                Zahlungsmix
-              </Typography>
-              <Typography
-                variant="h4"
-                sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' }, mb: 2 }}
-              >
-                {formatPercent(latestReport.cashShare)} bar
-              </Typography>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ display: { xs: 'none', sm: 'block' } }}
-              >
-                {formatPercent(latestReport.cardShare)} Karte
-              </Typography>
-            </Paper>
-          </Grid>
-        </Grid>
-      ) : (
-        <Alert severity={reportsAvailable ? 'info' : 'warning'} sx={{ mb: 4 }}>
-          {reportsAvailable
-            ? 'Noch kein Kassenbericht im HQ-Archiv.'
-            : 'Das HQ-Berichtsverzeichnis ist auf diesem Rechner nicht erreichbar - Kassenzahlen werden nicht angezeigt.'}
-        </Alert>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ display: { xs: 'none', sm: 'block' } }}
+                  >
+                    Kassenbons am {latestReport.weekday}
+                  </Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={6} sm={6} md={3}>
+                <Paper sx={{ p: { xs: 2, md: 3 } }}>
+                  <Typography color="text.secondary" variant="body2">
+                    Ø Bon
+                  </Typography>
+                  <Typography
+                    variant="h4"
+                    sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' }, mb: 2 }}
+                  >
+                    {formatEuro(latestReport.avgReceipt)}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ display: { xs: 'none', sm: 'block' } }}
+                  >
+                    Umsatz je Bon
+                  </Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={6} sm={6} md={3}>
+                <Paper sx={{ p: { xs: 2, md: 3 } }}>
+                  <Typography color="text.secondary" variant="body2">
+                    Zahlungsmix
+                  </Typography>
+                  <Typography
+                    variant="h4"
+                    sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' }, mb: 2 }}
+                  >
+                    {formatPercent(latestReport.cashShare)} bar
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ display: { xs: 'none', sm: 'block' } }}
+                  >
+                    {formatPercent(latestReport.cardShare)} Karte
+                  </Typography>
+                </Paper>
+              </Grid>
+            </Grid>
+          ) : (
+            <Alert
+              severity={reportsAvailable ? 'info' : 'warning'}
+              sx={{ mb: 4 }}
+            >
+              {reportsAvailable
+                ? 'Noch kein Kassenbericht im HQ-Archiv.'
+                : 'Das HQ-Berichtsverzeichnis ist auf diesem Rechner nicht erreichbar - Kassenzahlen werden nicht angezeigt.'}
+            </Alert>
+          )}
+        </>
       )}
 
       {/* Tagesziel-Ampel (TASK-039): nur nach Anmeldung als Admin */}
-      <TargetsTile />
+      {showTargets && <TargetsTile />}
 
       {/* Quick Links */}
       <Typography
@@ -570,7 +518,7 @@ export default function DashboardClient({
         spacing={{ xs: 1.5, md: 3 }}
         sx={{ mb: { xs: 2, md: 4 } }}
       >
-        {quickLinks.map((link) => (
+        {visibleQuickLinks.map((link) => (
           <Grid item xs={6} sm={6} md={4} lg={3} key={link.href}>
             <Card
               sx={{
@@ -611,7 +559,9 @@ export default function DashboardClient({
                   color="text.secondary"
                   sx={{ display: { xs: 'none', sm: 'block' } }}
                 >
-                  {link.description}
+                  {role && link.readOnly?.roles.includes(role)
+                    ? link.readOnly.description
+                    : link.description}
                 </Typography>
               </CardContent>
             </Card>
@@ -619,119 +569,7 @@ export default function DashboardClient({
         ))}
       </Grid>
 
-      {/* Production overview & recent activity */}
       <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, height: '100%' }}>
-            <Typography variant="h6" gutterBottom>
-              Produktionsübersicht
-            </Typography>
-            {stats.productionTotal === 0 && !loading ? (
-              <Typography variant="body2" color="text.secondary">
-                Keine Produktionsaufträge vorhanden.
-              </Typography>
-            ) : (
-              <>
-                <Box sx={{ mb: 3 }}>
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      mb: 1,
-                    }}
-                  >
-                    <Typography variant="body2">
-                      Abgeschlossene Aufträge
-                    </Typography>
-                    <Typography variant="body2" fontWeight="bold">
-                      {productionProgress}%
-                    </Typography>
-                  </Box>
-                  <LinearProgress
-                    variant="determinate"
-                    value={productionProgress}
-                    sx={{ height: 10, borderRadius: 5 }}
-                    color="success"
-                    aria-label="Produktionsfortschritt"
-                  />
-                </Box>
-                <Grid container spacing={2}>
-                  <Grid item xs={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Aufträge gesamt
-                    </Typography>
-                    <Typography variant="h6">
-                      {stats.productionTotal}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Abgeschlossen
-                    </Typography>
-                    <Typography variant="h6">
-                      {stats.productionCompleted}
-                    </Typography>
-                  </Grid>
-                </Grid>
-              </>
-            )}
-            <Button
-              size="small"
-              sx={{ mt: 2 }}
-              onClick={() => router.push('/admin/production')}
-            >
-              Zur Produktion
-            </Button>
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, height: '100%' }}>
-            <Typography variant="h6" gutterBottom>
-              Letzte Aktivitäten
-            </Typography>
-            {notificationsLoading && recentNotifications.length === 0 ? (
-              <LinearProgress sx={{ my: 2 }} />
-            ) : recentNotifications.length === 0 ? (
-              <Typography variant="body2" color="text.secondary">
-                Keine aktuellen Benachrichtigungen.
-              </Typography>
-            ) : (
-              <List dense disablePadding>
-                {recentNotifications.map((n) => (
-                  <ListItem key={n.id} disableGutters>
-                    <ListItemIcon sx={{ minWidth: 28 }}>
-                      <CircleIcon
-                        sx={{
-                          fontSize: 12,
-                          color: notificationColor[n.type] ?? 'text.disabled',
-                        }}
-                      />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={n.title}
-                      secondary={`${n.message} · ${formatRelativeTime(
-                        n.createdAt
-                      )}`}
-                      primaryTypographyProps={{
-                        fontWeight: n.read ? 'normal' : 'bold',
-                      }}
-                    />
-                  </ListItem>
-                ))}
-              </List>
-            )}
-            <Button
-              size="small"
-              sx={{ mt: 2 }}
-              component={Link}
-              href="/admin/notifications"
-            >
-              Alle Benachrichtigungen
-            </Button>
-          </Paper>
-        </Grid>
-
         {/* System status – real reachability check of the API */}
         <Grid item xs={12}>
           <Paper sx={{ p: 3 }}>

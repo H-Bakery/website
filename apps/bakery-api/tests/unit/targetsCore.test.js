@@ -811,3 +811,12 @@ describe('targets.core - buildTargets', () => {
     expect(typeof result.reason).toBe('string')
   })
 })
+
+describe('evaluateDay: Verhältnis ohne Vorrundung (W4-verify r4)', () => {
+  it('576,65 / 541,48 bleibt unter 1,065, damit daraus nicht 107 % wird', () => {
+    const ev = core.evaluateDay(576.65, 541.48, { green: 1, amber: 0.9 })
+    expect(ev.status).toBe('green')
+    expect(ev.ratio).toBeLessThan(1.065)
+    expect(Math.round(ev.ratio * 100)).toBe(106)
+  })
+})

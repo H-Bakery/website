@@ -1,0 +1,45 @@
+# DSGVO (roadmap P4): Name, Telefon und Anmerkung jeder Vorbestellung
+# 90 Tage nach dem Abholtag löschen (egal in welchem Status). Seit B8 im selben
+# Lauf: Name, Telefon, Hinweis, Straße und Koordinaten der Lieferstopps 90 Tage
+# nach dem Tourtag (Bericht `deliveryStops`).
+# Migriert nie: stehen Migrationen aus (Deploy ohne erfolgreichen API-Neustart),
+# endet der Lauf mit Exit 1, statt das Schema unter dem alten Prozess zu ändern.
+# Gestartet von bakery-anonymize.timer (23:45). Idempotent; ein Lauf, der
+# nichts findet, ändert nichts. Bericht als JSON im Journal:
+#   journalctl -u bakery-anonymize -n 50
+
+[Unit]
+Description=Bäckerei Heusser - Vorbestellungen anonymisieren (DSGVO)
+Documentation=https://github.com/H-Bakery/website/blob/main/docs/runbook.md
+# Dieselbe Datenbank wie die API; SQLite (WAL + busy_timeout) verträgt den
+# kurzen Schreiber neben dem laufenden Dienst.
+After=bakery-api.service
+
+[Service]
+Type=oneshot
+User=bakery
+Group=bakery
+WorkingDirectory=/opt/bakery/current
+EnvironmentFile=/etc/bakery/bakery.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node dist/apps/bakery-api/bundle/cli.js anonymize-preorders
+TimeoutStartSec=10min
+Nice=10
+
+UMask=0027
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/bakery
+# Das hq-Token (GitHub-App, 1 h) braucht dieser Dienst nicht.
+InaccessiblePaths=-/etc/bakery/ops.env -/etc/bakery/restic-password -/etc/bakery/github-app.pem -/etc/bakery/hq-token -/etc/caddy
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=

@@ -68,6 +68,8 @@ describe('summarizeHandover', () => {
       notCollected: 1,
       open: 1,
       openTotal: 4.5,
+      refundCount: 0,
+      refundTotal: 0,
     })
   })
 })
@@ -149,6 +151,32 @@ describe('HandoverList', () => {
     expect(onStatusChange).toHaveBeenCalledWith(1, 'open')
   })
 
+  it('bietet dem Fahrer kein Zurücknehmen einer Übergabe an (API: 403)', () => {
+    const onStatusChange = jest.fn()
+    render(
+      <HandoverList
+        preorders={[
+          preorder({ id: 1, status: 'handed_over' }),
+          preorder({
+            id: 2,
+            reference: 'MO-2026-09-12-02',
+            status: 'not_collected',
+          }),
+        ]}
+        busy={false}
+        onStatusChange={onStatusChange}
+        canUndoHandover={false}
+      />
+    )
+
+    expect(screen.getByText('Zurücknehmen kann der Verkauf.')).toBeTruthy()
+    // „Nicht abgeholt" darf er weiter zurücksetzen - die Familie kam doch.
+    const reset = screen.getAllByRole('button', { name: 'Zurücksetzen' })
+    expect(reset).toHaveLength(1)
+    fireEvent.click(reset[0])
+    expect(onStatusChange).toHaveBeenCalledWith(2, 'open')
+  })
+
   it('sperrt nur die Zeile, deren Abhaken noch unterwegs ist', () => {
     // Die naechste Familie steht schon vor dem Fahrer; der haengende PATCH
     // der vorigen darf ihren Knopf nicht ausgrauen.
@@ -188,5 +216,115 @@ describe('HandoverList', () => {
     expect(
       screen.getByText('Für diesen Tag liegen keine Vorbestellungen vor.')
     ).toBeTruthy()
+  })
+})
+
+describe('Bezahlstand (Abschluss-Verifikation next)', () => {
+  // (a) vorab bezahlt, (b) teurer geworden, (c) billiger geworden,
+  // (d) storniert und bezahlt, (e) unbezahlt
+  const prepaid = preorder({
+    id: 1,
+    total: 4.5,
+    paid: true,
+    paidAmount: 4.5,
+    paymentBalance: 0,
+  })
+  const topUp = preorder({
+    id: 2,
+    reference: 'MO-2026-09-12-02',
+    total: 8.65,
+    paid: true,
+    paidAmount: 2.25,
+    paymentBalance: 6.4,
+  })
+  const refund = preorder({
+    id: 3,
+    reference: 'MO-2026-09-12-03',
+    total: 1.8,
+    paid: true,
+    paidAmount: 4.5,
+    paymentBalance: -2.7,
+  })
+  const cancelled = preorder({
+    id: 4,
+    reference: 'MO-2026-09-12-04',
+    total: 9.6,
+    status: 'cancelled',
+    paid: true,
+    paidAmount: 9.6,
+    paymentBalance: -9.6,
+  })
+  const unpaid = preorder({
+    id: 5,
+    reference: 'MO-2026-09-12-05',
+    total: 6.1,
+    paid: false,
+    paidAmount: null,
+    paymentBalance: 0,
+  })
+  const all = [prepaid, topUp, refund, cancelled, unpaid]
+
+  it('kassiert Vorkasse nicht ein zweites Mal und nennt Rest und Erstattungen', () => {
+    const summary = summarizeHandover(all)
+    expect(summary).toMatchObject({
+      total: 4,
+      open: 4,
+      openTotal: 12.5, // 6,40 Rest + 6,10 unbezahlt
+      refundTotal: 12.3, // 2,70 + 9,60
+      refundCount: 2,
+    })
+    expect(handoverHeadline(summary)).toBe(
+      `0 von 4 übergeben · Bar zu kassieren: ${formatCurrency(
+        12.5
+      )} · Zurückzugeben: ${formatCurrency(12.3)}`
+    )
+  })
+
+  it('zeigt je Zeile, was mit dem Geld zu tun ist', () => {
+    render(
+      <HandoverList preorders={all} busy={false} onStatusChange={jest.fn()} />
+    )
+    expect(screen.getByTestId('payment-1').textContent).toBe(
+      'Bezahlt – nichts zu kassieren'
+    )
+    expect(screen.getByTestId('payment-2').textContent).toBe(
+      `Bezahlt – Rest ${formatCurrency(6.4)} kassieren`
+    )
+    expect(screen.getByTestId('payment-3').textContent).toBe(
+      `${formatCurrency(2.7)} zurückgeben`
+    )
+    expect(screen.getByTestId('payment-4').textContent).toBe(
+      `Storniert – ${formatCurrency(9.6)} zurückgeben`
+    )
+    expect(screen.getByTestId('payment-5').textContent).toBe(
+      `${formatCurrency(6.1)} kassieren`
+    )
+  })
+
+  it('fragt bei Rest und Erstattung, ob das Geld geflossen ist', () => {
+    const onStatusChange = jest.fn()
+    render(
+      <HandoverList
+        preorders={[topUp, refund, cancelled]}
+        busy={false}
+        onStatusChange={onStatusChange}
+      />
+    )
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Rest kassiert und übergeben' })
+    )
+    expect(onStatusChange).toHaveBeenLastCalledWith(2, 'handed_over', true)
+    fireEvent.click(screen.getByRole('button', { name: 'Ohne Rest übergeben' }))
+    expect(onStatusChange).toHaveBeenLastCalledWith(2, 'handed_over')
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Erstattet und übergeben' })
+    )
+    expect(onStatusChange).toHaveBeenLastCalledWith(3, 'handed_over', true)
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Ohne Erstattung übergeben' })
+    )
+    expect(onStatusChange).toHaveBeenLastCalledWith(3, 'handed_over')
+    // Die stornierte hat keinen Knopf - erfassen kann das der Verkauf.
+    expect(screen.getByText('Erfassen kann das der Verkauf.')).toBeTruthy()
   })
 })

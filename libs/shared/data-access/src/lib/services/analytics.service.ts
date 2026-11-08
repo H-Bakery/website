@@ -26,6 +26,21 @@ export interface AnalyticsParams {
 export interface AnalyticsResult<T> {
   data: T
   available: boolean
+  /**
+   * Die API hat mit 403 geantwortet (falsche Rolle - Analysen sind im Pilot
+   * nur für den Inhaber). `available` ist dann ebenfalls false; die
+   * Oberfläche sagt „Nur für Inhaber" statt „API liefert nichts".
+   */
+  forbidden?: boolean
+}
+
+/** 403 von der API (`ApiError.status`), per Duck-Typing - Specs mocken den Client. */
+function isForbidden(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { status?: unknown }).status === 403
+  )
 }
 
 class AnalyticsService {
@@ -128,6 +143,9 @@ class AnalyticsService {
         available: true,
       }
     } catch (error) {
+      if (isForbidden(error)) {
+        return { data: null, available: false, forbidden: true }
+      }
       console.warn('Analyse-Zusammenfassung nicht verfügbar:', error)
       return { data: null, available: false }
     }
@@ -142,6 +160,9 @@ class AnalyticsService {
       const data = response.data?.data
       return { data: Array.isArray(data) ? data : [], available: true }
     } catch (error) {
+      if (isForbidden(error)) {
+        return { data: [], available: false, forbidden: true }
+      }
       console.warn(`${label} nicht verfügbar:`, error)
       return { data: [], available: false }
     }

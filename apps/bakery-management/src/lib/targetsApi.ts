@@ -3,7 +3,7 @@
  *
  * Wie `financeApi.ts`: der `ApiClient` setzt den Bearer-Header selbst, 401
  * und 403 kommen als `ApiError` an und werden über `classifyFinanceError`
- * in „Anmeldung erforderlich" / „Keine Berechtigung" übersetzt.
+ * in „Anmeldung erforderlich“ / „Keine Berechtigung“ übersetzt.
  *
  * "Kein Ziel" ist kein Fehler: der Server antwortet dann mit
  * `status: 'no-target'` und einem Grund - und, wenn es die Config gab, mit
@@ -18,7 +18,7 @@ import type {
   TargetsResponse,
 } from './targetsTypes'
 
-export { classifyFinanceError } from './financeApi'
+export { classifyFinanceError, PERSONAL_SESSION_HINT } from './financeApi'
 export type { FinanceAccessProblem } from './financeApi'
 
 interface TargetsEnvelope<T> {

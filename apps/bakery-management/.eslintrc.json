@@ -1,4 +1,29 @@
 {
   "extends": ["../../.eslintrc.json"],
-  "ignorePatterns": ["!**/*", ".next/**/*", "next-env.d.ts"]
+  "ignorePatterns": ["!**/*", ".next/**/*", "next-env.d.ts"],
+  "overrides": [
+    {
+      "files": ["*.ts", "*.tsx", "*.js", "*.jsx"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@bakery/shared/contexts",
+                "importNames": [
+                  "useAuth",
+                  "useCurrentUser",
+                  "useIsAuthenticated",
+                  "AuthProvider",
+                  "RootProvider"
+                ],
+                "message": "F1: Die Management-App mountet den gemeinsamen AuthProvider nicht mehr - useAuth() wirft hier zur Laufzeit. Sitzung über useSession()/useOptionalSession() aus src/lib/session.tsx lesen."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

@@ -1,0 +1,17 @@
+# hq-Sync alle 10 Minuten und gezielt 20 Minuten nach den Pipeline-Läufen auf
+# robot0 (14:30 Kassenbericht, 17:30 Nachlauf) - roadmap §4a.
+
+[Unit]
+Description=Bäckerei Heusser - hq-Lese-Klon alle 10 min + 14:50/17:50
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+OnCalendar=*-*-* 14:50:00 Europe/Berlin
+OnCalendar=*-*-* 17:50:00 Europe/Berlin
+# Persistent gilt für OnCalendar: war die Box um 14:50 aus, läuft der Sync beim Start nach.
+Persistent=true
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

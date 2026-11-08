@@ -20,6 +20,7 @@ import {
   type Tour,
 } from '../lib/delivery-api'
 import { nextSaturdayIso } from '../lib/format'
+import { saveSession, type DeliveryRole } from '../lib/session'
 
 /**
  * Regression: ohne erreichbare API zeigte die Seite "Für diesen Tag ist noch
@@ -34,6 +35,8 @@ jest.mock('../lib/delivery-api', () => ({
     drivers: jest.fn(),
     tours: jest.fn(),
     createTour: jest.fn(),
+    updateTour: jest.fn(),
+    deleteTour: jest.fn(),
     updateStop: jest.fn(),
     updatePreorder: jest.fn(),
     reportPosition: jest.fn(),
@@ -44,6 +47,15 @@ jest.mock('../lib/delivery-api', () => ({
 jest.mock('../components/Map', () => ({ Map: () => null }))
 
 const api = deliveryApi as jest.Mocked<typeof deliveryApi>
+
+/** Die Seite steht hinter `AuthGate` (Layout); hier genügt eine Sitzung im Speicher. */
+function signIn(role: DeliveryRole, id = 1) {
+  saveSession({
+    token: 'test-token',
+    refreshToken: 'rt_test',
+    user: { id, username: `test.${role}`, displayName: `Test ${role}`, role },
+  })
+}
 
 const driver: Driver = {
   id: 1,
@@ -91,6 +103,7 @@ describe('DeliveryDashboard ohne erreichbare API', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     window.localStorage.clear()
+    signIn('inhaber')
     // Keine Fahrerliste: sonst wechselt der Fahrer nach dem Laden und die
     // Touren würden ein zweites Mal geholt - das würde die Zählung verwischen.
     api.drivers.mockResolvedValue([])
@@ -204,6 +217,7 @@ describe('DeliveryDashboard mit Offline-Kopie', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     window.localStorage.clear()
+    signIn('inhaber')
     // So sieht der Speicher nach dem letzten Besuch mit Netz aus.
     rememberDrivers([driver])
     window.localStorage.setItem('bakery-delivery-driver', '1')
@@ -416,6 +430,7 @@ describe('DeliveryDashboard beim Abhaken', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     window.localStorage.clear()
+    signIn('inhaber')
     api.drivers.mockResolvedValue([])
     api.tours.mockResolvedValue([twoStops])
   })
@@ -568,7 +583,7 @@ describe('DeliveryDashboard beim Abhaken', () => {
         kind: 'stop',
         tourId: 7,
         stopId: 1,
-        body: { status: 'done' },
+        body: { status: 'done', completedAt: expect.any(String) },
       }),
     ])
   })
@@ -609,6 +624,7 @@ describe('DeliveryDashboard beim Abhaken', () => {
         status: 'failed',
         failureReason: 'Adresse nicht gefunden',
         goodsDisposition: 'left_at_address',
+        completedAt: expect.any(String),
       })
     )
     expect(
@@ -640,6 +656,7 @@ describe('DeliveryDashboard beim Abhaken', () => {
           status: 'failed',
           failureReason: 'Annahme verweigert',
           goodsDisposition: 'taken_back',
+          completedAt: expect.any(String),
         },
       }),
     ])
@@ -763,6 +780,7 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     window.localStorage.clear()
+    signIn('inhaber')
     api.drivers.mockResolvedValue([])
     api.tours.mockResolvedValue([pickupTour])
   })
@@ -789,6 +807,51 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
     expect(
       screen.getAllByRole('button', { name: 'Stopp abschließen' }).length
     ).toBeGreaterThan(0)
+  })
+
+  it('lässt den Grund stehen, wenn der Server eine Übergabe ablehnt', async () => {
+    // Regression (next-Integration): `loadTours` leerte die Meldung, die
+    // Ablehnung (etwa 403) verschwand also im selben Moment.
+    const { ApiError } = jest.requireActual('../lib/delivery-api')
+    api.updatePreorder.mockRejectedValue(
+      new ApiError('Diese Übergabe ist nicht erlaubt.', 403)
+    )
+
+    render(<DeliveryDashboard />)
+
+    const buttons = await screen.findAllByRole('button', { name: 'Übergeben' })
+    fireEvent.click(buttons[0])
+
+    expect(
+      await screen.findByText('Diese Übergabe ist nicht erlaubt.')
+    ).toBeTruthy()
+    await waitFor(() => expect(api.tours).toHaveBeenCalledTimes(2))
+    expect(screen.getByText('Diese Übergabe ist nicht erlaubt.')).toBeTruthy()
+  })
+
+  it('zeigt dem Fahrer an einer übergebenen Bestellung kein „Zurücksetzen"', async () => {
+    signIn('fahrer', 42)
+    const own: Driver = { ...driver, userId: 42 }
+    api.drivers.mockResolvedValue([own])
+    api.tours.mockResolvedValue([
+      {
+        ...pickupTour,
+        driver: own,
+        stops: [
+          {
+            ...pickupStop,
+            preorders: [preorder({ id: 101, status: 'handed_over' })],
+          },
+        ],
+      },
+    ])
+
+    render(<DeliveryDashboard />)
+
+    expect(
+      (await screen.findAllByText('Zurücknehmen kann der Verkauf.')).length
+    ).toBeGreaterThan(0)
+    expect(screen.queryByRole('button', { name: 'Zurücksetzen' })).toBeNull()
   })
 
   it('nennt einen erledigten Sammelstellen-Stopp „Abgeschlossen", nicht „Geliefert"', async () => {
@@ -854,7 +917,10 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
       screen.getByRole('button', { name: 'Trotzdem abschließen' })
     )
     await waitFor(() =>
-      expect(api.updateStop).toHaveBeenCalledWith(7, 1, { status: 'done' })
+      expect(api.updateStop).toHaveBeenCalledWith(7, 1, {
+        status: 'done',
+        completedAt: expect.any(String),
+      })
     )
   })
 
@@ -891,7 +957,10 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
       screen.getByRole('button', { name: 'Trotzdem abschließen' })
     )
     await waitFor(() =>
-      expect(api.updateStop).toHaveBeenCalledWith(7, 1, { status: 'done' })
+      expect(api.updateStop).toHaveBeenCalledWith(7, 1, {
+        status: 'done',
+        completedAt: expect.any(String),
+      })
     )
 
     expect(await screen.findByText('Abgeschlossen')).toBeTruthy()
@@ -965,5 +1034,220 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
     expect(pendingUpdates()).toEqual([])
     expect(screen.queryByText(/Kein Netz/)).toBeNull()
     expect(screen.getAllByText(/1 von 2 übergeben/).length).toBeGreaterThan(0)
+    // B8: auch die Warteschlange geht mit Bearer raus.
+    expect(fetchMock.mock.calls[0][1].headers).toMatchObject({
+      Authorization: 'Bearer test-token',
+    })
+  })
+})
+
+/**
+ * B8: was die Oberfläche anbietet, hängt an der Rolle. Durchgesetzt wird in
+ * der API; hier geht es darum, dass niemand Knöpfe sieht, die mit 403 enden.
+ */
+describe('DeliveryDashboard nach Rolle', () => {
+  const date = nextSaturdayIso()
+  const openStop: Stop = {
+    id: 1,
+    customer: 'Kunde A',
+    street: 'Talstraße 5',
+    zip: '66424',
+    city: 'Homburg',
+    address: 'Talstraße 5, 66424 Homburg',
+    phone: null,
+    timeWindow: null,
+    notes: null,
+    items: [],
+    status: 'open',
+    completedAt: null,
+    failureReason: null,
+    goodsDisposition: null,
+    lat: 49.3226,
+    lon: 7.3389,
+    geocodeSource: null,
+    geocodePrecision: null,
+    estimatedArrival: null,
+  }
+  const oneStop: Tour = {
+    ...tour,
+    date,
+    stops: [openStop],
+    progress: { total: 1, done: 0, failed: 0, open: 1, isComplete: false },
+    nextStopId: 1,
+  }
+  const own: Driver = { ...driver, id: 2, name: 'Fahrer 2', userId: 42 }
+  const other: Driver = { ...driver, id: 1, name: 'Fahrer 1', userId: 7 }
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    window.localStorage.clear()
+  })
+
+  it('Verkauf liest nur: kein Planen, Abhaken, Routen oder Standort', async () => {
+    signIn('verkauf')
+    api.drivers.mockResolvedValue([])
+    api.tours.mockResolvedValue([oneStop])
+
+    render(<DeliveryDashboard />)
+
+    expect(
+      await screen.findByRole('heading', { name: 'Samstagstour' })
+    ).toBeTruthy()
+    expect(screen.getAllByRole('heading', { name: 'Kunde A' }).length).toBe(2)
+    expect(screen.queryByRole('button', { name: 'Tour planen' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Route berechnen' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Geliefert' })).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: 'Standort verfolgen' })
+    ).toBeNull()
+    expect(screen.getByRole('button', { name: 'Abmelden' })).toBeTruthy()
+    expect(screen.getByText(/· Verkauf/)).toBeTruthy()
+  })
+
+  it('Verkauf bekommt an einem leeren Tag kein "Tour anlegen"', async () => {
+    signIn('verkauf')
+    api.drivers.mockResolvedValue([])
+    api.tours.mockResolvedValue([])
+
+    render(<DeliveryDashboard />)
+
+    expect(
+      await screen.findByText('Für diesen Tag ist noch nichts geplant.')
+    ).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Tour anlegen' })).toBeNull()
+  })
+
+  it('ein Fahrer ist auf den eigenen Fahrer festgelegt und kann abhaken', async () => {
+    signIn('fahrer', 42)
+    // Ein gemerkter fremder Fahrer zählt nicht.
+    window.localStorage.setItem('bakery-delivery-driver', '1')
+    api.drivers.mockResolvedValue([other, own])
+    api.tours.mockResolvedValue([{ ...oneStop, driverId: 2, driver: own }])
+
+    render(<DeliveryDashboard />)
+
+    await waitFor(() =>
+      expect(api.tours).toHaveBeenLastCalledWith(
+        expect.objectContaining({ date, driverId: 2 })
+      )
+    )
+    const select = screen.getByLabelText('Fahrer') as HTMLSelectElement
+    expect(select.value).toBe('2')
+    expect(select.disabled).toBe(true)
+    expect(
+      (await screen.findAllByRole('button', { name: 'Geliefert' })).length
+    ).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: 'Route berechnen' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Tour planen' })).toBeNull()
+  })
+
+  it('ein Fahrer ohne zugeordneten Fahrer bekommt einen Hinweis statt fremder Touren', async () => {
+    signIn('fahrer', 99)
+    api.drivers.mockResolvedValue([other, own])
+    api.tours.mockResolvedValue([])
+
+    render(<DeliveryDashboard />)
+
+    expect(
+      await screen.findByText(/Ihrem Konto ist noch kein Fahrer zugeordnet/)
+    ).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Tour anlegen' })).toBeNull()
+  })
+})
+
+describe('DeliveryDashboard: Tour planen (Abschluss-Verifikation next)', () => {
+  const date = nextSaturdayIso()
+  const second: Driver = { ...driver, id: 2, name: 'Fahrer 2' }
+  const planStop = (id: number, customer: string): Stop => ({
+    id,
+    customer,
+    street: 'Talstraße 5',
+    zip: '66424',
+    city: 'Homburg',
+    address: 'Talstraße 5, 66424 Homburg',
+    phone: null,
+    timeWindow: null,
+    notes: null,
+    items: [],
+    status: 'open',
+    completedAt: null,
+    failureReason: null,
+    goodsDisposition: null,
+    lat: 49.3226,
+    lon: 7.3389,
+    geocodeSource: null,
+    geocodePrecision: null,
+    estimatedArrival: null,
+  })
+  // Unter „Alle" angelegt: ohne Fahrer.
+  const unassigned: Tour = {
+    ...tour,
+    date,
+    driverId: null,
+    driver: null,
+    stops: [planStop(1, 'Kunde A'), planStop(2, 'Kunde B')],
+    progress: { total: 2, done: 0, failed: 0, open: 2, isComplete: false },
+    nextStopId: 1,
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    window.localStorage.clear()
+    signIn('inhaber')
+    api.drivers.mockResolvedValue([driver, second])
+    api.tours.mockResolvedValue([unassigned])
+  })
+
+  async function openPlanning() {
+    render(<DeliveryDashboard />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Tour planen' }))
+  }
+
+  it('ordnet einer Tour ohne Fahrer nachträglich einen zu', async () => {
+    api.updateTour.mockResolvedValue({
+      ...unassigned,
+      driverId: 2,
+      driver: second,
+    })
+    await openPlanning()
+    fireEvent.change(screen.getByLabelText('Fahrer dieser Tour'), {
+      target: { value: '2' },
+    })
+    await waitFor(() =>
+      expect(api.updateTour).toHaveBeenCalledWith(7, { driverId: 2 })
+    )
+    expect(await screen.findByText(new RegExp(`· Fahrer 2`))).toBeTruthy()
+  })
+
+  it('sortiert Stopps von Hand', async () => {
+    api.updateTour.mockResolvedValue({
+      ...unassigned,
+      stops: [unassigned.stops[1], unassigned.stops[0]],
+    })
+    await openPlanning()
+    const down = screen.getAllByRole('button', { name: 'Nach unten' })
+    expect(
+      (
+        screen.getAllByRole('button', {
+          name: 'Nach oben',
+        })[0] as HTMLButtonElement
+      ).disabled
+    ).toBe(true)
+    fireEvent.click(down[down.length - 2])
+    await waitFor(() =>
+      expect(api.updateTour).toHaveBeenCalledWith(7, { stopOrder: [2, 1] })
+    )
+  })
+
+  it('löscht eine Tour erst nach Rückfrage', async () => {
+    api.deleteTour.mockResolvedValue({ success: true })
+    await openPlanning()
+    fireEvent.click(screen.getByRole('button', { name: 'Tour löschen' }))
+    expect(api.deleteTour).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Ja, Tour löschen' }))
+    await waitFor(() => expect(api.deleteTour).toHaveBeenCalledWith(7))
+    expect(
+      await screen.findByRole('heading', { name: /Keine Tour für/ })
+    ).toBeTruthy()
   })
 })

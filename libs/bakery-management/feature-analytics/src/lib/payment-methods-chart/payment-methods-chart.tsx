@@ -48,7 +48,11 @@ export function PaymentMethodsChart({
 
   const chartData = visible.map((item) => ({
     ...item,
-    percentage: ((item.amount / totalAmount) * 100).toFixed(1),
+    // Deutsches Zahlformat: „53,3 %“, nicht „53.3%“.
+    percentage: ((item.amount / totalAmount) * 100).toLocaleString('de-DE', {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    }),
   }))
 
   const renderCustomLabel = ({
@@ -74,7 +78,7 @@ export function PaymentMethodsChart({
         dominantBaseline="central"
         fontWeight="bold"
       >
-        {`${percentage}%`}
+        {`${percentage} %`}
       </text>
     )
   }
@@ -90,7 +94,7 @@ export function PaymentMethodsChart({
             Betrag: {formatCurrency(data.value)}
           </Typography>
           <Typography variant="body2" fontWeight="bold">
-            Anteil: {data.payload.percentage}%
+            Anteil: {data.payload.percentage} %
           </Typography>
         </Paper>
       )
@@ -108,6 +112,7 @@ export function PaymentMethodsChart({
             display="flex"
             alignItems="center"
             justifyContent="space-between"
+            gap={2}
             mb={1}
           >
             <Box display="flex" alignItems="center" gap={1}>
@@ -124,7 +129,7 @@ export function PaymentMethodsChart({
             {showValues && (
               <Typography variant="body2" color="text.secondary">
                 {formatCurrency(entry.payload.amount)} (
-                {entry.payload.percentage}%)
+                {entry.payload.percentage} %)
               </Typography>
             )}
           </Box>

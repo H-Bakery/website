@@ -1,0 +1,35 @@
+# Hält den hq-Lese-Klon (/var/lib/bakery/hq) auf origin/main - roadmap §4a.
+# Gestartet von bakery-hq-sync.timer. Exit-Codes: siehe hq-sync.sh.
+
+[Unit]
+Description=Bäckerei Heusser - hq-Lese-Klon aktualisieren
+Documentation=https://github.com/H-Bakery/website/blob/main/docs/runbook.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=bakery
+Group=bakery
+EnvironmentFile=/etc/bakery/bakery.env
+Environment=BAKERY_ENV_LOADED=1
+ExecStart=/opt/bakery/bin/hq-sync.sh
+TimeoutStartSec=10min
+Nice=10
+IOSchedulingClass=idle
+
+UMask=0027
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/bakery
+InaccessiblePaths=-/etc/bakery/ops.env -/etc/bakery/restic-password -/etc/bakery/github-app.pem -/etc/caddy
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+CapabilityBoundingSet=

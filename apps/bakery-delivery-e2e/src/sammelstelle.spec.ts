@@ -1,4 +1,6 @@
-import { expect, test, type APIRequestContext } from '@playwright/test'
+import { expect, type APIRequestContext } from '@playwright/test'
+
+import { API, driverId, test, useSession } from './login'
 
 /**
  * Sammelstelle Kindergarten Mörsbach.
@@ -12,10 +14,6 @@ import { expect, test, type APIRequestContext } from '@playwright/test'
  * Jeder Test legt seine eigene Tour und seine eigenen Vorbestellungen an und
  * räumt sie wieder weg; der Liefer-Store ist derselbe wie im Betrieb.
  */
-
-const API =
-  process.env['API_URL'] ||
-  `http://localhost:${process.env['API_PORT'] || '5000'}`
 
 /** Ein Samstag weit genug in der Zukunft, dass er keiner echten Tour ins Gehege kommt. */
 const BASE_SATURDAY = '2027-08-07'
@@ -71,7 +69,7 @@ async function createTour(
   name: string
 ) {
   const created = await request.post(`${API}/api/deliveries/tours`, {
-    data: { date, driverId: 1, name },
+    data: { date, driverId: await driverId(request), name },
   })
   expect(created.ok()).toBeTruthy()
   return created.json()
@@ -132,6 +130,9 @@ async function openTour(
 }
 
 test.describe('Sammelstelle', () => {
+  // B8: die App zeigt ohne Anmeldung nur das Formular.
+  test.beforeEach(({ page, request }) => useSession(page, request))
+
   test('haengt die Vorbestellungen des Tages an den Stopp', async ({
     page,
     request,
@@ -273,6 +274,9 @@ test.describe('Sammelstelle', () => {
 })
 
 test.describe('Farbschema', () => {
+  // B8: die App zeigt ohne Anmeldung nur das Formular.
+  test.beforeEach(({ page, request }) => useSession(page, request))
+
   test('merkt sich Dunkel ueber das Neuladen hinweg, ohne Flash', async ({
     page,
   }) => {

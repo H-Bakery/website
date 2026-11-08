@@ -16,17 +16,30 @@ import {
   CardContent,
   Grid,
   Button,
-  Tooltip,
 } from '@mui/material'
+import Link from 'next/link'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
 import LanguageIcon from '@mui/icons-material/Language'
 import SecurityIcon from '@mui/icons-material/Security'
 import BrightnessAutoIcon from '@mui/icons-material/BrightnessAuto'
-import { useTheme, ThemeMode } from '@bakery/shared/contexts'
+import { useNotifications, useTheme, ThemeMode } from '@bakery/shared/contexts'
 import { NotificationPreferences } from '@bakery/management/feature-settings'
+import { isPilotMode } from '../../../lib/pilotMode'
+import { isPathAllowedForRole } from '../../../lib/roles'
+import { useOptionalSession } from '../../../lib/session'
 
 export default function SettingsPage() {
   const { mode, setMode, colorScheme } = useTheme()
+  const session = useOptionalSession()
+  // Im Pilotbetrieb (F4) gibt es weder /api/notifications noch E-Mail-Versand
+  // auf der echten API - die Karten würden ewig laden bzw. nur vertrösten.
+  const pilot = isPilotMode()
+  // Auch ohne Pilotbetrieb kann die API die echte sein (W4): antwortet sie auf
+  // /api/notifications mit 404, verschwindet der Abschnitt still.
+  const notificationsAvailable = useNotifications().available
+  const role = session?.user?.role
+  const mayManageUsers =
+    !!role && isPathAllowedForRole('/admin/users', role, session?.sessionKind)
 
   const handleModeChange = (next: ThemeMode) => setMode(next)
 
@@ -128,38 +141,44 @@ export default function SettingsPage() {
           </Card>
         </Grid>
 
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Typography
-                variant="h6"
-                component="h2"
-                sx={{ mb: 2, fontWeight: 'bold' }}
-              >
-                Benachrichtigungen
-              </Typography>
-              <NotificationPreferences />
-            </CardContent>
-          </Card>
-        </Grid>
+        {!pilot && (
+          <>
+            {notificationsAvailable !== false && (
+              <Grid item xs={12}>
+                <Card>
+                  <CardContent>
+                    <Typography
+                      variant="h6"
+                      component="h2"
+                      sx={{ mb: 2, fontWeight: 'bold' }}
+                    >
+                      Benachrichtigungen
+                    </Typography>
+                    <NotificationPreferences />
+                  </CardContent>
+                </Card>
+              </Grid>
+            )}
 
-        <Grid item xs={12} md={6}>
-          <Card sx={{ height: '100%' }}>
-            <CardContent>
-              <Typography
-                variant="h6"
-                component="h2"
-                sx={{ mb: 2, fontWeight: 'bold' }}
-              >
-                E-Mail-Versand
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Die Konfiguration des E-Mail-Versands (SMTP) ist noch nicht an
-                die API angebunden.
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+            <Grid item xs={12} md={6}>
+              <Card sx={{ height: '100%' }}>
+                <CardContent>
+                  <Typography
+                    variant="h6"
+                    component="h2"
+                    sx={{ mb: 2, fontWeight: 'bold' }}
+                  >
+                    E-Mail-Versand
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Die Konfiguration des E-Mail-Versands (SMTP) ist noch nicht
+                    an die API angebunden.
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          </>
+        )}
 
         <Grid item xs={12} md={6}>
           <Card sx={{ height: '100%' }}>
@@ -177,16 +196,31 @@ export default function SettingsPage() {
                     <SecurityIcon />
                   </ListItemIcon>
                   <ListItemText
-                    primary="Passwort ändern"
-                    secondary="Verfügbar, sobald die Benutzeranmeldung aktiviert ist"
+                    primary="Passwort und PIN"
+                    secondary={
+                      mayManageUsers
+                        ? 'Passwörter, PINs und Stationen verwalten Sie unter „Benutzer“.'
+                        : 'Passwort oder PIN vergessen? Der Inhaber setzt sie unter „Benutzer“ neu.'
+                    }
                   />
-                  <Tooltip title="Benutzeranmeldung ist noch nicht aktiviert">
-                    <span>
-                      <Button variant="outlined" size="small" disabled>
-                        Ändern
-                      </Button>
-                    </span>
-                  </Tooltip>
+                  {mayManageUsers && (
+                    <Button
+                      component={Link}
+                      href="/admin/users"
+                      variant="outlined"
+                      size="small"
+                      // W4-verify r2: neben dem langen Hinweistext wurde der
+                      // Knopf bei 1280 px schmaler als sein Text.
+                      sx={{
+                        minHeight: 44,
+                        flexShrink: 0,
+                        whiteSpace: 'nowrap',
+                        ml: 1,
+                      }}
+                    >
+                      Benutzer
+                    </Button>
+                  )}
                 </ListItem>
               </List>
             </CardContent>

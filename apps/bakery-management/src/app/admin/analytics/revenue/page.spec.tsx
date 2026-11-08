@@ -47,7 +47,22 @@ describe('RevenueAnalyticsPage', () => {
     expect(screen.queryByText(/€/)).not.toBeInTheDocument()
   })
 
-  it('unterscheidet „kein Bericht im Zeitraum" vom Ausfall', async () => {
+  it('sagt bei 403 „Nur für Inhaber“ statt „API liefert nichts“ (F4)', async () => {
+    analyticsService.getRevenueTrendsWithSource.mockResolvedValue({
+      data: [],
+      available: false,
+      forbidden: true,
+    })
+
+    renderWithTheme(<RevenueAnalyticsPage />)
+
+    expect(await screen.findByText('Nur für Inhaber')).toBeInTheDocument()
+    expect(screen.queryByText(unavailable)).not.toBeInTheDocument()
+    // Kein Export-Knopf mehr: /api/reports/generate gibt es nicht.
+    expect(screen.queryByRole('button', { name: /Export/ })).toBeNull()
+  })
+
+  it('unterscheidet „kein Bericht im Zeitraum“ vom Ausfall', async () => {
     analyticsService.getRevenueTrendsWithSource.mockResolvedValue({
       data: [],
       available: true,

@@ -1,15 +1,17 @@
+> **Superseded (2026-11-05)** - pilot plan in [roadmap.md](roadmap.md), box operation in [runbook.md](runbook.md). Kept for history.
+
 # Deployment Guide
 
 ## Deployment Strategy Overview
 
 Each application in the monorepo has its own deployment target optimized for its specific needs:
 
-| Application | Platform | Type | URL |
-|------------|----------|------|-----|
-| bakery-landing | GitHub Pages | Static | https://yourdomain.com |
-| bakery-shop | Vercel | SSR | https://shop.yourdomain.com |
-| bakery-management | Vercel | SSR | https://manage.yourdomain.com |
-| bakery-api | Google Cloud Run | Container | https://api.yourdomain.com |
+| Application       | Platform         | Type      | URL                           |
+| ----------------- | ---------------- | --------- | ----------------------------- |
+| bakery-landing    | GitHub Pages     | Static    | https://yourdomain.com        |
+| bakery-shop       | Vercel           | SSR       | https://shop.yourdomain.com   |
+| bakery-management | Vercel           | SSR       | https://manage.yourdomain.com |
+| bakery-api        | Google Cloud Run | Container | https://api.yourdomain.com    |
 
 ## CI/CD Pipeline
 
@@ -108,6 +110,7 @@ jobs:
 ### Landing Page (GitHub Pages)
 
 Configuration in `apps/bakery-landing/next.config.js`:
+
 ```javascript
 module.exports = {
   output: 'export',
@@ -115,10 +118,11 @@ module.exports = {
   images: {
     unoptimized: true,
   },
-};
+}
 ```
 
 Deployment script in `package.json`:
+
 ```json
 {
   "scripts": {
@@ -130,6 +134,7 @@ Deployment script in `package.json`:
 ### Shop & Management (Vercel)
 
 Vercel configuration `apps/bakery-shop/vercel.json`:
+
 ```json
 {
   "buildCommand": "cd ../.. && npx nx build bakery-shop --prod",
@@ -140,6 +145,7 @@ Vercel configuration `apps/bakery-shop/vercel.json`:
 ```
 
 Environment variables:
+
 ```bash
 # Set in Vercel dashboard
 NEXT_PUBLIC_API_URL=https://api.yourdomain.com
@@ -149,6 +155,7 @@ NEXT_PUBLIC_STRIPE_KEY=pk_live_xxx
 ### API (Google Cloud Run)
 
 Dockerfile for production:
+
 ```dockerfile
 # apps/bakery-api/Dockerfile
 FROM node:18-alpine AS deps
@@ -172,6 +179,7 @@ CMD ["node", "main.js"]
 ```
 
 Cloud Run deployment configuration:
+
 ```yaml
 # cloud-run.yaml
 apiVersion: serving.knative.dev/v1
@@ -199,13 +207,14 @@ spec:
                   key: latest
           resources:
             limits:
-              cpu: "2"
-              memory: "2Gi"
+              cpu: '2'
+              memory: '2Gi'
 ```
 
 ## Environment Configuration
 
 ### Development
+
 ```bash
 # .env.development
 NX_API_URL=http://localhost:3333
@@ -214,6 +223,7 @@ DATABASE_URL=postgresql://user:pass@localhost:5432/bakery_dev
 ```
 
 ### Staging
+
 ```bash
 # .env.staging
 NX_API_URL=https://api-staging.yourdomain.com
@@ -222,6 +232,7 @@ DATABASE_URL=postgresql://user:pass@db-staging/bakery_staging
 ```
 
 ### Production
+
 ```bash
 # .env.production
 NX_API_URL=https://api.yourdomain.com
@@ -255,6 +266,7 @@ npx prisma migrate deploy
 ### Health Checks
 
 Each application exposes health endpoints:
+
 - Landing: Static site monitoring via GitHub Pages
 - Shop/Management: Vercel monitoring
 - API: `/health` and `/ready` endpoints
@@ -262,6 +274,7 @@ Each application exposes health endpoints:
 ### Rollback Procedures
 
 #### Vercel Applications
+
 ```bash
 # List deployments
 vercel ls bakery-shop
@@ -271,6 +284,7 @@ vercel rollback [deployment-url]
 ```
 
 #### Cloud Run API
+
 ```bash
 # List revisions
 gcloud run revisions list --service=bakery-api
@@ -281,6 +295,7 @@ gcloud run services update-traffic bakery-api \
 ```
 
 #### Database Rollback
+
 ```bash
 # Revert last migration
 npx prisma migrate revert
@@ -307,27 +322,29 @@ pg_restore -d bakery_prod backup_file.dump
 
 ```typescript
 // apps/bakery-api/src/main.ts
-import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
+import helmet from 'helmet'
+import rateLimit from 'express-rate-limit'
 
-app.use(helmet());
-app.use(rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests
-}));
+app.use(helmet())
+app.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // limit each IP to 100 requests
+  })
+)
 ```
 
 ## Cost Optimization
 
 ### Estimated Monthly Costs
 
-| Service | Usage | Cost |
-|---------|-------|------|
-| GitHub Pages | Static hosting | Free |
-| Vercel (2 apps) | <100GB bandwidth | Free |
-| Cloud Run | <2M requests | ~$50 |
-| PostgreSQL | db-f1-micro | ~$15 |
-| **Total** | | **~$65/month** |
+| Service         | Usage            | Cost           |
+| --------------- | ---------------- | -------------- |
+| GitHub Pages    | Static hosting   | Free           |
+| Vercel (2 apps) | <100GB bandwidth | Free           |
+| Cloud Run       | <2M requests     | ~$50           |
+| PostgreSQL      | db-f1-micro      | ~$15           |
+| **Total**       |                  | **~$65/month** |
 
 ### Optimization Tips
 

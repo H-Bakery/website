@@ -450,6 +450,8 @@ export default function VisitFormClient({
   const [formError, setFormError] = useState<string | null>(null)
   /** Produkte mit Bestand, deren Rest bei der Abholung nicht gezählt wurde. */
   const [missingRest, setMissingRest] = useState<CatalogueProduct[]>([])
+  /** Bestätigte Überzählung (Signatur der Zeilen) - zweites Tippen speichert. */
+  const [excessAck, setExcessAck] = useState<string | null>(null)
   const [templateInfo, setTemplateInfo] = useState<string | null>(null)
   const [draftInfo, setDraftInfo] = useState<string | null>(null)
 
@@ -457,6 +459,15 @@ export default function VisitFormClient({
   const draftRestoredRef = useRef(false)
   const restoredKeyRef = useRef<string | null>(null)
   const appliedWeekdayRef = useRef<number | null>(null)
+  /**
+   * Was die Vorlage in "Neu" geschrieben hat (Slug → Menge als Text). Wechselt
+   * die Art weg von der Erstbestückung, verschwinden genau diese Werte wieder -
+   * sonst bucht eine Abholung die Vorlage ein zweites Mal als geliefert.
+   */
+  const templateQtyRef = useRef<Record<string, string>>({})
+  const [templateClearedInfo, setTemplateClearedInfo] = useState<string | null>(
+    null
+  )
 
   const knownSlugs = useMemo(
     () => new Set(groups.flatMap((g) => g.products.map((p) => p.productSlug))),
@@ -596,6 +607,16 @@ export default function VisitFormClient({
       ])
       setTemplates(Array.isArray(loadedTemplates) ? loadedTemplates : [])
       setDayDetail(today)
+
+      // Gibt es für den Tag schon eine Erstbestückung, ist der nächste Besuch
+      // eine Nachlieferung oder Abholung - die Vorlage greift dann nicht.
+      if (
+        typeof visitId !== 'number' &&
+        !draftRestoredRef.current &&
+        (today.visits ?? []).some((visit) => visit.visitType === 'initial')
+      ) {
+        setVisitType((current) => (current === 'initial' ? 'refill' : current))
+      }
 
       if (typeof visitId === 'number') {
         let visit =
@@ -848,6 +869,7 @@ export default function VisitFormClient({
           if (!force && row.neu.trim() !== '') continue
           const quantity = Math.max(0, Math.trunc(Number(item.quantity) || 0))
           next[item.productSlug] = { ...row, neu: String(quantity) }
+          templateQtyRef.current[item.productSlug] = String(quantity)
         }
         return next
       })
@@ -862,6 +884,35 @@ export default function VisitFormClient({
     },
     [groups, knownSlugs]
   )
+
+  // Weg von der Erstbestückung: die von der Vorlage gesetzten "Neu"-Mengen
+  // wieder herausnehmen (nur die unveränderten - getippte bleiben), und beim
+  // Zurückwechseln die Vorlage erneut anbieten.
+  useEffect(() => {
+    if (visitType === 'initial') {
+      setTemplateClearedInfo(null)
+      return
+    }
+    const templated = templateQtyRef.current
+    templateQtyRef.current = {}
+    appliedWeekdayRef.current = null
+    const slugs = Object.keys(templated)
+    if (slugs.length === 0) return
+    setRows((prev) => {
+      const next = { ...prev }
+      for (const slug of slugs) {
+        const row = next[slug]
+        if (!row || row.neu !== templated[slug]) continue
+        const updated = { ...row, neu: '' }
+        if (hasContent(updated)) next[slug] = updated
+        else delete next[slug]
+      }
+      return next
+    })
+    setTemplateClearedInfo(
+      `Die Mengen der Standard-Bestückung wurden aus „Neu“ entfernt - bei ${VISIT_TYPE_LABELS[visitType]} nur eintragen, was tatsächlich neu eingeräumt wird.`
+    )
+  }, [visitType])
 
   useEffect(() => {
     if (loading || isEditing) return
@@ -937,6 +988,7 @@ export default function VisitFormClient({
     setNote('')
     setDraftInfo(null)
     appliedWeekdayRef.current = null
+    templateQtyRef.current = {}
   }
 
   const toggleGroup = (category: string, currentlyOpen: boolean) => {
@@ -1018,6 +1070,38 @@ export default function VisitFormClient({
             .join(
               ', '
             )}. Bitte zählen – oder auf 0 setzen, wenn das Fach leer war.`
+        )
+        return
+      }
+    }
+
+    // Mehr gezählt, als laut Tagesverlauf im Schrank sein kann: das ist eine
+    // Fehlzählung oder eine nicht erfasste Lieferung, keine Retoure. Der Core
+    // bucht es als Abweichung; hier gibt es vorher eine Rückfrage
+    // (W4-Verifikation Runde 2). Beim Bearbeiten eines alten Besuchs fehlt der
+    // Bestand davor - dann keine Rückfrage.
+    if (sameDayAsLoaded && !editedVisit) {
+      const excess = items.filter(
+        (item) =>
+          item.countedQty != null &&
+          item.countedQty > (expectedStock.get(item.productSlug) ?? 0)
+      )
+      const signature = excess
+        .map((item) => `${item.productSlug}:${item.countedQty}`)
+        .join('|')
+      if (excess.length > 0 && excessAck !== signature) {
+        setExcessAck(signature)
+        setFormError(
+          `Mehr gezählt, als im Schrank sein kann: ${excess
+            .map(
+              (item) =>
+                `${item.productName} ${item.countedQty} (möglich ${
+                  expectedStock.get(item.productSlug) ?? 0
+                })`
+            )
+            .join(
+              ', '
+            )}. Das wird als Abweichung gebucht, nicht als Retoure. Fehlt eine Lieferung (Erstbestückung oder Nachlieferung)? Dann bitte zuerst die erfassen - sonst noch einmal „Besuch speichern“ tippen.`
         )
         return
       }
@@ -1226,6 +1310,15 @@ export default function VisitFormClient({
             }
           >
             {templateInfo}
+          </Alert>
+        )}
+        {visitType !== 'initial' && templateClearedInfo && (
+          <Alert
+            severity="info"
+            sx={{ mt: 1.5 }}
+            onClose={() => setTemplateClearedInfo(null)}
+          >
+            {templateClearedInfo}
           </Alert>
         )}
         {visitType === 'refill' && (

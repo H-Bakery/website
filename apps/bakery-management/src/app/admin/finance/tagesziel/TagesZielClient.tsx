@@ -42,12 +42,13 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { useAuth } from '@bakery/shared/contexts'
+import { useSession } from '../../../../lib/session'
 import {
   classifyFinanceError,
   fetchTargetPeriod,
   fetchTargetStatus,
   fetchTargets,
+  PERSONAL_SESSION_HINT,
   type FinanceAccessProblem,
 } from '../../../../lib/targetsApi'
 import type {
@@ -457,6 +458,19 @@ function AccessNotice({
       </Alert>
     )
   }
+  if (kind === 'personal_session') {
+    // F4: Inhaber an einer PIN-Station - die API verlangt eine
+    // Passwort-Sitzung (403 personal_session_required, B4). Bewusst ohne
+    // Anmelde-Link: eine PIN-Sitzung gibt es nur an einem Stationsgerät, und
+    // eine Passwort-Sitzung dort hielte Finanzen und Benutzerverwaltung 12 h
+    // statt 10 min offen (F1 beendet sie beim Einrichten der Station).
+    return (
+      <Alert severity="info" data-testid="personal-session-notice">
+        <AlertTitle>Tagesziel an der Station nicht verfügbar</AlertTitle>
+        {PERSONAL_SESSION_HINT}
+      </Alert>
+    )
+  }
   if (kind === 'forbidden') {
     return (
       <Alert severity="warning">
@@ -487,7 +501,7 @@ type PageState =
   | { phase: 'ok'; targets: TargetsResponse; status: TargetStatusResponse }
 
 export default function TagesZielClient() {
-  const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const { isAuthenticated, isLoading: authLoading } = useSession()
   const [state, setState] = useState<PageState>({ phase: 'loading' })
   const [level, setLevel] = useState<TargetLevelKey>('breakeven')
   const [from, setFrom] = useState('')
@@ -528,7 +542,7 @@ export default function TagesZielClient() {
     }
   }, [])
 
-  // Erst laden, wenn der AuthProvider ein gespeichertes Token geprüft hat.
+  // Erst laden, wenn der SessionProvider ein gespeichertes Token geprüft hat.
   useEffect(() => {
     if (authLoading) return
     load()

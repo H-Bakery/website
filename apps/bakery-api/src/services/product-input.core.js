@@ -4,7 +4,7 @@
  * geschrieben werden.
  *
  * Dependency-freies CommonJS, gleiche Konvention wie `partner-stats.core.js`:
- * der Mock-Server (`simple-server.js`) und die Tests
+ * die API (`hq-products.service.ts`) und die Tests
  * (`tests/unit/productInputValidation.test.js`) benutzen dieselbe
  * Implementierung.
  *
@@ -30,8 +30,37 @@ const PRODUCT_CATEGORIES = Object.freeze([
   'torten',
 ])
 
+/**
+ * Obergrenzen (W4-Verifikation): ein Name mit 100 000 Zeichen landete in hq,
+ * einer mit 5000 scheiterte erst am Dateinamen (ENAMETOOLONG, 500). Die
+ * echten Produkte liegen weit darunter.
+ */
+const PRODUCT_LIMITS = Object.freeze({
+  name: 120,
+  short_description: 500,
+  image: 500,
+  description: 20000,
+  price: 10000,
+})
+
+/**
+ * Steuerzeichen: NUL brach den git-Commit (500 `hq_commit_failed`), Bidi-
+ * Steuerzeichen drehen Namen optisch um. Im Langtext bleiben Zeilenumbruch
+ * und Tab erlaubt.
+ */
+const {
+  NAME_CONTROL_CHARS: NAME_CONTROL,
+  TEXT_CONTROL_CHARS: TEXT_CONTROL,
+} = require('./control-chars.core')
+
 const MESSAGES = Object.freeze({
   name: 'Produktname ist erforderlich',
+  nameTooLong: `Produktname ist zu lang (höchstens ${PRODUCT_LIMITS.name} Zeichen)`,
+  nameControl: 'Produktname enthält unzulässige Steuerzeichen',
+  priceRange: `Preis muss zwischen 0 und ${PRODUCT_LIMITS.price} € liegen`,
+  priceCents: 'Preis höchstens mit zwei Nachkommastellen angeben',
+  textTooLong: 'Text ist zu lang',
+  textControl: 'Text enthält unzulässige Steuerzeichen',
   category: 'Unbekannte Kategorie',
   categoryRequired: 'Kategorie ist erforderlich',
   price: 'Preis ist ungültig',
@@ -65,6 +94,10 @@ function validateProductInput(body, options) {
 
   if (present('name') || !partial) {
     if (!isValidName(input.name)) return MESSAGES.name
+    if (input.name.trim().length > PRODUCT_LIMITS.name) {
+      return MESSAGES.nameTooLong
+    }
+    if (NAME_CONTROL.test(input.name)) return MESSAGES.nameControl
   }
   if (present('category') || !partial) {
     if (!partial && (input.category === undefined || input.category === '')) {
@@ -75,18 +108,26 @@ function validateProductInput(body, options) {
   if (present('price') || !partial) {
     const price = parsePrice(input.price)
     if (!Number.isFinite(price) || price < 0) return MESSAGES.price
+    if (price > PRODUCT_LIMITS.price) return MESSAGES.priceRange
+    if (Math.abs(price * 100 - Math.round(price * 100)) > 1e-6) {
+      return MESSAGES.priceCents
+    }
   }
   for (const key of ['available', 'seasonal']) {
     if (present(key) && typeof input[key] !== 'boolean') return MESSAGES.flag
   }
   for (const key of ['short_description', 'image', 'description']) {
-    if (present(key) && typeof input[key] !== 'string') return MESSAGES.text
+    if (!present(key)) continue
+    if (typeof input[key] !== 'string') return MESSAGES.text
+    if (input[key].length > PRODUCT_LIMITS[key]) return MESSAGES.textTooLong
+    if (TEXT_CONTROL.test(input[key])) return MESSAGES.textControl
   }
   return null
 }
 
 module.exports = {
   MESSAGES,
+  PRODUCT_LIMITS,
   PRODUCT_CATEGORIES,
   parsePrice,
   validateProductInput,

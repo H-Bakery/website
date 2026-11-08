@@ -1,0 +1,32 @@
+# Health-Check mit Telegram-Meldung bei Zustandswechsel - roadmap O2.
+# Gestartet von bakery-health.timer (alle 5 min). Exit-Codes: siehe health.sh.
+
+[Unit]
+Description=Bäckerei Heusser - Health-Check
+Documentation=https://github.com/H-Bakery/website/blob/main/docs/runbook.md
+
+[Service]
+Type=oneshot
+User=bakery
+Group=bakery
+EnvironmentFile=/etc/bakery/bakery.env
+# ops.env ist root:root 0600 - systemd liest sie als root und setzt nur die Variablen.
+EnvironmentFile=-/etc/bakery/ops.env
+Environment=BAKERY_ENV_LOADED=1
+ExecStart=/opt/bakery/bin/health.sh
+TimeoutStartSec=3min
+
+UMask=0027
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/bakery
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+CapabilityBoundingSet=

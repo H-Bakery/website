@@ -12,9 +12,10 @@ import {
   Typography,
 } from '@mui/material'
 import { Login as LoginIcon, Flag as TargetIcon } from '@mui/icons-material'
-import { useAuth } from '@bakery/shared/contexts'
+import { useSession } from '../../lib/session'
 import {
   classifyFinanceError,
+  PERSONAL_SESSION_HINT,
   fetchTargetStatus,
   type FinanceAccessProblem,
 } from '../../lib/targetsApi'
@@ -104,10 +105,10 @@ function ValueLine({
  * Einzeltag, denn ein einzelner Tag ist Rauschen.
  *
  * Das Dashboard kommt ohne Anmeldung aus; die Zielwerte nicht. Ohne Token
- * zeigt die Kachel deshalb „Anmeldung erforderlich" mit Link - keinen Fehler.
+ * zeigt die Kachel deshalb „Anmeldung erforderlich“ mit Link - keinen Fehler.
  */
 export default function TargetsTile() {
-  const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const { isAuthenticated, isLoading: authLoading } = useSession()
   const [state, setState] = useState<TileState>({ phase: 'loading' })
 
   const load = useCallback(async () => {
@@ -188,6 +189,8 @@ export default function TargetsTile() {
               </Button>
             </Stack>
           </Paper>
+        ) : state.kind === 'personal_session' ? (
+          <Alert severity="info">Tagesziel: {PERSONAL_SESSION_HINT}</Alert>
         ) : state.kind === 'forbidden' ? (
           <Alert severity="info">
             Keine Berechtigung - das Tagesziel sehen nur Konten mit der Rolle

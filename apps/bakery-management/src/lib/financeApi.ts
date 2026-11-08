@@ -55,8 +55,20 @@ export async function fetchFinanceMonths(
   return toResult(res)
 }
 
-/** Fehlerklassen, die die Seite unterschiedlich darstellt. */
-export type FinanceAccessProblem = 'unauthenticated' | 'forbidden' | 'error'
+/**
+ * Fehlerklassen, die die Seite unterschiedlich darstellt. `personal_session`:
+ * Inhaber an einer PIN-Station - Finanzen und Tagesziel brauchen eine
+ * Passwort-Sitzung (B4, 403 `personal_session_required`).
+ */
+export type FinanceAccessProblem =
+  | 'unauthenticated'
+  | 'forbidden'
+  | 'personal_session'
+  | 'error'
+
+/** Hinweis für `personal_session` (F4) - überall derselbe Wortlaut. */
+export const PERSONAL_SESSION_HINT =
+  'An der PIN-Station nicht verfügbar – bitte am Büro-PC oder eigenen Gerät mit Passwort anmelden.'
 
 export function classifyFinanceError(err: unknown): {
   kind: FinanceAccessProblem
@@ -65,6 +77,9 @@ export function classifyFinanceError(err: unknown): {
   if (err instanceof ApiError) {
     if (err.status === 401) {
       return { kind: 'unauthenticated', message: err.message }
+    }
+    if (err.status === 403 && err.code === 'personal_session_required') {
+      return { kind: 'personal_session', message: PERSONAL_SESSION_HINT }
     }
     if (err.status === 403) return { kind: 'forbidden', message: err.message }
     return { kind: 'error', message: err.message }

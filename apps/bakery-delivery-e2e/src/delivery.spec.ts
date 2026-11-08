@@ -1,4 +1,6 @@
-import { expect, test, type Route } from '@playwright/test'
+import { expect, type Route } from '@playwright/test'
+
+import { API, E2E_LOGIN, driverId, test, useSession } from './login'
 
 /**
  * Fahrer-App der Samstagsauslieferung.
@@ -7,11 +9,6 @@ import { expect, test, type Route } from '@playwright/test'
  * Reihenfolge berechnen, Stopps abhaken. Sie legen ihre eigenen Stopps an und
  * raeumen sie wieder weg, damit sie den Liefer-Store nicht vollmuellen.
  */
-
-// Muss zu `playwright.config.ts` passen: API_URL, sonst API_PORT, sonst 5000.
-const API =
-  process.env['API_URL'] ||
-  `http://localhost:${process.env['API_PORT'] || '5000'}`
 
 /**
  * Den Tag leerraeumen, bevor der Test ihn benutzt.
@@ -32,6 +29,9 @@ async function resetTours(
 }
 
 test.describe('Liefertour', () => {
+  // B8: die App zeigt ohne Anmeldung nur das Formular.
+  test.beforeEach(({ page, request }) => useSession(page, request))
+
   test('zeigt Kopf und Bedienelemente der Tour', async ({ page }) => {
     await page.goto('/')
 
@@ -56,7 +56,11 @@ test.describe('Liefertour', () => {
       // Bewusst ein Werktag: an einem Samstag haengt die Sammelstelle
       // Moersbach automatisch mit an der Tour, und dieser Test zaehlt Stopps.
       // Und je Projekt ein eigener Tag, weil beide parallel laufen.
-      data: { date: workday, driverId: 1, name: 'E2E-Tour' },
+      data: {
+        date: workday,
+        driverId: await driverId(request),
+        name: 'E2E-Tour',
+      },
     })
     expect(created.ok()).toBeTruthy()
     const tour = await created.json()
@@ -111,7 +115,11 @@ test.describe('Liefertour', () => {
       test.info().project.name === 'chromium' ? '2026-09-16' : '2026-09-17'
     await resetTours(request, workday)
     const created = await request.post(`${API}/api/deliveries/tours`, {
-      data: { date: workday, driverId: 1, name: 'E2E-Tour ohne Adresse' },
+      data: {
+        date: workday,
+        driverId: await driverId(request),
+        name: 'E2E-Tour ohne Adresse',
+      },
     })
     expect(created.ok()).toBeTruthy()
     const tour = await created.json()
@@ -155,6 +163,7 @@ test.describe('Liefertour', () => {
   test('rendert eine Genauigkeit von 0 m als Text, nicht als nackte Null', async ({
     page,
     context,
+    request,
   }) => {
     // Regression: `{location.accuracy && <p/>}` liess React bei 0 eine nackte
     // 0 in die Seite schreiben.
@@ -163,14 +172,38 @@ test.describe('Liefertour', () => {
       longitude: 7.3389,
       accuracy: 0,
     })
-    await page.goto('/')
-
-    await expect(page.getByText('49.32260, 7.33890 · ±0 m')).toBeVisible({
-      timeout: 15_000,
+    // Die Koordinaten stehen in der Karte einer Tour. Die echte API seedet
+    // keine Touren (B12, vorher lag eine im Mock-Store) - also eine eigene,
+    // je Projekt an einem eigenen Werktag.
+    const workday =
+      test.info().project.name === 'chromium' ? '2026-09-22' : '2026-09-23'
+    await resetTours(request, workday)
+    const created = await request.post(`${API}/api/deliveries/tours`, {
+      data: {
+        date: workday,
+        driverId: await driverId(request),
+        name: 'E2E-Standort',
+      },
     })
+    expect(created.ok()).toBeTruthy()
+    const tour = await created.json()
 
-    const lines = (await page.locator('body').innerText()).split('\n')
-    expect(lines.filter((line) => line.trim() === '0')).toHaveLength(0)
+    try {
+      await page.goto('/')
+      await page.getByLabel('Tag', { exact: true }).fill(workday)
+      await expect(
+        page.getByRole('heading', { name: 'E2E-Standort', level: 2 })
+      ).toBeVisible({ timeout: 20_000 })
+
+      await expect(page.getByText('49.32260, 7.33890 · ±0 m')).toBeVisible({
+        timeout: 15_000,
+      })
+
+      const lines = (await page.locator('body').innerText()).split('\n')
+      expect(lines.filter((line) => line.trim() === '0')).toHaveLength(0)
+    } finally {
+      await request.delete(`${API}/api/deliveries/tours/${tour.id}`)
+    }
   })
 
   test('bleibt bedienbar, wenn ein Tag ohne Tour gewählt wird', async ({
@@ -198,7 +231,7 @@ test.describe('Liefertour', () => {
       test.info().project.name === 'chromium' ? '2027-03-03' : '2027-03-10'
     await resetTours(request, date)
     const created = await request.post(`${API}/api/deliveries/tours`, {
-      data: { date, driverId: 1, name: 'Funkloch-Tour' },
+      data: { date, driverId: await driverId(request), name: 'Funkloch-Tour' },
     })
     expect(created.ok()).toBeTruthy()
     const tour = await created.json()
@@ -328,5 +361,40 @@ test.describe('Liefertour', () => {
     await expect(
       page.getByRole('alert').filter({ hasText: 'Keine Verbindung' })
     ).toHaveCount(0)
+  })
+})
+
+test.describe('Anmeldung', () => {
+  test('zeigt ohne Sitzung nur das Formular, meldet an und wieder ab', async ({
+    page,
+  }) => {
+    await page.goto('/')
+
+    await expect(page.getByRole('heading', { name: 'Anmelden' })).toBeVisible()
+    await expect(page.getByLabel('Fahrer', { exact: true })).toHaveCount(0)
+
+    await page.getByLabel('Benutzername').fill(E2E_LOGIN.username)
+    await page.getByLabel('Passwort').fill('falsch-falsch')
+    await page.getByRole('button', { name: 'Anmelden' }).click()
+    await expect(page.getByRole('alert')).toBeVisible()
+
+    await page.getByLabel('Passwort').fill(E2E_LOGIN.password)
+    await page.getByRole('button', { name: 'Anmelden' }).click()
+    await expect(page.getByLabel('Fahrer', { exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Anmeldung' })).toContainText(
+      'Inhaber'
+    )
+
+    // Die Sitzung überlebt das Neuladen.
+    await page.reload()
+    await expect(page.getByLabel('Fahrer', { exact: true })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Abmelden' }).click()
+    await expect(page.getByRole('heading', { name: 'Anmelden' })).toBeVisible()
+    expect(
+      await page.evaluate(() =>
+        window.localStorage.getItem('bakery-delivery-session')
+      )
+    ).toBeNull()
   })
 })

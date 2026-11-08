@@ -1,0 +1,71 @@
+# Caddy auf der Bäckerei-Box im LAN-HTTP-Betrieb - bis das DNS-01-Zertifikat
+# da ist (Q2, Entscheidung 2026-11-08). roadmap D4, O1.
+#
+#   http://<IP oder Name der Box>   (Port 80, jeder Hostname)
+#     /api/*  -> bakery-api         127.0.0.1:5000
+#     sonst   -> bakery-management  127.0.0.1:4201
+#
+# Dieselbe Weiterleitung und dieselben Sicherheits-Header wie die Caddyfile
+# für HTTPS (Block "gemeinsam" unten), nur ohne TLS und ohne HSTS. Kein
+# DNS-Plugin nötig - Caddy aus der offiziellen Paketquelle genügt (runbook §3.4).
+#
+# install.sh installiert diese Datei als /etc/caddy/Caddyfile, solange in
+# /etc/caddy/bakery.env BAKERY_LAN_HTTP=1 steht oder BAKERY_DOMAIN noch der
+# Platzhalter ist. Umstieg auf HTTPS: Domain + DNS-Token eintragen,
+# BAKERY_LAN_HTTP=0, sudo install.sh, sudo systemctl restart caddy - die App
+# wird dafür nicht neu gebaut (docs/runbook.md §3.7).
+#
+# Im LAN-HTTP-Betrieb gehen Passwörter und PINs unverschlüsselt durchs WLAN
+# (geschützt nur durch die WLAN-Verschlüsselung), und die Verwaltung ist keine
+# installierbare PWA (Service Worker nur in sicherem Kontext). Port 80 nur aus
+# dem LAN (Firewall §3.8, nie im Router freigeben).
+
+{
+	# Keine Zertifikate, keine Umleitung auf https.
+	auto_https off
+	# Admin-API nur lokal (Standard), Logs ins Journal.
+}
+
+# >>> gemeinsam: in Caddyfile und Caddyfile.lan-http gleich halten
+# (deploy/tests/run-tests.sh vergleicht diesen Block).
+(bakery_site) {
+	# Nur aus dem LAN (und über Tailscale, O4). Alles andere wird ohne Antwort getrennt.
+	@outside not remote_ip private_ranges 100.64.0.0/10
+	abort @outside
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		# Bewusst nur die Teile einer CSP, die Next.js/MUI (Inline-Skripte und
+		# -Styles) nicht brechen. Eine volle CSP braucht Nonces in der App.
+		Content-Security-Policy "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+		-Server
+		-X-Powered-By
+	}
+	encode zstd gzip
+
+	request_body {
+		max_size 5MB
+	}
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:5000
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:4201
+	}
+
+	log {
+		output stderr
+		format console
+	}
+}
+# <<< gemeinsam
+
+:80 {
+	import bakery_site
+}

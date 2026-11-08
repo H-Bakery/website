@@ -1,23 +1,25 @@
 'use client'
 
 import React from 'react'
-import {
-  ThemeProvider as MuiThemeProvider,
-  createTheme,
-} from '@mui/material/styles'
+import { ThemeProvider as MuiThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import {
-  AuthProvider,
   NotificationProvider,
   ThemeProvider,
-  useAuth,
   useColorScheme,
 } from '@bakery/shared/contexts'
-import {
-  clearSession,
-  persistSession,
-  restoreSession,
-} from '../lib/authSession'
+import { SessionProvider, useOptionalSession } from '../lib/session'
+import RouteGuard from '../components/auth/RouteGuard'
+import { isPilotMode } from '../lib/pilotMode'
+import ThemeColorSync from '../components/pwa/ThemeColorSync'
+import { apiClient } from '@bakery/shared/data-access'
+import { resolveBrowserApiBase } from '../lib/apiBase'
+import { createManagementTheme } from '../lib/muiTheme'
+
+// F4: der Browser spricht die API über die eigene Origin an (`/api/...`) -
+// Caddy auf der Box bzw. src/proxy.ts leiten weiter. Gesetzt, bevor eine
+// Komponente lädt; `NEXT_PUBLIC_API_URL` überschreibt nur, wenn es gesetzt ist.
+apiClient.setBaseUrl(resolveBrowserApiBase())
 
 /**
  * Bridges the shared theme context (mode/persistence) to an actual MUI theme,
@@ -26,58 +28,66 @@ import {
 function MuiThemeBridge({ children }: { children: React.ReactNode }) {
   const colorScheme = useColorScheme()
   const theme = React.useMemo(
-    () =>
-      createTheme({
-        palette: { mode: colorScheme },
-      }),
+    () => createManagementTheme(colorScheme),
     [colorScheme]
   )
 
   return (
     <MuiThemeProvider theme={theme}>
       <CssBaseline />
+      <ThemeColorSync mode={colorScheme} />
       {children}
     </MuiThemeProvider>
   )
 }
 
 /**
- * Spiegelt den Anmeldezustand nach `localStorage`: ein gültiges Token bleibt
- * über ein Neuladen erhalten, nach Abmeldung oder abgelaufenem Token wird der
- * Eintrag entfernt. Sitzt *innerhalb* des AuthProviders, damit `isLoading`
- * die Prüfung beim Start (`GET /api/auth/me`) abwarten kann.
+ * Benachrichtigungen erst mit Sitzung (Abschluss-Verifikation next): vorher
+ * hatte der `ApiClient` noch kein Token, `/api/notifications` antwortete 401
+ * und landete als console.error im Log. Im Pilotbetrieb gar nicht - die echte
+ * API hat kein /api/notifications: kein Laden, kein 30-s-Polling. Die
+ * Browser-Rückfrage nach Mitteilungen kommt nie ungefragt beim Start. Der
+ * Provider bleibt, weil Dashboard und Einstellungen useNotifications()
+ * aufrufen; ein 404 setzt `available: false` (W4).
  */
-function AuthSessionSync({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth()
-  React.useEffect(() => {
-    if (isLoading) return
-    if (isAuthenticated) persistSession()
-    else clearSession()
-  }, [isAuthenticated, isLoading])
-  return <>{children}</>
+export function SessionNotifications({
+  pilot,
+  children,
+}: {
+  pilot: boolean
+  children: React.ReactNode
+}) {
+  const signedIn = useOptionalSession()?.status === 'authenticated'
+  const active = !pilot && signedIn
+  return (
+    <NotificationProvider
+      enableRealTime={false}
+      pollingInterval={active ? undefined : 0}
+      requestPermissionOnMount={false}
+      loadOnMount={active}
+    >
+      {children}
+    </NotificationProvider>
+  )
 }
 
 export default function Providers({ children }: { children: React.ReactNode }) {
-  // Ein gespeichertes Token muss auf dem apiClient sitzen, *bevor* der
-  // AuthProvider beim Mount `GET /api/auth/me` aufruft - deshalb synchron im
-  // State-Initialisierer und nicht in einem Effekt (Effekte der Eltern laufen
-  // nach denen der Kinder).
-  React.useState(() => restoreSession())
+  const pilot = isPilotMode()
 
   return (
     // Dark is the default for the admin UI; a stored preference (or the
     // "Systemeinstellung folgen" toggle) still wins over it.
     <ThemeProvider defaultMode="dark" storageKey="bakery-management-theme">
       <MuiThemeBridge>
-        {/* Auth: der Mock-Server kennt seit TASK-038 /api/auth/*; ohne Token
-            macht der Provider beim Start keinen Request. */}
-        <AuthProvider checkAuthOnMount>
-          <AuthSessionSync>
-            <NotificationProvider enableRealTime={false}>
-              {children}
-            </NotificationProvider>
-          </AuthSessionSync>
-        </AuthProvider>
+        {/* Anmeldung (F1): Sitzung in localStorage, Refresh bei 401,
+            Leerlauf-Abmeldung. Der RouteGuard lässt /admin und /backstube
+            erst mit gültiger Sitzung rendern - vorher nur einen
+            Ladezustand. */}
+        <SessionProvider>
+          <SessionNotifications pilot={pilot}>
+            <RouteGuard>{children}</RouteGuard>
+          </SessionNotifications>
+        </SessionProvider>
       </MuiThemeBridge>
     </ThemeProvider>
   )

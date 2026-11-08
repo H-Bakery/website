@@ -327,6 +327,12 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     // Direkt aus dem Feld heraus speichern - kein Blur, kein Tab dazwischen.
     await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
 
+    // nothing is in the cabinet yet: the counted Rest needs a second tap (W4-verify r2)
+    expect(
+      await screen.findByText(/Mehr gezählt, als im Schrank/)
+    ).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
+
     await waitFor(() => expect(mockCreateVisit).toHaveBeenCalledTimes(1))
     expect(mockCreateVisit.mock.calls[0][1].items).toEqual([
       {
@@ -444,6 +450,24 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
         expect.objectContaining({ productSlug: 'bauernbrot', countedQty: 0 }),
       ])
     )
+  })
+
+  it('asks before saving a Rest larger than the stock (W4-verify r2: Abweichung, not Retoure)', async () => {
+    const user = userEvent.setup()
+    await renderForm({ initialDate: BUSINESS_DATE })
+    // no visit yet today: nothing can be in the cabinet
+    await user.click(screen.getByRole('button', { name: 'Abholung' }))
+    await user.type(screen.getByLabelText('Rest in Stück: Roggenbrot'), '3')
+    await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
+    expect(
+      await screen.findByText(
+        /Mehr gezählt, als im Schrank sein kann: Roggenbrot 3 \(möglich 0\)\. Das wird als Abweichung gebucht, nicht als Retoure/
+      )
+    ).toBeInTheDocument()
+    expect(mockCreateVisit).not.toHaveBeenCalled()
+    // second tap saves
+    await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
+    await waitFor(() => expect(mockCreateVisit).toHaveBeenCalledTimes(1))
   })
 
   it('puts the products that are in the cabinet first, opens their groups and names them when switching to Abholung', async () => {
@@ -602,6 +626,64 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     ).toBeInTheDocument()
   })
 
+  it('removes the template quantities from Neu when switching from Erstbestückung to Abholung (W4-verify)', async () => {
+    const user = userEvent.setup()
+    mockFetchTemplates.mockResolvedValue([TUESDAY_TEMPLATE])
+
+    await renderForm({ initialDate: BUSINESS_DATE })
+
+    expect(
+      await screen.findByLabelText('Neu in Stück: Kaisersemmel')
+    ).toHaveValue('40')
+    // Eine getippte Abweichung von der Vorlage bleibt stehen.
+    const roggenNeu = screen.getByLabelText('Neu in Stück: Roggenbrot')
+    await user.clear(roggenNeu)
+    await user.type(roggenNeu, '7')
+
+    await user.click(screen.getByRole('button', { name: 'Abholung' }))
+
+    expect(screen.getByLabelText('Neu in Stück: Kaisersemmel')).toHaveValue('')
+    expect(screen.getByLabelText('Neu in Stück: Roggenbrot')).toHaveValue('7')
+    expect(
+      screen.getByText(
+        /Mengen der Standard-Bestückung wurden aus „Neu“ entfernt/
+      )
+    ).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('Rest in Stück: Kaisersemmel'), '3')
+    await user.click(screen.getByRole('button', { name: /Besuch speichern/ }))
+
+    // nothing is in the cabinet yet: the counted Rest needs a second tap (W4-verify r2)
+    expect(
+      await screen.findByText(/Mehr gezählt, als im Schrank/)
+    ).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Besuch speichern/ }))
+
+    await waitFor(() => expect(mockCreateVisit).toHaveBeenCalledTimes(1))
+    const payload = mockCreateVisit.mock.calls[0][1]
+    expect(payload.visitType).toBe('pickup')
+    const semmel = payload.items.find((i) => i.productSlug === 'kaisersemmel')
+    expect(semmel).toMatchObject({ countedQty: 3, deliveredQty: 0 })
+    const roggen = payload.items.find((i) => i.productSlug === 'roggenbrot')
+    expect(roggen).toMatchObject({ deliveredQty: 7 })
+  })
+
+  it('starts as Nachlieferung without the template when the day already has an Erstbestückung (W4-verify)', async () => {
+    mockFetchTemplates.mockResolvedValue([TUESDAY_TEMPLATE])
+    mockFetchToday.mockResolvedValue({
+      ...DAY_DETAIL,
+      visits: [{ ...SAVED_VISIT, id: 5 }],
+    })
+
+    await renderForm({ initialDate: BUSINESS_DATE })
+
+    expect(
+      screen.getByRole('button', { name: 'Nachlieferung' })
+    ).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('Neu in Stück: Roggenbrot')).toHaveValue('')
+    expect(screen.queryByText(/Vorlage für Dienstag übernommen/)).toBeNull()
+  })
+
   it('restores a localStorage draft on mount and clears it after a successful save', async () => {
     store[DRAFT_KEY] = JSON.stringify({
       version: 1,
@@ -639,6 +721,12 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     ).toHaveAttribute('aria-pressed', 'true')
 
     storage.removeItem.mockClear()
+    await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
+
+    // nothing is in the cabinet yet: the counted Rest needs a second tap (W4-verify r2)
+    expect(
+      await screen.findByText(/Mehr gezählt, als im Schrank/)
+    ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
 
     await waitFor(() => expect(mockCreateVisit).toHaveBeenCalledTimes(1))

@@ -2,7 +2,7 @@
  * Rechenkern der Liefertouren - dependency-freies CommonJS.
  *
  * Wie bei `partner-stats.core.js` steht jede Formel genau einmal hier und wird
- * vom Mock-Server (`simple-server.js`) und den Tests benutzt. Nichts in dieser
+ * von der API (`delivery-tours.service.ts`) und den Tests benutzt. Nichts in dieser
  * Datei macht Netzwerk oder Dateizugriffe, damit sie ueberall laeuft.
  *
  * Das Frontend hat seine eigene TypeScript-Fassung der Geometrie in
@@ -592,6 +592,18 @@ function wholeNumber(value, fallback) {
   return Number.isFinite(n) ? Math.trunc(n) : fallback
 }
 
+/**
+ * Menge einer Stopp-Position: fehlt sie (`undefined`/`null`/leer), 1; sonst
+ * eine ganze Zahl ab 0 (auch als Text `"3"`), sonst `null` (= ungültig).
+ */
+function itemQuantity(value) {
+  if (value === undefined || value === null || value === '') return 1
+  if (typeof value === 'string' && !/^\s*\d+\s*$/.test(value)) return null
+  if (typeof value !== 'number' && typeof value !== 'string') return null
+  const n = Number(value)
+  return Number.isSafeInteger(n) && n >= 0 ? n : null
+}
+
 function isBusinessDate(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return false
@@ -626,10 +638,13 @@ function toBusinessDate(date) {
 /**
  * Prueft und normalisiert einen Stopp aus dem Request-Body.
  * Rueckgabe: `{ stop }` oder `{ error, message }` mit deutschem Text.
+ * `nowIso` (optional) ist die Uhr fuer `completedAt` ohne Angabe im Body -
+ * die echte API reicht ihre injizierbare Uhr durch, sonst gilt jetzt.
  */
-function normalizeStopInput(body, existing) {
+function normalizeStopInput(body, existing, nowIso) {
   const source = body || {}
   const base = existing || {}
+  const completedNow = () => nowIso || new Date().toISOString()
 
   const customer = String(
     source.customer === undefined ? base.customer || '' : source.customer
@@ -643,7 +658,7 @@ function normalizeStopInput(body, existing) {
 
   // Optionale Sammelstelle. Ist sie gesetzt, ist der Stopp eine Uebergabe-
   // stelle: der Server haengt beim Lesen die Vorbestellungen des Tourtags an
-  // (siehe `decorateTour` in `simple-server.js`).
+  // (siehe `delivery-tours.service.ts`).
   const pickupPointId =
     source.pickupPointId === undefined
       ? base.pickupPointId || null
@@ -671,17 +686,31 @@ function normalizeStopInput(body, existing) {
     }
   }
 
+  // Mengen werden geprüft, nicht geraten: „abc“, -5, 1,5 oder 1e309 waren
+  // vorher still 1 bzw. 0 - eine erfundene Liefermenge. Fehlt die Menge, gilt
+  // wie bisher 1 (die Erfassungsmaske schreibt „Bauernbrot“ ohne Zahl).
+  let badQty = false
   const items = Array.isArray(source.items)
     ? source.items
-        .map((item) => ({
-          name: String((item && item.name) || '').trim(),
-          qty: Math.max(0, wholeNumber(item && item.qty, 1)),
-          unit: String((item && item.unit) || 'Stück').trim() || 'Stück',
-        }))
+        .map((item) => {
+          const qty = itemQuantity(item && item.qty)
+          if (qty === null) badQty = true
+          return {
+            name: String((item && item.name) || '').trim(),
+            qty: qty === null ? 0 : qty,
+            unit: String((item && item.unit) || 'Stück').trim() || 'Stück',
+          }
+        })
         .filter((item) => item.name)
     : Array.isArray(base.items)
     ? base.items
     : []
+  if (badQty) {
+    return {
+      error: 'Invalid quantity',
+      message: 'Eine Menge muss eine ganze Zahl ab 0 sein.',
+    }
+  }
 
   const stop = {
     ...base,
@@ -761,12 +790,12 @@ function normalizeStopInput(body, existing) {
   }
 
   if (status === 'done' && base.status !== 'done') {
-    stop.completedAt = source.completedAt || new Date().toISOString()
+    stop.completedAt = source.completedAt || completedNow()
     stop.failureReason = null
     stop.goodsDisposition = null
   }
   if (status === 'failed') {
-    stop.completedAt = source.completedAt || new Date().toISOString()
+    stop.completedAt = source.completedAt || completedNow()
     stop.failureReason =
       String(source.failureReason || base.failureReason || '').trim() ||
       'Nicht angetroffen'

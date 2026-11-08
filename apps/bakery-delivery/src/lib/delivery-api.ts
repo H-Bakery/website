@@ -5,8 +5,10 @@
 // gelegt, die beim naechsten Funkloch-Ende automatisch nachlaeuft. Solange
 // nichts gesendet werden konnte, sagt die Oberflaeche das auch.
 
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || 'http://localhost:5000'
+import { API_BASE_URL } from './api-base'
+import { currentSession, refreshSession, saveSession } from './session'
+
+export { API_BASE_URL }
 
 export interface Depot {
   name: string
@@ -24,6 +26,11 @@ export interface Driver {
   phone: string | null
   vehicle: 'bike' | 'car' | 'van'
   active: boolean
+  /**
+   * Das `fahrer`-Konto dieses Fahrers (echte API, B8). Der Mock kennt es
+   * nicht; ältere Offline-Kopien haben das Feld nicht.
+   */
+  userId?: number | null
 }
 
 export interface StopItem {
@@ -107,6 +114,12 @@ export interface Preorder {
   deadline: string | null
   /** Berechnet vom Server: nach Bestellschluss aufgenommen. */
   afterDeadline: boolean
+  /** Schon bezahlt (Vorkasse oder bei der Übergabe). Alte Payloads: fehlt. */
+  paid?: boolean
+  /** Bezahlter Betrag; `null` ohne Zahlung. */
+  paidAmount?: number | null
+  /** `> 0` Rest zu kassieren, `< 0` zurückzugeben, `0` ausgeglichen. */
+  paymentBalance?: number
 }
 
 export interface PreorderSummaryProduct {
@@ -203,6 +216,8 @@ export interface Tour {
 /** Was die Übergabeliste an die API schickt. */
 export interface PreorderUpdate {
   status: PreorderStatus
+  /** Rest kassiert bzw. Erstattung ausgezahlt - nur mit `handed_over`. */
+  paid?: true
 }
 
 /** Was die Erfassungsmaske an die API schickt. */
@@ -218,6 +233,8 @@ export interface StopInput {
   status?: StopStatus
   failureReason?: string | null
   goodsDisposition?: GoodsDisposition | null
+  /** Zeitpunkt des Antippens (ISO), auch aus der Warteschlange. */
+  completedAt?: string | null
   lat?: number | null
   lon?: number | null
 }
@@ -230,6 +247,19 @@ export class ApiError extends Error {
 }
 
 /**
+ * Die Anmeldung ist vorbei (Refresh abgelehnt, abgemeldet). Bewusst **keine**
+ * ApiError: `flushQueue` wirft 4xx aus der Warteschlange - ein Abhaken darf
+ * aber nicht verloren gehen, nur weil die Sitzung ablief. Es wird nach der
+ * nächsten Anmeldung nachgesendet.
+ */
+export class SessionExpiredError extends Error {
+  constructor() {
+    super('Die Anmeldung ist abgelaufen. Bitte neu anmelden.')
+    this.name = 'SessionExpiredError'
+  }
+}
+
+/**
  * Macht aus einem Fehler der API-Schicht einen deutschen Satz für die
  * Oberfläche. Netzfehler bleiben absichtlich keine ApiError (flushQueue
  * unterscheidet daran, ob ein Update wiederholt werden darf) - deshalb
@@ -237,6 +267,7 @@ export class ApiError extends Error {
  */
 export function describeError(error: unknown, fallback: string): string {
   if (error instanceof ApiError) return error.message
+  if (error instanceof SessionExpiredError) return error.message
   if (
     error instanceof Error &&
     (error.name === 'AbortError' || error.name === 'TimeoutError')
@@ -266,12 +297,47 @@ function timeoutSignal(): AbortSignal | undefined {
   return AbortSignal.timeout(REQUEST_TIMEOUT_MS)
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+function send(
+  path: string,
+  init: RequestInit | undefined,
+  token: string | null
+) {
+  return fetch(`${API_BASE_URL}${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...init?.headers,
+    },
     signal: init?.signal ?? timeoutSignal(),
   })
+}
+
+/**
+ * Jede Anfrage trägt das Access-Token. Eine 401 erneuert die Sitzung einmal
+ * (Refresh mit Rotation, `session.ts`) und wiederholt die Anfrage; ist die
+ * Sitzung vorbei, wirft sie `SessionExpiredError`. Scheitert nur der
+ * Refresh (Funkloch), bleibt die Sitzung, und die Anfrage gilt als
+ * Netzfehler - ein Abhaken bleibt in der Warteschlange.
+ */
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = currentSession()?.token ?? null
+  let response = await send(path, init, token)
+  if (response.status === 401) {
+    if (!token) throw new SessionExpiredError()
+    const outcome = await refreshSession()
+    if (!outcome.ok) {
+      if (outcome.ended) throw new SessionExpiredError()
+      throw new Error(
+        'Die Anmeldung konnte gerade nicht erneuert werden. Bitte gleich noch einmal versuchen.'
+      )
+    }
+    response = await send(path, init, outcome.session.token)
+    if (response.status === 401) {
+      saveSession(null)
+      throw new SessionExpiredError()
+    }
+  }
 
   const text = await response.text()
   let body: { message?: string; error?: string } | null = null
@@ -324,6 +390,12 @@ export const deliveryApi = {
       body: JSON.stringify(body),
     }),
 
+  deleteTour: (id: number) =>
+    request<{ success: boolean; message?: string }>(
+      `/api/deliveries/tours/${id}`,
+      { method: 'DELETE' }
+    ),
+
   addStop: (tourId: number, body: StopInput) =>
     request<Tour>(`/api/deliveries/tours/${tourId}/stops`, {
       method: 'POST',
@@ -366,6 +438,48 @@ export const deliveryApi = {
       method: 'POST',
       body: JSON.stringify(position),
     }),
+}
+
+/**
+ * Vergisst alles, was dieses Gerät für den bisherigen Benutzer gespeichert
+ * hat: Warteschlange, Offline-Kopien, gewählter Fahrer. Beim Abmelden und
+ * wenn sich ein anderer Benutzer anmeldet - sonst sähe die nächste Person
+ * die Tour des vorigen Fahrers oder schickte dessen Abhaken unter eigenem
+ * Namen ab.
+ */
+export function clearDeviceData(): void {
+  if (typeof window === 'undefined') return
+  for (const key of [
+    QUEUE_KEY,
+    DRIVERS_COPY_KEY,
+    TOURS_COPY_KEY,
+    'bakery-delivery-driver',
+  ]) {
+    try {
+      window.localStorage.removeItem(key)
+    } catch {
+      // egal
+    }
+  }
+}
+
+/**
+ * Die Offline-Kopien (Tourliste mit Namen, Adressen, Telefonnummern der
+ * Kundschaft; Fahrerliste) weg, die Warteschlange bleibt: wenn die Sitzung
+ * ohne „Abmelden“ endet (abgelaufen, widerrufen, Konto deaktiviert). Ein
+ * Abhaken darf dabei nicht verloren gehen - es geht nach der nächsten
+ * Anmeldung desselben Benutzers raus -, Kundendaten sollen aber nicht
+ * unbegrenzt auf dem Handy liegen bleiben.
+ */
+export function clearOfflineCopies(): void {
+  if (typeof window === 'undefined') return
+  for (const key of [DRIVERS_COPY_KEY, TOURS_COPY_KEY]) {
+    try {
+      window.localStorage.removeItem(key)
+    } catch {
+      // egal
+    }
+  }
 }
 
 // --- Warteschlange fuer Funkloecher ---
@@ -470,6 +584,14 @@ function writeQueue(queue: QueuedUpdate[]): void {
  * Ziel bleibt nur der letzte Stand stehen; zweimal Antippen soll nicht zwei
  * widerspruechliche Aenderungen nachschieben.
  */
+// Eindeutig auch innerhalb einer Millisekunde: flushQueue streicht nach dem
+// Versand per id - ein im selben Moment ersetzter Eintrag darf nicht mitfallen.
+let queueSeq = 0
+function queueId(prefix: string): string {
+  queueSeq += 1
+  return `${prefix}-${Date.now()}-${queueSeq}`
+}
+
 function enqueue(
   entry: QueuedUpdate,
   isSameTarget: (other: QueuedUpdate) => boolean
@@ -486,7 +608,7 @@ export function queueStopUpdate(
 ): QueuedUpdate[] {
   return enqueue(
     {
-      id: `stop-${tourId}-${stopId}-${Date.now()}`,
+      id: queueId(`stop-${tourId}-${stopId}`),
       kind: 'stop',
       tourId,
       stopId,
@@ -506,7 +628,7 @@ export function queuePreorderUpdate(
 ): QueuedUpdate[] {
   return enqueue(
     {
-      id: `preorder-${preorderId}-${Date.now()}`,
+      id: queueId(`preorder-${preorderId}`),
       kind: 'preorder',
       preorderId,
       body,
@@ -537,13 +659,22 @@ export async function flushQueue(): Promise<{
   /** true, wenn der Server nicht erreichbar war und Eintraege liegen blieben. */
   offline: boolean
 }> {
-  let queue = readQueue()
+  // Nur eine Momentaufnahme dessen, was abzuarbeiten ist. Geschrieben wird
+  // immer auf den *aktuellen* Stand des Speichers: ein Abhaken, das während
+  // des Nachsendens neu in die Schlange kommt (wackliges Netz), darf nicht
+  // von einer alten Kopie überschrieben werden - so ging es früher verloren.
+  const snapshot = readQueue()
   let tour: Tour | null = null
   const confirmed: Preorder[] = []
   const rejected: QueuedUpdate[] = []
   let offline = false
+  const drop = (id: string) =>
+    writeQueue(readQueue().filter((q) => q.id !== id))
 
-  for (const entry of [...queue]) {
+  for (const entry of snapshot) {
+    // Inzwischen ersetzt (neuer Stand desselben Ziels) - der neue geht beim
+    // nächsten Lauf raus, der alte nicht mehr.
+    if (!readQueue().some((q) => q.id === entry.id)) continue
     try {
       if (entry.kind === 'preorder') {
         confirmed.push(
@@ -556,8 +687,7 @@ export async function flushQueue(): Promise<{
           entry.body
         )
       }
-      queue = queue.filter((q) => q.id !== entry.id)
-      writeQueue(queue)
+      drop(entry.id)
     } catch (error) {
       if (
         error instanceof ApiError &&
@@ -565,8 +695,7 @@ export async function flushQueue(): Promise<{
         error.status < 500
       ) {
         rejected.push(entry)
-        queue = queue.filter((q) => q.id !== entry.id)
-        writeQueue(queue)
+        drop(entry.id)
         continue
       }
       offline = true
@@ -574,7 +703,13 @@ export async function flushQueue(): Promise<{
     }
   }
 
-  return { tour, preorders: confirmed, remaining: queue, rejected, offline }
+  return {
+    tour,
+    preorders: confirmed,
+    remaining: readQueue(),
+    rejected,
+    offline,
+  }
 }
 
 // --- Offline-Kopie ---

@@ -1,26 +1,78 @@
+/**
+ * Two jest projects (roadmap B1). `npx jest -c apps/bakery-api/jest.config.js`
+ * and `npx nx test bakery-api` run both; `--selectProjects js|ts` picks one.
+ *
+ * js - plain-JS tests under tests/**\/*.test.js: the `*.core.js` business
+ *      rules and the CommonJS route modules.
+ * ts - TypeScript tests (src/**\/*.spec.ts, tests/**\/*.test.ts) through
+ *      ts-jest, transpile-only (`isolatedModules`, type errors are the
+ *      `typecheck` target's job). `@bakery/*` resolves via the
+ *      tsconfig.base.json paths. Integration tests drive `createApp()` on an
+ *      in-memory SQLite with the pilot baseline (tests/helpers/createTestApp.ts).
+ * contract-later - the recorded-mock contract suites (tests/contract) once
+ *      more with the wall clock shifted to 2028 (tests/helpers/shiftedClock.js),
+ *      so a suite that depends on "now" fails today instead of on the day its
+ *      recorded dates pass (B12: there is no mock left to re-record from).
+ */
+// The API runs in Europe/Berlin on the box (deploy/bakery.env.example TZ=, checked by install.sh):
+// business days and delivery time windows ("09:00-09:30") are local times. CI runners are UTC, so
+// pin the zone here - set before any worker starts, they inherit it.
+process.env.TZ = 'Europe/Berlin'
+
+const path = require('path')
+const { pathsToModuleNameMapper } = require('ts-jest')
+const { compilerOptions } = require('../../tsconfig.base.json')
+
+/** @type {import('jest').Config} */
+const js = {
+  displayName: 'js',
+  rootDir: __dirname,
+  testEnvironment: 'node',
+  coveragePathIgnorePatterns: ['/node_modules/', '/test/fixtures/'],
+  testPathIgnorePatterns: ['/node_modules/'],
+  testMatch: ['<rootDir>/tests/**/*.test.js'],
+}
+
+/** @type {import('jest').Config} */
+const ts = {
+  displayName: 'ts',
+  rootDir: __dirname,
+  testEnvironment: 'node',
+  setupFiles: ['<rootDir>/tests/setup-ts.js'],
+  testMatch: ['<rootDir>/src/**/*.spec.ts', '<rootDir>/tests/**/*.test.ts'],
+  testPathIgnorePatterns: ['/node_modules/'],
+  transform: {
+    '^.+\\.ts$': [
+      'ts-jest',
+      { tsconfig: path.join(__dirname, 'tsconfig.spec.json') },
+    ],
+  },
+  moduleFileExtensions: ['ts', 'js', 'json'],
+  moduleNameMapper: pathsToModuleNameMapper(compilerOptions.paths, {
+    prefix: '<rootDir>/../../',
+  }),
+}
+
+/** @type {import('jest').Config} */
+const contractLater = {
+  ...ts,
+  displayName: 'contract-later',
+  setupFiles: [...ts.setupFiles, '<rootDir>/tests/helpers/shiftedClock.js'],
+  testMatch: ['<rootDir>/tests/contract/**/*.test.ts'],
+}
+
 module.exports = {
-  testEnvironment: "node",
-  setupFilesAfterEnv: ["./jest.setup.js"],
-  coveragePathIgnorePatterns: [
-    "/node_modules/",
-    "/test/fixtures/"
-  ],
-  testPathIgnorePatterns: [
-    "/node_modules/"
-  ],
-  testMatch: [
-    "**/tests/**/*.test.js"
-  ],
+  projects: [js, ts, contractLater],
   collectCoverageFrom: [
-    "**/*.js",
-    "!**/node_modules/**",
-    "!**/tests/**",
-    "!**/coverage/**"
+    '**/*.js',
+    '!**/node_modules/**',
+    '!**/tests/**',
+    '!**/coverage/**',
   ],
   testTimeout: 10000,
   forceExit: true,
   detectOpenHandles: true,
   verbose: true,
   bail: false,
-  silent: false
-};
+  silent: false,
+}

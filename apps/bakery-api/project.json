@@ -4,38 +4,46 @@
   "projectType": "application",
   "sourceRoot": "apps/bakery-api/src",
   "targets": {
-    "serve": {
+    "bundle": {
       "executor": "nx:run-commands",
-      "dependsOn": ["build"],
+      "cache": true,
+      "inputs": [
+        "{projectRoot}/src/**/*",
+        "{projectRoot}/migrations/*.js",
+        "{projectRoot}/build.mjs",
+        "{projectRoot}/tsconfig.bundle.json",
+        "{workspaceRoot}/tsconfig.base.json"
+      ],
+      "outputs": ["{workspaceRoot}/dist/apps/bakery-api/bundle"],
       "options": {
-        "command": "node dist/apps/bakery-api/src/main.js"
+        "command": "node apps/bakery-api/build.mjs"
       }
     },
-    "serve-legacy": {
+    "typecheck": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "node index.js",
-        "cwd": "apps/bakery-api"
+        "commands": [
+          "tsc --noEmit -p apps/bakery-api/tsconfig.bundle.json",
+          "tsc --noEmit -p apps/bakery-api/tsconfig.spec.json"
+        ],
+        "parallel": false
       }
     },
     "build": {
-      "executor": "@nx/js:tsc",
-      "outputs": ["{options.outputPath}"],
-      "dependsOn": ["^build"],
+      "executor": "nx:run-commands",
+      "dependsOn": ["typecheck", "bundle"],
       "options": {
-        "outputPath": "dist/apps/bakery-api",
-        "main": "apps/bakery-api/src/main.ts",
-        "tsConfig": "apps/bakery-api/tsconfig.build.json",
-        "assets": [
-          "apps/bakery-api/bakery",
-          "apps/bakery-api/content",
-          "apps/bakery-api/templates",
-          {
-            "input": "apps/bakery-api/src/services",
-            "glob": "*.core.js",
-            "output": "src/services"
-          }
-        ]
+        "command": "node -e \"require('fs').accessSync('dist/apps/bakery-api/bundle/main.js')\""
+      },
+      "configurations": {
+        "production": {}
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["bundle"],
+      "options": {
+        "command": "node --enable-source-maps dist/apps/bakery-api/bundle/main.js"
       }
     },
     "test": {

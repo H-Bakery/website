@@ -1,0 +1,129 @@
+{
+  "suite": "hqProducts",
+  "exchanges": [
+    {
+      "method": "GET",
+      "url": "/api/products",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"success\":true,\"data\":[{\"id\":\"kornbrot-500g\",\"numeric_id\":1,\"name\":\"Kornbrot 500g\",\"category\":\"brot\",\"price\":2.5,\"available\":true,\"seasonal\":false,\"image\":\"/assets/images/products/brot-rund.svg\",\"short_description\":\"Kernig & saftig — das Kornbrot der Testbäckerei.\",\"allergens\":[\"gluten\",\"roggen\",\"sesam\",\"weizen\"],\"allergens_source\":\"rezept\",\"allergen_recipe\":\"Kornbrot\",\"description\":\"Kernig & saftig — das Kornbrot der Testbäckerei. Synthetisches Testprodukt der E2E-Suite — kein Artikel aus dem Sortiment.\"},{\"id\":\"kornbrot-1000g\",\"numeric_id\":2,\"name\":\"Kornbrot 1000g\",\"category\":\"brot\",\"price\":4.4,\"available\":true,\"seasonal\":false,\"image\":\"/assets/images/products/brot-rund.svg\",\"short_description\":\"Dasselbe Kornbrot als großer Laib.\",\"allergens\":[\"gluten\",\"roggen\",\"sesam\",\"weizen\"],\"allergens_source\":\"rezept\",\"allergen_recipe\":\"Kornbrot\",\"description\":\"Dasselbe Kornbrot als großer Laib. Synthetisches Testprodukt der E2E-Suite — kein Artikel aus dem Sortiment.\"},{\"id\":\"musterweck\",\"numeric_id\":13,\"name\":\"Musterweck\",\"category\":\"broetchen\",\"price\":0.45,\"available\":true,\"seasonal\":false,\"image\":\"/assets/images/products/broetchen.svg\",\"short_description\":\"Das klassische Musterbrötchen.\",\"allergens\":[\"gluten\",\"weizen\"],\"allergens_source\":\"rezept\",\"allergen_recipe\":\"Musterweck\",\"description\":\"Das klassische Musterbrötchen. Synthetisches Testprodukt der E2E-Suite — kein Artikel aus dem Sortiment.\"},{\"id\":\"mustersemmel\",\"numeric_id\":15,\"name\":\"Mustersemmel\",\"category\":\"broetchen\",\"price\":0.5,\"available\":true,\"seasonal\":false,\"image\":\"/assets/images/products/broetchen.svg\",\"short_description\":\"Runde Semmel, hell gebacken.\",\"allergens\":[\"gluten\",\"weizen\"],\"allergens_source\":\"rezept\",\"allergen_recipe\":\"Mustersemmel\",\"description\":\"Runde Semmel, hell gebacken. Synthetisches Testprodukt der E2E-Suite — kein Artikel aus dem Sortiment.\"},{\"id\":\"musterbaguette-klein\",\"numeric_id\":21,\"name\":\"Musterbaguette klein\",\"category\":\"baguette\",\"price\":1.5,\"available\":true,\"seasonal\":false,\"image\":\"/assets/images/products/baguette.svg\",\"short_description\":\"Kleines Baguette für eine Person.\",\"allergens\":[\"gluten\",\"weizen\"],\"allergens_source\":\"rezept\",\"allergen_recipe\":\"Musterbaguette\",\"description\":\"Kleines Baguette für eine Person. Synthetisches Testprodukt der E2E-Suite — kein Artikel aus dem Sortiment.\"}],\"count\":5}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/products?category=brot",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"success\":true,\"data\":[{\"id\":\"kornbrot-500g\",\"numeric_id\":1,\"name\":\"Kornbrot 500g\",\"category\":\"brot\",\"price\":2.5,\"available\":true,\"seasonal\":false,\"image\":\"/assets/images/products/brot-rund.svg\",\"short_description\":\"Kernig & saftig — das Kornbrot der Testbäckerei.\",\"allergens\":[\"gluten\",\"roggen\",\"sesam\",\"weizen\"],\"allergens_source\":\"rezept\",\"allergen_recipe\":\"Kornbrot\",\"description\":\"Kernig & saftig — das Kornbrot der Testbäckerei. Synthetisches Testprodukt der E2E-Suite — kein Artikel aus dem Sortiment.\"},{\"id\":\"kornbrot-1000g\",\"numeric_id\":2,\"name\":\"Kornbrot 1000g\",\"category\":\"brot\",\"price\":4.4,\"available\":true,\"seasonal\":false,\"image\":\"/assets/images/products/brot-rund.svg\",\"short_description\":\"Dasselbe Kornbrot als großer Laib.\",\"allergens\":[\"gluten\",\"roggen\",\"sesam\",\"weizen\"],\"allergens_source\":\"rezept\",\"allergen_recipe\":\"Kornbrot\",\"description\":\"Dasselbe Kornbrot als großer Laib. Synthetisches Testprodukt der E2E-Suite — kein Artikel aus dem Sortiment.\"}],\"count\":2}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/hq-products/musterweck",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"success\":true,\"data\":{\"id\":\"musterweck\",\"numeric_id\":13,\"name\":\"Musterweck\",\"category\":\"broetchen\",\"price\":0.45,\"available\":true,\"seasonal\":false,\"image\":\"/assets/images/products/broetchen.svg\",\"short_description\":\"Das klassische Musterbrötchen.\",\"allergens\":[\"gluten\",\"weizen\"],\"allergens_source\":\"rezept\",\"allergen_recipe\":\"Musterweck\",\"description\":\"Das klassische Musterbrötchen. Synthetisches Testprodukt der E2E-Suite — kein Artikel aus dem Sortiment.\"}}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/hq-products/gibt-es-nicht",
+      "body": "{}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"success\":false,\"error\":\"Product not found\",\"message\":\"Product not found\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/hq-products",
+      "body": "{}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"success\":false,\"error\":\"not_found\",\"message\":\"Unbekannte Route: GET /api/hq-products\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/products",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"success\":true,\"data\":[{\"id\":\"kornbrot-500g\",\"numeric_id\":1,\"name\":\"Kornbrot 500g\",\"category\":\"brot\",\"price\":2.5,\"available\":true,\"seasonal\":false,\"image\":\"/assets/images/products/brot-rund.svg\",\"short_description\":\"Kernig & saftig — das Kornbrot der Testbäckerei.\",\"allergens\":[\"gluten\",\"roggen\",\"sesam\",\"weizen\"],\"allergens_source\":\"rezept\",\"allergen_recipe\":\"Kornbrot\",\"description\":\"Kernig & saftig — das Kornbrot der Testbäckerei. Synthetisches Testprodukt der E2E-Suite — kein Artikel aus dem Sortiment.\"},{\"id\":\"kornbrot-1000g\",\"numeric_id\":2,\"name\":\"Kornbrot 1000g\",\"category\":\"brot\",\"price\":4.4,\"available\":true,\"seasonal\":false,\"image\":\"/assets/images/products/brot-rund.svg\",\"short_description\":\"Dasselbe Kornbrot als großer Laib.\",\"allergens\":[\"gluten\",\"roggen\",\"sesam\",\"weizen\"],\"allergens_source\":\"rezept\",\"allergen_recipe\":\"Kornbrot\",\"description\":\"Dasselbe Kornbrot als großer Laib. Synthetisches Testprodukt der E2E-Suite — kein Artikel aus dem Sortiment.\"},{\"id\":\"musterweck\",\"numeric_id\":13,\"name\":\"Musterweck\",\"category\":\"broetchen\",\"price\":0.45,\"available\":true,\"seasonal\":false,\"image\":\"/assets/images/products/broetchen.svg\",\"short_description\":\"Das klassische Musterbrötchen.\",\"allergens\":[\"gluten\",\"weizen\"],\"allergens_source\":\"rezept\",\"allergen_recipe\":\"Musterweck\",\"description\":\"Das klassische Musterbrötchen. Synthetisches Testprodukt der E2E-Suite — kein Artikel aus dem Sortiment.\"},{\"id\":\"mustersemmel\",\"numeric_id\":15,\"name\":\"Mustersemmel\",\"category\":\"broetchen\",\"price\":0.5,\"available\":true,\"seasonal\":false,\"image\":\"/assets/images/products/broetchen.svg\",\"short_description\":\"Runde Semmel, hell gebacken.\",\"allergens\":[\"gluten\",\"weizen\"],\"allergens_source\":\"rezept\",\"allergen_recipe\":\"Mustersemmel\",\"description\":\"Runde Semmel, hell gebacken. Synthetisches Testprodukt der E2E-Suite — kein Artikel aus dem Sortiment.\"},{\"id\":\"musterbaguette-klein\",\"numeric_id\":21,\"name\":\"Musterbaguette klein\",\"category\":\"baguette\",\"price\":1.5,\"available\":true,\"seasonal\":false,\"image\":\"/assets/images/products/baguette.svg\",\"short_description\":\"Kleines Baguette für eine Person.\",\"allergens\":[\"gluten\",\"weizen\"],\"allergens_source\":\"rezept\",\"allergen_recipe\":\"Musterbaguette\",\"description\":\"Kleines Baguette für eine Person. Synthetisches Testprodukt der E2E-Suite — kein Artikel aus dem Sortiment.\"}],\"count\":5}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/hq-products/musterweck",
+      "body": "{\"price\":\"0.55\"}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"success\":true,\"data\":{\"id\":\"musterweck\",\"numeric_id\":13,\"name\":\"Musterweck\",\"category\":\"broetchen\",\"price\":0.55,\"available\":true,\"seasonal\":false,\"image\":\"/assets/images/products/broetchen.svg\",\"short_description\":\"Das klassische Musterbrötchen.\",\"allergens\":[\"gluten\",\"weizen\"],\"allergens_source\":\"rezept\",\"allergen_recipe\":\"Musterweck\",\"description\":\"Das klassische Musterbrötchen. Synthetisches Testprodukt der E2E-Suite — kein Artikel aus dem Sortiment.\"}}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/hq-products/musterweck",
+      "body": "{\"name\":\"Musterweck neu\"}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"success\":true,\"data\":{\"id\":\"musterweck\",\"numeric_id\":13,\"name\":\"Musterweck neu\",\"category\":\"broetchen\",\"price\":0.55,\"available\":true,\"seasonal\":false,\"image\":\"/assets/images/products/broetchen.svg\",\"short_description\":\"Das klassische Musterbrötchen.\",\"allergens\":[\"gluten\",\"weizen\"],\"allergens_source\":\"rezept\",\"allergen_recipe\":\"Musterweck\",\"description\":\"Das klassische Musterbrötchen. Synthetisches Testprodukt der E2E-Suite — kein Artikel aus dem Sortiment.\"}}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/hq-products/musterweck",
+      "body": "{\"name\":\"Musterweck\",\"category\":\"broetchen\",\"price\":0.5,\"short_description\":\"Neuer Teaser.\",\"description\":\"Neuer Text.\\n\\nZweiter Absatz.\",\"image\":\"\",\"available\":false,\"seasonal\":true}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"success\":true,\"data\":{\"id\":\"musterweck\",\"numeric_id\":13,\"name\":\"Musterweck\",\"category\":\"broetchen\",\"price\":0.5,\"available\":false,\"seasonal\":true,\"image\":\"\",\"short_description\":\"Neuer Teaser.\",\"allergens\":[\"gluten\",\"weizen\"],\"allergens_source\":\"rezept\",\"allergen_recipe\":\"Musterweck\",\"description\":\"Neuer Text.\\n\\nZweiter Absatz.\"}}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/hq-products/musterweck",
+      "body": "{\"price\":\"abc\"}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"success\":false,\"error\":\"Preis ist ungültig\",\"message\":\"Preis ist ungültig\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/hq-products",
+      "body": "{\"name\":\"Paritätsbrot\",\"category\":\"brot\",\"price\":3.2,\"short_description\":\"Synthetisch.\",\"description\":\"Nur für den Paritätstest.\",\"image\":\"\",\"available\":true,\"seasonal\":false}",
+      "status": 201,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"success\":true,\"data\":{\"id\":\"paritaetsbrot\",\"numeric_id\":22,\"name\":\"Paritätsbrot\",\"category\":\"brot\",\"price\":3.2,\"available\":true,\"seasonal\":false,\"image\":\"\",\"short_description\":\"Synthetisch.\",\"description\":\"Nur für den Paritätstest.\"}}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/hq-products",
+      "body": "{\"name\":\"Paritätsbrot\",\"category\":\"brot\",\"price\":3.2,\"short_description\":\"Synthetisch.\",\"description\":\"Nur für den Paritätstest.\",\"image\":\"\",\"available\":true,\"seasonal\":false}",
+      "status": 409,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"success\":false,\"error\":\"Ein Produkt mit der ID \\\"paritaetsbrot\\\" existiert bereits\",\"message\":\"Ein Produkt mit der ID \\\"paritaetsbrot\\\" existiert bereits\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/hq-products",
+      "body": "{\"name\":\"Paritätsleer\",\"category\":\"brot\",\"price\":2.1,\"short_description\":\"Nur ein Teaser.\",\"description\":\"\",\"image\":\"\",\"available\":true,\"seasonal\":false}",
+      "status": 201,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"success\":true,\"data\":{\"id\":\"paritaetsleer\",\"numeric_id\":23,\"name\":\"Paritätsleer\",\"category\":\"brot\",\"price\":2.1,\"available\":true,\"seasonal\":false,\"image\":\"\",\"short_description\":\"Nur ein Teaser.\",\"description\":\"\"}}"
+    }
+  ],
+  "values": {
+    "file:price:13-musterweck.md": "---\nid: musterweck\nnumeric_id: 13\nname: Musterweck\ncategory: broetchen\nprice: 0.55\navailable: true\nseasonal: false\nimage: \"/assets/images/products/broetchen.svg\"\nshort_description: \"Das klassische Musterbrötchen.\"\nallergens: [gluten, weizen]\nallergens_source: rezept\nallergen_recipe: Musterweck\n---\n\n# Musterweck\n\nDas klassische Musterbrötchen. Synthetisches Testprodukt der E2E-Suite — kein Artikel aus dem Sortiment.\n",
+    "file:name only:13-musterweck.md": "---\nid: musterweck\nnumeric_id: 13\nname: Musterweck neu\ncategory: broetchen\nprice: 0.55\navailable: true\nseasonal: false\nimage: \"/assets/images/products/broetchen.svg\"\nshort_description: \"Das klassische Musterbrötchen.\"\nallergens: [gluten, weizen]\nallergens_source: rezept\nallergen_recipe: Musterweck\n---\n\n# Musterweck neu\n\nDas klassische Musterbrötchen. Synthetisches Testprodukt der E2E-Suite — kein Artikel aus dem Sortiment.\n",
+    "file:edit form:13-musterweck.md": "---\nid: musterweck\nnumeric_id: 13\nname: Musterweck\ncategory: broetchen\nprice: 0.5\navailable: false\nseasonal: true\nimage: \"\"\nshort_description: \"Neuer Teaser.\"\nallergens: [gluten, weizen]\nallergens_source: rezept\nallergen_recipe: Musterweck\n---\n\n# Musterweck\n\nNeuer Text.\n\nZweiter Absatz.\n",
+    "file:22-paritaetsbrot.md": "---\nid: paritaetsbrot\nnumeric_id: 22\nname: Paritätsbrot\ncategory: brot\nprice: 3.2\navailable: true\nseasonal: false\nimage: \"\"\nshort_description: \"Synthetisch.\"\n---\n\n# Paritätsbrot\n\nNur für den Paritätstest.\n",
+    "file:23-paritaetsleer.md": "---\nid: paritaetsleer\nnumeric_id: 23\nname: Paritätsleer\ncategory: brot\nprice: 2.1\navailable: true\nseasonal: false\nimage: \"\"\nshort_description: \"Nur ein Teaser.\"\n---\n\n# Paritätsleer\n"
+  }
+}

@@ -2,7 +2,7 @@
  * Berechnungslogik für Verkaufspartner-Kennzahlen.
  *
  * Bewusst dependency-freies CommonJS: dieselbe Datei wird von der echten API
- * (`partner-stats.service.ts`), vom Mock-Server (`simple-server.js`) und von den
+ * (`partner-stats.service.ts`), vom Import (`partner-import.core.js`) und von den
  * Tests (`tests/unit/partnerStats.test.js`) benutzt. Es gibt damit genau *eine*
  * Implementierung der Formeln - keine Kopie, die auseinanderlaufen kann.
  *
@@ -162,7 +162,7 @@ function isBlank(value) {
  * @param {unknown} items Positionen aus dem Request (`undefined`/`null` = keine)
  * @param {(item: object) => ({id?: string, numeric_id?: number|string,
  *   name?: string, price?: number|string} | null | undefined)} [lookup]
- *   Katalogsuche, z. B. über den HQ-Index des Mock-Servers
+ *   Katalogsuche, z. B. über den hq-Katalog (`hq-catalogue.ts`)
  * @returns {{ ok: true, items: Array } | { ok: false, error: string, message: string }}
  */
 function validateVisitItems(items, lookup) {
@@ -313,6 +313,80 @@ function snapshotLookup(existingItems) {
 }
 
 /**
+ * Positionen einer Standard-Bestückung (Wochentags-Vorlage) prüfen - gleiche
+ * Grenzen wie bei Besuchen (W4-Verifikation: vorher nahm die Vorlage 1e9
+ * Stück und unbekannte Produkte an, und der Backzettel rechnete damit).
+ *
+ * - Positionen ganz ohne Produktangabe und Menge leer/0 entfallen (Regel des
+ *   Mocks; die Maske schickt alle Zeilen).
+ * - Menge: ganze Zahl 0 … `MAX_ITEM_QTY`, sonst Fehler - `2.5` oder `-3`
+ *   werden nicht mehr stillschweigend zu 2 bzw. gestrichen.
+ * - Mit `lookup` muss das Produkt bekannt sein; Kennungen kommen dann aus dem
+ *   Katalog.
+ * - Jedes Produkt nur einmal.
+ *
+ * @returns {{ ok: true, items: Array<{productId: number, productSlug: string,
+ *   quantity: number}> } | { ok: false, error: string, message: string }}
+ */
+function validateTemplateItems(items, lookup) {
+  const fail = (message) => ({ ok: false, error: 'INVALID_ITEMS', message })
+  if (isBlank(items)) return { ok: true, items: [] }
+  if (!Array.isArray(items)) {
+    return fail('Die Vorlage braucht eine Liste von Positionen (items).')
+  }
+  const out = []
+  const seen = new Set()
+  for (let i = 0; i < items.length; i += 1) {
+    const raw = items[i]
+    const pos = `Position ${i + 1}`
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return fail(`${pos}: Die Position muss ein Objekt sein.`)
+    }
+    const requestedSlug =
+      typeof raw.productSlug === 'string' ? raw.productSlug.trim() : ''
+    const requestedId = strictInt(raw.productId)
+    const hasId = requestedId != null && requestedId > 0
+    if (!requestedSlug && !hasId) continue
+    const label = requestedSlug || `#${requestedId}`
+
+    let quantity = 0
+    if (!isBlank(raw.quantity)) {
+      quantity = strictInt(raw.quantity)
+      if (quantity == null || quantity < 0 || quantity > MAX_ITEM_QTY) {
+        return fail(
+          `${pos} (${label}): Die Menge muss eine ganze Zahl zwischen 0 und ${MAX_ITEM_QTY} sein.`
+        )
+      }
+    }
+    if (quantity === 0) continue
+
+    let productSlug = requestedSlug
+    let productId = hasId ? requestedId : 0
+    if (typeof lookup === 'function') {
+      const product = lookup(raw) || null
+      if (!product) {
+        return fail(
+          `${pos} (${label}): Unbekanntes Produkt - es steht nicht im Katalog.`
+        )
+      }
+      productSlug = String(product.id || productSlug)
+      productId = strictInt(product.numeric_id) ?? productId
+    }
+    if (!productSlug) {
+      return fail(`${pos}: Die Position braucht ein Produkt (productSlug).`)
+    }
+    if (seen.has(productSlug)) {
+      return fail(
+        `${pos} (${productSlug}): Das Produkt ist doppelt aufgeführt - jedes Produkt nur einmal je Vorlage.`
+      )
+    }
+    seen.add(productSlug)
+    out.push({ productId, productSlug, quantity })
+  }
+  return { ok: true, items: out }
+}
+
+/**
  * Chronologische Reihenfolge: Geschäftstag, dann `sequence`, dann Zeitpunkt.
  * `sequence` gewinnt vor `visitAt`, damit eine korrigierte Uhrzeit die
  * Reihenfolge der Erfassung nicht durcheinanderbringt.
@@ -347,6 +421,11 @@ function emptyProductBucket(item) {
     productSlug: item.productSlug || '',
     productName: item.productName || item.productSlug || 'Unbekannt',
     unitPriceCents: toCents(item.unitPrice),
+    // Kleinster/groesster Preis-Snapshot im Zeitraum: ein Preiswechsel wird
+    // im Report als Spanne gezeigt, sonst ergaebe Einzelpreis × Verkauft
+    // nicht den Umsatz (W4-Verifikation Runde 2).
+    priceMinCents: item.unitPrice == null ? null : toCents(item.unitPrice),
+    priceMaxCents: item.unitPrice == null ? null : toCents(item.unitPrice),
     deliveredQty: 0,
     returnedQty: 0,
     soldQty: 0,
@@ -354,6 +433,19 @@ function emptyProductBucket(item) {
     revenueCents: 0,
     uncountedQty: 0,
   }
+}
+
+function widenPriceRange(target, minCents, maxCents) {
+  if (minCents != null)
+    target.priceMinCents =
+      target.priceMinCents == null
+        ? minCents
+        : Math.min(target.priceMinCents, minCents)
+  if (maxCents != null)
+    target.priceMaxCents =
+      target.priceMaxCents == null
+        ? maxCents
+        : Math.max(target.priceMaxCents, maxCents)
 }
 
 /**
@@ -403,8 +495,10 @@ function computeDay(dayVisits) {
       const bucket = products.get(key)
       // Der Preis-Snapshot des jüngsten Besuchs gewinnt - er ist der, zu dem
       // die zuletzt gezählten Stücke verkauft wurden.
-      if (item.unitPrice != null)
+      if (item.unitPrice != null) {
         bucket.unitPriceCents = toCents(item.unitPrice)
+        widenPriceRange(bucket, bucket.unitPriceCents, bucket.unitPriceCents)
+      }
       if (item.productName) bucket.productName = item.productName
 
       const counted = item.countedQty == null ? null : toInt(item.countedQty, 0)
@@ -412,6 +506,7 @@ function computeDay(dayVisits) {
       const before = stock.get(key) || 0
 
       let soldHere = 0
+      let excess = 0
       if (counted !== null) {
         const diff = before - counted
         if (diff >= 0) {
@@ -419,7 +514,8 @@ function computeDay(dayVisits) {
         } else {
           // Mehr vorgefunden als erwartet - eine Fehlzählung, kein Negativ-Verkauf.
           // Wird sichtbar gemacht statt still in den Summen zu verschwinden.
-          bucket.discrepancyQty += -diff
+          excess = -diff
+          bucket.discrepancyQty += excess
         }
         stock.set(key, counted + delivered)
       } else {
@@ -430,7 +526,10 @@ function computeDay(dayVisits) {
       bucket.deliveredQty += delivered
       bucket.revenueCents += soldHere * bucket.unitPriceCents
       if (visit.visitType === 'pickup' && counted !== null) {
-        bucket.returnedQty += counted
+        // Retoure ist hoechstens, was im Schrank sein konnte. Der Ueberschuss
+        // ist Abweichung (`discrepancyQty`), keine zurueckgenommene Ware -
+        // sonst laege die Retoure ueber der Lieferung (W4-Verifikation Runde 2).
+        bucket.returnedQty += counted - excess
       }
 
       soldCents += soldHere * bucket.unitPriceCents
@@ -495,6 +594,11 @@ function computeDay(dayVisits) {
   }
 }
 
+/** Was an einem offenen Tag (noch) im Schrank liegt: weder verkauft noch Retoure. */
+function openRemainder(bucket) {
+  return Math.max(0, bucket.deliveredQty - bucket.soldQty - bucket.returnedQty)
+}
+
 function rate(numerator, denominator) {
   if (!denominator) return null
   return Math.round((numerator / denominator) * 10000) / 10000
@@ -530,8 +634,10 @@ function computeStats(visits, range = {}) {
     let uncountedQty = 0
     let revenueCents = 0
     let returnValueCents = 0
+    let openQty = 0
 
     for (const [key, bucket] of day.products) {
+      if (day.isOpen) openQty += openRemainder(bucket)
       deliveredQty += bucket.deliveredQty
       soldQty += bucket.soldQty
       returnedQty += bucket.returnedQty
@@ -546,6 +652,8 @@ function computeStats(visits, range = {}) {
           productSlug: bucket.productSlug,
           productName: bucket.productName,
           unitPriceCents: bucket.unitPriceCents,
+          priceMinCents: null,
+          priceMaxCents: null,
           deliveredQty: 0,
           returnedQty: 0,
           soldQty: 0,
@@ -553,11 +661,15 @@ function computeStats(visits, range = {}) {
           uncountedQty: 0,
           revenueCents: 0,
           returnValueCents: 0,
+          openQty: 0,
+          closedDeliveredQty: 0,
+          closedSoldQty: 0,
         })
       }
       const total = productTotals.get(key)
       total.productName = bucket.productName
       total.unitPriceCents = bucket.unitPriceCents
+      widenPriceRange(total, bucket.priceMinCents, bucket.priceMaxCents)
       total.deliveredQty += bucket.deliveredQty
       total.returnedQty += bucket.returnedQty
       total.soldQty += bucket.soldQty
@@ -565,6 +677,12 @@ function computeStats(visits, range = {}) {
       total.uncountedQty += bucket.uncountedQty
       total.revenueCents += bucket.revenueCents
       total.returnValueCents += bucket.returnedQty * bucket.unitPriceCents
+      if (day.isOpen) {
+        total.openQty += openRemainder(bucket)
+      } else {
+        total.closedDeliveredQty += bucket.deliveredQty
+        total.closedSoldQty += bucket.soldQty
+      }
     }
 
     byDay.push({
@@ -581,7 +699,10 @@ function computeStats(visits, range = {}) {
       uncountedQty,
       revenue: fromCents(revenueCents),
       returnValue: fromCents(returnValueCents),
-      sellThroughRate: rate(soldQty, deliveredQty),
+      // Ein offener Tag hat noch keine Quote: der Schrankinhalt ist weder
+      // verkauft noch Retoure (W4-verify r5).
+      openQty: day.isOpen ? openQty : 0,
+      sellThroughRate: day.isOpen ? null : rate(soldQty, deliveredQty),
     })
   }
 
@@ -591,6 +712,12 @@ function computeStats(visits, range = {}) {
       productSlug: p.productSlug,
       productName: p.productName,
       unitPrice: fromCents(p.unitPriceCents),
+      unitPriceMin: fromCents(
+        p.priceMinCents == null ? p.unitPriceCents : p.priceMinCents
+      ),
+      unitPriceMax: fromCents(
+        p.priceMaxCents == null ? p.unitPriceCents : p.priceMaxCents
+      ),
       deliveredQty: p.deliveredQty,
       soldQty: p.soldQty,
       returnedQty: p.returnedQty,
@@ -598,7 +725,9 @@ function computeStats(visits, range = {}) {
       uncountedQty: p.uncountedQty,
       revenue: fromCents(p.revenueCents),
       returnValue: fromCents(p.returnValueCents),
-      sellThroughRate: rate(p.soldQty, p.deliveredQty),
+      openQty: p.openQty,
+      // Nur abgeschlossene Tage, wie `byWeekday` (W4-verify r5).
+      sellThroughRate: rate(p.closedSoldQty, p.closedDeliveredQty),
     }))
     .sort(
       (a, b) =>
@@ -616,19 +745,32 @@ function computeStats(visits, range = {}) {
   const byWeekday = [...weekdayGroups.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([weekday, dayList]) => {
-      const n = dayList.length
-      const sum = (pick) => dayList.reduce((acc, d) => acc + pick(d), 0)
+      // Mittelwerte nur über abgeschlossene Tage (mit Abholung): auf einem
+      // offenen Tag ist der Schrankinhalt weder verkauft noch Retoure, er
+      // zöge Ø Verkauft und Quote nach unten (W4-verify r4). Offene Tage
+      // stehen in `openDayCount`; sind alle offen, gibt es keinen Mittelwert.
+      const closed = dayList.filter((d) => !d.isOpen)
+      const n = closed.length
+      const sum = (pick) => closed.reduce((acc, d) => acc + pick(d), 0)
       const delivered = sum((d) => d.deliveredQty)
       const sold = sum((d) => d.soldQty)
+      const avg = (value, factor) =>
+        n === 0 ? null : Math.round((value / n) * factor) / factor
       return {
         weekday,
         weekdayLabel: WEEKDAY_LABELS[weekday] || String(weekday),
-        dayCount: n,
-        openDayCount: dayList.filter((d) => d.isOpen).length,
-        avgDeliveredQty: Math.round((delivered / n) * 10) / 10,
-        avgSoldQty: Math.round((sold / n) * 10) / 10,
-        avgReturnedQty: Math.round((sum((d) => d.returnedQty) / n) * 10) / 10,
-        avgRevenue: Math.round((sum((d) => d.revenue) / n) * 100) / 100,
+        dayCount: dayList.length,
+        openDayCount: dayList.length - n,
+        avgDeliveredQty: avg(delivered, 10),
+        avgSoldQty: avg(sold, 10),
+        avgReturnedQty: avg(
+          sum((d) => d.returnedQty),
+          10
+        ),
+        avgRevenue: avg(
+          sum((d) => d.revenue),
+          100
+        ),
         sellThroughRate: rate(sold, delivered),
       }
     })
@@ -642,6 +784,12 @@ function computeStats(visits, range = {}) {
     Math.round(byDay.reduce((s, d) => s + d.returnValue, 0) * 100) / 100
   const openDays = byDay.filter((d) => d.isOpen)
   const incompleteDays = byDay.filter((d) => !d.isOpen && !d.isComplete)
+  // Quoten nur über abgeschlossene Tage (W4-verify r5): die Lieferung eines
+  // Tags ohne Abholung zählte sonst ganz, sein Verkauf aber nicht - die
+  // Quote fiel (Kornbrot 37,5 % statt 75 %), und Geliefert ging nicht in
+  // Verkauft + Retoure auf. Was dort noch liegt, steht als `openQty`.
+  const closedDays = byDay.filter((d) => !d.isOpen)
+  const closedDelivered = closedDays.reduce((s, d) => s + d.deliveredQty, 0)
 
   return {
     range: { from, to },
@@ -658,8 +806,15 @@ function computeStats(visits, range = {}) {
       uncountedQty: byDay.reduce((s, d) => s + d.uncountedQty, 0),
       revenue,
       returnValue,
-      sellThroughRate: rate(soldQty, deliveredQty),
-      returnRate: rate(returnedQty, deliveredQty),
+      openQty: byDay.reduce((s, d) => s + d.openQty, 0),
+      sellThroughRate: rate(
+        closedDays.reduce((s, d) => s + d.soldQty, 0),
+        closedDelivered
+      ),
+      returnRate: rate(
+        closedDays.reduce((s, d) => s + d.returnedQty, 0),
+        closedDelivered
+      ),
     },
     /**
      * Vorläufig, solange ein Tag ohne Abholung dabei ist - oder eine Abholung
@@ -742,6 +897,12 @@ function statsToCsv(stats, partner = {}) {
     }
     push(['Hinweis', `Vorläufig - ${reasons.join(', ')}`])
   }
+  if (stats.openDates.length > 0) {
+    push([
+      'Hinweis',
+      'Abverkaufsquote nur über Tage mit Abholung; was an offenen Tagen noch im Schrank liegt, steht unter „Offen“',
+    ])
+  }
   push([])
 
   push(['Je Produkt'])
@@ -751,22 +912,28 @@ function statsToCsv(stats, partner = {}) {
     'Geliefert',
     'Verkauft',
     'Retoure',
+    'Offen',
     'Abverkaufsquote',
     'Umsatz',
     'Ungezählt',
+    'Abweichung',
   ])
   for (const p of stats.byProduct) {
+    const min = p.unitPriceMin == null ? p.unitPrice : p.unitPriceMin
+    const max = p.unitPriceMax == null ? p.unitPrice : p.unitPriceMax
     push([
       p.productName,
-      deNumber(p.unitPrice),
+      min === max ? deNumber(p.unitPrice) : `${deNumber(min)}–${deNumber(max)}`,
       p.deliveredQty,
       p.soldQty,
       p.returnedQty,
+      p.openQty || 0,
       p.sellThroughRate == null
         ? ''
         : `${deNumber(p.sellThroughRate * 100, 1)}%`,
       deNumber(p.revenue),
       p.uncountedQty || 0,
+      p.discrepancyQty || 0,
     ])
   }
   push([])
@@ -780,9 +947,11 @@ function statsToCsv(stats, partner = {}) {
     'Geliefert',
     'Verkauft',
     'Retoure',
+    'Offen',
     'Abverkaufsquote',
     'Umsatz',
     'Ungezählt',
+    'Abweichung',
   ])
   for (const d of stats.byDay) {
     push([
@@ -797,11 +966,13 @@ function statsToCsv(stats, partner = {}) {
       d.deliveredQty,
       d.soldQty,
       d.returnedQty,
+      d.openQty || 0,
       d.sellThroughRate == null
         ? ''
         : `${deNumber(d.sellThroughRate * 100, 1)}%`,
       deNumber(d.revenue),
       d.uncountedQty || 0,
+      d.discrepancyQty || 0,
     ])
   }
   push([])
@@ -810,6 +981,7 @@ function statsToCsv(stats, partner = {}) {
   push(['Geliefert', stats.totals.deliveredQty])
   push(['Verkauft', stats.totals.soldQty])
   push(['Retoure', stats.totals.returnedQty])
+  push(['Offen (ohne Abholung)', stats.totals.openQty || 0])
   push([
     'Abverkaufsquote',
     stats.totals.sellThroughRate == null
@@ -819,6 +991,7 @@ function statsToCsv(stats, partner = {}) {
   push(['Umsatz', deNumber(stats.totals.revenue)])
   push(['Retourenwert', deNumber(stats.totals.returnValue)])
   push(['Ungezählt', stats.totals.uncountedQty || 0])
+  push(['Abweichung', stats.totals.discrepancyQty || 0])
 
   return rows.join('\r\n')
 }
@@ -834,8 +1007,10 @@ module.exports = {
   weekdayOf,
   isBusinessDate,
   validateVisitItems,
+  validateTemplateItems,
   snapshotLookup,
   csvCell,
+  deNumber,
   sortVisits,
   groupByBusinessDate,
   computeDay,

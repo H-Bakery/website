@@ -6,7 +6,7 @@ import ReportClient from './ReportClient'
 import {
   fetchPartner,
   fetchStats,
-  reportCsvUrl,
+  downloadReportCsv,
 } from '../../../../../lib/partnerApi'
 import {
   Partner,
@@ -62,15 +62,15 @@ jest.mock('recharts', () => {
 jest.mock('../../../../../lib/partnerApi', () => ({
   fetchPartner: jest.fn(),
   fetchStats: jest.fn(),
-  reportCsvUrl: jest.fn(),
+  downloadReportCsv: jest.fn(),
 }))
 
 const mockFetchPartner = fetchPartner as jest.MockedFunction<
   typeof fetchPartner
 >
 const mockFetchStats = fetchStats as jest.MockedFunction<typeof fetchStats>
-const mockReportCsvUrl = reportCsvUrl as jest.MockedFunction<
-  typeof reportCsvUrl
+const mockDownloadCsv = downloadReportCsv as jest.MockedFunction<
+  typeof downloadReportCsv
 >
 
 const PARTNER_ID = '1'
@@ -274,10 +274,7 @@ describe('ReportClient', () => {
     jest.clearAllMocks()
     mockFetchPartner.mockResolvedValue(PARTNER)
     mockFetchStats.mockResolvedValue(STATS_PROVISIONAL)
-    mockReportCsvUrl.mockImplementation(
-      (partnerId, range) =>
-        `https://api.test/api/partners/${partnerId}/report.csv?from=${range.from}&to=${range.to}`
-    )
+    mockDownloadCsv.mockResolvedValue(undefined)
   })
 
   it('renders the per-product settlement table with German figures', async () => {
@@ -330,6 +327,29 @@ describe('ReportClient', () => {
     expect(screen.getByText('02.09.2026, 03.09.2026')).toBeInTheDocument()
   })
 
+  it('zeigt die Liefermenge offener Tage als „Offen“, die Quote nur über Tage mit Abholung (W4-verify r5)', async () => {
+    mockFetchStats.mockResolvedValue({
+      ...STATS_PROVISIONAL,
+      totals: { ...STATS_PROVISIONAL.totals, openQty: 24 },
+      byProduct: STATS_PROVISIONAL.byProduct.map((p, i) =>
+        i === 0 ? { ...p, openQty: 4 } : p
+      ),
+    })
+    await renderReport()
+
+    const tile = screen.getByText('Offen (ohne Abholung)')
+    expect(tile.parentElement).toHaveTextContent('24 Stück')
+    expect(
+      screen.getByText('Abverkaufsquote (Tage mit Abholung)')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('4 Stück noch offen (Tag ohne Abholung)')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/Die Abverkaufsquote rechnet nur Tage mit Abholung/)
+    ).toBeInTheDocument()
+  })
+
   it('does not warn about provisional figures for a completed period', async () => {
     mockFetchStats.mockResolvedValue(STATS_COMPLETE)
     await renderReport()
@@ -358,6 +378,35 @@ describe('ReportClient', () => {
     expect(row(/Bauernbrot/).getByText('6 Stück ungezählt')).toBeInTheDocument()
   })
 
+  it('shows a price range after a price change and flags a miscount (W4-verify r2)', async () => {
+    mockFetchStats.mockResolvedValue({
+      ...STATS_COMPLETE,
+      totals: { ...STATS_COMPLETE.totals, discrepancyQty: 3, visitCount: 1 },
+      byDay: STATS_COMPLETE.byDay.map((day, index) =>
+        index === 0 ? { ...day, discrepancyQty: 3 } : day
+      ),
+      byProduct: STATS_COMPLETE.byProduct.map((product, index) =>
+        index === 0
+          ? {
+              ...product,
+              unitPriceMin: 3.2,
+              unitPriceMax: 3.4,
+              discrepancyQty: 3,
+            }
+          : product
+      ),
+    })
+    await renderReport()
+
+    const bread = row(/Bauernbrot/)
+    expect(bread.getByText('3,20–3,40 €')).toBeInTheDocument()
+    expect(bread.getByText(/3 Stück Abweichung/)).toBeInTheDocument()
+    expect(screen.getByTestId('report-discrepancy')).toHaveTextContent(
+      'Abweichung: 3 Stück mehr gezählt, als im Schrank sein konnten'
+    )
+    expect(screen.getByText(/1 Besuch ·/)).toBeInTheDocument()
+  })
+
   it('reloads the report for a different range when a quick filter is used', async () => {
     const user = userEvent.setup()
     await renderReport()
@@ -373,29 +422,34 @@ describe('ReportClient', () => {
     expect(mockFetchStats).toHaveBeenNthCalledWith(2, PARTNER_ID, LAST_WEEK)
 
     // Der Export folgt dem neuen Zeitraum
+    await user.click(screen.getByRole('button', { name: 'CSV exportieren' }))
     await waitFor(() =>
-      expect(
-        screen
-          .getByRole('link', { name: 'CSV exportieren' })
-          .getAttribute('download')
-      ).toBe(`partner-report-${LAST_WEEK.from}-bis-${LAST_WEEK.to}.csv`)
+      expect(mockDownloadCsv).toHaveBeenCalledWith(PARTNER_ID, LAST_WEEK)
     )
   })
 
-  it('offers the CSV export as a download anchor', async () => {
+  it('lädt den CSV-Export per fetch mit Token statt über einen Link (F4)', async () => {
+    const user = userEvent.setup()
     await renderReport()
 
-    const link = screen.getByRole('link', { name: 'CSV exportieren' })
-    expect(link.tagName).toBe('A')
-    expect(link).toHaveAttribute(
-      'href',
-      `https://api.test/api/partners/${PARTNER_ID}/report.csv?from=${THIS_WEEK.from}&to=${THIS_WEEK.to}`
+    // Ein Link trüge kein Authorization - die echte API antwortete 401.
+    expect(screen.queryByRole('link', { name: 'CSV exportieren' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'CSV exportieren' }))
+    await waitFor(() =>
+      expect(mockDownloadCsv).toHaveBeenCalledWith(PARTNER_ID, THIS_WEEK)
     )
-    expect(link).toHaveAttribute(
-      'download',
-      `partner-report-${THIS_WEEK.from}-bis-${THIS_WEEK.to}.csv`
-    )
-    expect(mockReportCsvUrl).toHaveBeenCalledWith(PARTNER_ID, THIS_WEEK)
+    expect(screen.queryByText(/CSV-Export fehlgeschlagen/)).toBeNull()
+  })
+
+  it('zeigt die deutsche Meldung, wenn der CSV-Export scheitert', async () => {
+    const user = userEvent.setup()
+    mockDownloadCsv.mockRejectedValue(new Error('Nicht angemeldet.'))
+    await renderReport()
+
+    await user.click(screen.getByRole('button', { name: 'CSV exportieren' }))
+    expect(
+      await screen.findByText('CSV-Export fehlgeschlagen: Nicht angemeldet.')
+    ).toBeInTheDocument()
   })
 
   it('shows the German error message when the report cannot be loaded', async () => {

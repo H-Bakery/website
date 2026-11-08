@@ -3,7 +3,7 @@
  *
  * Hier steht bewusst **keine** Formel. Die einzige Implementierung liegt in
  * `partner-stats.core.js` (dependency-freies CommonJS) und wird von dieser
- * Datei, vom Mock-Server (`simple-server.js`) und von den Tests gemeinsam
+ * Datei und von den Tests gemeinsam
  * benutzt - so kann keine Kopie auseinanderlaufen.
  *
  * Aufgabe dieser Datei:
@@ -72,6 +72,9 @@ export interface ProductStat {
   uncountedQty: number
   revenue: number
   returnValue: number
+  /** An Tagen ohne Abholung noch im Schrank (W4-verify r5). */
+  openQty: number
+  /** Nur über Tage mit Abholung; an einem offenen Tag `null`. */
   sellThroughRate: number | null
 }
 
@@ -91,6 +94,9 @@ export interface DayStat {
   uncountedQty: number
   revenue: number
   returnValue: number
+  /** An Tagen ohne Abholung noch im Schrank (W4-verify r5). */
+  openQty: number
+  /** Nur über Tage mit Abholung; an einem offenen Tag `null`. */
   sellThroughRate: number | null
 }
 
@@ -120,6 +126,8 @@ export interface StatsTotals {
   uncountedQty: number
   revenue: number
   returnValue: number
+  openQty: number
+  /** Quoten nur über Tage mit Abholung (W4-verify r5). */
   sellThroughRate: number | null
   returnRate: number | null
 }
@@ -246,6 +254,24 @@ export function validateVisitItems(
   return core.validateVisitItems(items, lookup)
 }
 
+export type TemplateItemsResult =
+  | {
+      ok: true
+      items: Array<{ productId: number; productSlug: string; quantity: number }>
+    }
+  | { ok: false; error: string; message: string }
+
+/**
+ * Positionen einer Standard-Bestückung prüfen (Menge ganzzahlig 0…10000,
+ * Produkt bekannt, keine Duplikate) - Regeln im Core.
+ */
+export function validateTemplateItems(
+  items: unknown,
+  lookup?: (item: Record<string, unknown>) => CatalogueProduct | null
+): TemplateItemsResult {
+  return core.validateTemplateItems(items, lookup)
+}
+
 /**
  * Lookup über den Snapshot eines gespeicherten Besuchs - für Korrekturen, damit
  * ein inzwischen aus dem Katalog verschwundenes Produkt korrigierbar bleibt.
@@ -366,6 +392,7 @@ export default {
   isBusinessDate,
   isVisitType,
   validateVisitItems,
+  validateTemplateItems,
   snapshotLookup,
   toPlainVisitItem,
   toPlainVisit,

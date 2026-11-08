@@ -7,8 +7,10 @@ import { syntheticStatus } from '../../lib/targetsFixtures'
 jest.mock('@bakery/shared/data-access', () => {
   class ApiError extends Error {
     status: number
-    constructor(message: string, status: number) {
+    code?: string
+    constructor(message: string, status: number, code?: string) {
       super(message)
+      this.code = code
       this.name = 'ApiError'
       this.status = status
     }
@@ -17,14 +19,14 @@ jest.mock('@bakery/shared/data-access', () => {
 })
 
 const authState = { isAuthenticated: false, isLoading: false }
-jest.mock('@bakery/shared/contexts', () => ({
-  useAuth: () => authState,
+jest.mock('../../lib/session', () => ({
+  useSession: () => authState,
 }))
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { apiClient, ApiError } = require('@bakery/shared/data-access') as {
   apiClient: { get: jest.Mock }
-  ApiError: new (message: string, status: number) => Error
+  ApiError: new (message: string, status: number, code?: string) => Error
 }
 
 describe('TargetsTile', () => {
@@ -54,6 +56,17 @@ describe('TargetsTile', () => {
     renderWithTheme(<TargetsTile />)
     expect(await screen.findByText(/Keine Berechtigung/)).toBeInTheDocument()
     expect(screen.getByRole('alert')).toHaveClass('MuiAlert-colorInfo')
+  })
+
+  it('zeigt an der PIN-Station den Passwort-Hinweis (F4)', async () => {
+    apiClient.get.mockRejectedValue(
+      new ApiError('Nur mit Passwort.', 403, 'personal_session_required')
+    )
+    renderWithTheme(<TargetsTile />)
+    expect(
+      await screen.findByText(/An der PIN-Station nicht verfügbar/)
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Keine Berechtigung/)).toBeNull()
   })
 
   it('zeigt "kein Ziel" mit Grund und ohne Zahlen', async () => {

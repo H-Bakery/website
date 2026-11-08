@@ -101,15 +101,23 @@ export interface ProductStat {
   productId: number
   productSlug: string
   productName: string
+  /** Jüngster Preis-Snapshot im Zeitraum. */
   unitPrice: number
+  /** Kleinster/größter Preis im Zeitraum - ungleich: Preis hat sich geändert. */
+  unitPriceMin?: number
+  unitPriceMax?: number
   deliveredQty: number
   soldQty: number
   returnedQty: number
+  /** Mehr gezählt, als im Schrank sein konnte - weder Verkauf noch Retoure. */
   discrepancyQty: number
   /** Bei der Abholung nicht gezählt - weder verkauft noch Retoure. */
   uncountedQty?: number
+  /** An Tagen ohne Abholung noch im Schrank (W4-verify r5). */
+  openQty?: number
   revenue: number
   returnValue: number
+  /** Nur über Tage mit Abholung; ältere Server rechneten alle Tage. */
   sellThroughRate: number | null
 }
 
@@ -127,6 +135,8 @@ export interface DayStat {
   returnedQty: number
   discrepancyQty: number
   uncountedQty?: number
+  /** Offener Tag: was noch im Schrank liegt; die Quote ist dann `null`. */
+  openQty?: number
   revenue: number
   returnValue: number
   sellThroughRate: number | null
@@ -137,10 +147,11 @@ export interface WeekdayStat {
   weekdayLabel: string
   dayCount: number
   openDayCount: number
-  avgDeliveredQty: number
-  avgSoldQty: number
-  avgReturnedQty: number
-  avgRevenue: number
+  /** `null`, wenn alle Tage dieses Wochentags noch offen sind. */
+  avgDeliveredQty: number | null
+  avgSoldQty: number | null
+  avgReturnedQty: number | null
+  avgRevenue: number | null
   sellThroughRate: number | null
 }
 
@@ -157,8 +168,11 @@ export interface PartnerStats {
     returnedQty: number
     discrepancyQty: number
     uncountedQty?: number
+    /** Lieferungen offener Tage, die noch im Schrank liegen. */
+    openQty?: number
     revenue: number
     returnValue: number
+    /** Quoten nur über Tage mit Abholung (W4-verify r5). */
     sellThroughRate: number | null
     returnRate: number | null
   }
@@ -309,6 +323,32 @@ export function weekdayOf(businessDate: string): number | null {
   if (Number.isNaN(d.getTime())) return null
   const js = d.getDay()
   return js === 0 ? 7 : js
+}
+
+/** `1 Besuch`, `2 Besuche` - Zahl im deutschen Format. */
+export function plural(
+  count: number | null | undefined,
+  one: string,
+  many: string
+): string {
+  const n = count == null || !Number.isFinite(count) ? 0 : count
+  return `${n.toLocaleString('de-DE')} ${n === 1 ? one : many}`
+}
+
+/**
+ * Einzelpreis einer Report-Zeile; hat sich der Preis im Zeitraum geändert,
+ * die Spanne (`1,60–1,80 €`), damit Einzelpreis × Verkauft nicht scheinbar
+ * vom Umsatz abweicht.
+ */
+export function formatUnitPrice(p: {
+  unitPrice: number
+  unitPriceMin?: number
+  unitPriceMax?: number
+}): string {
+  const min = p.unitPriceMin ?? p.unitPrice
+  const max = p.unitPriceMax ?? p.unitPrice
+  if (min === max) return formatCurrency(p.unitPrice)
+  return `${formatCurrency(min).replace(/\s*€$/, '')}–${formatCurrency(max)}`
 }
 
 export function formatCurrency(value: number | null | undefined): string {

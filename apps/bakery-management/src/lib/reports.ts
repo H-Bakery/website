@@ -7,7 +7,7 @@
  *
  * Pfad: `HQ_REPORTS_DIR` oder `<website>/../hq/data/reports`. Fehlt das
  * Verzeichnis (CI), wird einmal protokolliert und leer geantwortet - es gibt
- * bewusst keinen Fallback auf Beispieldaten: lieber „kein Bericht" als
+ * bewusst keinen Fallback auf Beispieldaten: lieber „kein Bericht“ als
  * erfundene Umsätze.
  *
  * Gerechnet wird **nicht** hier, sondern in
@@ -323,7 +323,7 @@ export function listReportDates(): string[] {
   return loadCore().files.listReportDates(getHQReportsDir())
 }
 
-/** Der jüngste Tag mit Bericht - für „Stand: <Tag>" auf dem Dashboard. */
+/** Der jüngste Tag mit Bericht - für „Stand: <Tag>“ auf dem Dashboard. */
 export function getLatestDailyReport(): DailyReportResult | null {
   const dates = listReportDates()
   if (dates.length === 0) return null

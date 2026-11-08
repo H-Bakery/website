@@ -25,11 +25,15 @@ import {
   Print as PrintIcon,
   Refresh as RefreshIcon,
 } from '@mui/icons-material'
-import { fetchPickupPoints, fetchPreorderSummary } from '../preorderApi'
+import {
+  fetchPickupPoints,
+  fetchPreorderSums,
+  preorderErrorMessage,
+} from '../../../../../lib/preordersApi'
+import { itemName, type PreorderSums } from '../../../../../lib/preordersTypes'
 import {
   DELIVERY_WEEKDAY_LABELS,
   PickupPoint,
-  PreorderSummary,
   deliveryWeekdayOf,
   formatCurrency,
   formatDate,
@@ -41,10 +45,6 @@ import {
 const DEFAULT_WEEKDAY = 6
 
 const LIST_HREF = '/admin/delivery/preorders'
-
-function messageOf(err: unknown, fallback: string): string {
-  return err instanceof Error && err.message ? err.message : fallback
-}
 
 /* ------------------------------------------------------------------ *
  * Druck-Stylesheet
@@ -103,7 +103,9 @@ export interface BackingListClientProps {
  *
  * Das ist das Blatt, das samstags früh in der Backstube hängt - deshalb große
  * Zahlen und ein Druckbild ohne Bedienelemente. Gezählt wird auf dem Server
- * (`GET /preorders/summary`), hier wird nur angezeigt.
+ * (`GET /api/preorders/sums?date=&pickupPointId=`, je Produkt und Sorte, mit
+ * Kopfzahlen), hier wird nur angezeigt. Bewusst nicht `/day` (W4): die
+ * Backliste braucht keine Namen und Telefonnummern, also lädt sie keine.
  */
 export default function BackingListClient({
   initialDate,
@@ -115,7 +117,7 @@ export default function BackingListClient({
   const [pointId, setPointId] = useState(initialPickupPointId ?? '')
   // Leer starten - der Vorgabetag kommt aus der Uhr (Hydration).
   const [date, setDate] = useState(initialDate ?? '')
-  const [summary, setSummary] = useState<PreorderSummary | null>(null)
+  const [day, setDay] = useState<PreorderSums | null>(null)
   const [pointsLoaded, setPointsLoaded] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -143,8 +145,14 @@ export default function BackingListClient({
             : nextDeliveryDate(first ? first.weekday : DEFAULT_WEEKDAY)
         )
       })
-      .catch(() => {
+      .catch((err) => {
         if (!active) return
+        setError(
+          preorderErrorMessage(
+            err,
+            'Die Sammelstellen konnten nicht geladen werden'
+          )
+        )
         setDate((current) =>
           isBusinessDate(current) ? current : nextDeliveryDate(DEFAULT_WEEKDAY)
         )
@@ -158,14 +166,17 @@ export default function BackingListClient({
   }, [initialPickupPointId])
 
   const load = useCallback(async () => {
-    if (!isBusinessDate(date)) return
+    // Ohne Sammelstelle wäre es der ganze Tag (Laden inklusive).
+    if (!isBusinessDate(date) || !pointId) return
     setLoading(true)
     setError(null)
     try {
-      setSummary(await fetchPreorderSummary(date, pointId || undefined))
+      setDay(await fetchPreorderSums(date, pointId))
     } catch (err) {
-      setSummary(null)
-      setError(messageOf(err, 'Die Backliste konnte nicht geladen werden'))
+      setDay(null)
+      setError(
+        preorderErrorMessage(err, 'Die Backliste konnte nicht geladen werden')
+      )
     } finally {
       setLoading(false)
     }
@@ -178,10 +189,10 @@ export default function BackingListClient({
   }, [load, pointsLoaded])
 
   const weekday = isBusinessDate(date) ? deliveryWeekdayOf(date) : null
-  const totalQty = (summary?.byProduct ?? []).reduce(
-    (sum, entry) => sum + entry.qty,
-    0
-  )
+  const sums = day?.items ?? []
+  const summary = day?.summary ?? null
+  const count = summary ? summary.count : day?.preorderCount ?? 0
+  const totalQty = sums.reduce((sum, entry) => sum + entry.quantity, 0)
 
   return (
     <Box className="backing-list-root" sx={{ maxWidth: 800, mx: 'auto' }}>
@@ -282,7 +293,7 @@ export default function BackingListClient({
           >
             <CircularProgress />
           </Box>
-        ) : !summary || summary.byProduct.length === 0 ? (
+        ) : !day || sums.length === 0 ? (
           !error && (
             <Typography color="text.secondary" sx={{ py: 4 }}>
               Für diesen Tag ist nichts vorbestellt.
@@ -301,15 +312,15 @@ export default function BackingListClient({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {summary.byProduct.map((entry) => (
-                    <TableRow key={entry.productId}>
+                  {sums.map((entry) => (
+                    <TableRow key={`${entry.productId}|${entry.variant}`}>
                       <TableCell>
                         <Typography
                           variant="h5"
                           component="span"
                           sx={{ fontWeight: 700 }}
                         >
-                          {entry.qty}
+                          {entry.quantity}
                         </Typography>
                         <Typography
                           variant="body2"
@@ -321,7 +332,7 @@ export default function BackingListClient({
                       </TableCell>
                       <TableCell>
                         <Typography variant="h6" component="span">
-                          {entry.name}
+                          {itemName(entry)}
                         </Typography>
                       </TableCell>
                     </TableRow>
@@ -331,10 +342,26 @@ export default function BackingListClient({
             </TableContainer>
 
             <Typography variant="body1" sx={{ mt: 3 }}>
-              {summary.count} Vorbestellung{summary.count === 1 ? '' : 'en'} ·{' '}
-              {totalQty} Stück · {formatCurrency(summary.total)} zu kassieren
-              {summary.cancelled > 0
-                ? ` · ${summary.cancelled} storniert (nicht enthalten)`
+              {count} Vorbestellung{count === 1 ? '' : 'en'} · {totalQty} Stück
+              {summary
+                ? ` · ${formatCurrency(summary.total)} Summe · ${formatCurrency(
+                    summary.unpaidTotal
+                  )} noch zu kassieren${
+                    (summary.handedOverUnpaidTotal ?? 0) > 0
+                      ? ` (+ ${formatCurrency(
+                          summary.handedOverUnpaidTotal ?? 0
+                        )} ohne Zahlung übergeben)`
+                      : ''
+                  }${
+                    (summary.refundTotal ?? 0) > 0
+                      ? ` · ${formatCurrency(
+                          summary.refundTotal ?? 0
+                        )} zu erstatten`
+                      : ''
+                  }`
+                : ''}
+              {summary && summary.byStatus.storniert > 0
+                ? ` · ${summary.byStatus.storniert} storniert (nicht enthalten)`
                 : ''}
             </Typography>
           </>

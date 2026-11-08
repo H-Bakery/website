@@ -42,11 +42,12 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { useAuth } from '@bakery/shared/contexts'
+import { useSession } from '../../../lib/session'
 import {
   classifyFinanceError,
   fetchFinanceMonths,
   fetchFinanceSummary,
+  PERSONAL_SESSION_HINT,
   type FinanceAccessProblem,
 } from '../../../lib/financeApi'
 import type {
@@ -270,7 +271,7 @@ function CostStructure({ rows }: { rows: FinanceStructureRow[] }) {
         Kostenstruktur
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Abflüsse nach Kategorie im gewählten Zeitraum. „Nicht zugeordnet" zählt
+        Abflüsse nach Kategorie im gewählten Zeitraum. „Nicht zugeordnet“ zählt
         hier mit, solange die Buchungen keiner Kategorie zugewiesen sind.
       </Typography>
       {data.length === 0 ? (
@@ -426,6 +427,19 @@ function AccessNotice({
       </Alert>
     )
   }
+  if (kind === 'personal_session') {
+    // F4: Inhaber an einer PIN-Station - die API verlangt eine
+    // Passwort-Sitzung (403 personal_session_required, B4). Bewusst ohne
+    // Anmelde-Link: eine PIN-Sitzung gibt es nur an einem Stationsgerät, und
+    // eine Passwort-Sitzung dort hielte Finanzen und Benutzerverwaltung 12 h
+    // statt 10 min offen (F1 beendet sie beim Einrichten der Station).
+    return (
+      <Alert severity="info" data-testid="personal-session-notice">
+        <AlertTitle>Finanzdaten an der Station nicht verfügbar</AlertTitle>
+        {PERSONAL_SESSION_HINT}
+      </Alert>
+    )
+  }
   if (kind === 'forbidden') {
     return (
       <Alert severity="warning">
@@ -462,7 +476,7 @@ interface RangeView {
 }
 
 export default function FinanceClient() {
-  const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const { isAuthenticated, isLoading: authLoading } = useSession()
   const [state, setState] = useState<PageState>({ phase: 'loading' })
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
@@ -488,7 +502,7 @@ export default function FinanceClient() {
     }
   }, [])
 
-  // Erst laden, wenn der AuthProvider ein gespeichertes Token geprüft hat -
+  // Erst laden, wenn der SessionProvider ein gespeichertes Token geprüft hat -
   // sonst liefe die Anfrage ohne Header los und die Seite zeigte kurz
   // "Anmeldung erforderlich", obwohl man angemeldet ist.
   useEffect(() => {

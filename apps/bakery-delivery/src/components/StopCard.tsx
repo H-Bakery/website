@@ -44,10 +44,25 @@ interface StopCardProps {
     details?: FailureDetails
   ) => void
   onRemove?: (stopId: number) => void
+  /** Planung (Inhaber): Stopp in der Reihenfolge eins nach oben/unten. */
+  onMove?: (stopId: number, direction: -1 | 1) => void
+  isFirst?: boolean
+  isLast?: boolean
   /** Nur an einer Sammelstelle gebraucht - dort wird je Vorbestellung abgehakt. */
-  onPreorderStatusChange?: (preorderId: number, status: PreorderStatus) => void
+  onPreorderStatusChange?: (
+    preorderId: number,
+    status: PreorderStatus,
+    paid?: true
+  ) => void
   /** Vorbestellungen, deren eigener Statuswechsel gerade unterwegs ist. */
   busyPreorderIds?: ReadonlySet<number>
+  /**
+   * Nur ansehen (Rolle `verkauf`, B8): keine Statusknöpfe. Navigation und
+   * Anrufen bleiben. Die API lehnt das Abhaken ohnehin ab (403).
+   */
+  readOnly?: boolean
+  /** Übergabe zurücknehmen erlaubt (nicht für den Fahrer, B8). */
+  canUndoHandover?: boolean
 }
 
 export function StopCard({
@@ -58,8 +73,13 @@ export function StopCard({
   busy,
   onStatusChange,
   onRemove,
+  onMove,
+  isFirst = false,
+  isLast = false,
   onPreorderStatusChange,
   busyPreorderIds,
+  readOnly = false,
+  canUndoHandover = true,
 }: StopCardProps) {
   // Rueckfrage vor dem Abschliessen einer Sammelstelle mit offenen
   // Vorbestellungen. Bewusst kein `window.confirm`: das blockiert den
@@ -221,6 +241,8 @@ export function StopCard({
             busy={busy}
             busyIds={busyPreorderIds}
             onStatusChange={onPreorderStatusChange}
+            readOnly={readOnly}
+            canUndoHandover={canUndoHandover}
           />
         </>
       )}
@@ -283,7 +305,7 @@ export function StopCard({
           </a>
         )}
 
-        {stop.status === 'open' ? (
+        {readOnly ? null : stop.status === 'open' ? (
           // An der Sammelstelle gibt es kein „Nicht angetroffen": nicht
           // erschienen ist dort eine einzelne Vorbestellung, nicht der Stopp.
           isPickupPoint ? (
@@ -325,6 +347,27 @@ export function StopCard({
           >
             Zurücksetzen
           </button>
+        )}
+
+        {onMove && (
+          <>
+            <button
+              type="button"
+              className={styles.buttonGhost}
+              disabled={busy || isFirst}
+              onClick={() => onMove(stop.id, -1)}
+            >
+              Nach oben
+            </button>
+            <button
+              type="button"
+              className={styles.buttonGhost}
+              disabled={busy || isLast}
+              onClick={() => onMove(stop.id, 1)}
+            >
+              Nach unten
+            </button>
+          </>
         )}
 
         {onRemove && (

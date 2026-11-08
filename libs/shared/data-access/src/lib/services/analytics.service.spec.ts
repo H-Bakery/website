@@ -26,6 +26,24 @@ describe('AnalyticsService', () => {
     jest.restoreAllMocks()
   })
 
+  describe('403 (nicht Inhaber)', () => {
+    it('meldet forbidden statt eines Ausfalls - Liste und Zusammenfassung', async () => {
+      const forbidden = Object.assign(new Error('Keine Berechtigung.'), {
+        status: 403,
+        code: 'forbidden',
+      })
+      mockApiClient.get.mockRejectedValue(forbidden)
+
+      await expect(
+        analyticsService.getRevenueTrendsWithSource(params)
+      ).resolves.toEqual({ data: [], available: false, forbidden: true })
+      await expect(
+        analyticsService.getSummaryWithSource(params)
+      ).resolves.toEqual({ data: null, available: false, forbidden: true })
+      expect(console.warn).not.toHaveBeenCalled()
+    })
+  })
+
   describe('getRevenueTrendsWithSource', () => {
     it('liefert leer und nicht verfügbar, wenn die API mit 404 antwortet - keine Beispieldaten', async () => {
       mockApiClient.get.mockRejectedValueOnce(new Error('HTTP 404: Not Found'))

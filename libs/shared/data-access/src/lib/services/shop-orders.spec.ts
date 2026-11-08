@@ -3,9 +3,11 @@
  */
 
 import {
+  ORDERING_UNAVAILABLE_ERROR,
   ShopOrderInput,
   buildOrderItems,
   fetchShopOrder,
+  OrderLookupClosedError,
   submitOrder,
 } from './shop-orders'
 
@@ -160,6 +162,22 @@ describe('shop-orders', () => {
       )
     })
 
+    it.each([401, 403])(
+      'says ordering is unavailable on %i instead of asking a customer to log in',
+      async (status) => {
+        mockFetch.mockResolvedValueOnce(
+          jsonResponse(
+            { error: 'unauthorized', message: 'Bitte melden Sie sich an.' },
+            { ok: false, status }
+          )
+        )
+
+        await expect(submitOrder(ORDER_INPUT)).rejects.toThrow(
+          ORDERING_UNAVAILABLE_ERROR
+        )
+      }
+    )
+
     it('throws a German fallback when the server sends no message', async () => {
       mockFetch.mockResolvedValueOnce(
         jsonResponse(null, { ok: false, status: 500 })
@@ -224,6 +242,22 @@ describe('shop-orders', () => {
     it('returns null for an empty id without hitting the API', async () => {
       await expect(fetchShopOrder(' ')).resolves.toBeNull()
       expect(mockFetch).not.toHaveBeenCalled()
+    })
+
+    it('reports a 401 as a load error, not as a login prompt', async () => {
+      mockFetch.mockResolvedValueOnce(
+        jsonResponse(
+          { error: 'unauthorized', message: 'Bitte melden Sie sich an.' },
+          { ok: false, status: 401 }
+        )
+      )
+
+      const failure = fetchShopOrder('8QMZ-QXS5-HM0W')
+      await expect(failure).rejects.toThrow(
+        'Bestellung konnte nicht geladen werden.'
+      )
+      // Eigener Typ: die Bestätigung macht daraus keine Erfolgsseite.
+      await expect(failure).rejects.toBeInstanceOf(OrderLookupClosedError)
     })
 
     it('throws a German error on a network failure', async () => {

@@ -33,3 +33,40 @@ export function confirmationPath(
     ? `${path}?${PRICE_UPDATED_PARAM}=${PRICE_UPDATED_VALUE}`
     : path
 }
+
+/**
+ * Bestellcodes, die in diesem Tab gerade an der Kasse angenommen wurden
+ * (`sessionStorage`). Nur für sie darf die Bestätigung „Danke“ sagen, wenn
+ * der Server die Einzelheiten danach nicht liefert - für einen beliebigen
+ * Code in der URL wäre das eine Zusage ohne Grundlage (Abschluss-Verifikation
+ * next). Jeder Zugriff in try/catch (privates Fenster, gesperrter Speicher).
+ */
+export const PLACED_ORDERS_KEY = 'bakery-shop-placed-orders'
+
+function readPlaced(): string[] {
+  try {
+    const raw = window.sessionStorage.getItem(PLACED_ORDERS_KEY)
+    const parsed: unknown = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed)
+      ? parsed.filter((x): x is string => typeof x === 'string')
+      : []
+  } catch {
+    return []
+  }
+}
+
+export function rememberPlacedOrder(orderId: string): void {
+  try {
+    const next = [...readPlaced().filter((id) => id !== orderId), orderId]
+    window.sessionStorage.setItem(
+      PLACED_ORDERS_KEY,
+      JSON.stringify(next.slice(-10))
+    )
+  } catch {
+    // ohne Speicher zeigt die Bestätigung im Fehlerfall die neutrale Seite
+  }
+}
+
+export function wasPlacedHere(orderId: string): boolean {
+  return orderId !== '' && readPlaced().includes(orderId)
+}

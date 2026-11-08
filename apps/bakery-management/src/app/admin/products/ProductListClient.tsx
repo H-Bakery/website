@@ -25,6 +25,9 @@ import {
 } from '@mui/icons-material'
 import { useRouter } from 'next/navigation'
 import type { ManagementProduct } from '../../../lib/products'
+import { PENDING_APPROVAL_LABEL } from '../../../lib/products'
+import { useOptionalSession } from '../../../lib/session'
+import { formatCurrency } from '../../../lib/partnerTypes'
 
 const categoryColors: Record<
   string,
@@ -47,6 +50,12 @@ export default function ProductListClient({
   products,
 }: ProductListClientProps) {
   const router = useRouter()
+  // F1/F4: Produkte schreibt nur der Inhaber (B5: PUT/POST `inhaber`).
+  // Verkauf sieht die Liste lesend - ohne „Neues Produkt“ und Bearbeiten.
+  // Ohne Sitzung (Specs) bleibt alles sichtbar; durchgesetzt wird in der API.
+  const role = useOptionalSession()?.user?.role
+  const canEdit = !role || role === 'inhaber'
+  const pendingProducts = products.filter((p) => p.pendingApproval).length
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
   const activeProducts = products.filter((p) => p.status === 'active').length
@@ -86,17 +95,21 @@ export default function ProductListClient({
             color="text.secondary"
             sx={{ display: { xs: 'none', sm: 'block' } }}
           >
-            Verwaltung und Bearbeitung aller Backwaren und Produkte
+            {canEdit
+              ? 'Verwaltung und Bearbeitung aller Backwaren und Produkte'
+              : 'Freigegebener Produktkatalog zum Nachschlagen'}
           </Typography>
         </Box>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          size={isMobile ? 'medium' : 'large'}
-          onClick={() => router.push('/admin/products/new')}
-        >
-          Neues Produkt
-        </Button>
+        {canEdit && (
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            size={isMobile ? 'medium' : 'large'}
+            onClick={() => router.push('/admin/products/new')}
+          >
+            Neues Produkt
+          </Button>
+        )}
       </Box>
 
       {/* Product Statistics */}
@@ -206,6 +219,14 @@ export default function ProductListClient({
           >
             Produktliste ({products.length})
           </Typography>
+          {pendingProducts > 0 && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              {pendingProducts === 1
+                ? '1 Änderung wartet auf Freigabe'
+                : `${pendingProducts} Änderungen warten auf Freigabe`}{' '}
+              - im Shop gilt bis dahin der freigegebene Stand.
+            </Typography>
+          )}
         </Box>
         {products.length === 0 ? (
           <Box sx={{ p: 4, textAlign: 'center' }}>
@@ -213,9 +234,9 @@ export default function ProductListClient({
               Keine Produkte gefunden.
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Die Produktdaten werden aus dem HQ-Produktverzeichnis gelesen
-              (Umgebungsvariable HQ_PRODUCTS_DIR). Ist das Verzeichnis nicht
-              vorhanden, bleibt die Liste leer.
+              Die Produkte kommen über die API aus dem hq-Produktverzeichnis.
+              Ist es auf dem Server nicht eingerichtet (HQ_PRODUCTS_DIR), bleibt
+              die Liste leer.
             </Typography>
           </Box>
         ) : (
@@ -231,7 +252,7 @@ export default function ProductListClient({
                   <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                     Status
                   </TableCell>
-                  <TableCell align="center">Aktionen</TableCell>
+                  {canEdit && <TableCell align="center">Aktionen</TableCell>}
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -268,6 +289,20 @@ export default function ProductListClient({
                           >
                             {product.name}
                           </Typography>
+                          {product.pendingApproval && (
+                            <Chip
+                              label={PENDING_APPROVAL_LABEL}
+                              size="small"
+                              color="info"
+                              variant="outlined"
+                              title={
+                                product.approved
+                                  ? 'Geändert - im Shop gilt noch der freigegebene Stand'
+                                  : 'Neu angelegt - im Shop erst nach der Freigabe'
+                              }
+                              sx={{ mt: 0.25, height: 22 }}
+                            />
+                          )}
                           {/* Show category as subtitle on mobile since column is hidden */}
                           <Typography
                             variant="caption"
@@ -290,7 +325,7 @@ export default function ProductListClient({
                     </TableCell>
                     <TableCell align="right">
                       <Typography variant="body2" fontWeight={500} noWrap>
-                        {product.price.toFixed(2)} €
+                        {formatCurrency(product.price)}
                       </Typography>
                     </TableCell>
                     <TableCell
@@ -314,18 +349,22 @@ export default function ProductListClient({
                         size="small"
                       />
                     </TableCell>
-                    <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
-                      <IconButton
-                        size="small"
-                        color="primary"
-                        aria-label={`${product.name} bearbeiten`}
-                        onClick={() =>
-                          router.push(`/admin/products/${product.id}`)
-                        }
-                      >
-                        <EditIcon fontSize={isMobile ? 'small' : 'medium'} />
-                      </IconButton>
-                    </TableCell>
+                    {canEdit && (
+                      <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          // Touch-Ziel am Handy/Tablet mindestens 44 px.
+                          sx={{ minWidth: 44, minHeight: 44 }}
+                          aria-label={`${product.name} bearbeiten`}
+                          onClick={() =>
+                            router.push(`/admin/products/${product.id}`)
+                          }
+                        >
+                          <EditIcon fontSize={isMobile ? 'small' : 'medium'} />
+                        </IconButton>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>

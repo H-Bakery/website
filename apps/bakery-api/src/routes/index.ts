@@ -1,26 +1,7 @@
-/**
- * Routes Index - Export all route modules
- * Bakery Management System
- */
+/** Router factories exported for `app.ts` (roadmap §4). */
 
-export { default as authRoutes } from './auth.routes'
-export { default as bakingListRoutes } from './baking-list.routes'
-export { default as cashRoutes } from './cash.routes'
-export { default as chatRoutes } from './chat.routes'
-export { default as dashboardRoutes } from './dashboard.routes'
-export { default as emailRoutes } from './email.routes'
-export { default as healthRoutes } from './health.routes'
-export { default as importRoutes } from './import.routes'
-export { default as inventoryRoutes } from './inventory.routes'
-export { default as notificationRoutes } from './notification.routes'
-export { default as orderRoutes } from './order.routes'
-export { default as partnerRoutes } from './partner.routes'
-export { default as preferenceRoutes } from './preference.routes'
-export { default as productRoutes } from './product.routes'
-export { default as productionRoutes } from './production.routes'
-export { default as recipeRoutes } from './recipe.routes'
-export { default as reportsRoutes } from './reports.routes'
-export { default as staffRoutes } from './staff.routes'
-export { default as templateRoutes } from './template.routes'
-export { default as unsoldProductRoutes } from './unsold-product.routes'
-export { default as workflowRoutes } from './workflow.routes'
+export { createPublicAuthRouter, createSessionAuthRouter } from './auth.routes'
+export { createBackzettelRouter } from './backzettel.routes'
+export { createHealthRouter } from './health.routes'
+export { createPartnerRouter } from './partner.routes'
+export { createUsersRouter } from './users.routes'

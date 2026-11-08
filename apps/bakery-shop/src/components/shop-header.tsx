@@ -78,7 +78,14 @@ const searchInputSx = {
   '& input::-webkit-search-cancel-button': { display: 'none' },
 } as const
 
+/**
+ * Touch-Ziel mindestens 44 × 44 px (Abschluss-Verifikation next: die
+ * `size="small"`-Knöpfe waren 30 × 30).
+ */
+const searchTouchSx = { minWidth: 44, minHeight: 44 } as const
+
 const searchButtonSx = {
+  ...searchTouchSx,
   color: 'primary.contrastText',
   bgcolor: 'primary.main',
   borderRadius: 1,
@@ -151,7 +158,7 @@ function ShopSearch() {
           size="small"
           aria-label="Suche zurücksetzen"
           onClick={() => setTerm('')}
-          sx={{ color: 'text.secondary' }}
+          sx={{ ...searchTouchSx, color: 'text.secondary' }}
         >
           <ClearIcon fontSize="small" />
         </IconButton>

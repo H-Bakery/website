@@ -1,14 +1,14 @@
 import React from 'react'
 import { isBusinessDate } from '../preorderTypes'
-import PreorderFormClient from '../PreorderFormClient'
+import { MoersbachNewPreorderClient } from '../MoersbachPreorderClients'
 
 /**
- * Neue Vorbestellung erfassen - die Maske, in die das Team die Telefon- und
- * Thekenbestellungen tippt.
+ * Neue Vorbestellung für die Sammelstelle erfassen - seit P2 mit der
+ * allgemeinen Maske (Sorten, Ziffernblock) auf `/api/preorders`.
  *
  * Query-Parameter:
  *   `?date=YYYY-MM-DD`   - Liefertag
- *   `?pickupPointId=...` - Sammelstelle
+ *   `?pickupPointId=...` - Sammelstelle (Vorgabe: die erste aktive)
  */
 export default async function NewPreorderPage({
   searchParams,
@@ -23,9 +23,13 @@ export default async function NewPreorderPage({
   const pickupPointId = first(query['pickupPointId'])
 
   return (
-    <PreorderFormClient
+    <MoersbachNewPreorderClient
       initialDate={isBusinessDate(date) ? date : undefined}
-      initialPickupPointId={pickupPointId || undefined}
+      initialPickupPointId={
+        pickupPointId && /^[a-z0-9-]{1,64}$/.test(pickupPointId)
+          ? pickupPointId
+          : undefined
+      }
     />
   )
 }

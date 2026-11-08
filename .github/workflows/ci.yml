@@ -43,7 +43,8 @@ jobs:
               - 'apps/bakery-shop-e2e/**'
               - 'libs/bakery-shop/**'
               - 'libs/shared/**'
-              - 'apps/bakery-api/simple-server.js'
+              # Seit B12 faehrt auch die Shop-Suite gegen die echte API.
+              - 'apps/bakery-api/**'
               - 'tools/e2e/**'
               - '.github/workflows/ci.yml'
             management:
@@ -51,7 +52,8 @@ jobs:
               - 'apps/bakery-management-e2e/**'
               - 'libs/bakery-management/**'
               - 'libs/shared/**'
-              - 'apps/bakery-api/simple-server.js'
+              # Die Management-Suite faehrt seit F4 gegen die echte API.
+              - 'apps/bakery-api/**'
               - 'tools/e2e/**'
               - '.github/workflows/ci.yml'
             landing:
@@ -142,7 +144,7 @@ jobs:
   test-e2e-shop:
     needs: [changes, quality]
     if: needs.changes.outputs.shop == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # Playwright 1.54 has no chromium build for ubuntu-latest (26.04)
     steps:
       - uses: actions/checkout@v4
 
@@ -165,12 +167,16 @@ jobs:
           NODE_ENV: production
         run: npx nx build bakery-shop --configuration=production
 
+      # Die echte API (esbuild-Bundle) - tools/e2e/real-api.js startet es (B12).
+      - name: Build API bundle
+        run: npx nx run bakery-api:bundle
+
       # Playwright startet die Server selbst (tools/e2e/servers.js, CI=true):
-      # `next start` auf dem Build oben und die Mock-API
-      # (apps/bakery-api/simple-server.js) auf dem synthetischen
-      # Produktkatalog tools/e2e/hq-products. Das private hq-Repo ist hier
-      # nicht ausgecheckt; ohne den Katalog haette der Shop 0 Produkte und
-      # jede Zaehl-Assertion waere rot.
+      # `next start` auf dem Build oben und die echte API mit oeffentlichem
+      # Katalog (PUBLIC_CATALOGUE=1, frische SQLite-Datenbank) auf dem
+      # synthetischen Produktkatalog tools/e2e/hq-products. Das private
+      # hq-Repo ist hier nicht ausgecheckt; ohne den Katalog haette der Shop
+      # 0 Produkte und jede Zaehl-Assertion waere rot.
       - name: Run E2E tests
         run: npx nx e2e bakery-shop-e2e
 
@@ -186,7 +192,7 @@ jobs:
   test-e2e-management:
     needs: [changes, quality]
     if: needs.changes.outputs.management == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # Playwright 1.54 has no chromium build for ubuntu-latest (26.04)
     steps:
       - uses: actions/checkout@v4
 
@@ -207,15 +213,18 @@ jobs:
           # Same pair as in the build job below, for the same two reasons.
           NX_ISOLATE_PLUGINS: 'false'
           NODE_ENV: production
-          # Die Produktliste wird beim Bauen aus dem Markdown-Verzeichnis
-          # gelesen (generateStaticParams). Ohne hq: der synthetische Katalog,
-          # denselben bekommt die Mock-API im naechsten Schritt.
-          HQ_PRODUCTS_DIR: ${{ github.workspace }}/tools/e2e/hq-products
+          # Wie auf der Box (F2): NEXT_PUBLIC_* wirken nur beim Build.
+          NEXT_PUBLIC_PILOT_MODE: '1'
         run: npx nx build bakery-management --configuration=production
 
+      # Die echte API (esbuild-Bundle) - tools/e2e/real-api.js startet es.
+      - name: Build API bundle
+        run: npx nx run bakery-api:bundle
+
       # Server startet Playwright selbst (tools/e2e/servers.js, CI=true):
-      # `next start` auf dem Build und die Mock-API, beide auf
-      # tools/e2e/hq-products.
+      # `next start` auf dem Build und die echte API mit frischer SQLite-
+      # Datenbank, beide auf einem synthetischen hq (tools/e2e/hq-products
+      # plus erfundene Kassenberichte/Finanzen, prepareE2eHq()).
       - name: Run E2E tests
         run: npx nx e2e bakery-management-e2e
 
@@ -231,7 +240,7 @@ jobs:
   test-e2e-landing:
     needs: [changes, quality]
     if: needs.changes.outputs.landing == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # Playwright 1.54 has no chromium build for ubuntu-latest (26.04)
     steps:
       - uses: actions/checkout@v4
 
@@ -309,6 +318,18 @@ jobs:
           # 'useState')". Pin the production value so the leak cannot reach it.
           NODE_ENV: production
         run: npx nx build ${{ matrix.app }} --configuration=production
+
+      # Boot smoke of the pilot API (roadmap B1): the bundle from the step
+      # above starts in production mode on a fresh SQLite file, /health must
+      # answer with the database ok, and a restart must not re-run migrations.
+      # Auth (B3): the smoke creates an account with the bundled create-user
+      # CLI (random password per run), logs in, and checks the global guard
+      # (401 without a session, 200 with one). There is no default account.
+      - name: Boot smoke bakery-api
+        if: matrix.app == 'bakery-api'
+        env:
+          SMOKE_SKIP_BUNDLE: '1'
+        run: apps/bakery-api/scripts/boot-smoke.sh
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

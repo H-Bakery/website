@@ -65,6 +65,7 @@ import {
   formatCurrency,
   formatDate,
   formatPercent,
+  plural,
   formatTime,
   shiftDate,
   toBusinessDate,
@@ -442,9 +443,10 @@ export default function PartnerDetailClient({
     if (!deleteTarget) return
     setDeleting(true)
     try {
-      await deleteVisit(partnerId, deleteTarget.visitId)
+      // B6: 200 { id, deleted, message } - die Meldung kommt von der API.
+      const result = await deleteVisit(partnerId, deleteTarget.visitId)
       setDeleteTarget(null)
-      setFeedback({ message: 'Besuch gelöscht.', severity: 'success' })
+      setFeedback({ message: result.message, severity: 'success' })
       await load()
     } catch (err) {
       setFeedback({
@@ -663,8 +665,9 @@ export default function PartnerDetailClient({
                 </AlertTitle>
                 Für den {formatDate(selectedDate)} ist noch keine Abholung
                 erfasst. Erst die Abholung schließt den Geschäftstag ab; bis
-                dahin zählt alles, was noch im Schrank liegt, rechnerisch als
-                verkauft.
+                dahin ist nur verkauft, was beim Nachfüllen gezählt wurde - was
+                noch im Schrank liegt, ist weder als verkauft noch als Retoure
+                gebucht.
               </Alert>
             ) : !isComplete ? (
               <Alert severity="warning" sx={{ mb: 3 }}>
@@ -687,6 +690,31 @@ export default function PartnerDetailClient({
                 <AlertTitle>Tag abgeschlossen</AlertTitle>
                 Die Abholung für den {formatDate(selectedDate)} ist erfasst –
                 Verkauf, Retoure und Umsatz sind endgültig.
+              </Alert>
+            )}
+
+            {/* Mehr gezählt als möglich: eine Fehlzählung oder eine nicht
+                erfasste Lieferung - nie Retoure (W4-Verifikation Runde 2) */}
+            {(totals?.discrepancyQty ?? 0) > 0 && (
+              <Alert
+                severity="warning"
+                sx={{ mb: 3 }}
+                data-testid="day-discrepancy"
+              >
+                <AlertTitle>
+                  Abweichung: {totals?.discrepancyQty} Stück mehr gezählt, als
+                  im Schrank sein konnten
+                </AlertTitle>
+                Diese Stücke sind weder als verkauft noch als Retoure gebucht.
+                Meist fehlt eine Lieferung (Erstbestückung oder Nachlieferung),
+                oder es wurde verzählt - bitte die Besuche prüfen und
+                korrigieren:{' '}
+                <strong>
+                  {(day?.byProduct ?? [])
+                    .filter((p) => p.discrepancyQty > 0)
+                    .map((p) => `${p.productName}: ${p.discrepancyQty}`)
+                    .join(', ')}
+                </strong>
               </Alert>
             )}
 
@@ -753,8 +781,17 @@ export default function PartnerDetailClient({
                 Besuche am {formatDate(selectedDate)}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                {totals?.visitCount ?? timeline.length} Besuche ·{' '}
-                {totals?.refillCount ?? 0} Nachlieferungen
+                {plural(
+                  totals?.visitCount ?? timeline.length,
+                  'Besuch',
+                  'Besuche'
+                )}{' '}
+                ·{' '}
+                {plural(
+                  totals?.refillCount ?? 0,
+                  'Nachlieferung',
+                  'Nachlieferungen'
+                )}
               </Typography>
             </Box>
 

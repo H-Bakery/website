@@ -1,4 +1,47 @@
+/**
+ * Sequelize models of the pilot (roadmap B2).
+ *
+ * `initializeModels()` initialises exactly the models whose tables the pilot
+ * baseline migration creates (`migrations/20261105000000-pilot-baseline.js`):
+ *
+ *   User, RefreshToken, AuditLog                 users, refresh_tokens, audit_log
+ *   Station, AuthSession                         stations, auth_sessions (B3 migration)
+ *   Partner, PartnerDeliveryTemplate,
+ *   PartnerVisit, PartnerVisitItem               Partners, PartnerDeliveryTemplates, ...
+ *   PickupPoint, Preorder, PreorderItem          pickup_points, preorders, preorder_items
+ *   BackzettelDay, BackzettelLine,
+ *   BackzettelDelta                              backzettel_days/_lines/_deltas (Z3)
+ *   DeliveryDepot, DeliveryDriver, DeliveryTour,
+ *   DeliveryStop, DeliveryGeocache               delivery_* (B8 migration)
+ *   RestCount                                    rest_counts (M4 „Rest am Abend“ migration)
+ *
+ * The legacy models (Cash, Chat, Product, Order, Inventory, Recipe, ...) were
+ * deleted with the unmounted code in B12; their tables may still sit in an old
+ * development database (harmless, unread).
+ */
 import { Sequelize } from 'sequelize'
+
+import { default as User } from './User'
+import { default as RefreshToken } from './RefreshToken'
+import { default as AuditLog } from './AuditLog'
+import { default as Station } from './Station'
+import { default as AuthSession } from './AuthSession'
+import { default as Partner } from './Partner'
+import { default as PartnerDeliveryTemplate } from './PartnerDeliveryTemplate'
+import { default as PartnerVisit } from './PartnerVisit'
+import { default as PartnerVisitItem } from './PartnerVisitItem'
+import { default as PickupPoint } from './PickupPoint'
+import { default as Preorder } from './Preorder'
+import { default as PreorderItem } from './PreorderItem'
+import { default as BackzettelDay } from './BackzettelDay'
+import { default as BackzettelLine } from './BackzettelLine'
+import { default as BackzettelDelta } from './BackzettelDelta'
+import { default as DeliveryDepot } from './DeliveryDepot'
+import { default as DeliveryDriver } from './DeliveryDriver'
+import { default as DeliveryTour } from './DeliveryTour'
+import { default as DeliveryStop } from './DeliveryStop'
+import { default as DeliveryGeocache } from './DeliveryGeocache'
+import { default as RestCount } from './RestCount'
 
 // Sequelize instance - set during initializeModels
 let _sequelize: Sequelize | undefined
@@ -13,335 +56,145 @@ export function getSequelize(): Sequelize {
 // Keep backward-compatible named export for existing imports
 export { _sequelize as sequelize }
 
-// Temporary local logger until utils library is properly configured
-const logger = {
-  info: (message: string, ...args: any[]) =>
-    console.log(`[INFO] ${message}`, ...args),
-  error: (message: string, ...args: any[]) =>
-    console.error(`[ERROR] ${message}`, ...args),
-  warn: (message: string, ...args: any[]) =>
-    console.warn(`[WARN] ${message}`, ...args),
-  debug: (message: string, ...args: any[]) =>
-    console.log(`[DEBUG] ${message}`, ...args),
-  db: (message: string, ...args: any[]) =>
-    console.log(`[DB] ${message}`, ...args),
-}
-
-// Import models from domain libraries
-// TODO: These libraries need to be created during migration
-// import {
-//   initializeOrderModels,
-//   Order as OrderModel,
-//   OrderItem as OrderItemModel
-// } from '@bakery/api/orders';
-// import {
-//   initializeInventoryModels,
-//   Inventory as InventoryModel
-// } from '@bakery/api/inventory';
-// import {
-//   initializeCustomerModels,
-//   Customer as CustomerModel
-// } from '@bakery/api/customers';
-// import {
-//   initializeProductionModels,
-//   Recipe as RecipeModel,
-//   ProductionSchedule as ProductionScheduleModel,
-//   ProductionBatch as ProductionBatchModel,
-//   ProductionStep as ProductionStepModel
-// } from '@bakery/api/production';
-// import {
-//   initializeNotificationModels,
-//   Notification as NotificationModel,
-//   NotificationPreferences as NotificationPreferencesModel,
-//   NotificationTemplate as NotificationTemplateModel
-// } from '@bakery/api/notifications';
-// TODO: Re-enable once @bakery/api/sales-analytics module resolution is fixed
-// import {
-//   initializeSalesAnalyticsModels,
-//   SalesTransaction as SalesTransactionModel,
-//   TransactionItem as TransactionItemModel,
-//   DailySalesReport as DailySalesReportModel,
-// } from '@bakery/api/sales-analytics'
-
-// Import local models that haven't been migrated yet
-import { default as Cash } from './Cash'
-import { default as Chat } from './Chat'
-import { default as Product } from './Product'
-import { default as UnsoldProduct } from './UnsoldProduct'
-import { default as Order } from './Order'
-import { default as OrderItem } from './OrderItem'
-import { default as User } from './User'
-import { default as Inventory } from './Inventory'
-import { default as Recipe } from './Recipe'
-import { default as Notification } from './Notification'
-import { default as StockAdjustment } from './StockAdjustment'
-
-// Import newly created production and notification models
-import { default as NotificationPreferences } from './NotificationPreferences'
-import { default as NotificationTemplate } from './NotificationTemplate'
-import { default as ProductionBatch } from './ProductionBatch'
-import { default as ProductionSchedule } from './ProductionSchedule'
-import { default as ProductionStep } from './ProductionStep'
-
-// Import sales partner models (TASK-037)
-import { default as Partner } from './Partner'
-import { default as PartnerDeliveryTemplate } from './PartnerDeliveryTemplate'
-import { default as PartnerVisit } from './PartnerVisit'
-import { default as PartnerVisitItem } from './PartnerVisitItem'
-
-// Re-export all models
 export {
-  Order,
-  OrderItem,
   User,
-  Inventory,
-  Recipe,
-  Notification,
-  StockAdjustment,
-  NotificationPreferences,
-  NotificationTemplate,
-  ProductionBatch,
-  ProductionSchedule,
-  ProductionStep,
+  RefreshToken,
+  AuditLog,
+  Station,
+  AuthSession,
   Partner,
   PartnerDeliveryTemplate,
   PartnerVisit,
   PartnerVisitItem,
+  PickupPoint,
+  Preorder,
+  PreorderItem,
+  BackzettelDay,
+  BackzettelLine,
+  BackzettelDelta,
+  DeliveryDepot,
+  DeliveryDriver,
+  DeliveryTour,
+  DeliveryStop,
+  DeliveryGeocache,
+  RestCount,
 }
-export const Customer = User // Alias for backward compatibility
 
-// TODO: Re-enable once @bakery/api/sales-analytics module resolution is fixed
-// export const SalesTransaction = SalesTransactionModel
-// export const TransactionItem = TransactionItemModel
-// export const DailySalesReport = DailySalesReportModel
-
-// Export local models
-export { Cash, Chat, Product, UnsoldProduct }
+/** The models `initializeModels()` sets up, in dependency order. */
+export const PILOT_MODELS = [
+  User,
+  Station,
+  AuthSession,
+  RefreshToken,
+  AuditLog,
+  Partner,
+  PartnerDeliveryTemplate,
+  PartnerVisit,
+  PartnerVisitItem,
+  PickupPoint,
+  Preorder,
+  PreorderItem,
+  BackzettelDay,
+  BackzettelLine,
+  BackzettelDelta,
+  DeliveryDepot,
+  DeliveryDriver,
+  DeliveryTour,
+  DeliveryStop,
+  DeliveryGeocache,
+  RestCount,
+] as const
 
 export async function initializeModels(seq: Sequelize): Promise<void> {
-  // Store reference for re-export so services can import { sequelize } from '../models'
   _sequelize = seq
-  logger.info('Initializing database models...')
-
-  try {
-    // Initialize domain models
-    // TODO: Uncomment these when the libraries are created
-    // await initializeOrderModels(sequelize);
-    // await initializeInventoryModels(sequelize);
-    // await initializeCustomerModels(sequelize);
-    // await initializeProductionModels(sequelize);
-    // await initializeNotificationModels(sequelize);
-    // await initializeSalesAnalyticsModels(sequelize)
-
-    // Initialize local models
-    Cash.initModel(seq)
-    Chat.initModel(seq)
-    Product.initModel(seq)
-    UnsoldProduct.initModel(seq)
-    Order.initModel(seq)
-    OrderItem.initModel(seq)
-    User.initModel(seq)
-    Inventory.initModel(seq)
-    Recipe.initModel(seq)
-    Notification.initModel(seq)
-    StockAdjustment.initModel(seq)
-
-    // Initialize production and notification models
-    NotificationPreferences.initModel(seq)
-    NotificationTemplate.initModel(seq)
-    ProductionSchedule.initModel(seq)
-    ProductionBatch.initModel(seq)
-    ProductionStep.initModel(seq)
-
-    // Initialize sales partner models
-    Partner.initModel(seq)
-    PartnerDeliveryTemplate.initModel(seq)
-    PartnerVisit.initModel(seq)
-    PartnerVisitItem.initModel(seq)
-
-    // Set up associations
-    setupAssociations()
-
-    logger.info('All models initialized successfully')
-  } catch (error) {
-    logger.error('Failed to initialize models:', error)
-    throw error
+  for (const model of PILOT_MODELS) {
+    model.initModel(seq)
   }
+  setupAssociations()
 }
 
 function setupAssociations(): void {
-  logger.info('Setting up model associations...')
-
-  // Order associations
-  Order.belongsTo(Customer, { foreignKey: 'customerId', as: 'customer' })
-  Order.hasMany(OrderItem, { foreignKey: 'orderId', as: 'items' })
-
-  // OrderItem associations
-  OrderItem.belongsTo(Order, { foreignKey: 'orderId', as: 'order' })
-  OrderItem.belongsTo(Product, { foreignKey: 'productId', as: 'product' })
-
-  // Customer associations
-  Customer.hasMany(Order, { foreignKey: 'customerId', as: 'orders' })
-  Customer.hasMany(Cash, { foreignKey: 'userId', as: 'cashEntries' })
-  Customer.hasMany(Chat, { foreignKey: 'userId', as: 'messages' })
-  Customer.hasOne(NotificationPreferences, {
-    foreignKey: 'userId',
-    as: 'notificationPreferences',
+  // Auth
+  User.hasMany(RefreshToken, { foreignKey: 'userId', as: 'refreshTokens' })
+  RefreshToken.belongsTo(User, { foreignKey: 'userId', as: 'user' })
+  AuditLog.belongsTo(User, { foreignKey: 'userId', as: 'user' })
+  User.hasMany(AuthSession, { foreignKey: 'userId', as: 'sessions' })
+  AuthSession.belongsTo(User, { foreignKey: 'userId', as: 'user' })
+  AuthSession.belongsTo(Station, { foreignKey: 'stationId', as: 'station' })
+  AuthSession.hasMany(RefreshToken, {
+    foreignKey: 'sessionId',
+    as: 'refreshTokens',
   })
-  Customer.hasMany(Notification, { foreignKey: 'userId', as: 'notifications' })
-
-  // Product associations
-  Product.hasMany(OrderItem, { foreignKey: 'productId', as: 'orderItems' })
-  Product.hasMany(UnsoldProduct, {
-    foreignKey: 'productId',
-    as: 'unsoldProducts',
-  })
-  Product.hasOne(Inventory, { foreignKey: 'productId', as: 'inventory' })
-
-  // Cash associations
-  Cash.belongsTo(Customer, { foreignKey: 'userId', as: 'user' })
-
-  // Chat associations
-  Chat.belongsTo(Customer, { foreignKey: 'userId', as: 'user' })
-
-  // UnsoldProduct associations
-  UnsoldProduct.belongsTo(Product, { foreignKey: 'productId', as: 'product' })
-
-  // Inventory associations
-  Inventory.belongsTo(Product, { foreignKey: 'productId', as: 'product' })
-  Inventory.hasMany(StockAdjustment, {
-    foreignKey: 'inventoryId',
-    as: 'adjustments',
+  RefreshToken.belongsTo(AuthSession, {
+    foreignKey: 'sessionId',
+    as: 'session',
   })
 
-  // StockAdjustment associations
-  StockAdjustment.belongsTo(Inventory, {
-    foreignKey: 'inventoryId',
-    as: 'inventory',
-  })
-  StockAdjustment.belongsTo(Customer, { foreignKey: 'performedBy', as: 'user' })
-
-  // Production associations
-  ProductionSchedule.hasMany(ProductionBatch, {
-    foreignKey: 'scheduleId',
-    as: 'batches',
-  })
-
-  ProductionBatch.belongsTo(ProductionSchedule, {
-    foreignKey: 'scheduleId',
-    as: 'schedule',
-  })
-  ProductionBatch.belongsTo(Recipe, { foreignKey: 'recipeId', as: 'recipe' })
-  ProductionBatch.hasMany(ProductionStep, {
-    foreignKey: 'batchId',
-    as: 'steps',
-  })
-  ProductionBatch.belongsTo(Customer, {
-    foreignKey: 'assignedStaffId',
-    as: 'assignedStaff',
-  })
-
-  ProductionStep.belongsTo(ProductionBatch, {
-    foreignKey: 'batchId',
-    as: 'batch',
-  })
-  ProductionStep.belongsTo(Customer, {
-    foreignKey: 'completedBy',
-    as: 'completedByStaff',
-  })
-
-  // Notification associations
-  Notification.belongsTo(Customer, { foreignKey: 'userId', as: 'user' })
-  NotificationPreferences.belongsTo(Customer, {
-    foreignKey: 'userId',
-    as: 'user',
-  })
-
-  // Sales partner associations (Verkaufspartner, z.B. CAP-Markt)
+  // Sales partners (Backschrank, TASK-037)
   Partner.hasMany(PartnerDeliveryTemplate, {
     foreignKey: 'partnerId',
     as: 'templates',
   })
   Partner.hasMany(PartnerVisit, { foreignKey: 'partnerId', as: 'visits' })
-
   PartnerDeliveryTemplate.belongsTo(Partner, {
     foreignKey: 'partnerId',
     as: 'partner',
   })
-
   PartnerVisit.belongsTo(Partner, { foreignKey: 'partnerId', as: 'partner' })
   PartnerVisit.hasMany(PartnerVisitItem, {
     foreignKey: 'visitId',
     as: 'items',
     onDelete: 'CASCADE',
   })
-  PartnerVisit.belongsTo(Customer, { foreignKey: 'staffId', as: 'staff' })
-
+  PartnerVisit.belongsTo(User, { foreignKey: 'staffId', as: 'staff' })
   PartnerVisitItem.belongsTo(PartnerVisit, {
     foreignKey: 'visitId',
     as: 'visit',
   })
 
-  // Sales Analytics associations
-  // TODO: Re-enable once @bakery/api/sales-analytics module resolution is fixed
-  // SalesTransaction.hasMany(TransactionItem, {
-  //   foreignKey: 'salesTransactionId',
-  //   as: 'transactionItems',
-  //   onDelete: 'CASCADE',
-  //   onUpdate: 'CASCADE',
-  // })
+  // Preorders (B7)
+  Preorder.hasMany(PreorderItem, {
+    foreignKey: 'preorderId',
+    as: 'items',
+    onDelete: 'CASCADE',
+  })
+  PreorderItem.belongsTo(Preorder, { foreignKey: 'preorderId', as: 'preorder' })
+  Preorder.belongsTo(PickupPoint, {
+    foreignKey: 'pickupPointId',
+    as: 'pickupPoint',
+  })
+  PickupPoint.hasMany(Preorder, {
+    foreignKey: 'pickupPointId',
+    as: 'preorders',
+  })
+  Preorder.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' })
+  Preorder.belongsTo(User, { foreignKey: 'updatedBy', as: 'updater' })
 
-  // TransactionItem.belongsTo(SalesTransaction, {
-  //   foreignKey: 'salesTransactionId',
-  //   as: 'salesTransaction',
-  //   onDelete: 'CASCADE',
-  //   onUpdate: 'CASCADE',
-  // })
+  // Backzettel (Z3)
+  BackzettelDay.hasMany(BackzettelLine, { foreignKey: 'date', as: 'lines' })
+  BackzettelLine.belongsTo(BackzettelDay, { foreignKey: 'date', as: 'day' })
+  BackzettelDay.hasMany(BackzettelDelta, { foreignKey: 'date', as: 'deltas' })
+  BackzettelDelta.belongsTo(BackzettelDay, { foreignKey: 'date', as: 'day' })
 
-  // TransactionItem.belongsTo(Product, {
-  //   foreignKey: 'productId',
-  //   as: 'product',
-  //   onDelete: 'RESTRICT',
-  //   onUpdate: 'CASCADE',
-  // })
-
-  // TODO: Re-enable once DailySalesReport model is migrated
-  // DailySalesReport.belongsTo(Product, {
-  //   foreignKey: 'mostPopularProductId',
-  //   as: 'mostPopularProduct',
-  //   onDelete: 'SET NULL',
-  //   onUpdate: 'CASCADE',
-  // })
-
-  logger.info('Model associations established')
+  // Delivery tours (B8)
+  DeliveryTour.hasMany(DeliveryStop, {
+    foreignKey: 'tourId',
+    as: 'stops',
+    onDelete: 'CASCADE',
+  })
+  DeliveryStop.belongsTo(DeliveryTour, { foreignKey: 'tourId', as: 'tour' })
+  DeliveryTour.belongsTo(DeliveryDriver, {
+    foreignKey: 'driverId',
+    as: 'driver',
+  })
+  DeliveryDriver.belongsTo(User, { foreignKey: 'userId', as: 'user' })
+  DeliveryStop.belongsTo(PickupPoint, {
+    foreignKey: 'pickupPointId',
+    as: 'pickupPoint',
+  })
 }
 
-// Export function to get all models (for migrations)
+/** Models with a table in the pilot schema (for tooling and tests). */
 export function getAllModels(): unknown[] {
-  return [
-    User, // Use User instead of Customer
-    Product,
-    Order,
-    OrderItem,
-    Cash,
-    Chat,
-    UnsoldProduct,
-    Recipe,
-    Inventory,
-    StockAdjustment,
-    Notification,
-    NotificationPreferences,
-    NotificationTemplate,
-    ProductionSchedule,
-    ProductionBatch,
-    ProductionStep,
-    Partner,
-    PartnerDeliveryTemplate,
-    PartnerVisit,
-    PartnerVisitItem,
-    // TODO: Re-enable once sales-analytics models are migrated
-    // SalesTransaction,
-    // TransactionItem,
-    // DailySalesReport,
-  ]
+  return [...PILOT_MODELS]
 }

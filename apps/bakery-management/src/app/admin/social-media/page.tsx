@@ -17,7 +17,6 @@ import {
   FormControlLabel,
   Switch,
   Snackbar,
-  Breadcrumbs,
   Link,
 } from '@mui/material'
 import {
@@ -25,7 +24,6 @@ import {
   TextSnippet as TextSnippetIcon,
   Download as DownloadIcon,
   Refresh as RefreshIcon,
-  Home as HomeIcon,
   Smartphone as SmartphoneIcon,
 } from '@mui/icons-material'
 import { HeusserLogo } from '@bakery/shared/ui'
@@ -503,31 +501,7 @@ export default function SocialMediaPage() {
         }}
       >
         <Container>
-          <Breadcrumbs aria-label="breadcrumb" sx={{ mb: 2 }}>
-            <Link
-              href="/admin"
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                color: 'inherit',
-                textDecoration: 'none',
-                '&:hover': { color: BRAND_COLORS.primary },
-              }}
-            >
-              <HomeIcon fontSize="small" sx={{ mr: 0.5 }} />
-              Admin
-            </Link>
-            <Typography
-              sx={{ display: 'flex', alignItems: 'center' }}
-              color="text.primary"
-            >
-              <PhotoCameraIcon
-                fontSize="small"
-                sx={{ mr: 0.5, color: BRAND_COLORS.primary }}
-              />
-              Social Media
-            </Typography>
-          </Breadcrumbs>
+          {/* Der Pfad steht schon in der Kopfzeile des Admin-Layouts. */}
 
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
             <HeusserLogo width={100} height={32} color={BRAND_COLORS.primary} />
@@ -541,7 +515,7 @@ export default function SocialMediaPage() {
                   color: 'text.primary',
                 }}
               >
-                Social Media Content Creator
+                Social Media
               </Typography>
               <Typography variant="subtitle1" sx={{ color: 'text.secondary' }}>
                 Erstellen Sie professionelle Inhalte mit authentischem
@@ -706,7 +680,7 @@ export default function SocialMediaPage() {
 
               <Box sx={{ display: 'flex', gap: 2, flexDirection: 'column' }}>
                 {/* Primary download buttons row */}
-                <Box sx={{ display: 'flex', gap: 2 }}>
+                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                   <Button
                     variant="contained"
                     startIcon={<DownloadIcon />}
@@ -738,6 +712,8 @@ export default function SocialMediaPage() {
                       })
                     }
                     sx={{
+                      flexShrink: 0,
+                      whiteSpace: 'nowrap',
                       borderColor: BRAND_COLORS.primary,
                       color: BRAND_COLORS.primary,
                       '&:hover': {

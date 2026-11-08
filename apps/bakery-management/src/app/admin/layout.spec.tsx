@@ -1,20 +1,16 @@
-import { render, screen, fireEvent, within } from '@testing-library/react'
+import {
+  render,
+  screen,
+  fireEvent,
+  within,
+  cleanup,
+} from '@testing-library/react'
 import AdminLayout from './layout'
 
-let mockPathname = '/admin/orders'
+let mockPathname = '/admin/reports'
 jest.mock('next/navigation', () => ({
   usePathname: () => mockPathname,
 }))
-
-/**
- * jsdom evaluates responsive `display` rules at the smallest breakpoint, so
- * the permanent drawer itself is `display: none`. Check the submenu list's own
- * computed display instead of `toBeVisible()`.
- */
-function isSubmenuShown(item: HTMLElement) {
-  const list = item.closest('.MuiList-root') as HTMLElement
-  return window.getComputedStyle(list).display !== 'none'
-}
 
 /** The nav is rendered twice (mobile + desktop drawer); use the desktop one. */
 function getDesktopNav() {
@@ -22,7 +18,7 @@ function getDesktopNav() {
   return within(drawers[drawers.length - 1] as HTMLElement)
 }
 
-function renderLayout(pathname = '/admin/orders') {
+function renderLayout(pathname = '/admin/reports') {
   mockPathname = pathname
   return render(
     <AdminLayout>
@@ -35,7 +31,7 @@ describe('AdminLayout', () => {
   it('renders children and the app bar', () => {
     renderLayout()
     expect(screen.getByTestId('test-child')).toBeInTheDocument()
-    expect(screen.getByText('Management System')).toBeInTheDocument()
+    expect(screen.getByText('Verwaltung')).toBeInTheDocument()
   })
 
   it('renders the main navigation items', () => {
@@ -43,14 +39,11 @@ describe('AdminLayout', () => {
     const nav = getDesktopNav()
     ;[
       'Dashboard',
-      'Bestellungen',
-      'Bäckerei',
       'Produkte',
-      'Kasse',
-      'Personal',
+      'Sammelstelle Mörsbach',
+      'Verkaufspartner',
       'Kassenberichte',
       'Analysen',
-      'Team-Chat',
       'Einstellungen',
     ].forEach((label) => {
       expect(nav.getByText(label)).toBeInTheDocument()
@@ -69,44 +62,38 @@ describe('AdminLayout', () => {
     renderLayout('/admin/products/new')
     const nav = getDesktopNav()
     expect(nav.getByText('Produkte').closest('a')).toHaveClass('Mui-selected')
-    expect(nav.getByText('Bestellungen').closest('a')).not.toHaveClass(
+    expect(nav.getByText('Kassenberichte').closest('a')).not.toHaveClass(
       'Mui-selected'
     )
   })
 
   it('does not highlight the dashboard on sub pages', () => {
-    renderLayout('/admin/orders')
+    renderLayout('/admin/reports')
     const nav = getDesktopNav()
     expect(nav.getByText('Dashboard').closest('a')).not.toHaveClass(
       'Mui-selected'
     )
-    expect(nav.getByText('Bestellungen').closest('a')).toHaveClass(
+    expect(nav.getByText('Kassenberichte').closest('a')).toHaveClass(
       'Mui-selected'
     )
   })
 
-  it('toggles the Bäckerei submenu', () => {
-    renderLayout('/admin/orders')
+  it('lists none of the pages deleted in B12', () => {
+    renderLayout()
     const nav = getDesktopNav()
-    const toggle = nav
-      .getByText('Bäckerei')
-      .closest('[role="button"]') as HTMLElement
-    expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    expect(isSubmenuShown(nav.getByText('Rezepte'))).toBe(false)
-
-    fireEvent.click(toggle)
-    expect(toggle).toHaveAttribute('aria-expanded', 'true')
-    expect(isSubmenuShown(nav.getByText('Rezepte'))).toBe(true)
-
-    fireEvent.click(toggle)
-    expect(isSubmenuShown(nav.getByText('Rezepte'))).toBe(false)
-  })
-
-  it('opens the submenu automatically when a child route is active', () => {
-    renderLayout('/admin/bakery/recipes')
-    const nav = getDesktopNav()
-    expect(isSubmenuShown(nav.getByText('Rezepte'))).toBe(true)
-    expect(nav.getByText('Rezepte').closest('a')).toHaveClass('Mui-selected')
+    ;[
+      'Bestellungen',
+      'Bäckerei',
+      'Lagerbestand',
+      'Kasse',
+      'Personal',
+      'Team-Chat',
+      'Benachrichtigungen',
+      'Lieferung',
+      'Unverkaufte Produkte',
+    ].forEach((label) => {
+      expect(nav.queryByText(label)).not.toBeInTheDocument()
+    })
   })
 
   it('opens the mobile drawer via the menu button', () => {
@@ -136,14 +123,50 @@ describe('AdminLayout', () => {
   it('renders a readable breadcrumb', () => {
     renderLayout('/admin/products/new')
     expect(screen.getByLabelText('Pfad')).toHaveTextContent(
-      'Dashboard › Produkte › new'
+      'Dashboard › Produkte › Neues Produkt'
     )
   })
 
-  it('names submenu parents in the breadcrumb instead of the raw segment', () => {
-    renderLayout('/admin/bakery/intern-orders')
+  it('shows no raw product id or ISO date in the breadcrumb (W4-verify r2)', () => {
+    renderLayout('/admin/products/mustercroissant')
     expect(screen.getByLabelText('Pfad')).toHaveTextContent(
-      'Dashboard › Bäckerei › Interne Bestellungen'
+      'Dashboard › Produkte › Bearbeiten'
     )
+    cleanup()
+    renderLayout('/admin/backzettel/2026-11-07')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Samstag, 07.11.2026'
+    )
+    expect(screen.getByLabelText('Pfad').textContent).not.toContain(
+      '2026-11-07'
+    )
+  })
+
+  it('names analytics sub-pages and report days in German (W4-verify r3)', () => {
+    renderLayout('/admin/analytics/products')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Dashboard › Analysen › Produkte'
+    )
+    cleanup()
+    renderLayout('/admin/analytics/revenue')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Dashboard › Analysen › Umsatz'
+    )
+    cleanup()
+    renderLayout('/admin/reports/2026-11-05')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Kassenberichte › Donnerstag, 05.11.2026'
+    )
+    expect(screen.getByLabelText('Pfad').textContent).not.toContain(
+      '2026-11-05'
+    )
+  })
+
+  it('drops the bare /admin/delivery segment (B12: no page of its own)', () => {
+    renderLayout('/admin/delivery/preorders/backliste')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Dashboard › Sammelstelle Mörsbach › Backliste'
+    )
+    expect(screen.getByLabelText('Pfad').textContent).not.toContain('delivery')
   })
 })

@@ -1,0 +1,15 @@
+# Vorbestellungs-Snapshot nach hq jede Nacht um 22:15 (Ladenschluss lange
+# vorbei, vor Backup 23:30 und Anonymisierung 23:45) - roadmap Z9.
+
+[Unit]
+Description=Bäckerei Heusser - Vorbestellungs-Summen nach hq nachts 22:15
+
+[Timer]
+OnCalendar=*-*-* 22:15:00 Europe/Berlin
+RandomizedDelaySec=2min
+# War die Box um 22:15 aus, läuft der Lauf nach dem Start nach (für den Tag
+# des Nachlaufs - einen verpassten Vortag mit --date nachholen, runbook §6.1).
+Persistent=true
+
+[Install]
+WantedBy=timers.target

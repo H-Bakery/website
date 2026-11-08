@@ -57,4 +57,16 @@ describe('RevenueTrendChart', () => {
     )
     expect(axisLine?.getAttribute('x1')).toBe('85')
   })
+
+  it('Legende in Textfarbe, nicht in Linienfarbe (W4-verify r2: Kontrast)', () => {
+    const { getAllByTestId } = render(
+      <RevenueTrendChart data={data} showTransactions />
+    )
+    const texts = getAllByTestId('chart-legend-text')
+    expect(texts.map((t) => t.textContent)).toEqual(['Umsatz', 'Transaktionen'])
+    for (const t of texts) {
+      // Standard-Theme hell: text.primary = rgba(0, 0, 0, 0.87)
+      expect(t.style.color).toBe('rgba(0, 0, 0, 0.87)')
+    }
+  })
 })

@@ -2,8 +2,8 @@
  * Tagesziel-Ampel (TASK-039): Break-even als täglicher Messwert.
  *
  * Bewusst dependency-freies CommonJS (Konvention wie `finance.core.js` und
- * `reports.core.js`): dieselbe Datei benutzen der Mock-Server
- * (`src/routes/targets.mock.js`) und die Tests (`tests/unit/targetsCore.test.js`).
+ * `reports.core.js`): dieselbe Datei benutzen die API
+ * (`src/routes/targets.routes.js`) und die Tests (`tests/unit/targetsCore.test.js`).
  * Die gesamte Rechnung steht genau hier - nicht im Controller, nicht im
  * Frontend. Wer eine Formel ändert, ändert sie an einer Stelle.
  *
@@ -121,6 +121,10 @@ function round2(value) {
 
 function round4(value) {
   return Math.round(value * 10000) / 10000
+}
+
+function round6(value) {
+  return Math.round(value * 1e6) / 1e6
 }
 
 function isValidDate(value) {
@@ -927,7 +931,9 @@ function evaluateDay(actual, target, thresholds, openReason) {
     reason: null,
     actual: round2(actual),
     target: round2(target),
-    ratio: round4(ratio),
+    // 6 Stellen: die Oberfläche rundet auf ganze Prozent; auf 4 Stellen
+    // vorgerundet wurde aus 1,06495 erst 1,065 und dann 107 % (W4-verify r4).
+    ratio: round6(ratio),
     diff: round2(actual - target),
   }
 }

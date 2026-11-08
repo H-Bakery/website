@@ -22,8 +22,8 @@ jest.mock('@bakery/shared/data-access', () => {
 })
 
 const authState = { isAuthenticated: false, isLoading: false }
-jest.mock('@bakery/shared/contexts', () => ({
-  useAuth: () => authState,
+jest.mock('../../../lib/session', () => ({
+  useSession: () => authState,
 }))
 
 // recharts misst im jsdom keine Größen - die Diagramme selbst sind hier nicht
@@ -50,7 +50,7 @@ jest.mock('recharts', () => {
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { apiClient, ApiError } = require('@bakery/shared/data-access') as {
   apiClient: { get: jest.Mock }
-  ApiError: new (message: string, status: number) => Error
+  ApiError: new (message: string, status: number, code?: string) => Error
 }
 
 /**
@@ -166,6 +166,22 @@ describe('FinanceClient', () => {
     renderWithTheme(<FinanceClient />)
     expect(await screen.findByText('Keine Berechtigung')).toBeInTheDocument()
     expect(screen.getByText(/Inhaber\/Admin/)).toBeInTheDocument()
+  })
+
+  it('zeigt an der PIN-Station den Hinweis auf die Passwort-Anmeldung (F4)', async () => {
+    apiClient.get.mockRejectedValue(
+      new ApiError('Nur mit Passwort.', 403, 'personal_session_required')
+    )
+    renderWithTheme(<FinanceClient />)
+    expect(
+      await screen.findByText(
+        'An der PIN-Station nicht verfügbar – bitte am Büro-PC oder eigenen Gerät mit Passwort anmelden.'
+      )
+    ).toBeInTheDocument()
+    // Kein Link zur Anmeldung: eine PIN-Sitzung gibt es nur an einer Station,
+    // und dort soll keine Passwort-Sitzung des Inhabers offen bleiben.
+    expect(screen.queryByRole('link', { name: /anmelden/i })).toBeNull()
+    expect(screen.queryByText('Keine Berechtigung')).toBeNull()
   })
 
   it('zeigt "keine Daten" mit Grund und ohne Beispielwerte', async () => {

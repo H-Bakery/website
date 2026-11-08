@@ -20,9 +20,9 @@ import Link from 'next/link'
 import {
   RevenueTrendChart,
   DateRangePicker,
-  ExportButton,
 } from '@bakery/management/feature-analytics'
 import { analyticsService } from '@bakery/shared/data-access'
+import OwnerOnlyNotice from '../../../../components/analytics/OwnerOnlyNotice'
 import type { RevenueData, DateRange, Granularity } from '@bakery/shared/types'
 
 export default function RevenueAnalyticsPage() {
@@ -35,6 +35,8 @@ export default function RevenueAnalyticsPage() {
 
   const [revenueData, setRevenueData] = useState<RevenueData[]>([])
   const [available, setAvailable] = useState(true)
+  // F4: 403 = falsche Rolle (Analysen nur für den Inhaber, B4).
+  const [forbidden, setForbidden] = useState(false)
 
   React.useEffect(() => {
     fetchRevenueData()
@@ -54,13 +56,17 @@ export default function RevenueAnalyticsPage() {
   const fetchRevenueData = async () => {
     try {
       setLoading(true)
-      const { data, available: fromApi } =
-        await analyticsService.getRevenueTrendsWithSource({
-          ...dateRange,
-          granularity,
-        })
+      const {
+        data,
+        available: fromApi,
+        forbidden: denied,
+      } = await analyticsService.getRevenueTrendsWithSource({
+        ...dateRange,
+        granularity,
+      })
       setRevenueData(data)
       setAvailable(fromApi)
+      setForbidden(Boolean(denied))
     } catch (error) {
       console.error('Error fetching revenue data:', error)
       setRevenueData([])
@@ -145,13 +151,11 @@ export default function RevenueAnalyticsPage() {
             <ToggleButton value="monthly">Monatlich</ToggleButton>
           </ToggleButtonGroup>
         </Box>
-        <ExportButton
-          formats={['csv', 'pdf', 'excel']}
-          analyticsParams={{ ...dateRange, granularity }}
-        />
       </Box>
 
-      {!available && !loading && (
+      {forbidden && !loading && <OwnerOnlyNotice />}
+
+      {!available && !forbidden && !loading && (
         <Alert severity="error" sx={{ mb: 3 }}>
           Die API liefert keine Umsatzdaten. Es werden keine Zahlen angezeigt -
           Beispieldaten gibt es hier bewusst nicht.

@@ -1,10 +1,10 @@
 import React from 'react'
 import { notFound } from 'next/navigation'
-import PreorderFormClient from '../PreorderFormClient'
+import { MoersbachPreorderDetailClient } from '../MoersbachPreorderClients'
 
 /**
- * Bestehende Vorbestellung bearbeiten. Dieselbe Maske wie beim Erfassen -
- * sie lädt die Bestellung anhand der ID nach.
+ * Eine Vorbestellung der Sammelstelle: ansehen, bearbeiten, Status,
+ * stornieren - seit P2 die Ansicht aus P3 auf `/api/preorders`.
  */
 export default async function EditPreorderPage({
   params,
@@ -12,8 +12,7 @@ export default async function EditPreorderPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const preorderId = Number.parseInt(id, 10)
-  if (!Number.isFinite(preorderId)) notFound()
+  if (!/^\d{1,9}$/.test(id)) notFound()
 
-  return <PreorderFormClient preorderId={preorderId} />
+  return <MoersbachPreorderDetailClient id={Number(id)} />
 }

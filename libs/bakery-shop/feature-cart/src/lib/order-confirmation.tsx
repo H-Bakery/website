@@ -29,7 +29,11 @@ import { fetchShopOrder, formatEuro } from '@bakery/shared/data-access'
 import type { ShopOrder, ShopOrderItem } from '@bakery/shared/data-access'
 import { BRAND_FACTS } from '@bakery/shared/utils'
 
-import { PRICE_UPDATED_PARAM, PRICE_UPDATED_VALUE } from './confirmation-link'
+import {
+  PRICE_UPDATED_PARAM,
+  PRICE_UPDATED_VALUE,
+  wasPlacedHere,
+} from './confirmation-link'
 import { formatGermanDate } from './pickup'
 
 export interface OrderConfirmationProps {
@@ -45,8 +49,19 @@ export interface OrderConfirmationProps {
  * Haken und „Ihre Bestellung ist trotzdem bei uns" — eine Zusage, die niemand
  * gegeben hatte. Und `loading` zeigt beides noch nicht: bis der Server
  * geantwortet hat, ist auch der Haken eine Zusage ohne Grundlage.
+ *
+ * `unavailable` (Haken, „Danke“, ohne Einzelheiten) gibt es seit der
+ * Abschluss-Verifikation next nur noch für einen Code, den die Kasse in diesem
+ * Tab gerade angenommen hat (`wasPlacedHere`). Jeder andere Code, zu dem der
+ * Server nichts sagt - keine Antwort, oder 401/403, weil der Abruf (noch)
+ * nicht öffentlich ist - bekommt `unverifiable`: neutral, ohne Zusage.
  */
-type LoadState = 'loading' | 'loaded' | 'unavailable' | 'not-found'
+type LoadState =
+  | 'loading'
+  | 'loaded'
+  | 'unavailable'
+  | 'unverifiable'
+  | 'not-found'
 
 /** A labelled fact in the details panel. */
 const DetailRow: React.FC<{ label: string; children: React.ReactNode }> = ({
@@ -271,6 +286,64 @@ const OrderNotFound: React.FC<{ orderId: string }> = ({ orderId }) => (
   </Box>
 )
 
+/**
+ * Weder Haken noch „Danke“ noch „nicht gefunden“: der Server sagt zu diesem
+ * Code nichts. Wer bestellt hat, bekommt die Telefonnummer.
+ */
+const OrderUnverifiable: React.FC<{ orderId: string }> = ({ orderId }) => (
+  <Box
+    data-testid="order-unverifiable"
+    sx={{ py: { xs: 3, md: 6 }, bgcolor: 'background.default' }}
+  >
+    <Container maxWidth="md">
+      <Paper
+        variant="outlined"
+        sx={{
+          borderRadius: 2,
+          p: { xs: 2.5, md: 4 },
+          textAlign: 'center',
+        }}
+      >
+        <Typography variant="h1" component="h1">
+          Bestellung kann hier nicht angezeigt werden
+        </Typography>
+        <Typography
+          color="text.secondary"
+          sx={{ mt: 1.5, maxWidth: 560, mx: 'auto' }}
+        >
+          Zu diesem Bestellcode können wir online gerade nichts abrufen. Ob und
+          was darunter bestellt ist, sagen wir Ihnen gern am Telefon (
+          <Box
+            component="a"
+            href={BRAND_FACTS.phoneHref}
+            sx={{ fontWeight: 700, color: 'primary.main' }}
+          >
+            {BRAND_FACTS.phone}
+          </Box>
+          ) oder im Laden.
+        </Typography>
+        <OrderCodeBox orderId={orderId} />
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={1.5}
+          justifyContent="center"
+          sx={{ mt: 3 }}
+        >
+          <Button
+            component={NextLink}
+            href="/products"
+            variant="contained"
+            size="large"
+            startIcon={<StorefrontOutlinedIcon />}
+          >
+            Weiter einkaufen
+          </Button>
+        </Stack>
+      </Paper>
+    </Container>
+  </Box>
+)
+
 export const OrderConfirmation: React.FC<OrderConfirmationProps> = ({
   orderId,
 }) => {
@@ -301,8 +374,11 @@ export const OrderConfirmation: React.FC<OrderConfirmationProps> = ({
         }
       })
       .catch(() => {
-        // Netz oder Server weg: über die Bestellung selbst wissen wir nichts.
-        if (!cancelled) setState('unavailable')
+        // Netz/Server weg oder Abruf nicht öffentlich: über die Bestellung
+        // selbst wissen wir nichts. „Danke“ nur, wenn sie hier gerade
+        // abgeschickt wurde.
+        if (cancelled) return
+        setState(wasPlacedHere(orderId) ? 'unavailable' : 'unverifiable')
       })
 
     return () => {
@@ -319,6 +395,9 @@ export const OrderConfirmation: React.FC<OrderConfirmationProps> = ({
   }
   if (state === 'loading') {
     return <OrderLoading orderId={orderId} />
+  }
+  if (state === 'unverifiable') {
+    return <OrderUnverifiable orderId={orderId} />
   }
 
   return (

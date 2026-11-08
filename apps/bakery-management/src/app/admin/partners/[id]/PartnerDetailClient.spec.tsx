@@ -264,7 +264,11 @@ describe('PartnerDetailClient', () => {
     jest.clearAllMocks()
     mockFetchPartner.mockResolvedValue(PARTNER)
     mockFetchToday.mockResolvedValue(OPEN_DAY)
-    mockDeleteVisit.mockResolvedValue(undefined)
+    mockDeleteVisit.mockResolvedValue({
+      id: 12,
+      deleted: true,
+      message: 'Besuch gelöscht (API).',
+    })
   })
 
   it('warns that an open day is provisional and marks the affected KPI tiles', async () => {
@@ -332,6 +336,31 @@ describe('PartnerDetailClient', () => {
     ).toBeInTheDocument()
   })
 
+  it('flags more counted than possible as Abweichung, naming the products (W4-verify r2)', async () => {
+    mockFetchToday.mockResolvedValue({
+      ...CLOSED_DAY,
+      totals: { ...CLOSED_DAY.totals, discrepancyQty: 2 },
+      byProduct: [
+        ...(CLOSED_DAY.byProduct ?? []).map((p) => ({
+          ...p,
+          discrepancyQty: 0,
+        })),
+        {
+          ...(CLOSED_DAY.byProduct ?? [])[0],
+          productSlug: 'phantom',
+          productName: 'Phantombrot',
+          discrepancyQty: 2,
+        },
+      ],
+    })
+    await renderDetail()
+    const alert = screen.getByTestId('day-discrepancy')
+    expect(alert).toHaveTextContent(
+      'Abweichung: 2 Stück mehr gezählt, als im Schrank sein konnten'
+    )
+    expect(alert).toHaveTextContent('Phantombrot: 2')
+  })
+
   it('renders one timeline entry per visit in chronological order', async () => {
     mockFetchToday.mockResolvedValue(CLOSED_DAY)
     await renderDetail()
@@ -339,9 +368,7 @@ describe('PartnerDetailClient', () => {
     expect(
       screen.getByRole('heading', { name: `Besuche am ${formatDate(TODAY)}` })
     ).toBeInTheDocument()
-    expect(
-      screen.getByText('3 Besuche · 1 Nachlieferungen')
-    ).toBeInTheDocument()
+    expect(screen.getByText('3 Besuche · 1 Nachlieferung')).toBeInTheDocument()
 
     const entries = screen.getAllByRole('button', {
       name: /^Besuch um .+ löschen$/,
@@ -410,7 +437,9 @@ describe('PartnerDetailClient', () => {
     await waitFor(() =>
       expect(mockDeleteVisit).toHaveBeenCalledWith(PARTNER_ID, 12)
     )
-    expect(await screen.findByText('Besuch gelöscht.')).toBeInTheDocument()
+    expect(
+      await screen.findByText('Besuch gelöscht (API).')
+    ).toBeInTheDocument()
     // Der Tag wird nach dem Löschen neu berechnet
     await waitFor(() => expect(mockFetchToday).toHaveBeenCalledTimes(2))
   })
