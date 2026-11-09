@@ -9,6 +9,9 @@
 #   real.sh edits                            what was changed in the app (products, Grundmengen) vs hq
 #   real.sh approve                          "merge" pending edits locally, so the Backzettel uses them
 #   real.sh export                           copy the edits into ../hq as branch app-test/edits-<date>
+#   real.sh hq-pull [<hq-ref>]               merge newer ../hq commits (default: its checked-out branch)
+#                                            into the local copy - new cash reports, bank data, ...;
+#                                            DB and tester edits stay, works while running
 #   real.sh backup                           DB copy into backups/ (also automatic on every up)
 #   real.sh reset --yes                      delete DB, hq copies and credentials (backups stay)
 #
@@ -110,6 +113,26 @@ EOF
   fi
 }
 
+hq_pull() { # merge <ref> of ../hq into the local origin main, then update the read clone
+  [ -d "$I/seed" ] || die "no local hq copy yet - run: real.sh up"
+  local ref="${1:-$(git -C "$HQ_SOURCE" rev-parse --abbrev-ref HEAD)}" sha
+  sha="$(git -C "$HQ_SOURCE" rev-parse -q --verify "$ref^{commit}")" || die "$ref not found in $HQ_SOURCE"
+  g -C "$I/seed" fetch -q origin
+  g -C "$I/seed" checkout -q -B main origin/main
+  g -C "$I/seed" fetch -q "$HQ_SOURCE" "$sha"
+  if g -C "$I/seed" merge-base --is-ancestor FETCH_HEAD HEAD; then
+    echo "already contains $ref @ ${sha:0:7}"
+  elif ! g -C "$I/seed" merge -q --no-ff -m "Merge $ref @ ${sha:0:7} from ../hq (real.sh hq-pull)" FETCH_HEAD; then
+    g -C "$I/seed" merge --abort || true
+    die "$ref conflicts with the local copy (tester edits?) - nothing changed"
+  else
+    g -C "$I/seed" push -q origin main
+  fi
+  g -C "$I/hq" pull -q --ff-only
+  echo "$ref @ ${sha:0:7} (pulled $(date '+%Y-%m-%d %H:%M'))" >> "$I/hq-pulls"
+  echo "local hq at $(git -C "$I/hq" rev-parse --short HEAD); reports/finance are read per request, products and Backzettel config at the API's next hq sync (<= 60 s)"
+}
+
 running() { local f; for f in "$I"/pids/*.pid; do [ -f "$f" ] && kill -0 "$(cat "$f")" 2>/dev/null && return 0; done; return 1; }
 
 wait_for() { local i; for ((i = 0; i < $2; i++)); do curl -fsS -o /dev/null "$1" 2>/dev/null && return 0; sleep 1; done; return 1; }
@@ -201,6 +224,7 @@ case "$CMD" in
     git -C "$HQ_SOURCE" fetch -q "$I/origin.git" "app/edits:$b"
     echo "branch $b in $HQ_SOURCE ($(git -C "$HQ_SOURCE" rev-list --count "$(cut -d' ' -f3 "$I/hq-source")..$b") commits since the copy) - review, then open a PR"
     ;;
+  hq-pull) hq_pull "$@" ;;
   backup) backup ;;
   reset)
     [ "${1:-}" = --yes ] || die "deletes the local DB, hq copies and credentials (backups stay): real.sh reset --yes"

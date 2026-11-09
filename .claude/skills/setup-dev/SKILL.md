@@ -70,6 +70,7 @@ Grundmengen. Instance `real`, same ports as above (each script stops the other i
 .claude/skills/setup-dev/scripts/real.sh edits      # what testers changed in hq
 .claude/skills/setup-dev/scripts/real.sh approve    # let the Backzettel use those changes now
 .claude/skills/setup-dev/scripts/real.sh export     # edits -> branch app-test/edits-<date> in ../hq
+.claude/skills/setup-dev/scripts/real.sh hq-pull [<hq-ref>]  # newer ../hq data into the local copy
 ```
 
 - **Stays on this Mac.** hq is a local bare copy of `../hq` (branch `HQ_REF`, default
@@ -86,7 +87,10 @@ Grundmengen. Instance `real`, same ports as above (each script stops the other i
 - **Real customer data** (names, phone numbers) lives only in this local DB - never copy it
   into the website repo, tests, screenshots or commit messages. Address search is off unless
   `--geo` (then tour addresses go to the public OSM servers).
-- Cash reports are as of the hq copy; a newer day needs `reset` (or a new copy).
+- Cash reports and bank data are as of the hq copy. Newer data from `../hq` (a new cash day, an
+  imported bank statement): `real.sh hq-pull [<hq-ref>]` merges that branch (default: the one
+  checked out in `../hq`) into the local copy - DB and tester edits stay, no restart needed. A
+  conflict with tester edits aborts without changing anything.
 
 ## Stop
 
