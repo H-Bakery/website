@@ -47,7 +47,8 @@ gelöscht.' }`, template `PUT` → 200 (also on create). Errors via `sendError` 
   `partner_visit` create/update/delete (delete stores the whole visit, so a mistaken delete can be
   reconstructed).
 - **Template `PUT`** fills `productId`/`productSlug` from hq, drops quantity 0, keeps `active`
-  when the body does not name it (otherwise every save re-activated the template). It validates
+  when the body does not name it (otherwise every save re-activated the template) and keeps the
+  stored items when the body has no `items` (only `{ active: false }` deactivates). It validates
   like visits (`validateTemplateItems` in the core): quantity an integer 0…10000 (`2.5`, `-3`,
   `1e9` are 400 `INVALID_ITEMS`, not truncated or dropped), the product must be in hq **or already
   in the stored template** (so a product removed from hq does not block saving), no duplicates; hq

@@ -86,7 +86,8 @@ API-Details (Endpunkte, Fehlercodes): [`docs/api/partners.md`](../api/partners.m
 - **Wie der frühere Mock (D3):** `GET /api/partners?active=true|false`; neuer Partner ohne `deliveryDays` =
   Di-Sa; Vorlagen-`PUT` antwortet 200 (auch beim Anlegen), ergänzt Kennungen aus hq, lässt Menge 0
   weg und lässt `active` stehen, wenn der Request es nicht nennt (sonst setzte jedes Speichern die
-  Vorlage wieder aktiv); `DELETE` eines Besuchs antwortet 200 `{ id, deleted: true, message }`.
+  Vorlage wieder aktiv); ohne `items` (z. B. nur `{ active: false }`) bleiben die Posten stehen -
+  nur ein gesendetes `items`-Array ersetzt sie; `DELETE` eines Besuchs antwortet 200 `{ id, deleted: true, message }`.
 - **Bewusst anders als der Mock:**
   - eigene Fehlercodes (`INVALID_ITEMS` statt `Invalid items`, plus `success: false` - das Frontend
     liest nur `message`);
