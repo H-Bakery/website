@@ -118,6 +118,7 @@ function textLines(chars: number, fontPt: number): number {
 export function hasPrintDetail(line: BackzettelLine): boolean {
   return Boolean(
     line.tray ||
+      line.hint ||
       line.correctionReason ||
       line.baseUnset ||
       line.previouslyDone ||

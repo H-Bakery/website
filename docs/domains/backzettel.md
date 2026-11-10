@@ -33,7 +33,18 @@ die Überarbeitung „Backzettel v2" (Z10) ist dort geplant - dieses Dokument be
   Bruchteile, stehen Saison/Vorbestellt/CAP genau da (`quartersPooled`), damit sich die Spalten zur
   Summe vor dem Aufrunden addieren; der Schnappschuss hält `subtotalExact` für die Nachträge fest.
   Aufgerundet wird mit Toleranz (`roundUp`), sonst wird aus 10 × 1,1 = 11,000…02 eine 12.
-  Stück/Blech ganzzahlig, Liter/kg auf 0,01.
+  Stück/Blech ganzzahlig, Liter/kg/Charge auf 0,01.
+- **Einheit `Charge`** (Spezialbrote wie Haferbrot, Hildegard): die Zahl ist ein Chargen-Faktor
+  (Anzahl Rezept-Ansätze, „1,12 Charge“), kein Liter. Bruchteile erlaubt wie bei Liter; Bildschirm
+  und Druck schreiben „1,12 Charge“. `pieces_per_liter` wirkt dort nicht.
+- **Zukauf und Hinweise (`purchased`, `note` je Posten):** `purchased: true` heißt zugekauft
+  (Laugenbrezeln, Laugenstangen als Basis der Käsestangen): der Posten bleibt auf dem Zettel, weil
+  er aufgelegt bzw. fertig gebacken wird, hat aber keinen Teig (`dough`/`from_dough` dazu lehnt der
+  Validator ab). `configCore.itemHint` formuliert den Hinweis einmal („Zukauf – auflegen · mit Käse
+  bestreuen“ = Zukauf + `note`); jede Zeile trägt ihn als `hint` (dazu `purchased`, `note`; fehlen
+  ohne), die Brot-Tabelle vorn in `row.note`. Planung, Tablet (Zettel, Backliste) und Druck
+  (Teigtag-Zettel, Backliste, alter Druck) zeigen ihn fett an der Zeile. Wie Blech/PLU reine
+  Anzeige: eine freigegebene Zeile nimmt ihn aus den aktuellen Stammdaten.
 - **Teigstücke und Füllungsgramm kommen aus der YAML**, nicht aus Code. Der gefüllte Kranz ist eine
   offene Frage (Q-B3 in der Roadmap) und nur dort einzustellen.
 - **`null` als Grundmenge heißt „noch nicht festgelegt", `0` heißt „wird nicht gebacken".** Eine

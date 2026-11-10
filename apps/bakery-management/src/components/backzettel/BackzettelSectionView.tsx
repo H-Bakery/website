@@ -152,6 +152,17 @@ function LineName({
           {previouslyDoneText(line)}
         </Typography>
       )}
+      {line.hint && (
+        // Zukauf / Hinweis aus der YAML: fett, damit ihn niemand überliest
+        <Typography
+          variant="caption"
+          component="div"
+          data-testid={`line-hint-${line.key}`}
+          sx={{ fontWeight: 700, whiteSpace: 'normal' }}
+        >
+          {line.hint}
+        </Typography>
+      )}
       <Typography variant="caption" color="text.secondary" component="div">
         {[
           line.unit && line.unit !== 'Stück' ? `in ${line.unit}` : null,

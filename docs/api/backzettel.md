@@ -90,8 +90,8 @@ screen showed, and the server refuses instead of overwriting:
 - **A confirmed day is served from what was stored**: lines from the rows, Hefeteig/fillings/prep/
   warnings from `computed_snapshot` - a later YAML or recipe change does not alter it (test).
   The current master data are only used for `configChangedSinceConfirm` (`snapshotDiffers`) and
-  display-only fields (tray, PLU). With broken master data it stays fully readable
-  (`configStatus: 'no-config'`). A day without `computed_snapshot` (confirmed before the column)
+  display-only fields (tray, PLU, item hints `purchased`/`note`/`hint`). With broken master data
+  it stays fully readable (`configStatus: 'no-config'`). A day without `computed_snapshot` (confirmed before the column)
   falls back to recomputing from the frozen totals. Reopen clears the snapshot.
 - **Deltas are recorded on the preorder write path**, not by reading. `app.ts` wires
   `preorders.service.onWrite(...)` to `backzettel.service.recordPreorderDeltas(dates, ctx)`: every

@@ -410,8 +410,8 @@ function correctionsFromRows(rows) {
 
 /**
  * Eine freigegebene Zeile in der Form des Cores (`computeDay().lines[]`).
- * Name, Abschnitt und Einheit kommen aus dem Schnappschuss der Zeile; Blech
- * und PLU (reine Anzeige) aus den aktuellen Stammdaten, wenn der Posten dort
+ * Name, Abschnitt und Einheit kommen aus dem Schnappschuss der Zeile; Blech,
+ * PLU und Hinweise (Zukauf, `note`; reine Anzeige) aus den aktuellen Stammdaten, wenn der Posten dort
  * noch steht. `unsetKeys` (aus `computedSnapshot().unsetKeys`) sagt, welche
  * Zeilen bei der Freigabe keine Grundmenge hatten - sonst laese sich eine
  * offene Grundmenge auf dem freigegebenen Zettel als „0, nicht backen".
@@ -450,6 +450,7 @@ function frozenLine(row, config, unsetKeys) {
     total,
     tray: item ? core.trayText(item.tray, total, unit) : null,
     plu: item ? item.plu : [],
+    ...(item ? core.itemHintFields(item) : {}),
   }
   if (item && unit === 'Liter' && item.pieces_per_liter) {
     line.loavesEstimate = Math.round(total * item.pieces_per_liter)

@@ -471,6 +471,7 @@ export const UNIT_SHORT: Record<string, string> = {
   Liter: 'L',
   Blech: 'Blech',
   kg: 'kg',
+  Charge: 'Charge',
 }
 
 export function formatQtyUnit(

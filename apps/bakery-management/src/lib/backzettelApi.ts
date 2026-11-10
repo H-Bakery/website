@@ -16,7 +16,14 @@
 
 import { apiClient } from '@bakery/shared/data-access'
 
-export type BackzettelUnit = 'Stück' | 'Liter' | 'Blech' | 'kg' | string
+/** `Charge`: Chargen-Faktor eines Spezialbrots (1,12 Charge), kein Liter. */
+export type BackzettelUnit =
+  | 'Stück'
+  | 'Liter'
+  | 'Blech'
+  | 'kg'
+  | 'Charge'
+  | string
 
 export interface BackzettelUserRef {
   id: number
@@ -136,6 +143,15 @@ export interface BackzettelLine {
   plu: number[]
   /** Nur Liter-Posten mit `pieces_per_liter`. */
   loavesEstimate?: number
+  /** Zukauf (YAML `purchased: true`): wird nur aufgelegt bzw. fertig gebacken. */
+  purchased?: boolean
+  /** Hinweis des Postens aus der YAML (`note`), z. B. „mit Käse bestreuen“. */
+  note?: string
+  /**
+   * Fertiger Hinweis vom Server, z. B. „Zukauf – auflegen · mit Käse
+   * bestreuen“ (Zukauf + `note`); fehlt ohne beides. Diesen Text anzeigen.
+   */
+  hint?: string
   doneAt: string | null
   doneBy: BackzettelUserRef | null
   /**

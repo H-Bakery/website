@@ -191,6 +191,15 @@ export function BakeListPrint({ list, config }: BakeListPrintProps) {
                     <strong>
                       {lineLabel({ ...line, bakeDate: undefined }, config)}
                     </strong>
+                    {line.hint && (
+                      <strong
+                        className="small"
+                        data-testid={`bl-hint-${line.key}`}
+                      >
+                        {' '}
+                        – {line.hint}
+                      </strong>
+                    )}
                     {detail && <span className="small"> – {detail}</span>}
                   </span>
                   <span className="bl-qty">{minQtyText(line, line.unit)}</span>

@@ -646,6 +646,14 @@ function SectionsPrint({
                   >
                     <span className="dd-name">
                       {lineLabel(line, config)}
+                      {line.hint && (
+                        <strong
+                          className="small dd-detail"
+                          data-testid={`dd-hint-${line.key}`}
+                        >
+                          {line.hint}
+                        </strong>
+                      )}
                       {detail && (
                         <span className="small dd-detail">{detail}</span>
                       )}

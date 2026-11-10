@@ -98,14 +98,49 @@ describe('validateBackzettelConfig', () => {
     )
   })
 
-  it('kennt nur die Einheiten Stück, Liter, Blech, kg', () => {
+  it('kennt nur die Einheiten Stück, Liter, Blech, kg, Charge', () => {
     expect(paths(validate(withItem({ unit: 'Laib' })))).toContain(
       'items[0].unit'
     )
-    for (const unit of ['Stück', 'Liter', 'Blech', 'kg']) {
+    for (const unit of ['Stück', 'Liter', 'Blech', 'kg', 'Charge']) {
       const cfg = withItem({ unit, base: { 2: 4 } })
       expect(validate(cfg).errors).toEqual([])
     }
+  })
+
+  it('Charge (Chargen-Faktor eines Spezialbrots) darf Bruchteile haben', () => {
+    const cfg = withItem({ unit: 'Charge', base: { 2: 1.12, 3: 1.5 } })
+    cfg.items[0].pieces_per_liter = null
+    expect(validate(cfg).errors).toEqual([])
+    expect(core.INTEGER_UNITS.has('Charge')).toBe(false)
+    expect(
+      core.normalizeConfig(cfg).items.find((i) => i.id === 'kornbrot').unit
+    ).toBe('Charge')
+  })
+
+  it('purchased (Zukauf) und note: Typen, kein Teig bei Zukauf', () => {
+    // Posten ohne Teig (Schnecke) als Zukauf mit Hinweis: gültig
+    const ok = withItem({ purchased: true, note: 'mit Käse bestreuen' }, 4)
+    const r = validate(ok)
+    expect(r.errors).toEqual([])
+    expect(r.warnings.map((w) => w.path)).not.toContain('items[4].purchased')
+
+    expect(paths(validate(withItem({ purchased: 'ja' }, 4)))).toContain(
+      'items[4].purchased'
+    )
+    expect(paths(validate(withItem({ note: 5 }, 4)))).toContain('items[4].note')
+    expect(paths(validate(withItem({ note: '  ' }, 4)))).toContain(
+      'items[4].note'
+    )
+    // Zukauf mit eigenem Teig widerspricht sich
+    const withDough = validate(withItem({ purchased: true }, 5))
+    expect(paths(withDough)).toContain('items[5].dough')
+    expect(
+      withDough.errors.find((e) => e.path === 'items[5].dough').message
+    ).toMatch(/Zukauf/)
+    // false und null sind erlaubt
+    expect(validate(withItem({ purchased: false }, 5)).errors).toEqual([])
+    expect(validate(withItem({ purchased: null }, 4)).errors).toEqual([])
   })
 
   it('prueft Produkte gegen den hq-Katalog und factor > 0', () => {
@@ -411,6 +446,31 @@ describe('normalizeConfig', () => {
       6: null,
       default: 'misch',
     })
+  })
+
+  it('purchased ist immer ein Boolean, note getrimmt oder null', () => {
+    const cfg = withItem({ purchased: true, note: ' mit Käse bestreuen ' }, 4)
+    const n = core.normalizeConfig(cfg)
+    const schnecke = n.items.find((i) => i.id === 'schnecke')
+    expect(schnecke.purchased).toBe(true)
+    expect(schnecke.note).toBe('mit Käse bestreuen')
+    const weck = n.items.find((i) => i.id === 'weck')
+    expect(weck.purchased).toBe(false)
+    expect(weck.note).toBeNull()
+  })
+
+  it('itemHint: „Zukauf – auflegen“ und note, sonst null', () => {
+    expect(core.itemHint({ purchased: true, note: 'mit Käse bestreuen' })).toBe(
+      'Zukauf – auflegen · mit Käse bestreuen'
+    )
+    expect(core.itemHint({ purchased: true, note: null })).toBe(
+      'Zukauf – auflegen'
+    )
+    expect(core.itemHint({ purchased: false, note: 'für morgen' })).toBe(
+      'für morgen'
+    )
+    expect(core.itemHint({ purchased: false, note: null })).toBeNull()
+    expect(core.itemHint(null)).toBeNull()
   })
 
   it('ist idempotent', () => {

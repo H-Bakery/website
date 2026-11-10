@@ -662,6 +662,7 @@ function computeLines(args) {
           ...(raw < 0 ? { correctionClamped: true } : {}),
           tray: trayText(item.tray, total, item.unit),
           plu: item.plu,
+          ...itemHintFields(item),
         }
         if (item.unit === 'Liter' && item.pieces_per_liter) {
           line.loavesEstimate = Math.round(total * item.pieces_per_liter)
@@ -750,6 +751,24 @@ function dayLabel(date) {
 }
 
 /** Die v2-Felder einer Zeile (Backtag, Teigtag, Sortenname, Bruch). */
+/**
+ * Hinweise eines Postens an der Zeile (reine Anzeige, wie Blech und PLU):
+ * `purchased: true` (Zukauf, aufzulegen), `note` aus der YAML und `hint`,
+ * der fertige Text („Zukauf – auflegen · mit Käse bestreuen“). Fehlen, wenn
+ * der Posten nichts davon hat.
+ */
+function itemHintFields(item) {
+  const hint = configCore.itemHint(item)
+  if (!hint) return {}
+  return {
+    ...(item.purchased === true ? { purchased: true } : {}),
+    ...(typeof item.note === 'string' && item.note.trim()
+      ? { note: item.note.trim() }
+      : {}),
+    hint,
+  }
+}
+
 function v2LineFields(cfg, item, variant, bakeDate, dough) {
   const d = dough || planCore.resolveDoughDate(cfg, item, bakeDate)
   return {
@@ -1831,6 +1850,7 @@ module.exports = {
   formatTrayInfo,
   getTrayNumbers,
   trayText,
+  itemHintFields,
   isoWeekday,
   isValidDate,
   roundUp,

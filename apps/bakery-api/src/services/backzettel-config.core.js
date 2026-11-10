@@ -44,8 +44,15 @@ const SECTION_LABELS = {
   hefeteig: 'Hefeteig',
 }
 
-const UNITS = ['Stück', 'Liter', 'Blech', 'kg']
-/** Einheiten, deren Mengen ganzzahlig sein muessen. Liter/kg duerfen Bruchteile haben (z. B. 1,25 l). */
+/**
+ * `Charge`: Chargen-Faktor eines Spezialbrots (Anzahl Rezept-Ansaetze, z. B.
+ * 1,12 Charge Haferbrot) - kein Liter, keine Stueckzahl.
+ */
+const UNITS = ['Stück', 'Liter', 'Blech', 'kg', 'Charge']
+/**
+ * Einheiten, deren Mengen ganzzahlig sein muessen. Liter/kg/Charge duerfen
+ * Bruchteile haben (z. B. 1,25 l, 1,12 Charge).
+ */
 const INTEGER_UNITS = new Set(['Stück', 'Blech'])
 
 const WEEKDAY_NAMES = {
@@ -95,6 +102,7 @@ const ITEM_KEYS = new Set([
   'base',
   'pieces_per_liter',
   'note',
+  'purchased',
   'lead',
   'bruch',
   'from_dough',
@@ -1100,6 +1108,27 @@ function validateBackzettelConfig(obj, options) {
         })
       }
 
+      // note / purchased: Hinweise fuer die Backstube, keine Rechnung.
+      // `purchased: true` = Zukauf, der aufgelegt bzw. fertig gebacken wird
+      // (Laugenbrezeln, Laugenstangen); bleibt auf dem Zettel, ohne Teig.
+      if (item.note !== undefined && item.note !== null && !isText(item.note))
+        err(`${p}.note`, 'note muss ein nicht-leerer Text sein.')
+      if (
+        item.purchased !== undefined &&
+        item.purchased !== null &&
+        typeof item.purchased !== 'boolean'
+      ) {
+        err(`${p}.purchased`, 'purchased muss true oder false sein.')
+      } else if (item.purchased === true) {
+        for (const key of ['dough', 'from_dough']) {
+          if (isSet(item, key) && item[key] !== null)
+            err(
+              `${p}.${key}`,
+              `Posten „${label}“ ist ein Zukauf (purchased: true) und hat trotzdem ${key}; ein Zukauf hat keinen eigenen Teig.`
+            )
+        }
+      }
+
       // dough
       const hasBruch = isSet(item, 'bruch') && item.bruch !== null
       if (item.dough !== undefined && item.dough !== null) {
@@ -1799,7 +1828,8 @@ function normalizeConfig(obj) {
         pieces_per_liter: isPositiveNumber(item.pieces_per_liter)
           ? item.pieces_per_liter
           : null,
-        note: typeof item.note === 'string' ? item.note : null,
+        note: isText(item.note) ? item.note.trim() : null,
+        purchased: item.purchased === true,
         sizes,
         variantKind,
         lead: normalizeLead(item.lead),
@@ -1852,6 +1882,19 @@ function normalizeConfig(obj) {
 }
 
 /**
+ * Hinweis eines Postens fuer die Backstube: „Zukauf – auflegen“ (purchased)
+ * und die `note` aus der YAML, z. B. „Zukauf – auflegen · mit Käse
+ * bestreuen“; `null` ohne beides. Eine Fassung fuer Zeilen und Brot-Tabelle.
+ */
+function itemHint(item) {
+  if (!isPlainObject(item)) return null
+  const parts = []
+  if (item.purchased === true) parts.push('Zukauf – auflegen')
+  if (isText(item.note)) parts.push(item.note.trim())
+  return parts.length ? parts.join(' · ') : null
+}
+
+/**
  * Anzeigename einer Variante: Groesse (`sizes[].label`, „500 g“) → Fuellung
  * (`fillings[].name`, „Nussfüllung“) → ID mit grossem Anfangsbuchstaben.
  * `null` fuer „keine Variante“. Fuer alle, die eine Zeile beschriften.
@@ -1886,4 +1929,5 @@ module.exports = {
   normalizeLead,
   normalizeBruchG,
   variantDisplayName,
+  itemHint,
 }

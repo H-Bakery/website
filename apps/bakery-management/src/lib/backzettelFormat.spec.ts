@@ -15,6 +15,7 @@ import {
   formatSigned,
   hasHefeteig,
   ingredientAmount,
+  isIntegerUnit,
   isIsoDate,
   recipeHeading,
   recipeIncompleteNote,
@@ -26,6 +27,7 @@ import {
   parseDecimal,
   previouslyDoneText,
   linesWithPreorders,
+  minQtyText,
   describeProductionDays,
   changedTotals,
   toggleSign,
@@ -88,6 +90,10 @@ describe('Backzettel-Zahlen', () => {
     expect(formatQty(40, 'Stück')).toBe('40')
     expect(formatQty(1.24, 'Liter')).toBe('1,24 L')
     expect(formatQty(3, 'Blech')).toBe('3 Bl.')
+    // Spezialbrot: Chargen-Faktor, kein Liter
+    expect(formatQty(1.12, 'Charge')).toBe('1,12 Charge')
+    expect(minQtyText({ total: 1.12 }, 'Charge')).toBe('1,12 Charge')
+    expect(isIntegerUnit('Charge')).toBe(false)
   })
 
   it('Vorzeichen, Gramm, Faktor', () => {
