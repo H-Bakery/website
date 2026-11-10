@@ -89,7 +89,8 @@ const doughDayPrintStyles = (
           display: 'flex',
           alignItems: 'baseline',
           gap: '4mm',
-          flexWrap: 'wrap',
+          // Wochentag und Datum bleiben in einer Zeile; der Stempel bricht um.
+          whiteSpace: 'nowrap',
           margin: 0,
           lineHeight: 1.1,
         },
@@ -100,7 +101,9 @@ const doughDayPrintStyles = (
           padding: '1mm 3mm',
           fontWeight: 800,
           fontSize: 'calc(var(--dd-font) * 1.2)',
-          whiteSpace: 'nowrap',
+          maxWidth: '62mm',
+          textAlign: 'center',
+          lineHeight: 1.2,
         },
         '.dd-print .dd-stamp.draft': { borderStyle: 'dashed' },
         // Tagestyp: gerahmt, groß - hier setzt der Kalender (U9) später
