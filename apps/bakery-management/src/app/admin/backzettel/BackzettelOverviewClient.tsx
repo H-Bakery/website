@@ -65,6 +65,8 @@ function summaryText(result: BackzettelDayResult): string {
   if (!isBackzettelDay(result)) return ''
   const preorderLines = linesWithPreorders(result)
   const parts = [
+    // U9: Tagestyp aus dem Kalender vorn („Samstags-Satz“, „Wie Sonntag“)
+    ...(result.dayKind?.label ? [result.dayKind.label] : []),
     preorderLines > 0
       ? `Vorbestellungen in ${preorderLines} ${
           preorderLines === 1 ? 'Zeile' : 'Zeilen'
@@ -148,7 +150,13 @@ function DayStatus({ entry }: { entry: DayEntry }) {
     )
   }
   if (result.status === 'ruhetag') {
-    return <Chip size="small" variant="outlined" label="Ruhetag" />
+    return (
+      <Chip
+        size="small"
+        variant="outlined"
+        label={result.closed ? 'Geschlossen' : 'Ruhetag'}
+      />
+    )
   }
   const open = openDeltas(result).length
   return (

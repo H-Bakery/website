@@ -23,6 +23,7 @@ import {
   bruchSplitText,
   doughsTodayText,
   formatDateLong,
+  dayKindLine,
   formatFactor,
   formatKnownGrams,
   formatNumber,
@@ -799,6 +800,12 @@ export function DoughDayPrint({
         <div className="dd-head">
           <div>
             <h1>Backzettel {formatDateLong(day.date)}</h1>
+            {/* U9: Tagestyp aus dem Kalender, fett unter dem Datum */}
+            {dayKindLine(day.dayKind) && (
+              <p className="meta" data-testid="dd-day-kind">
+                <strong>{dayKindLine(day.dayKind)}</strong>
+              </p>
+            )}
             {doughs && <p className="meta">{doughs}</p>}
             <p className="meta small">
               {confirmed

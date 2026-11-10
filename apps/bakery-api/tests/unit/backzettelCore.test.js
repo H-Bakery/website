@@ -1245,6 +1245,7 @@ function stripV2(sheet) {
   for (const k of [
     'sheetVersion',
     'isDoughDay',
+    'dayKind', // U9: am Teigtag-Zettel immer, an computeDay nur mit Kalender
     'bakeDates',
     'plan',
     'doughs',

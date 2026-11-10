@@ -12,6 +12,7 @@ const core = require('./backzettel.core')
 const configCore = require('./backzettel-config.core')
 const recipesCore = require('./backzettel-recipes.core')
 const planCore = require('./backzettel-plan.core')
+const kalender = require('./kalender.core')
 const doughCore = require('./backzettel-dough.core')
 const { hasNameControlChars } = require('./control-chars.core')
 
@@ -1194,6 +1195,25 @@ function shiftDate(date, days) {
  */
 function prepDateFor(date, days) {
   const prepDate = shiftDate(date, -1)
+  // U9: mit den Stammdaten (`config`) fragt der Kalender - ein geschlossener
+  // Vortag (Feiertag, Betriebsferien) macht den Termin ebenso offen, mit Grund.
+  if (days && !Array.isArray(days) && Array.isArray(days.days)) {
+    const cfg = days
+    if (kalender.isSheetDay(cfg, prepDate))
+      return { prepDate, prepDateProvisional: false }
+    const info = kalender.dayKind(cfg, prepDate)
+    return {
+      prepDate,
+      prepDateProvisional: true,
+      ...(info.kind === 'geschlossen'
+        ? {
+            prepDateReason: `${kalender.shortDate(prepDate)} geschlossen${
+              info.note ? ` (${info.note})` : ''
+            }`,
+          }
+        : {}),
+    }
+  }
   const provisional = Array.isArray(days)
     ? !days.includes(core.isoWeekday(prepDate))
     : null

@@ -24,6 +24,10 @@
 // gilt ebenso als unbekannt, mit Warnung. Die Normalisierung laesst den Wert
 // `null` - nichts wird geschaetzt oder mit einem Standardwert gefuellt.
 
+// U9: die Grundmengen-Spalten neben den Wochentagen (`base.vor_feiertag`,
+// `base.samstag_ersatz`) - eine Liste, im Kalender-Kern.
+const { SPECIAL_BASE_KEYS } = require('./kalender.core')
+
 const SECTIONS = [
   'vorbereitung',
   'brot',
@@ -1467,11 +1471,13 @@ function validateBackzettelConfig(obj, options) {
           for (const [key, value] of Object.entries(item.base)) {
             const bp = `${p}.base.${key}`
             const wd = weekdayKey(key)
-            if (wd === null || wd < 1 || wd > 7) {
+            // U9: Spalten für den Tag vor Schließtagen (kalender.core.js)
+            const special = SPECIAL_BASE_KEYS.includes(key)
+            if (!special && (wd === null || wd < 1 || wd > 7)) {
               err(bp, `Ungültiger Wochentag „${key}“ in base.`)
               continue
             }
-            if (!daySet.has(wd)) {
+            if (!special && !daySet.has(wd)) {
               err(
                 bp,
                 `${WEEKDAY_NAMES[wd]} (${wd}) ist kein Produktionstag (days).`
@@ -1886,6 +1892,9 @@ function normalizeConfig(obj) {
         filling_g: fillingG,
         tray,
         base: toWeekdayMap(item.base, (v) => (isPlainObject(v) ? { ...v } : v)),
+        // U9: `base.vor_feiertag` / `base.samstag_ersatz` (YAML) bzw. schon
+        // normalisiert `baseSpecial` - nie unter den Wochentagen
+        baseSpecial: specialBaseOf(item),
         pieces_per_liter: isPositiveNumber(item.pieces_per_liter)
           ? item.pieces_per_liter
           : null,
@@ -1939,7 +1948,25 @@ function normalizeConfig(obj) {
     prep,
     dough_days: Array.isArray(src.dough_days) ? [...src.dough_days] : [...days],
     bruch_pieces: bruchPieces,
+    // U9: der Kalender (`config/kalender.yaml`), von der Quelle angehängt;
+    // `null` = keiner geladen (dann gilt der Wochenplan, kalender.core.js)
+    calendar: isPlainObject(src.calendar) ? src.calendar : null,
   }
+}
+
+/** Die Grundmengen-Spalten des Tagestyps eines Postens (U9). */
+function specialBaseOf(item) {
+  const out = {}
+  const from = isPlainObject(item.baseSpecial)
+    ? item.baseSpecial
+    : isPlainObject(item.base)
+    ? item.base
+    : {}
+  for (const key of SPECIAL_BASE_KEYS) {
+    if (hasOwn(from, key))
+      out[key] = isPlainObject(from[key]) ? { ...from[key] } : from[key]
+  }
+  return out
 }
 
 /**
@@ -1980,6 +2007,7 @@ module.exports = {
   WEEKDAY_NAMES,
   RECIPE_DIR,
   MAX_LEAD,
+  SPECIAL_BASE_KEYS,
   ROUNDING_MODES,
   FROM_DOUGH_MODES,
   isSlug,

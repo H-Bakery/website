@@ -36,6 +36,7 @@
 
 const configCore = require('./backzettel-config.core')
 const refCore = require('./backzettel-reference.core')
+const kalender = require('./kalender.core')
 const { csvCell, deNumber } = require('./partner-stats.core')
 
 const { INTEGER_UNITS, WEEKDAY_NAMES, SECTION_LABELS } = configCore
@@ -751,7 +752,8 @@ function buildDayView(a) {
   const items = itemsById(config)
   const window = { from: addDays(a.today, -COUNT_DAYS_BACK), to: a.today }
   const inWindow = date >= window.from && date <= window.to
-  const productionDay = config ? config.days.includes(weekday) : null
+  // U9: Backtag laut Wochenplan und Kalender (Feiertag = kein Backtag)
+  const productionDay = config ? kalender.isBakeDay(config, date) : null
   const storedRows = Array.isArray(a.rows) ? a.rows : []
   const bz = backzettelLines(a.backzettel, config)
 
@@ -993,7 +995,7 @@ function summarize(a) {
       counts.future += 1
       continue
     }
-    if (config && !config.days.includes(weekday) && rows.length === 0) {
+    if (config && !kalender.isBakeDay(config, date) && rows.length === 0) {
       day.status = 'ruhetag'
       counts.ruhetag += 1
       continue

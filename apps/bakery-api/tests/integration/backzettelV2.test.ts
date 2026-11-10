@@ -1106,3 +1106,114 @@ describe('the bake list without master data', () => {
     expect(later.status).toBe('no-config')
   })
 })
+
+describe('calendar (U9): holidays and closing days from kalender.yaml', () => {
+  // Synthetic calendar: the legal holidays (formula) plus invented closing
+  // days and a dough-only day in January.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const kalender = require('../../src/services/kalender.core')
+  const kalenderFile = () => path.join(hqDir, 'config', 'kalender.yaml')
+  const feiertage = (year: number) =>
+    kalender
+      .holidaysSaarland(year)
+      .map((h: any) => ({ datum: h.date, name: h.name }))
+  const writeKalender = (raw: unknown) =>
+    fs.writeFileSync(kalenderFile(), JSON.stringify(raw, null, 2))
+
+  beforeAll(() =>
+    writeKalender({
+      version: 1,
+      bundesland: 'saarland',
+      feiertage: { 2026: feiertage(2026), 2027: feiertage(2027) },
+      tage: [
+        {
+          von: '2027-01-02',
+          bis: '2027-01-04',
+          typ: 'geschlossen',
+          notiz: 'Betriebsferien',
+        },
+        { datum: '2027-01-04', typ: 'teigtag', notiz: 'Teig für Dienstag' },
+      ],
+    })
+  )
+  afterAll(() => fs.rmSync(kalenderFile(), { force: true }))
+
+  it('a holiday is 409 geschlossen with its name; the bake list says so', async () => {
+    const res = await as('backstube').get('/api/backzettel/2026-12-25')
+    expect(res.status).toBe(409)
+    expect(res.body).toMatchObject({ error: 'geschlossen' })
+    expect(res.body.message).toMatch(/1\. Weihnachtstag - geschlossen/)
+    const list = await as('backstube').get(
+      '/api/backzettel/2026-12-25/bake-list'
+    )
+    expect(list.status).toBe(200)
+    expect(list.body.data).toMatchObject({
+      status: 'geschlossen',
+      note: '1. Weihnachtstag',
+      sections: [],
+    })
+  })
+
+  it('Thursday before the closed Friday + Saturday makes Sunday and Tuesday', async () => {
+    const res = await as('backstube').get('/api/backzettel/2026-12-24')
+    expect(res.status).toBe(200)
+    const day = res.body.data
+    expect(day.dayKind).toMatchObject({
+      kind: 'normal',
+      before: { type: 'samstag_ersatz' },
+      label: 'Samstags-Satz',
+    })
+    expect(day.calendarHint).toBeNull()
+    expect(day.bakeDates.map((b: any) => b.date)).toEqual([
+      '2026-12-24',
+      '2026-12-27',
+      '2026-12-29',
+    ])
+    expect(day.warnings.map((w: any) => w.code)).toEqual(
+      expect.arrayContaining(['dough_day_far', 'special_base_missing'])
+    )
+    // Sunday's bake list: the rolls come from Thursday
+    const sun = await as('backstube').get(
+      '/api/backzettel/2026-12-27/bake-list'
+    )
+    expect(sun.body.data.sources.map((s: any) => s.doughDate)).toContain(
+      '2026-12-24'
+    )
+  })
+
+  it('a dough-only day has a sheet (dough for Tuesday) but no bake list', async () => {
+    const res = await as('backstube').get('/api/backzettel/2027-01-04')
+    expect(res.status).toBe(200)
+    expect(res.body.data.dayKind).toMatchObject({
+      kind: 'teigtag',
+      label: 'Nur Teig (Laden geschlossen)',
+    })
+    expect(res.body.data.bakeDates.map((b: any) => b.date)).toEqual([
+      '2027-01-05',
+    ])
+    const list = await as('backstube').get(
+      '/api/backzettel/2027-01-04/bake-list'
+    )
+    expect(list.body.data.status).toBe('ruhetag')
+    expect(list.body.data.message).toMatch(/nur Teig/)
+  })
+
+  it('missing or invalid calendar: weekly plan as before, with a hint', async () => {
+    writeKalender({ version: 1, bundesland: 'saarland', tage: [] })
+    const invalid = await as('backstube').get('/api/backzettel/2026-12-25')
+    expect(invalid.status).toBe(200)
+    expect(invalid.body.data.calendarHint).toMatchObject({
+      code: 'calendar_invalid',
+    })
+    fs.rmSync(kalenderFile(), { force: true })
+    const missing = await as('backstube').get('/api/backzettel/2026-12-25')
+    expect(missing.status).toBe(200)
+    expect(missing.body.data.calendarHint).toMatchObject({
+      code: 'calendar_missing',
+    })
+    expect(missing.body.data.dayKind).toMatchObject({
+      kind: 'normal',
+      calendar: 'missing',
+    })
+  })
+})

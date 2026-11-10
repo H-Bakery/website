@@ -45,6 +45,27 @@ describe('Druck eines Teigtag-Zettels (Z10 S6)', () => {
     expect(page.getByText(/Freigegeben von Test Backstube/)).toBeInTheDocument()
   })
 
+  it('U9: Tagestyp aus dem Kalender fett unter dem Datum, am normalen Tag nicht', () => {
+    const day = {
+      ...saturdayV2Draft(),
+      dayKind: {
+        label: 'Samstags-Satz',
+        detail: 'danach geschlossen: Fr 25.12. Testfeiertag',
+      },
+    } as unknown as BackzettelDay
+    const page = within(renderPrint(day).getByTestId('bz-print'))
+    expect(page.getByTestId('dd-day-kind')).toHaveTextContent(
+      'Samstags-Satz – danach geschlossen: Fr 25.12. Testfeiertag'
+    )
+    const normal = within(
+      renderPrint({
+        ...saturdayV2Draft(),
+        dayKind: { label: null, detail: null },
+      } as unknown as BackzettelDay).getAllByTestId('bz-print')[1]
+    )
+    expect(normal.queryByTestId('dd-day-kind')).toBeNull()
+  })
+
   it('Maschine: Liter groß, unbekannt als „–“ mit Grund - nie geschätzt', () => {
     const p = within(renderPrint(saturdayV2Draft()).getByTestId('dd-machine'))
     expect(p.getByTestId('dd-liters-test-korn-teig')).toHaveTextContent('6 L')

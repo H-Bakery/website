@@ -26,6 +26,7 @@ import { BackzettelError, BackzettelService } from './backzettel.service'
 /* eslint-disable @typescript-eslint/no-var-requires */
 const core = require('./rest-am-abend.core')
 const files = require('./reports-files.core')
+const kalender = require('./kalender.core')
 /* eslint-enable @typescript-eslint/no-var-requires */
 
 export interface RestOptions {
@@ -267,7 +268,8 @@ export function createRestService(
       )
     }
     const weekday = core.isoWeekday(date)
-    if (!loaded.config.days.includes(weekday)) {
+    // U9: Feiertag/Schließtag laut Kalender wie ein Ruhetag
+    if (!kalender.isBakeDay(loaded.config, date)) {
       throw new BackzettelError(
         409,
         'ruhetag',
