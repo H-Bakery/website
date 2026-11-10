@@ -858,6 +858,21 @@ describe('backzettelSnapshot schema 2 (Backzettel v2)', () => {
     expect(tue).toBeGreaterThan(sun)
   })
 
+  test('Zugabe je Bruch (U3): JSON keeps addons, Markdown shows „+ … kg“', () => {
+    const cfg = fixture.configV2()
+    cfg.items.find((i) => i.id === 'test-doppel').bruch.addons = [
+      { name: 'Testkörner', g: 300 },
+    ]
+    const s = core.backzettelSnapshot(sheet('2026-11-28', { config: cfg }), {})
+    const tuesday = s.rolls.find((b) => b.bakeDate === '2026-12-01')
+    expect(tuesday.groups[0].addons).toEqual([
+      { name: 'Testkörner', gPerBruch: 300, g: 1200, gKnown: 1200 },
+    ])
+    expect(core.backzettelMarkdown(s)).toContain(
+      '- 4 Bruch × 1.200 g = 4,8 kg + 1,2 kg Testkörner – 40 Testdoppel (je 2 Teigstücke)'
+    )
+  })
+
   test('keeps the whitelist: no names, reasons, codes, plan or bread view', () => {
     const s = core.backzettelSnapshot(sheet('2026-11-28'), { role: 'inhaber' })
     const json = core.toJsonFile(s)

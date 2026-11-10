@@ -200,6 +200,15 @@ Rest am Abend/Schnappschuss (S4), Bildschirme (S5) und Druck (S6) sind auf dem Z
   `isMinimum` („≥ 15 × 500 g", „Zopf gefüllt ≥ 15", ohne bekannte Stück „offen"), ebenso ein
   Einzelstück (`singles[].kgKnown`, „Teig: ≥ 1,25 kg") - dieselben kg, die im `kgKnown` des Teigs
   stecken.
+- **Zugabe je Bruch (U3, `bruch.addons: [{ name, g }]`):** Gramm, die je Bruch **auf** das
+  Bruchgewicht kommen (Körner zum Vital-/4-Saat-Weckteig: `bruch: { g: 1800, addons: [{ name:
+Körnermischung, g: 600 }] }`). Der Kern (`bruchGroups`) rechnet `addons[].g` = Brüche × g je
+  Bruch (`gKnown` mit den bekannten Brüchen, „≥“); sie zählen **nicht** zu kg, Liter oder Chargen
+  des Teigs - `doughs[].addons` (g je Liter) träfen den ganzen Weckteig. Brüche oder Gramm offen →
+  `null` („Menge offen“, nie 0); `g: null` ist eine Lücke (`bruch_addon_g_unknown`), der Teig bleibt
+  vollständig. Mitglieder einer Bruch-Gruppe brauchen dieselben Zugaben. Bildschirm, Tablet und
+  Druck zeigen `bruchAddonsText`: „2 Bruch × 1.800 g **+ 1,2 kg Körnermischung** – …“ (im Druck
+  fett), der hq-Schnappschuss dasselbe in der Brötchen-Zeile.
 - **Unbekannt bleibt unbekannt, auch beim Bruch:** hat ein Mitglied einer Bruch-Gruppe keine
   Grundmenge, sind Brüche, kg und „frei“ `null`; `bruecheKnown`/`kgKnown` zählen nur die bekannten
   Mitglieder („≥ 1 Bruch“). „+n frei“ steht in Produkten (`spareProducts`, bei zwei Teigstücken je

@@ -17,6 +17,7 @@ import {
 import {
   addonText,
   bakeDayLabel,
+  bruchAddonsText,
   bruchCountText,
   bruchSpareText,
   bruchSplitText,
@@ -488,6 +489,7 @@ function RollsPrint({
                 <span>
                   <strong className="total">{bruchCountText(g)}</strong> ×{' '}
                   {g.g === null ? '– g' : `${formatNumber(g.g)} g`}
+                  {bruchAddonsText(g) && <strong>{bruchAddonsText(g)}</strong>}
                   <span className="small">
                     {' – '}
                     {bruchSplitText(g, lineByKey)}

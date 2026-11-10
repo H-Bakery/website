@@ -12,6 +12,8 @@
 //   Zugabe g  = g je Liter × genaue Liter des eigenen Teigs
 //   Chargen   = ⌈kg ÷ Chargengröße⌉
 //   Brüche    = ⌈Teigstücke ÷ Stück je Bruch⌉, frei = Brüche × Stück − Teigstücke
+//   Zugabe je Bruch g = Brüche × g je Bruch (`bruch.addons`, kommt AUF das
+//               Bruchgewicht, zählt nicht zu kg/Liter des Teigs)
 //
 // Unbekannt (`null`) bleibt unbekannt: ein Teil ohne Gewicht macht den Teig
 // unvollständig (`kg: null`, `kgKnown` = Summe der bekannten Teile,
@@ -249,6 +251,11 @@ function bruchGroups(cfg, lines, sheetDate) {
         _itemIndex: index,
         _weekday: weekday,
         _names: [],
+        _addons: (item.bruch.addons || []).map((a, k) => ({
+          name: a.name,
+          gPerBruch: isNum(a.g) ? a.g : null,
+          path: `items[${index}].bruch.addons[${k}].g`,
+        })),
       }
       groups.set(key, g)
     }
@@ -339,6 +346,27 @@ function bruchGroups(cfg, lines, sheetDate) {
         : null
     if (g._unknownQty) g.pieces = null
     g.name = name
+    // Zugaben je Bruch (U3): Brüche × g je Bruch; unbekannte Brüche oder
+    // Gramm bleiben `null` (`gKnown` = bekannte Brüche × g, „≥ …“).
+    g.addons = g._addons.map((a) => ({
+      name: a.name,
+      gPerBruch: a.gPerBruch,
+      g:
+        a.gPerBruch !== null && g.brueche !== null
+          ? round1(g.brueche * a.gPerBruch)
+          : null,
+      gKnown:
+        a.gPerBruch !== null && g.bruecheKnown !== null
+          ? round1(g.bruecheKnown * a.gPerBruch)
+          : null,
+    }))
+    g.addonGaps = g._addons
+      .filter((a) => a.gPerBruch === null)
+      .map((a) => ({
+        path: a.path,
+        code: 'bruch_addon_g_unknown',
+        message: `„${name}“: Gramm „${a.name}“ je Bruch sind noch offen.`,
+      }))
     out.push(g)
   }
   return out
@@ -496,7 +524,8 @@ function doughParts(cfg, lines, groups, sheetDate) {
       kg: g.missing.length === 0 ? g.kg : null,
       kgKnown: isNum(g.kgKnown) ? g.kgKnown : 0,
       missing: [...g.missing],
-      gaps: [],
+      // Zugabe je Bruch ohne Gramm: nur Lücke, der Teig bleibt vollständig
+      gaps: [...(g.addonGaps || [])],
       _index: first ? first.index : Infinity,
       _item: first ? first.item : null,
     })
@@ -1102,7 +1131,7 @@ function rollsView(cfg, lines, groups, sheetDate) {
     return b
   }
   for (const g of Array.isArray(groups) ? groups : []) {
-    const { missing, ...rest } = g
+    const { missing, addonGaps, ...rest } = g
     block(g.bakeDate).groups.push({
       ...rest,
       complete: missing.length === 0,

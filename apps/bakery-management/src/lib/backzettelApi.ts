@@ -582,9 +582,22 @@ export interface BruchGroup {
   piecesKnown?: number
   bruecheKnown?: number | null
   kgKnown?: number | null
+  /**
+   * Zugaben je Bruch (U3, z. B. Körner zum Vital-Weckteig): `g` = Brüche ×
+   * `gPerBruch`, `null` solange Brüche oder Gramm offen; `gKnown` nur die
+   * bekannten Brüche. Zählen nicht zum Teig. Ältere Server: fehlt.
+   */
+  addons?: BruchAddon[]
   split: BruchSplit[]
   complete: boolean
   missing: MissingPart[]
+}
+
+export interface BruchAddon {
+  name: string
+  gPerBruch: number | null
+  g: number | null
+  gKnown: number | null
 }
 
 export interface SingleRow {

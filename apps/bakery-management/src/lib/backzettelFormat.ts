@@ -1047,9 +1047,25 @@ export function bakeDayLabel(bakeDate: string, sheetDate: string): string {
 export function bruchGroupText(group: BruchGroup): string {
   const weight =
     group.g === null ? '? g (Bruchgewicht offen)' : `${formatNumber(group.g)} g`
-  return `${bruchCountText(group)} × ${weight} – ${bruchSplitText(
+  return `${bruchCountText(group)} × ${weight}${bruchAddonsText(
     group
-  )}${bruchSpareText(group)}`
+  )} – ${bruchSplitText(group)}${bruchSpareText(group)}`
+}
+
+/**
+ * Zugaben je Bruch (U3): „ + 1,2 kg Körnermischung“ (Brüche × g je Bruch),
+ * „ + ≥ 600 g …“ (Grundmenge offen) oder „ + Körnermischung (Menge offen)“ -
+ * nie 0 für unbekannt. Leer ohne Zugaben. Bildschirm und Druck nehmen genau
+ * diesen Text.
+ */
+export function bruchAddonsText(group: Pick<BruchGroup, 'addons'>): string {
+  return (group.addons ?? [])
+    .map((a) => {
+      if (a.g !== null) return ` + ${formatGrams(a.g)} ${a.name}`
+      if (a.gKnown) return ` + ≥ ${formatGrams(a.gKnown)} ${a.name}`
+      return ` + ${a.name} (Menge offen)`
+    })
+    .join('')
 }
 
 /** „7 Bruch“, „≥ 1 Bruch“ (Grundmenge offen) oder „? Bruch“. */

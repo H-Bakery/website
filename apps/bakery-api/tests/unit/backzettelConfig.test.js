@@ -1284,6 +1284,80 @@ describe('Z10: validateBackzettelConfig fuer v2', () => {
         v2((c) => (item(c, 'test-kaese').bruch.pieces = 20)).errors
       ).toEqual([])
     })
+    it('addons (Zugabe je Bruch, U3): { name, g }, g null offen, fehlend Warnung, ≤ 0 Fehler', () => {
+      const ok = v2(
+        (c) =>
+          (item(c, 'test-doppel').bruch.addons = [
+            { name: 'Testkörner', g: 300 },
+          ])
+      )
+      expect(ok.errors).toEqual([])
+      expect(ok.warnings).toEqual([])
+      const open = v2(
+        (c) =>
+          (item(c, 'test-doppel').bruch.addons = [
+            { name: 'Testkörner', g: null },
+          ])
+      )
+      expect(open.errors).toEqual([])
+      expect(
+        open.open.find((o) => o.path === 'items[5].bruch.addons[0].g')
+      ).toMatchObject({
+        code: 'bruch_addon_g_unknown',
+        message:
+          'Posten „test-doppel“: Gramm „Testkörner“ je Bruch sind noch offen.',
+      })
+      const missing = v2(
+        (c) => (item(c, 'test-doppel').bruch.addons = [{ name: 'Testkörner' }])
+      )
+      expect(missing.errors).toEqual([])
+      expect(warningPaths(missing)).toEqual(['items[5].bruch.addons[0].g'])
+      for (const bad of [0, -1, '300'])
+        expectOnlyError(
+          v2(
+            (c) =>
+              (item(c, 'test-doppel').bruch.addons = [
+                { name: 'Testkörner', g: bad },
+              ])
+          ),
+          'items[5].bruch.addons[0].g'
+        )
+      expectOnlyError(
+        v2((c) => (item(c, 'test-doppel').bruch.addons = { g: 300 })),
+        'items[5].bruch.addons'
+      )
+      expectOnlyError(
+        v2((c) => (item(c, 'test-doppel').bruch.addons = [{ g: 300 }])),
+        'items[5].bruch.addons[0].name'
+      )
+      expectOnlyError(
+        v2(
+          (c) =>
+            (item(c, 'test-doppel').bruch.addons = [
+              { name: 'Testkörner', g: 300 },
+              { name: 'Testkörner', g: 100 },
+            ])
+        ),
+        'items[5].bruch.addons[1].name'
+      )
+    })
+
+    it('addons: Mitglieder einer Gruppe brauchen dieselben Zugaben je Bruch', () => {
+      const r = v2(
+        (c) =>
+          (item(c, 'test-kaese').bruch.addons = [
+            { name: 'Testkörner', g: 300 },
+          ])
+      )
+      expectOnlyError(r, 'items[7].bruch.group')
+      expect(r.errors[0].message).toMatch(/Zugaben je Bruch/)
+      expect(
+        v2((c) => {
+          item(c, 'test-stern').bruch.addons = [{ name: 'Testkörner', g: 300 }]
+          item(c, 'test-kaese').bruch.addons = [{ name: 'Testkörner', g: 300 }]
+        }).errors
+      ).toEqual([])
+    })
   })
 
   describe('from_dough', () => {
@@ -1566,6 +1640,7 @@ describe('Z10: normalizeConfig fuer v2', () => {
       per_product: 2,
       group: 'test-doppel',
       piecesPerBruch: 20,
+      addons: [],
     })
     expect(items.find((i) => i.id === 'test-stern').bruch.group).toBe(
       'test-gemischt'
@@ -1579,6 +1654,21 @@ describe('Z10: normalizeConfig fuer v2', () => {
       piece_g: 250,
       pieces: null,
     })
+  })
+
+  it('bruch.addons: { name, g }, offen bleibt null; idempotent', () => {
+    const cfg = configV2()
+    item(cfg, 'test-doppel').bruch.addons = [
+      { name: 'Testkörner', g: 300 },
+      { name: 'Testflocken', g: null },
+    ]
+    const out = core.normalizeConfig(cfg)
+    const doppel = out.items.find((i) => i.id === 'test-doppel')
+    expect(doppel.bruch.addons).toEqual([
+      { name: 'Testkörner', g: 300 },
+      { name: 'Testflocken', g: null },
+    ])
+    expect(core.normalizeConfig(out)).toEqual(out)
   })
 
   it('bruch.pieces: eigener Wert vor bruch_pieces, null bleibt unbekannt', () => {
