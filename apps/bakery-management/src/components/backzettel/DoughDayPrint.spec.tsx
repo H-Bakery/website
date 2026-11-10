@@ -22,44 +22,59 @@ function renderPrint(day: BackzettelDay, withExtras = false) {
   )
 }
 
-describe('Druck eines Teigtag-Zettels (Z10 S6)', () => {
-  it('Kopf mit Teigen und Stempel: Entwurf bzw. freigegeben', () => {
+/** Eine Zeile des Tages ändern (alle Abschnitte). */
+function patchLines(
+  day: BackzettelDay,
+  patch: (l: BackzettelLine) => BackzettelLine
+): BackzettelDay {
+  return {
+    ...day,
+    sections: day.sections.map((s) => ({ ...s, lines: s.lines.map(patch) })),
+  }
+}
+
+describe('Druck eines Teigtag-Zettels (U8)', () => {
+  it('Kopf: Wochentag und Datum groß, Tagestyp gerahmt, Stempel Entwurf bzw. freigegeben', () => {
     const draftPage = renderPrint(saturdayV2Draft())
-    const draft = within(draftPage.getByTestId('bz-print'))
-    expect(
-      draft.getByText('Backzettel Samstag, 28.11.2026')
-    ).toBeInTheDocument()
+    const draft = within(draftPage.getByTestId('print-page-1'))
+    expect(draft.getByTestId('dd-title')).toHaveTextContent(
+      /^Samstag\s*28\.11\.2026$/
+    )
     expect(draft.getByTestId('dd-stamp')).toHaveTextContent(
       'ENTWURF – noch nicht freigegeben'
     )
-    expect(
-      draft.getByText('Teige heute: Korn + Holz · Testweck für So + Di', {
-        exact: false,
-      })
-    ).toBeInTheDocument()
-
+    expect(draft.getByTestId('dd-daytype')).toHaveTextContent(
+      'Heute backen + Teig für So 29.11. und Di 01.12.'
+    )
     draftPage.unmount()
-    const confirmed = renderPrint(saturdayV2Confirmed())
-    const page = within(confirmed.getByTestId('bz-print'))
-    expect(page.getByTestId('dd-stamp')).toHaveTextContent('FREIGEGEBEN')
-    expect(page.getByText(/Freigegeben von Test Backstube/)).toBeInTheDocument()
+
+    const confirmed = within(
+      renderPrint(saturdayV2Confirmed()).getByTestId('print-page-1')
+    )
+    expect(confirmed.getByTestId('dd-stamp')).toHaveTextContent('FREIGEGEBEN')
+    expect(confirmed.getByTestId('dd-meta')).toHaveTextContent(
+      /freigegeben von Test Backstube/
+    )
   })
 
-  it('Maschine: Liter groß, unbekannt als „–“ mit Grund - nie geschätzt', () => {
-    const p = within(renderPrint(saturdayV2Draft()).getByTestId('dd-machine'))
-    expect(p.getByTestId('dd-liters-test-korn-teig')).toHaveTextContent('6 L')
-    expect(p.getByTestId('dd-machine-test-korn-teig')).toHaveTextContent(
-      '11,4 kg · Chargen –'
-    )
-    expect(p.getByTestId('dd-machine-test-korn-teig')).toHaveTextContent(
-      'Testsauer 20 g'
-    )
+  it('„Teige heute“ zuerst: Liter groß, unbekannt als „–“ mit Grund - nie geschätzt', () => {
+    const page = renderPrint(saturdayV2Draft())
+    const p = within(page.getByTestId('dd-machine'))
+    // erster Block auf Blatt 1
+    expect(
+      page.getByTestId('print-page-1').querySelector('.dd-block')
+    ).toHaveAttribute('data-testid', 'dd-machine')
+    expect(p.getByTestId('dd-liters-test-korn-teig')).toHaveTextContent(/^6 L$/)
+    const korn = p.getByTestId('dd-machine-test-korn-teig')
+    expect(korn).toHaveTextContent('11,4 kg')
+    expect(korn).toHaveTextContent('+ Testsauer 20 g')
+    expect(korn).toHaveTextContent('heute')
+    const weck = p.getByTestId('dd-machine-test-weck-teig')
     expect(p.getByTestId('dd-liters-test-weck-teig')).toHaveTextContent('5,5 L')
-    expect(p.getByTestId('dd-machine-test-weck-teig')).toHaveTextContent(
-      '1 Charge'
-    )
+    expect(weck).toHaveTextContent('1 Charge')
+    expect(weck).toHaveTextContent('So + Di')
     const flit = p.getByTestId('dd-machine-test-flit-teig')
-    expect(p.getByTestId('dd-liters-test-flit-teig')).toHaveTextContent('–')
+    expect(p.getByTestId('dd-liters-test-flit-teig')).toHaveTextContent(/^–$/)
     expect(flit).toHaveTextContent('≥ 3 kg')
     expect(flit).toHaveTextContent('Liter unbekannt (Teig unvollständig)')
     expect(flit).toHaveClass('incomplete')
@@ -67,35 +82,67 @@ describe('Druck eines Teigtag-Zettels (Z10 S6)', () => {
     expect(p.getByTestId('dd-machine-test-hefe')).toHaveTextContent('Wasser')
   })
 
-  it('Brot: Größen als Spalten, offene Grundmenge als „offen“, alter Liter-Posten mit Einheit', () => {
-    const p = within(renderPrint(saturdayV2Draft()).getByTestId('dd-bread'))
-    expect(p.getByTestId('dd-bread-test-korn|g500')).toHaveTextContent('8')
-    expect(p.getByTestId('dd-bread-test-korn|g1000')).toHaveTextContent('3')
-    expect(p.getByTestId('dd-bread-test-korn|kasten')).toHaveTextContent(
-      'offen'
+  it('je Teig ein Block in der Reihenfolge der Kästen, die Liter im Kopf des Blocks', () => {
+    const page = renderPrint(busySaturdayV2Draft())
+    const order = page
+      .getAllByTestId(/^dd-dough-(?!fig)/)
+      .map((el) => el.getAttribute('data-testid'))
+    expect(order).toEqual([
+      'dd-dough-test-korn-teig',
+      'dd-dough-test-misch-teig',
+      'dd-dough-test-roggen-teig',
+      // Spezialbrot ohne Teig direkt hinter dem letzten Brot-Teig
+      'dd-dough-weiteres-brot',
+      'dd-dough-test-weck-teig',
+      'dd-dough-test-flit-teig',
+      'dd-dough-test-dinkelweck-teig',
+      'dd-dough-test-hefe',
+    ])
+    expect(page.getByTestId('dd-dough-fig-test-korn-teig')).toHaveTextContent(
+      '12 L · 23,6 kg'
     )
-    expect(p.getByTestId('dd-bread-test-hafer|')).toHaveTextContent('1,5 L')
-    expect(p.getByText('7,8 kg')).toBeInTheDocument()
-    expect(p.getAllByText('Gemeinsamer Teig: Korn + Holz')).toHaveLength(2)
+    // Liter unbekannt: im Block nur kg, der Grund steht bei „Teige heute“.
+    expect(page.getByTestId('dd-dough-fig-test-roggen-teig')).toHaveTextContent(
+      /^≥ 44,5 kg$/
+    )
+    expect(page.getByTestId('dd-dough-fig-test-hefe')).toHaveTextContent(
+      'Wasser 3 L · 13,8 kg'
+    )
   })
 
-  it('offene Grundmenge mit Vorbestellung druckt „≥ n“ mit „Grundmenge offen“ - nie die nackte Vorbestellzahl (Review Z10 Runde 2)', () => {
+  it('Brot im Block seines Teigs: Größen als Spalten, offene Grundmenge als „offen“, Spezialbrot mit Einheit unter „Menge“', () => {
+    const page = renderPrint(saturdayV2Draft())
+    const korn = within(page.getByTestId('dd-dough-test-korn-teig'))
+    expect(korn.getByTestId('dd-bread-test-korn|g500')).toHaveTextContent('8')
+    expect(korn.getByTestId('dd-bread-test-korn|g1000')).toHaveTextContent('3')
+    expect(korn.getByTestId('dd-bread-test-korn|kasten')).toHaveTextContent(
+      'offen'
+    )
+    expect(korn.getByText('7,8 kg')).toBeInTheDocument()
+    expect(korn.getAllByText(/Gemeinsamer Teig: Korn \+ Holz/)).toHaveLength(2)
+    // Testhafer (alter Liter-Posten, kein Teig): eigener Block, Spalte „Menge“
+    const weiteres = within(page.getByTestId('dd-dough-weiteres-brot'))
+    expect(weiteres.getByText('Weiteres Brot')).toBeInTheDocument()
+    expect(weiteres.getByText('Menge')).toBeInTheDocument()
+    expect(weiteres.queryByText('500 g')).not.toBeInTheDocument()
+    expect(weiteres.getByTestId('dd-bread-test-hafer|')).toHaveTextContent(
+      /^1,5 L$/
+    )
+  })
+
+  it('offene Grundmenge mit Vorbestellung druckt „≥ n“ mit „Grundmenge offen“ - nie die nackte Vorbestellzahl', () => {
     const base = saturdayV2Draft()
     const open = { baseUnset: true, totalIsMinimum: true, base: 0 }
     const day: BackzettelDay = {
-      ...base,
-      sections: base.sections.map((sec) => ({
-        ...sec,
-        lines: sec.lines.map((l) =>
-          l.key === 'test-korn|kasten'
-            ? { ...l, ...open, preorders: 4, total: 4 }
-            : l.key === 'test-zopf|mohn'
-            ? { ...l, ...open, preorders: 2, total: 2 }
-            : l.key === 'test-plunder|'
-            ? { ...l, ...open, total: 0 }
-            : l
-        ),
-      })),
+      ...patchLines(base, (l) =>
+        l.key === 'test-korn|kasten'
+          ? { ...l, ...open, preorders: 4, total: 4 }
+          : l.key === 'test-zopf|mohn'
+          ? { ...l, ...open, preorders: 2, total: 2 }
+          : l.key === 'test-plunder|'
+          ? { ...l, ...open, total: 0 }
+          : l
+      ),
       bread: base.bread && {
         ...base.bread,
         rows: base.bread.rows.map((r) =>
@@ -122,96 +169,104 @@ describe('Druck eines Teigtag-Zettels (Z10 S6)', () => {
       /^≥ 4$/
     )
     expect(
-      within(page.getByTestId('dd-bread')).getByText('Grundmenge offen: Kasten')
-    ).toBeInTheDocument()
-    // Hefeteig je Sorte: „Testmohnfüllung ≥ 2“
-    expect(page.getByTestId('dd-hefe-test-zopf')).toHaveTextContent(
-      'Testmohnfüllung ≥ 2'
-    )
+      page.getByTestId(`dd-bread-detail-test-korn|${SAT}`)
+    ).toHaveTextContent('Grundmenge offen: Kasten')
+    // Hefeteig je Sorte eine Zeile: „≥ 2 Testmohnfüllung“
+    const mohn = page.getByTestId('dd-line-test-zopf|mohn')
+    expect(mohn).toHaveTextContent(/^≥ 2Testmohnfüllung/)
+    expect(mohn).toHaveTextContent('Grundmenge offen')
     // übrige Abschnitte: ohne Bekanntes „offen“, nie „0“
-    expect(page.getByTestId('dd-line-test-plunder|')).toHaveTextContent(/offen/)
-    expect(
-      within(page.getByTestId('dd-line-test-plunder|')).queryByText('0')
-    ).not.toBeInTheDocument()
+    const plunder = page.getByTestId('dd-line-test-plunder|')
+    expect(plunder).toHaveTextContent(/^offen/)
+    expect(within(plunder).queryByText('0')).not.toBeInTheDocument()
   })
 
-  it('Brot ohne Größe: die Menge steht beim Namen, nicht unter einer Größenspalte', () => {
-    const page = renderPrint(saturdayV2Draft())
-    const value = page.getByTestId('dd-bread-test-hafer|')
-    expect(value.tagName).toBe('STRONG')
-    expect(value.closest('td')).toHaveTextContent(/^Testhafer/)
-  })
-
-  it('Nachträge: was sie für Teig und Teilmaschine heißen', () => {
-    const page = renderPrint({ ...saturdayV2Confirmed(), ...v2DeltaDough() })
-    expect(page.getByTestId('print-delta-dough')).toHaveTextContent(
-      'Testdoppel für Di: +14 Teigstücke – 1 Bruch mehr (jetzt 6)'
+  it('Brot: Korrektur mit Grund steht klein unter dem Namen', () => {
+    const day = patchLines(saturdayV2Draft(), (l) =>
+      l.key === 'test-korn|g1000'
+        ? { ...l, correction: 2, correctionReason: 'Testfest' }
+        : l
     )
-    page.unmount()
+    const page = renderPrint(day)
     expect(
-      renderPrint(saturdayV2Confirmed()).queryByTestId('print-delta-dough')
-    ).not.toBeInTheDocument()
+      page.getByTestId(`dd-bread-detail-test-korn|${SAT}`)
+    ).toHaveTextContent('1 kg: Korr. +2 (Testfest)')
+    expect(
+      page.getByTestId(`dd-bread-detail-test-holz|${SAT}`)
+    ).not.toHaveTextContent('Korr.')
   })
 
-  it('Brot: Korrektur mit Grund steht an der Zeile', () => {
-    const day = saturdayV2Draft()
-    const sections = day.sections.map((s) => ({
-      ...s,
-      lines: s.lines.map((l) =>
-        l.key === 'test-korn|g1000'
-          ? { ...l, correction: 2, correctionReason: 'Testfest' }
-          : l
-      ),
-    }))
-    const p = within(renderPrint({ ...day, sections }).getByTestId('dd-bread'))
-    expect(p.getByTestId(`dd-bread-corr-test-korn|${SAT}`)).toHaveTextContent(
-      '1 kg: Korr. +2 (Testfest)'
-    )
-    expect(
-      p.queryByTestId(`dd-bread-corr-test-holz|${SAT}`)
-    ).not.toBeInTheDocument()
-  })
-
-  it('Brötchen je Backtag: Brüche × Gewicht – Aufteilung, „+n frei“ nur als Hinweis', () => {
+  it('Brötchen im Block ihres Teigs, je Backtag: Bruch groß, × Gewicht, Aufteilung mit „+n frei“', () => {
     const page = renderPrint(saturdayV2Draft())
-    const sun = within(page.getByTestId(`dd-rolls-${SUN}`))
+    const weck = within(page.getByTestId('dd-dough-test-weck-teig'))
+    const sun = within(weck.getByTestId(`dd-rolls-test-weck-teig-${SUN}`))
     expect(sun.getByText('für Sonntag, 29.11.')).toBeInTheDocument()
-    expect(sun.getByTestId(`dd-bruch-${SUN}|test-doppel`)).toHaveTextContent(
-      '7 Bruch × 1.250 g – 66 Testdoppel · +4 frei'
-    )
-    expect(sun.getByTestId(`dd-bruch-${SUN}|test-gemischt`)).toHaveTextContent(
-      '1 Bruch × 2.000 g – 12 Teststern, 8 Testkäse'
+    const doppel = sun.getByTestId(`dd-bruch-${SUN}|test-doppel`)
+    expect(within(doppel).getByText('7 Bruch')).toHaveClass('qty')
+    expect(doppel).toHaveTextContent('× 1.250 g')
+    expect(doppel).toHaveTextContent('66 Testdoppel · +4 frei')
+    const gemischt = sun.getByTestId(`dd-bruch-${SUN}|test-gemischt`)
+    expect(gemischt).toHaveTextContent('1 Bruch× 2.000 g')
+    expect(gemischt).toHaveTextContent('12 Teststern, 8 Testkäse')
+    expect(gemischt).not.toHaveTextContent('frei')
+    // Backtage chronologisch: So vor Di
+    const days = weck
+      .getAllByTestId(/^dd-rolls-test-weck-teig-/)
+      .map((el) => el.getAttribute('data-testid'))
+    expect(days).toEqual([
+      `dd-rolls-test-weck-teig-${SUN}`,
+      `dd-rolls-test-weck-teig-${V2_TUE}`,
+    ])
+    // Testflit: Einzelstück und Bruch mit offenem Gewicht im Block des Flitteigs
+    const flit = within(page.getByTestId('dd-dough-test-flit-teig'))
+    expect(
+      flit.getByTestId(`dd-single-test-flit-klein|@${SUN}`)
+    ).toHaveTextContent('10je 300 gTestflit klein')
+    expect(flit.getByTestId(`dd-bruch-${V2_TUE}|test-flitweck`)).toHaveClass(
+      'incomplete'
     )
     expect(
-      sun.getByTestId(`dd-bruch-${SUN}|test-gemischt`)
-    ).not.toHaveTextContent('frei')
-    expect(sun.getByText('Testflit klein')).toBeInTheDocument()
-    const tue = within(page.getByTestId(`dd-rolls-${V2_TUE}`))
-    expect(
-      tue.getByTestId(`dd-bruch-${V2_TUE}|test-flitweck`)
-    ).toHaveTextContent('1 Bruch × – g – 20 Testflitweck')
+      flit.getByTestId(`dd-bruch-${V2_TUE}|test-flitweck`)
+    ).toHaveTextContent('× – g')
     // Testparty: Teigstücke je Stück offen - steht dabei, kg nicht geschätzt.
-    expect(tue.getByText(/Teigstücke offen/)).toBeInTheDocument()
+    expect(
+      flit.getByTestId(`dd-single-test-party|@${V2_TUE}`)
+    ).toHaveTextContent('Teigstücke offen')
   })
 
-  it('Hefeteig: gefüllter Posten in einer Zeile mit den Sorten', () => {
-    const p = within(renderPrint(saturdayV2Draft()).getByTestId('dd-hefeteig'))
-    expect(p.getByTestId('dd-hefe-test-zopf')).toHaveTextContent(
-      'Testzopf gefülltTestnussfüllung 4 · Testmohnfüllung 2'
-    )
-    expect(p.getByTestId('dd-hefe-test-kranz')).toHaveTextContent('3')
-    expect(p.getByText(/Testhefe: 12 Teigstücke · 6,6 kg/)).toBeInTheDocument()
-  })
-
-  it('übrige Abschnitte knapp, Offen-Fußnote, vier Notizzeilen', () => {
+  it('Hefeteig im Block seines Teigs: gefüllte Posten mit einer Zeile und einem Kästchen je Sorte', () => {
     const page = renderPrint(saturdayV2Draft())
-    const others = within(page.getByTestId('dd-others'))
-    expect(others.getByText('Kaffeestückchen')).toBeInTheDocument()
-    expect(others.getByTestId('dd-line-test-plunder|')).toHaveTextContent(
-      'Testplunder20'
+    const hefe = within(page.getByTestId('dd-dough-test-hefe'))
+    expect(
+      hefe.getByText(/Testhefe: 12 Teigstücke · 6,6 kg/)
+    ).toBeInTheDocument()
+    const zopf = within(hefe.getByTestId('dd-hefe-test-zopf'))
+    expect(zopf.getByText('Testzopf gefüllt')).toBeInTheDocument()
+    expect(zopf.getByTestId('dd-line-test-zopf|nuss')).toHaveTextContent(
+      /^4Testnussfüllung$/
     )
-    // Brot und Brötchen stehen nicht noch einmal bei den übrigen.
-    expect(others.queryByText('Brot')).not.toBeInTheDocument()
+    expect(zopf.getByTestId('dd-line-test-zopf|mohn')).toHaveTextContent(
+      /^2Testmohnfüllung$/
+    )
+    expect(
+      hefe.getByTestId('dd-hefe-test-zopf').querySelectorAll('.box')
+    ).toHaveLength(2)
+    expect(hefe.getByTestId('dd-hefe-test-kranz')).toHaveTextContent(
+      /^3Testkranz$/
+    )
+  })
+
+  it('übrige Abschnitte: Menge groß links, Fußnoten, vier Notizzeilen', () => {
+    const page = renderPrint(saturdayV2Draft())
+    const kaffee = within(page.getByTestId('dd-section-kaffeestueckchen'))
+    expect(kaffee.getByText('Kaffeestückchen')).toBeInTheDocument()
+    const plunder = kaffee.getByTestId('dd-line-test-plunder|')
+    expect(plunder.firstElementChild).toHaveClass('qty')
+    expect(plunder).toHaveTextContent(/^20Testplunder/)
+    // Brot, Brötchen und Hefeteig stehen nicht noch einmal als Abschnitt.
+    expect(page.queryByTestId('dd-section-brot')).not.toBeInTheDocument()
+    expect(page.queryByTestId('dd-section-broetchen')).not.toBeInTheDocument()
+    expect(page.queryByTestId('dd-section-hefeteig')).not.toBeInTheDocument()
     const open = page.getByTestId('dd-open')
     expect(open).toHaveTextContent('Offen:')
     expect(open).toHaveTextContent('kg je Liter ist noch offen')
@@ -226,42 +281,44 @@ describe('Druck eines Teigtag-Zettels (Z10 S6)', () => {
     ).toHaveLength(4)
   })
 
-  it('Zukauf-Hinweis und note stehen fett an der Zeile der übrigen Abschnitte', () => {
-    const day = saturdayV2Draft()
-    for (const s of day.sections)
-      for (const l of s.lines)
-        if (l.itemId === 'test-plunder')
-          Object.assign(l, {
-            purchased: true,
-            note: 'mit Käse bestreuen',
-            hint: 'Zukauf – auflegen · mit Käse bestreuen',
-          })
+  it('Zukauf-Hinweis und note stehen fett an der Zeile - in Abschnitten, beim Brot und bei Brötchen', () => {
+    const hint = {
+      purchased: true,
+      note: 'mit Käse bestreuen',
+      hint: 'Zukauf – auflegen · mit Käse bestreuen',
+    }
+    const day = patchLines(saturdayV2Draft(), (l) =>
+      l.itemId === 'test-plunder' ||
+      l.key === 'test-holz|g500' ||
+      l.key === `test-kaese|@${SUN}`
+        ? { ...l, ...hint }
+        : l
+    )
     const page = renderPrint(day)
     const row = page.getByTestId('dd-line-test-plunder|')
-    const hint = within(row).getByTestId('dd-hint-test-plunder|')
-    expect(hint.tagName).toBe('STRONG')
-    expect(hint).toHaveTextContent('Zukauf – auflegen · mit Käse bestreuen')
-    expect(page.queryAllByTestId(/^dd-hint-/)).toHaveLength(1)
+    const strong = within(row).getByTestId('dd-hint-test-plunder|')
+    expect(strong.tagName).toBe('STRONG')
+    expect(strong).toHaveTextContent('Zukauf – auflegen · mit Käse bestreuen')
+    expect(
+      within(page.getByTestId(`dd-bread-row-test-holz|${SAT}`)).getByTestId(
+        'dd-hint-test-holz|g500'
+      )
+    ).toHaveTextContent('Zukauf – auflegen')
+    expect(page.getByTestId(`dd-bruch-${SUN}|test-gemischt`)).toHaveTextContent(
+      'Zukauf – auflegen · mit Käse bestreuen'
+    )
   })
 
-  it('Nachträge mit Backtag, nicht in den Mengen; abgehakte Zeilen mit ✓', () => {
-    const confirmed = saturdayV2Confirmed()
-    const day: BackzettelDay = {
-      ...confirmed,
-      sections: confirmed.sections.map((s) => ({
-        ...s,
-        lines: s.lines.map(
-          (l): BackzettelLine =>
-            l.key === 'test-plunder|'
-              ? {
-                  ...l,
-                  doneAt: '2026-11-28T04:00:00.000Z',
-                  doneBy: { id: 2, displayName: 'Test Backstube' },
-                }
-              : l
-        ),
-      })),
-    }
+  it('Nachträge mit Backtag, nicht in den Mengen; abgehakte Zeilen mit ✓ und Kürzel', () => {
+    const day = patchLines(saturdayV2Confirmed(), (l) =>
+      l.key === 'test-plunder|'
+        ? {
+            ...l,
+            doneAt: '2026-11-28T04:00:00.000Z',
+            doneBy: { id: 2, displayName: 'Test Backstube' },
+          }
+        : l
+    )
     const page = renderPrint(day)
     const deltas = within(page.getByTestId('print-deltas'))
     expect(
@@ -270,10 +327,21 @@ describe('Druck eines Teigtag-Zettels (Z10 S6)', () => {
     expect(
       within(page.getByTestId('dd-line-test-plunder|')).getByTestId('dd-done')
     ).toHaveTextContent(/^✓TB$/)
-    // Die Brötchen-Zeile nennt den Nachtrag nur als Hinweis - das Gesamt bleibt.
+    // Die Brötchen-Zeile nennt den Nachtrag nicht in der Zahl - das Gesamt bleibt.
     expect(
       page.getByTestId(`dd-bruch-${V2_TUE}|test-doppel`)
     ).toHaveTextContent('44 Testdoppel')
+  })
+
+  it('Nachträge: was sie für Teig und Teilmaschine heißen', () => {
+    const page = renderPrint({ ...saturdayV2Confirmed(), ...v2DeltaDough() })
+    expect(page.getByTestId('print-delta-dough')).toHaveTextContent(
+      'Testdoppel für Di: +14 Teigstücke – 1 Bruch mehr (jetzt 6)'
+    )
+    page.unmount()
+    expect(
+      renderPrint(saturdayV2Confirmed()).queryByTestId('print-delta-dough')
+    ).not.toBeInTheDocument()
   })
 
   it('Abwiegeliste & Rezepte nur auf Wunsch, auf eigenen Blättern', () => {
@@ -293,9 +361,75 @@ describe('Druck eines Teigtag-Zettels (Z10 S6)', () => {
     ).toBeInTheDocument()
   })
 
-  it('zu voll für ein Blatt: übrige Abschnitte auf Blatt 2 mit Hinweis auf Seite 1', () => {
+  it('Zeilen ohne Teig-Zuordnung landen in Sammelblöcken - nie weggelassen', () => {
+    // Ohne Teile der Teige weiß der Druck nicht, zu welchem Teig die
+    // Einzelstücke gehören; Bruch-Gruppen und Brot tragen ihren Teig selbst.
+    const day = saturdayV2Draft({
+      doughs: saturdayV2Draft().doughs?.map((d) => ({ ...d, parts: [] })),
+    })
+    const page = renderPrint(day)
+    const rest = within(page.getByTestId('dd-dough-weitere-broetchen'))
+    expect(rest.getByText('Weitere Brötchen')).toBeInTheDocument()
+    expect(
+      rest.getByTestId(`dd-single-test-flit-klein|@${SUN}`)
+    ).toBeInTheDocument()
+    expect(
+      rest.getByTestId(`dd-single-test-party|@${V2_TUE}`)
+    ).toBeInTheDocument()
+    // Hefeteig-Posten: in den Hefeteig-Kasten (Abschnitt „hefeteig“)
+    expect(
+      within(page.getByTestId('dd-dough-test-hefe')).getByTestId(
+        'dd-hefe-test-zopf'
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('voller Samstag: mehrere Blätter mit Kopf, jede Zeile genau einmal, kein Block geteilt', () => {
+    for (const day of [busySaturdayV2Draft(), busySaturdayV2Confirmed()]) {
+      const page = renderPrint(day)
+      const root = page.getByTestId('bz-print')
+      const sheets = Array.from(root.querySelectorAll('section.dd-sheet'))
+      expect(sheets.length).toBeGreaterThan(1)
+      expect(sheets.length).toBeLessThanOrEqual(3)
+      expect(root).toHaveAttribute('data-print-sheets', String(sheets.length))
+      sheets.slice(1).forEach((sheet, i) => {
+        expect(sheet).toHaveClass('bz-break')
+        expect(sheet).toHaveTextContent(
+          `Samstag, 28.11.2026 – Blatt ${i + 2} von ${sheets.length}`
+        )
+      })
+      expect(
+        within(sheets[0] as HTMLElement).getByTestId('dd-meta')
+      ).toHaveTextContent(`Blatt 1 von ${sheets.length}`)
+      // Brot und Brötchen über ihre Zellen, die übrigen als Zeile - je einmal.
+      for (const sec of day.sections) {
+        for (const l of sec.lines) {
+          if (sec.id === 'brot' || sec.id === 'broetchen') continue
+          expect(page.getAllByTestId(`dd-line-${l.key}`)).toHaveLength(1)
+        }
+      }
+      expect(page.getAllByTestId(/^dd-bruch-/)).toHaveLength(10)
+      expect(page.getAllByTestId(/^dd-single-/)).toHaveLength(4)
+      expect(page.getByTestId('dd-bread-test-roggen|kasten')).toHaveTextContent(
+        'offen'
+      )
+      // jeder Block steht ganz auf einem Blatt
+      for (const id of ['dd-machine', 'dd-dough-test-weck-teig']) {
+        expect(page.getAllByTestId(id)).toHaveLength(1)
+      }
+      // Notizen nur auf dem letzten Blatt
+      expect(
+        within(sheets[sheets.length - 1] as HTMLElement).queryByTestId(
+          'dd-notes'
+        ) ?? null
+      ).not.toBeNull()
+      page.unmount()
+    }
+  })
+
+  it('ein Abschnitt höher als ein Blatt geht weiter unter „… (Forts.)“, jede Zeile einmal', () => {
     const day = saturdayV2Draft()
-    const many = Array.from({ length: 200 }, (_, i) =>
+    const many = Array.from({ length: 120 }, (_, i) =>
       line({
         key: `test-extra-${i}|`,
         itemId: `test-extra-${i}`,
@@ -313,80 +447,30 @@ describe('Druck eines Teigtag-Zettels (Z10 S6)', () => {
         { id: 'kuchen', label: 'Kuchen', lines: many },
       ],
     })
-    expect(page.getByTestId('dd-others-next')).toHaveTextContent(
-      'Weitere Abschnitte auf Blatt 2: Kaffeestückchen, Kuchen'
-    )
-    expect(page.getByTestId('dd-others-next')).toHaveClass('dd-next')
-    expect(
-      within(page.getByTestId('print-page-1')).queryByTestId('dd-others')
-    ).not.toBeInTheDocument()
-    const second = within(page.getByTestId('print-dd-others'))
-    expect(second.getByTestId('dd-line-test-extra-199|')).toBeInTheDocument()
-    expect(page.getByTestId('print-dd-others')).toHaveClass('bz-break')
-    // Blatt 2 trägt seine eigene Dichte (Review Z10), Seite 1 ihre.
-    const sheet2 = page.getByTestId('print-dd-others')
-    expect(sheet2).toHaveClass('dd-sheet2')
-    expect(sheet2.style.getPropertyValue('--dd-font')).toMatch(
-      /^\d+(\.\d+)?pt$/
-    )
-    expect(sheet2.style.getPropertyValue('--dd-row')).toMatch(/^\d+(\.\d+)?mm$/)
-    expect(sheet2).toHaveAttribute('data-print-step')
-  })
-
-  it('voller Samstag: jede Zeile steht genau einmal auf Seite 1, kein Blatt 2', () => {
-    for (const day of [busySaturdayV2Draft(), busySaturdayV2Confirmed()]) {
-      const page = renderPrint(day)
-      const sheet = page.getByTestId('print-page-1')
-      expect(page.queryByTestId('dd-others-next')).not.toBeInTheDocument()
-      expect(page.queryByTestId('print-dd-others')).not.toBeInTheDocument()
-      // Brot und Brötchen über ihre Zellen, die übrigen als Zeile.
-      for (const sec of day.sections) {
-        for (const l of sec.lines) {
-          if (sec.id === 'brot' || sec.id === 'broetchen') continue
-          if (sec.id === 'hefeteig') {
-            expect(
-              within(sheet).getByTestId(`dd-hefe-${l.itemId}`)
-            ).toBeInTheDocument()
-            continue
-          }
-          expect(within(sheet).getAllByTestId(`dd-line-${l.key}`)).toHaveLength(
-            1
-          )
-        }
-      }
-      expect(within(sheet).getAllByTestId(/^dd-bruch-/)).toHaveLength(10)
+    const forts = page.getAllByTestId('dd-section-kuchen-forts')
+    expect(forts.length).toBeGreaterThanOrEqual(1)
+    for (const f of forts) {
+      expect(f.firstElementChild).toHaveTextContent('Kuchen (Forts.)')
       expect(
-        within(sheet).getByTestId('dd-bread-test-roggen|kasten')
-      ).toHaveTextContent('offen')
-      page.unmount()
+        f.querySelectorAll('[data-testid^="dd-line-"]').length
+      ).toBeGreaterThanOrEqual(3)
+    }
+    for (let i = 0; i < 120; i++) {
+      expect(page.getAllByTestId(`dd-line-test-extra-${i}|`)).toHaveLength(1)
     }
   })
 
-  it('ein langer Abschnitt bricht in die zweite Spalte um und steht dort unter „… (Forts.)“', () => {
-    const page = renderPrint(busySaturdayV2Draft())
-    const left = within(page.getByTestId('dd-col-1'))
-    const right = within(page.getByTestId('dd-col-2'))
-    expect(left.getByText('Kaffeestückchen')).toBeInTheDocument()
-    expect(right.getByText('Kaffeestückchen (Forts.)')).toBeInTheDocument()
-    // die Fortsetzung beginnt mit ihrer Überschrift, nicht mit einer Zeile
-    const forts = page.getByTestId('dd-section-kaffeestueckchen-forts')
-    expect(forts.firstElementChild).toHaveTextContent(
-      'Kaffeestückchen (Forts.)'
-    )
-    expect(
-      forts.querySelectorAll('[data-testid^="dd-line-"]').length
-    ).toBeGreaterThanOrEqual(3)
-    expect(
-      page
-        .getByTestId('dd-section-kaffeestueckchen')
-        .querySelectorAll('[data-testid^="dd-line-"]').length
-    ).toBeGreaterThanOrEqual(3)
-  })
-
-  it('Sonntag ohne Teig: Hinweis auf die Backliste', () => {
+  it('Sonntag ohne Teig: Tagestyp und Hinweis auf die Backliste', () => {
     const page = renderPrint(sundayV2Sheet())
+    expect(page.getByTestId('dd-daytype')).toHaveTextContent(
+      'Backtag ohne Teig'
+    )
     expect(page.getByTestId('dd-empty')).toHaveTextContent('Backliste')
     expect(page.queryByTestId('dd-machine')).not.toBeInTheDocument()
+    expect(page.getByTestId('bz-print')).toHaveAttribute(
+      'data-print-sheets',
+      '1'
+    )
   })
 })
 

@@ -90,7 +90,7 @@ import { hasPrintExtras } from '../../../../components/backzettel/BackzettelPrin
 
 /**
  * Gerätespeicher (nur Bequemlichkeit): ob beim Teigtag-Zettel Abwiegeliste,
- * Rezepte und Vorbereitung mitgedruckt werden. Vorgabe aus (O8: eine Seite).
+ * Rezepte und Vorbereitung mitgedruckt werden. Vorgabe aus (O8: nur der Zettel).
  */
 export const PRINT_EXTRAS_KEY = 'bakery-backzettel-print-extras'
 
@@ -144,7 +144,7 @@ export interface BackzettelDayClientProps {
 
 /**
  * Tagesplanung eines Produktionstags (Z5, roadmap §5.5 Nr. 2) mit Druckbild
- * (Z7; ein Teigtag-Zettel druckt seit Z10 eine Seite, `DoughDayPrint`).
+ * (Z7; ein Teigtag-Zettel druckt seit Z10 `DoughDayPrint`, seit U8 je Teig ein Block).
  * Zeigt, was `/api/backzettel/:datum` liefert - gerechnet wird nur auf
  * dem Server. Planen (Saisonfaktor, Korrekturen, Freigeben) dürfen Inhaber und
  * Backstube; Wieder öffnen nur der Inhaber; alle anderen sehen den Zettel nur.
