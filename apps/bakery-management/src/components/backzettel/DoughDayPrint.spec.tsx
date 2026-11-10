@@ -194,6 +194,31 @@ describe('Druck eines Teigtag-Zettels (Z10 S6)', () => {
     expect(tue.getByText(/Teigstücke offen/)).toBeInTheDocument()
   })
 
+  it('Zugabe je Bruch (U3) steht fett hinter dem Bruchgewicht', () => {
+    const day = saturdayV2Draft()
+    const rolls = (day.rolls ?? []).map((b) => ({
+      ...b,
+      groups: b.groups.map((g) =>
+        g.group === 'test-doppel'
+          ? {
+              ...g,
+              addons: [
+                { name: 'Testkörner', gPerBruch: 200, g: 1400, gKnown: 1400 },
+              ],
+            }
+          : g
+      ),
+    }))
+    const sun = within(
+      renderPrint({ ...day, rolls }).getByTestId(`dd-rolls-${SUN}`)
+    )
+    const row = sun.getByTestId(`dd-bruch-${SUN}|test-doppel`)
+    expect(row).toHaveTextContent(
+      '7 Bruch × 1.250 g + 1,4 kg Testkörner – 66 Testdoppel · +4 frei'
+    )
+    expect(within(row).getByText('+ 1,4 kg Testkörner').tagName).toBe('STRONG')
+  })
+
   it('Hefeteig: gefüllter Posten in einer Zeile mit den Sorten', () => {
     const p = within(renderPrint(saturdayV2Draft()).getByTestId('dd-hefeteig'))
     expect(p.getByTestId('dd-hefe-test-zopf')).toHaveTextContent(
