@@ -158,6 +158,19 @@ export function formatDateShort(date: string): string {
   return `${WEEKDAY_SHORT[isoWeekday(date)]} ${d}.${m}.`
 }
 
+/**
+ * U9: der Tagestyp aus dem Kalender in einer Zeile - „Samstags-Satz –
+ * danach geschlossen: Fr 25.12. 1. Weihnachtstag …“. `null` am normalen
+ * Tag oder ohne Angabe (ältere Server). Der Text kommt vom Server
+ * (`label`, `detail`); hier wird nur zusammengesetzt.
+ */
+export function dayKindLine(
+  dayKind: { label: string | null; detail: string | null } | null | undefined
+): string | null {
+  if (!dayKind || !dayKind.label) return null
+  return dayKind.detail ? `${dayKind.label} – ${dayKind.detail}` : dayKind.label
+}
+
 /** Uhrzeit + Datum eines Zeitstempels in Ortszeit, „27.11. 14:05“. */
 export function formatTimestamp(iso: string | null | undefined): string {
   if (!iso) return ''

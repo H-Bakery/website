@@ -10,6 +10,8 @@ export interface PrepCardProps {
   prep: PrepTask[] | null
   prepDate: string
   prepDateProvisional: boolean | null
+  /** U9: Vortag laut Kalender geschlossen („Sa 26.12. geschlossen …“). */
+  prepDateReason?: string
 }
 
 /** Text einer Vorbereitung: „Sauerteig (Buttermilch)“. */
@@ -29,6 +31,7 @@ export function PrepCard({
   prep,
   prepDate,
   prepDateProvisional,
+  prepDateReason,
 }: PrepCardProps) {
   const tasks = prep ?? []
   // „Vorbereitung am Vortag“, nicht nur „Vorbereitung“: der Zettel hat oft
@@ -42,8 +45,11 @@ export function PrepCard({
     >
       {prepDateProvisional && (
         <Alert severity="info" sx={{ mb: 1 }} data-testid="prep-provisional">
-          Der Vortag ist Ruhetag. Wann und von wem diese Vorbereitung erledigt
-          wird, ist noch nicht festgelegt.
+          {prepDateReason
+            ? `Der Vortag ist geschlossen (${prepDateReason}).`
+            : 'Der Vortag ist Ruhetag.'}{' '}
+          Wann und von wem diese Vorbereitung erledigt wird, ist noch nicht
+          festgelegt.
         </Alert>
       )}
       {tasks.length === 0 ? (

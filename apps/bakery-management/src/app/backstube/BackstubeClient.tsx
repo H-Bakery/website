@@ -73,6 +73,7 @@ import {
 import LogoutButton from '../../components/auth/LogoutButton'
 import { BackstubeLine } from '../../components/backstube/BackstubeLine'
 import { BackzettelWarnings } from '../../components/backzettel/BackzettelWarnings'
+import { DayKindNotice } from '../../components/backzettel/DayKindNotice'
 import { BackstubeHefeteig } from '../../components/backstube/BackstubeHefeteig'
 import { BackstubeDeltas } from '../../components/backstube/BackstubeDeltas'
 import { DeltaDoughNote } from '../../components/backzettel/DeltaDoughNote'
@@ -430,7 +431,11 @@ export default function BackstubeClient({
     } catch (error) {
       if (prepDateRef.current !== target) return
       const e = error as { status?: number; code?: string } | null
-      if (e && e.status === 409 && e.code === 'ruhetag') {
+      if (
+        e &&
+        e.status === 409 &&
+        (e.code === 'ruhetag' || e.code === 'geschlossen')
+      ) {
         setPrep({
           date: target,
           status: 'ruhetag',
@@ -1271,18 +1276,23 @@ export default function BackstubeClient({
                 <CircularProgress aria-label="Backliste wird geladen" />
               </Box>
             )}
-            {bakeShown?.status === 'ruhetag' && (
+            {(bakeShown?.status === 'ruhetag' ||
+              bakeShown?.status === 'geschlossen') && (
               <Box
                 data-testid="bs-bake-ruhetag"
                 sx={{ py: 6, textAlign: 'center' }}
               >
                 <Typography sx={{ fontSize: '2.25rem', fontWeight: 800 }}>
-                  Ruhetag
+                  {bakeShown.status === 'geschlossen'
+                    ? 'Geschlossen'
+                    : 'Ruhetag'}
                 </Typography>
                 <Typography
                   sx={{ fontSize: '1.25rem', color: 'text.secondary' }}
                 >
-                  An diesem Tag wird nicht gebacken.
+                  {bakeShown.status === 'geschlossen' && bakeShown.message
+                    ? bakeShown.message
+                    : 'An diesem Tag wird nicht gebacken.'}
                 </Typography>
               </Box>
             )}
@@ -1355,12 +1365,14 @@ export default function BackstubeClient({
             {shown?.status === 'ruhetag' && (
               <Box data-testid="bs-ruhetag" sx={{ py: 6, textAlign: 'center' }}>
                 <Typography sx={{ fontSize: '2.25rem', fontWeight: 800 }}>
-                  Ruhetag
+                  {shown.closed ? 'Geschlossen' : 'Ruhetag'}
                 </Typography>
                 <Typography
                   sx={{ fontSize: '1.25rem', color: 'text.secondary' }}
                 >
-                  An diesem Tag wird nicht gebacken.
+                  {shown.closed
+                    ? shown.message
+                    : 'An diesem Tag wird nicht gebacken.'}
                 </Typography>
               </Box>
             )}
@@ -1508,6 +1520,8 @@ export default function BackstubeClient({
                 {/* UI-Runde 1: Hinweise oben (nach den Nachträgen) und gelb
                     wie auf der Planungsseite - unten als blaue Info übersah
                     man z. B. Vorbestellungen, die zu keinem Posten gehören. */}
+                {/* U9: Tagestyp aus dem Kalender (Samstags-Satz, Nur Teig …) */}
+                <DayKindNotice dayKind={day.dayKind} large />
                 <BackzettelWarnings
                   warnings={day.warnings}
                   large
