@@ -2214,6 +2214,71 @@ const BUSY_OPEN = [
   },
 ]
 
+/** Einzelstücke und Hefeteig-Posten: welcher Teig (Kasten) sie trägt. */
+const BUSY_PIECE_DOUGH: Record<string, string> = {
+  'test-flit-klein': 'test-flit-teig',
+  'test-party': 'test-flit-teig',
+  'test-weck-hell': 'test-weck-teig',
+  'test-stange': 'test-weck-teig',
+}
+
+/**
+ * Teile je Kasten wie vom Server (`doughs[].parts`): Brot, Bruch-Gruppen,
+ * Einzelstücke und Hefeteig - der Druck ordnet darüber die Zeilen den Teigen
+ * zu und nennt die Backtage je Teig.
+ */
+function busyParts(box: MachineBox): DoughSummary['parts'] {
+  const parts: DoughSummary['parts'] = []
+  for (const b of BUSY_BREAD) {
+    if (!box.doughIds.includes(b.doughId)) continue
+    parts.push({
+      kind: 'sizes',
+      itemId: b.itemId,
+      name: b.name,
+      bakeDate: SAT,
+      kg: b.kg,
+    })
+  }
+  for (const block of BUSY_ROLLS) {
+    for (const g of block.groups) {
+      if (!box.doughIds.includes(g.doughId)) continue
+      parts.push({
+        kind: 'bruch',
+        itemId: g.group,
+        name: g.name,
+        bakeDate: block.bakeDate,
+        kg: busyGroup(block.bakeDate, g).kg,
+      })
+    }
+    for (const single of block.singles) {
+      const [itemId, name] = single
+      if (!box.doughIds.includes(BUSY_PIECE_DOUGH[itemId])) continue
+      parts.push({
+        kind: 'pieces',
+        itemId,
+        name,
+        bakeDate: block.bakeDate,
+        kg: busySingle(block.bakeDate, single).kg,
+      })
+    }
+  }
+  if (box.section === 'hefeteig') {
+    const seen = new Set<string>()
+    for (const l of busyHefeteigLines()) {
+      if (seen.has(l.itemId)) continue
+      seen.add(l.itemId)
+      parts.push({
+        kind: 'pieces',
+        itemId: l.itemId,
+        name: l.name,
+        bakeDate: SAT,
+        kg: null,
+      })
+    }
+  }
+  return parts
+}
+
 function busyDoughs(): DoughSummary[] {
   return busyMachine().map((box) => ({
     id: box.id,
@@ -2238,7 +2303,7 @@ function busyDoughs(): DoughSummary[] {
     batches: box.batches,
     batch_max_kg: box.batch_max_kg,
     addons: box.addons,
-    parts: [],
+    parts: busyParts(box),
     extras: [],
     combinedWith: null,
   }))

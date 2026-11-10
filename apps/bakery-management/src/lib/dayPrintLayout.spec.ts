@@ -1,16 +1,20 @@
 import {
-  DAY_PRINT_STEPS,
-  KEEP_SECTION_LINES,
   MIN_SPLIT_LINES,
+  NOTE_LINES,
   PAGE_HEIGHT_MM,
+  SHEET_STEPS,
   bakeListPrintLayout,
-  dayPrintHeights,
+  blockHeightMm,
+  boxBakeDaysText,
   dayPrintLayout,
   dayPrintParts,
-  dayPrintSecondSheetHeight,
-  NOTE_LINES,
-  printColumnRows,
-  printColumns,
+  doughPrintBlocks,
+  firstHeaderMm,
+  nextHeaderMm,
+  packSheets,
+  sheetBlocks,
+  sheetDayTypeText,
+  type SheetBlock,
 } from './dayPrintLayout'
 import type {
   BackzettelDay,
@@ -19,6 +23,8 @@ import type {
 } from './backzettelApi'
 import {
   SAT,
+  SUN,
+  V2_TUE,
   busySaturdayV2Confirmed,
   busySaturdayV2Draft,
   line,
@@ -29,9 +35,6 @@ import {
   sundayV2Sheet,
   tuesdayBakeList,
 } from './backzettelFixtures'
-
-const lineCount = (day: BackzettelDay) =>
-  day.sections.reduce((n, s) => n + s.lines.length, 0)
 
 /** Alle Teigtag-Zettel der Specs (Z10). */
 const V2_DAYS: [string, () => BackzettelDay][] = [
@@ -45,51 +48,33 @@ const V2_DAYS: [string, () => BackzettelDay][] = [
   ['Sonntag', () => sundayV2Sheet()],
 ]
 
-function section(id: string, n: number, from = 0): BackzettelSection {
+function section(id: string, n: number): BackzettelSection {
   return {
     id,
     label: id,
     lines: Array.from({ length: n }, (_, i) =>
       line({
-        key: `${id}-${from + i}|`,
-        itemId: `${id}-${from + i}`,
-        name: `Test ${id} ${from + i}`,
+        key: `${id}-${i}|`,
+        itemId: `${id}-${i}`,
+        name: `Test ${id} ${i}`,
         section: id,
+        bakeDate: SAT,
+        doughDate: SAT,
       })
     ),
   }
 }
 
-/** Ein voller Samstag: n erfundene Zeilen in drei übrigen Abschnitten. */
-function busySaturday(extraLines: number): BackzettelDay {
-  const day = saturdayV2Draft()
-  const ids = ['laugen', 'kaffeestueckchen', 'kuchen']
-  const sections = ids.map((id) => ({
-    id,
-    label: id,
-    lines: [] as BackzettelLine[],
-  }))
-  for (let i = 0; i < extraLines; i++) {
-    sections[i % 3].lines.push(
-      line({
-        key: `test-extra-${i}|`,
-        itemId: `test-extra-${i}`,
-        name: `Testposten ${i}`,
-        section: ids[i % 3],
-        total: 10 + i,
-        preorders: i % 4 === 0 ? 2 : 0,
-        bakeDate: SAT,
-        doughDate: SAT,
-      })
-    )
-  }
-  return {
-    ...day,
-    sections: [
-      ...day.sections.filter((s) => s.id !== 'kaffeestueckchen'),
-      ...sections,
-    ],
-  }
+const withExtra = (
+  day: BackzettelDay,
+  extra: BackzettelSection
+): BackzettelDay => ({ ...day, sections: [...day.sections, extra] })
+
+/** Schlüssel aller Zeilen, die auf den Blättern stehen (übrige Abschnitte). */
+function sectionKeys(blocks: SheetBlock[]): string[] {
+  return blocks.flatMap((b) =>
+    b.kind === 'section' ? b.lines.map((l: BackzettelLine) => l.key) : []
+  )
 }
 
 describe('dayPrintParts (Z10 S6)', () => {
@@ -99,7 +84,7 @@ describe('dayPrintParts (Z10 S6)', () => {
       'test-zopf',
       'test-kranz',
     ])
-    // Sorten eines gefüllten Postens stehen zusammen in einer Zeile.
+    // Sorten eines gefüllten Postens stehen zusammen.
     expect(parts.hefeteig[0].lines.map((l) => l.variant)).toEqual([
       'nuss',
       'mohn',
@@ -132,251 +117,246 @@ describe('dayPrintParts (Z10 S6)', () => {
   })
 })
 
-describe('dayPrintLayout (Z10 S6)', () => {
-  it('der Beispiel-Samstag passt luftig auf eine Seite', () => {
-    const layout = dayPrintLayout(saturdayV2Draft())
-    expect(layout).toMatchObject({ step: 0, othersOnSecondSheet: false })
-    expect(layout.estimatedMm).toBeLessThanOrEqual(PAGE_HEIGHT_MM)
+describe('Tagestyp und Backtage im Kopf (U8)', () => {
+  it('nennt, was heute gebacken und für welche Tage Teig gemacht wird', () => {
+    expect(sheetDayTypeText(saturdayV2Draft())).toBe(
+      'Heute backen + Teig für So 29.11. und Di 01.12.'
+    )
+    expect(sheetDayTypeText(sundayV2Sheet())).toBe(
+      'Backtag ohne Teig – was gebacken wird, steht auf der Backliste'
+    )
+    // nur Teig, nichts für heute (z. B. Teigtag vor einem Schließtag)
+    const onlyLater = saturdayV2Draft({
+      bakeDates: saturdayV2Draft().bakeDates?.filter((b) => b.date !== SAT),
+    })
+    expect(sheetDayTypeText(onlyLater)).toBe(
+      'Nur Teig für So 29.11. und Di 01.12.'
+    )
+    // ohne Teig für später
+    const today = saturdayV2Draft({
+      bakeDates: saturdayV2Draft().bakeDates?.filter((b) => b.date === SAT),
+    })
+    expect(sheetDayTypeText(today)).toBe('Heute backen')
+  })
+
+  it('ohne `bakeDates` (ältere Server) aus den Backtagen der Zeilen', () => {
+    expect(sheetDayTypeText(saturdayV2Draft({ bakeDates: undefined }))).toBe(
+      'Heute backen + Teig für So 29.11. und Di 01.12.'
+    )
+  })
+
+  it('Backtage je Teig kurz: „heute + So + Di“', () => {
+    const day = busySaturdayV2Draft()
+    const box = (id: string) => day.machine!.find((b) => b.id === id)!
+    expect(boxBakeDaysText(day, box('test-weck-teig'))).toBe('heute + So + Di')
+    expect(boxBakeDaysText(day, box('test-korn-teig'))).toBe('heute')
+    expect(boxBakeDaysText(day, box('test-dinkelweck-teig'))).toBe('So')
+    expect(
+      boxBakeDaysText({ date: SAT, doughs: [] }, box('test-weck-teig'))
+    ).toBe('')
+  })
+})
+
+describe('doughPrintBlocks: je Teig ein Block (U8)', () => {
+  it('Reihenfolge der Kästen vom Server (= `doughs:` der YAML), Sammelblöcke dahinter', () => {
+    const blocks = doughPrintBlocks(busySaturdayV2Draft())
+    expect(blocks.map((b) => b.key)).toEqual([
+      'test-korn-teig',
+      'test-misch-teig',
+      'test-roggen-teig',
+      'weiteres-brot',
+      'test-weck-teig',
+      'test-flit-teig',
+      'test-dinkelweck-teig',
+      'test-hefe',
+    ])
+  })
+
+  it('ordnet Brot über den Teig der Zeile zu, auch bei gemeinsamem Teig', () => {
+    const [korn] = doughPrintBlocks(busySaturdayV2Draft())
+    expect(korn.bread.map((r) => r.itemId)).toEqual(['test-korn', 'test-holz'])
+    const weiteres = doughPrintBlocks(busySaturdayV2Draft()).find(
+      (b) => b.key === 'weiteres-brot'
+    )
+    expect(weiteres?.box).toBeNull()
+    expect(weiteres?.bread.map((r) => r.itemId)).toEqual(['test-hafer'])
+  })
+
+  it('Brötchen je Backtag chronologisch, Einzelstücke über die Teile der Teige', () => {
+    const weck = doughPrintBlocks(busySaturdayV2Draft()).find(
+      (b) => b.key === 'test-weck-teig'
+    )!
+    expect(weck.rolls.map((r) => r.bakeDate)).toEqual([SAT, SUN, V2_TUE])
+    expect(weck.rolls[0].singles.map((s) => s.itemId)).toEqual([
+      'test-weck-hell',
+      'test-stange',
+    ])
+    expect(weck.rolls[1].groups.map((g) => g.group)).toEqual([
+      'test-doppel',
+      'test-gemischt',
+      'test-kornweck',
+    ])
+  })
+
+  it('Brot aus einem anderen Teig (`from_dough`, ohne eigenen Teig) kommt über seinen Teil in den Block', () => {
+    const day = saturdayV2Draft()
+    const bread = day.bread!
+    const doughs = day.doughs!.map((d) =>
+      d.id === 'test-weck-teig'
+        ? {
+            ...d,
+            parts: [
+              ...d.parts,
+              {
+                kind: 'from_dough',
+                itemId: 'test-hafer',
+                name: 'Testhafer',
+                bakeDate: SAT,
+                kg: null,
+              },
+            ],
+          }
+        : d
+    )
+    const blocks = doughPrintBlocks({ ...day, bread, doughs })
+    expect(
+      blocks.find((b) => b.key === 'test-weck-teig')?.bread.map((r) => r.itemId)
+    ).toEqual(['test-hafer'])
+    expect(blocks.some((b) => b.key === 'weiteres-brot')).toBe(false)
+  })
+
+  it('jede Brot-Zeile, Bruch-Gruppe, Einzelstück und jeder Hefeteig-Posten steht in genau einem Block', () => {
+    for (const [, make] of V2_DAYS) {
+      const day = make()
+      const blocks = doughPrintBlocks(day)
+      const bread = blocks.flatMap((b) => b.bread)
+      expect(bread).toHaveLength(day.bread?.rows.length ?? 0)
+      const groups = blocks.flatMap((b) => b.rolls.flatMap((r) => r.groups))
+      const singles = blocks.flatMap((b) => b.rolls.flatMap((r) => r.singles))
+      const rolls = day.rolls ?? []
+      expect(groups).toHaveLength(rolls.flatMap((r) => r.groups).length)
+      expect(singles).toHaveLength(rolls.flatMap((r) => r.singles).length)
+      expect(blocks.flatMap((b) => b.hefeteig)).toHaveLength(
+        dayPrintParts(day).hefeteig.length
+      )
+    }
+  })
+})
+
+describe('dayPrintLayout: Blätter (U8)', () => {
+  it('lesbar: nie unter 9 pt, Mengen mindestens 13 pt', () => {
+    for (const s of SHEET_STEPS) {
+      expect(s.fontPt).toBeGreaterThanOrEqual(9)
+      expect(s.qtyPt).toBeGreaterThanOrEqual(13)
+      expect(s.bigPt).toBeGreaterThan(s.qtyPt)
+    }
   })
 
   it('jede Stufe ist dichter als die vorige', () => {
-    const day = busySaturday(40)
+    const day = busySaturdayV2Draft()
     const parts = dayPrintParts(day)
-    const heights = DAY_PRINT_STEPS.map((s) => {
-      const h = dayPrintHeights(day, parts, s)
-      return h.fixed + h.others
-    })
-    for (let i = 1; i < heights.length; i++) {
-      expect(heights[i]).toBeLessThan(heights[i - 1])
+    const blocks = sheetBlocks(day, parts)
+    const total = SHEET_STEPS.map((s) =>
+      blocks.reduce((n, b) => n + blockHeightMm(b, day, parts, s), 0)
+    )
+    for (let i = 1; i < total.length; i++) {
+      expect(total[i]).toBeLessThan(total[i - 1])
     }
   })
 
-  it('ein voller Samstag (≈ 60 Zeilen mit Nachträgen) wird dichter gesetzt, bleibt aber auf einer Seite', () => {
-    const confirmed = saturdayV2Confirmed()
-    const day = { ...busySaturday(45), deltas: confirmed.deltas }
-    const layout = dayPrintLayout(day)
-    expect(layout.step).toBeGreaterThan(0)
-    expect(layout.othersOnSecondSheet).toBe(false)
-    expect(layout.estimatedMm).toBeLessThanOrEqual(PAGE_HEIGHT_MM)
+  it('Liter zuerst: „Teige heute“ ist der erste Block, Fußnoten am Ende', () => {
+    const blocks = sheetBlocks(busySaturdayV2Confirmed())
+    expect(blocks[0].kind).toBe('doughs')
+    expect(blocks.map((b) => b.kind).slice(-2)).toEqual(['deltas', 'footnotes'])
   })
 
-  it('vor Blatt 2 werden erst die Notizzeilen gekürzt', () => {
-    // Die Zahl der Zeilen suchen, bei der es mit allen Notizzeilen gerade
-    // nicht mehr passt - dort darf es noch kein Blatt 2 geben.
-    let n = 40
-    while (
-      dayPrintLayout(busySaturday(n)).noteLines === NOTE_LINES &&
-      !dayPrintLayout(busySaturday(n)).othersOnSecondSheet
-    ) {
-      n += 1
-    }
-    const layout = dayPrintLayout(busySaturday(n))
-    expect(layout.othersOnSecondSheet).toBe(false)
-    expect(layout.noteLines).toBeLessThan(NOTE_LINES)
-    expect(layout.step).toBe(DAY_PRINT_STEPS.length - 1)
-    expect(layout.estimatedMm).toBeLessThanOrEqual(PAGE_HEIGHT_MM)
-    // Normale Tage behalten alle Notizzeilen.
-    expect(dayPrintLayout(saturdayV2Draft()).noteLines).toBe(NOTE_LINES)
-  })
-
-  it('passt es auch knapp nicht, kommen die übrigen Abschnitte auf Blatt 2 - nie weggelassen', () => {
-    const layout = dayPrintLayout(busySaturday(200))
-    expect(layout.othersOnSecondSheet).toBe(true)
-    // Seite 1 ohne die Abschnitte passt wieder luftig, mit allen Notizzeilen.
-    expect(layout.step).toBe(0)
-    expect(layout.noteLines).toBe(NOTE_LINES)
-    expect(layout.estimatedMm).toBeLessThanOrEqual(PAGE_HEIGHT_MM)
-  })
-
-  it('ohne Blatt 2 gibt es keine eigene Dichte für Blatt 2', () => {
-    expect(dayPrintLayout(saturdayV2Draft()).secondSheet).toBeNull()
-  })
-
-  // Review Z10: Blatt 2 erbte die luftige Stufe von Seite 1 und lief bei
-  // 75-100 Zeilen übriger Abschnitte auf ein drittes Blatt, obwohl es knapp
-  // gesetzt auf eines passte.
-  const withExtra = (
-    day: BackzettelDay,
-    extra: BackzettelSection
-  ): BackzettelDay => ({ ...day, sections: [...day.sections, extra] })
-  const secondSheetDays: [string, () => BackzettelDay][] = [
-    [
-      'voller Samstag freigegeben + 60 Laugen',
-      () =>
-        withExtra(busySaturdayV2Confirmed(), section('test-laugen-viele', 60)),
-    ],
-    [
-      'voller Samstag Entwurf + 70 Zeilen',
-      () => withExtra(busySaturdayV2Draft(), section('test-viele', 70)),
-    ],
-    [
-      'voller Samstag Entwurf + 100 Zeilen',
-      () => withExtra(busySaturdayV2Draft(), section('test-viele', 100)),
-    ],
-  ]
-  it.each(secondSheetDays)(
-    '%s: Blatt 2 wählt seine Stufe nach der eigenen Höhe und bleibt ein Blatt',
-    (_name, make) => {
+  it.each(V2_DAYS)(
+    '%s: jedes Blatt passt, jeder Block steht genau einmal',
+    (_n, make) => {
       const day = make()
-      const parts = dayPrintParts(day)
       const layout = dayPrintLayout(day)
-      expect(layout.othersOnSecondSheet).toBe(true)
-      const second = layout.secondSheet
-      expect(second).not.toBeNull()
-      if (!second) return
-      expect(second.estimatedMm).toBeLessThanOrEqual(PAGE_HEIGHT_MM)
-      expect(second.estimatedMm).toBe(
-        Math.round(
-          dayPrintSecondSheetHeight(day, parts, DAY_PRINT_STEPS[second.step])
-        )
-      )
-      // Die luftigste passende Stufe: eine Stufe luftiger passt nicht mehr.
-      if (second.step > 0) {
-        expect(
-          dayPrintSecondSheetHeight(
-            day,
-            parts,
-            DAY_PRINT_STEPS[second.step - 1]
-          )
-        ).toBeGreaterThan(PAGE_HEIGHT_MM)
+      expect(layout.sheets.length).toBeGreaterThanOrEqual(1)
+      for (const sheet of layout.sheets) {
+        expect(sheet.estimatedMm).toBeLessThanOrEqual(PAGE_HEIGHT_MM)
+        expect(sheet.blocks.length).toBeGreaterThan(0)
       }
+      const keys = layout.sheets.flatMap((s) => s.blocks.map((b) => b.key))
+      expect(keys).toEqual(sheetBlocks(day).map((b) => b.key))
+      expect(layout.noteLines).toBeGreaterThanOrEqual(0)
+      expect(layout.noteLines).toBeLessThanOrEqual(NOTE_LINES)
     }
   )
 
-  it('in der Stufe von Seite 1 liefe Blatt 2 über - es wird dichter gesetzt als Seite 1', () => {
-    const day = withExtra(busySaturdayV2Draft(), section('test-viele', 100))
-    const parts = dayPrintParts(day)
-    const layout = dayPrintLayout(day)
-    expect(
-      dayPrintSecondSheetHeight(day, parts, DAY_PRINT_STEPS[layout.step])
-    ).toBeGreaterThan(PAGE_HEIGHT_MM)
-    expect(layout.secondSheet?.step).toBeGreaterThan(layout.step)
-    expect(layout.secondSheet?.estimatedMm).toBeLessThanOrEqual(PAGE_HEIGHT_MM)
-  })
-
-  it('Blatt 2 bleibt ein Blatt, solange es in der dichtesten Stufe passt', () => {
-    const densest = DAY_PRINT_STEPS[DAY_PRINT_STEPS.length - 1]
-    for (let n = 30; n <= 160; n += 5) {
-      const day = withExtra(busySaturdayV2Draft(), section('test-viele', n))
+  it('so wenige Blätter wie möglich, bei gleicher Zahl die luftigste Stufe', () => {
+    for (const [, make] of V2_DAYS) {
+      const day = make()
+      const parts = dayPrintParts(day)
+      const blocks = sheetBlocks(day, parts)
+      const counts = SHEET_STEPS.map(
+        (s) => packSheets(day, parts, blocks, s).sheets.length
+      )
       const layout = dayPrintLayout(day)
-      if (!layout.secondSheet) continue
-      const fitsDensest =
-        dayPrintSecondSheetHeight(day, dayPrintParts(day), densest) <=
-        PAGE_HEIGHT_MM
-      if (fitsDensest) {
-        expect(layout.secondSheet.estimatedMm).toBeLessThanOrEqual(
-          PAGE_HEIGHT_MM
-        )
-      } else {
-        expect(layout.secondSheet.step).toBe(DAY_PRINT_STEPS.length - 1)
-      }
+      expect(layout.sheets.length).toBe(Math.min(...counts))
+      expect(layout.step).toBe(counts.indexOf(Math.min(...counts)))
     }
   })
 
-  it('ohne übrige Abschnitte gibt es kein Blatt 2, auch wenn es eng wird', () => {
-    const day = saturdayV2Draft()
-    const huge = {
-      ...day,
-      sections: day.sections.filter((s) => s.id !== 'kaffeestueckchen'),
-      warnings: Array.from({ length: 200 }, (_, i) => ({
-        code: 'base_unset',
-        message: `Grundmenge für Samstag noch nicht festgelegt: Testposten ${i}.`,
-      })),
+  it('Sonntag: ein Blatt, luftig, alle Notizzeilen; der kleine Samstag höchstens zwei Blätter', () => {
+    for (const day of [sundayV2Sheet()]) {
+      const layout = dayPrintLayout(day)
+      expect(layout.sheets).toHaveLength(1)
+      expect(layout.step).toBe(0)
+      expect(layout.noteLines).toBe(NOTE_LINES)
     }
-    expect(dayPrintLayout(huge).othersOnSecondSheet).toBe(false)
-  })
-})
-
-describe('der volle Samstag (≈ 60 Zeilen) auf einer Seite (Z10, §9 Nr. 3)', () => {
-  it('ist der größte Teigtag-Zettel der Specs', () => {
-    const counts = V2_DAYS.map(([, make]) => lineCount(make()))
-    expect(lineCount(busySaturdayV2Draft())).toBe(Math.max(...counts))
-    expect(lineCount(busySaturdayV2Draft())).toBeGreaterThanOrEqual(56)
-    expect(busySaturdayV2Confirmed().deltas).toHaveLength(6)
-  })
-
-  it.each(V2_DAYS)('%s passt auf ein Blatt, ohne Blatt 2', (_name, make) => {
-    const layout = dayPrintLayout(make())
-    expect(layout.othersOnSecondSheet).toBe(false)
-    expect(layout.estimatedMm).toBeLessThanOrEqual(PAGE_HEIGHT_MM)
-  })
-
-  it('der volle Samstag behält mindestens zwei Notizzeilen', () => {
-    expect(
-      dayPrintLayout(busySaturdayV2Draft()).noteLines
-    ).toBeGreaterThanOrEqual(2)
-    expect(
-      dayPrintLayout(busySaturdayV2Confirmed()).noteLines
-    ).toBeGreaterThanOrEqual(2)
-  })
-})
-
-describe('printColumns: zwei Spalten, keine Überschrift ohne Zeilen (Z10)', () => {
-  it('kurze Abschnitte bleiben ganz, die Spalten sind etwa gleich hoch', () => {
-    const [left, right] = printColumns([
-      section('laugen', 3),
-      section('kaffee', 6),
-      section('kuchen', 4),
-    ])
-    expect(left.map((c) => c.section.id)).toEqual(['laugen', 'kaffee'])
-    expect(right.map((c) => c.section.id)).toEqual(['kuchen'])
-    expect([...left, ...right].some((c) => c.continued)).toBe(false)
-  })
-
-  it('ein langer Abschnitt bricht um: rechts „Forts.“, mindestens drei Zeilen je Seite', () => {
-    const long = section('kaffee', 14)
-    const [left, right] = printColumns([section('laugen', 2), long])
-    const first = left[left.length - 1]
-    const rest = right[0]
-    expect(first.section.id).toBe('kaffee')
-    expect(first.continued).toBe(false)
-    expect(rest).toMatchObject({ continued: true })
-    expect(rest.section.id).toBe('kaffee')
-    expect(first.lines.length).toBeGreaterThanOrEqual(MIN_SPLIT_LINES)
-    expect(rest.lines.length).toBeGreaterThanOrEqual(MIN_SPLIT_LINES)
-    // nichts verloren, Reihenfolge bleibt
-    expect([...first.lines, ...rest.lines].map((l) => l.key)).toEqual(
-      long.lines.map((l) => l.key)
+    expect(dayPrintLayout(saturdayV2Draft()).sheets.length).toBeLessThanOrEqual(
+      2
     )
-    const h = [printColumnRows(left), printColumnRows(right)]
-    expect(Math.abs(h[0] - h[1])).toBeLessThanOrEqual(2)
   })
 
-  it(`bis ${KEEP_SECTION_LINES} Zeilen bricht kein Abschnitt um, auch wenn es schief wird`, () => {
-    const [left, right] = printColumns([section('kaffee', KEEP_SECTION_LINES)])
-    expect(left).toHaveLength(1)
-    expect(left[0].lines).toHaveLength(KEEP_SECTION_LINES)
-    expect(right).toEqual([])
-  })
-
-  it('jede Zeile steht genau einmal, jede Spalte beginnt mit einer Überschrift', () => {
-    const sections = [
-      section('a', 9),
-      section('b', 2),
-      section('c', 12),
-      section('d', 1),
-    ]
-    const cols = printColumns(sections)
-    const keys = cols.flat().flatMap((c) => c.lines.map((l) => l.key))
-    expect(keys).toEqual(sections.flatMap((s) => s.lines.map((l) => l.key)))
-    for (const col of cols)
-      for (const c of col) expect(c.lines.length).toBeGreaterThan(0)
-    expect(cols.flat().filter((c) => c.continued).length).toBeLessThanOrEqual(1)
-  })
-
-  it('der volle Samstag: Kaffeestückchen (9 Zeilen) brechen mit „Forts.“ um oder bleiben ganz', () => {
-    const parts = dayPrintParts(busySaturdayV2Draft())
-    expect(parts.others.map((s) => s.id)).toEqual([
-      'laugen',
-      'kaffeestueckchen',
-      'kuchen',
-    ])
-    const cols = printColumns(parts.others)
-    for (const c of cols.flat()) {
-      if (c.continued)
-        expect(c.lines.length).toBeGreaterThanOrEqual(MIN_SPLIT_LINES)
+  it('der volle Samstag (≈ 60 Zeilen) geht auf höchstens drei Blätter, Grenzen nur zwischen Blöcken', () => {
+    for (const day of [busySaturdayV2Draft(), busySaturdayV2Confirmed()]) {
+      const layout = dayPrintLayout(day)
+      expect(layout.sheets.length).toBeGreaterThanOrEqual(2)
+      expect(layout.sheets.length).toBeLessThanOrEqual(3)
+      // das erste Blatt beginnt mit den Litern
+      expect(layout.sheets[0].blocks[0].kind).toBe('doughs')
     }
-    expect(cols.flat().reduce((n, c) => n + c.lines.length, 0)).toBe(16)
+  })
+
+  it('Blatt-Köpfe: Blatt 1 groß, ab Blatt 2 eine Zeile', () => {
+    for (const s of SHEET_STEPS) {
+      expect(firstHeaderMm(s)).toBeGreaterThan(nextHeaderMm(s))
+    }
+  })
+
+  it('ein Abschnitt höher als ein Blatt wird geteilt: jedes Stück mit Überschrift und mindestens drei Zeilen, keine Zeile doppelt', () => {
+    const day = withExtra(saturdayV2Draft(), section('test-viele', 150))
+    const layout = dayPrintLayout(day)
+    const blocks = layout.sheets.flatMap((s) => s.blocks)
+    const chunks = blocks.filter(
+      (b) => b.kind === 'section' && b.section.id === 'test-viele'
+    ) as Extract<SheetBlock, { kind: 'section' }>[]
+    expect(chunks.length).toBeGreaterThanOrEqual(2)
+    expect(chunks[0].continued).toBe(false)
+    for (const c of chunks.slice(1)) expect(c.continued).toBe(true)
+    for (const c of chunks) {
+      expect(c.lines.length).toBeGreaterThanOrEqual(MIN_SPLIT_LINES)
+    }
+    const keys = sectionKeys(chunks)
+    expect(keys).toHaveLength(150)
+    expect(new Set(keys).size).toBe(150)
+    for (const sheet of layout.sheets) {
+      expect(sheet.estimatedMm).toBeLessThanOrEqual(PAGE_HEIGHT_MM)
+    }
+  })
+
+  it('ein kleiner Abschnitt, der nicht mehr passt, kommt ganz auf das nächste Blatt', () => {
+    const day = withExtra(busySaturdayV2Draft(), section('test-klein', 5))
+    const layout = dayPrintLayout(day)
+    const chunks = layout.sheets
+      .flatMap((s) => s.blocks)
+      .filter((b) => b.kind === 'section' && b.section.id === 'test-klein')
+    expect(chunks).toHaveLength(1)
   })
 })
 

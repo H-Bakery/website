@@ -707,6 +707,11 @@ covered by the existing `ROLE_ACCESS` rule for `/admin/backzettel` and by `PILOT
 
 ### 7.5 Print (Z7 → one page per dough day)
 
+> **Superseded by U8 (Z13, 2026-11-10):** the dough-day sheet is no longer squeezed onto one page.
+> It prints one block per dough in work order on as many sheets as needed (weekday 2, full Saturday 3),
+> never below 9 pt, a block never split. Current rules: `docs/domains/backzettel.md`, "Druck eines
+> Teigtag-Zettels". The text below is the Z10 design record.
+
 - **`DoughDayPrint.tsx`** (new, replaces page 1 of `BackzettelPrint.tsx` for `sheetVersion: 2`):
   A4 portrait, black on white, numbers right-aligned, one page:
   1. Header "Backzettel Samstag, 05.12.2026", teige heute, stamp Entwurf/Freigegeben.
@@ -748,7 +753,7 @@ otherwise.
 | O5  | Tick on the bake list                                        | gebacken-Haken auf der Backliste (Inhaber, 2026-11-08): its own tick per bake-list row and per Nachtrag, separate from "done" on the sheet (= made); same survival rules per row; not in the Z9 snapshot |
 | O6  | Dough master data editable in the app                        | no; hq by hand + CI validator                                                                                                                                                                            |
 | O7  | Switch bread to sizes now with `null` bases                  | yes, in the hq PR that follows the deploy                                                                                                                                                                |
-| O8  | Print default                                                | one page; extras opt-in                                                                                                                                                                                  |
+| O8  | Print default                                                | one page; extras opt-in (one page superseded by U8: as many sheets as needed, provisional)                                                                                                               |
 | O9  | Old, unconfirmed `batch_max_kg` and `filling_g` values in hq | replaced by `null`                                                                                                                                                                                       |
 | O10 | Late preorder for a bake day whose dough is made             | accept, Nachtrag on sheet + bake list (as today)                                                                                                                                                         |
 | O11 | Make vs. bake for cakes ("make n, bake m", Kränze ahead)     | not modelled; waits for questionnaire F13/Q-L18 (Inhaber, 2026-11-08)                                                                                                                                    |
@@ -766,7 +771,7 @@ Questionnaire answers (`backliste-fragebogen.md`) only fill `null`s in hq; no co
 2. **Transition week.** Ownership (§5.4) prevents double counting, but a Tuesday whose sheet was
    confirmed before the switch shows its rolls on Tuesday, not Saturday. Switch hq on a
    Monday/Tuesday after the Tuesday sheet is confirmed, or reopen it.
-3. **One page** - resolved. The S6 check had only a 34-line Saturday. Now the largest spec fixture
+3. **One page** - resolved, then dropped by U8 (Z13): the sheet now uses several pages instead of shrinking; see docs/domains/backzettel.md. Z10 record: The S6 check had only a 34-line Saturday. Now the largest spec fixture
    is a 60-line busy Saturday (`busySaturdayV2Draft/Confirmed`, 6 Nachträge), and
    `dayPrintLayout.spec.ts` requires every v2 fixture to fit one sheet. `page.pdf()` with
    `make-hq.js --busy-saturday` (58 lines, 7 Nachträge after confirm): draft, confirmed and
@@ -886,7 +891,8 @@ Built as designed, with these differences:
 - Other sections print compact without the Basis/Saison/Vorb./CAP/Korr. columns; what those columns
   say (base unset, preorders, CAP, tray, correction reason, already done, delta) stands inline.
 - Hefeteig rows list the count per variant without a row total (the app never sums).
-- `dayPrintLayout` has five density steps (down to 7 pt) and a 10 mm page margin. If the densest
+- (Superseded by U8/Z13: three steps, never below 9 pt, blocks spread over several sheets.)
+  `dayPrintLayout` had five density steps (down to 7 pt) and a 10 mm page margin. If the densest
   step still does not fit, the other sections move to sheet 2 with a note on page 1 (§9.3), whether
   or not the extras box is ticked.
 - The bake-list print has no Bruch groups (the bake list carries pieces per product only).

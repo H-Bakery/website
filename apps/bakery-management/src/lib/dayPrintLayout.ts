@@ -1,11 +1,12 @@
 /**
- * Druckbild eines Teigtag-Zettels auf EINER A4-Seite (Z10, docs/backzettel-v2.md
- * §7.5): welche Zeilen in welchen Block gehören und wie dicht gesetzt wird.
+ * Druckbild eines Teigtag-Zettels (Z10, überarbeitet in U8/Z13): welche
+ * Zeilen in welchen Block gehören, in welcher Reihenfolge die Blöcke stehen
+ * und wie sie auf A4-Blätter verteilt werden.
  *
- * Reine Anzeige-Hilfen - keine Menge wird hier gerechnet, nur gezählt, wie
- * viele Zeilen das Blatt hat (wie `notfallLayout` beim Notfallblatt). Die
- * Schätzung in mm ist bewusst grob und eher zu groß; geprüft wird das echte
- * Blatt mit `page.pdf()` (docs/domains/backzettel.md, „Druck").
+ * Reine Anzeige-Hilfen - keine Menge wird hier gerechnet, nur zugeordnet und
+ * gezählt, wie hoch ein Block wird (wie `notfallLayout` beim Notfallblatt).
+ * Die Schätzung in mm ist bewusst grob und eher zu groß; geprüft wird das
+ * echte Blatt mit `page.pdf()` (docs/domains/backzettel.md, „Druck").
  */
 
 import type {
@@ -13,10 +14,20 @@ import type {
   BackzettelLine,
   BackzettelSection,
   BakeList,
+  BreadRow,
+  BruchGroup,
+  MachineBox,
+  SingleRow,
 } from './backzettelApi'
-import { deltaDoughLines, v2CoveredKeys } from './backzettelFormat'
+import {
+  WEEKDAY_SHORT,
+  deltaDoughLines,
+  formatDateShort,
+  isoWeekday,
+  v2CoveredKeys,
+} from './backzettelFormat'
 
-/** Abschnitt, der im Druck einen eigenen Block in zwei Spalten bekommt. */
+/** Abschnitt, der im Druck zum Hefeteig-Block gehört. */
 export const HEFETEIG_SECTION = 'hefeteig'
 
 /** Eine Dichtestufe: Grundschrift, Zeilenhöhe, große Literzahl. */
@@ -26,7 +37,10 @@ export interface PrintStep {
   bigPt: number
 }
 
-/** Von luftig bis knapp; die letzte Stufe ist die dichteste. */
+/**
+ * Dichtestufen der Backliste (`bakeListPrintLayout`), von luftig bis knapp.
+ * Der Teigtag-Zettel hat eigene, größere Stufen (`SHEET_STEPS`).
+ */
 export const DAY_PRINT_STEPS: readonly PrintStep[] = [
   { fontPt: 10, rowMm: 5.6, bigPt: 20 },
   { fontPt: 9, rowMm: 4.9, bigPt: 18 },
@@ -39,16 +53,16 @@ export const DAY_PRINT_STEPS: readonly PrintStep[] = [
 export const PAGE_MARGIN_MM = 10
 /**
  * Nutzbare Höhe einer Seite in mm: A4 (297) − 2 × Rand, mit Reserve für
- * Umbrüche in Spalten und Rundungen des Browsers.
+ * Rundungen des Browsers.
  */
 export const PAGE_HEIGHT_MM = 297 - 2 * PAGE_MARGIN_MM - 9
 /** Nutzbare Breite in mm. */
 export const PAGE_WIDTH_MM = 210 - 2 * PAGE_MARGIN_MM
-/** Leerzeilen für Notizen am Ende des Blatts und ihre Höhe in mm. */
+/** Leerzeilen für Notizen am Ende des letzten Blatts und ihre Höhe in mm. */
 export const NOTE_LINES = 4
-export const NOTE_LINE_MM = 5.5
+export const NOTE_LINE_MM = 7
 
-/** Ein Posten im Hefeteig-Block: alle Sorten einer Zeile zusammen. */
+/** Ein Posten im Hefeteig-Block: alle Sorten zusammen. */
 export interface HefeteigPrintRow {
   itemId: string
   name: string
@@ -57,7 +71,7 @@ export interface HefeteigPrintRow {
 
 /** Was nicht in Brot-Tabelle oder Brötchen steht, aufgeteilt für den Druck. */
 export interface DayPrintParts {
-  /** Hefeteig-Posten, je Posten eine Zeile (gefüllt: Sorten nebeneinander). */
+  /** Hefeteig-Posten, je Posten ein Eintrag (gefüllt: alle Sorten). */
   hefeteig: HefeteigPrintRow[]
   /** Übrige Abschnitte (Kaffeestückchen, Kuchen, Laugen …), ohne leere. */
   others: BackzettelSection[]
@@ -106,11 +120,277 @@ export function dayPrintParts(day: BackzettelDay): DayPrintParts {
   return { hefeteig, others, hints, open }
 }
 
+// ---------------------------------------------------------------------------
+// Tagestyp im Kopf
+
+/**
+ * Was der Tag für die Backstube ist, groß im Kopf des Zettels:
+ * „Heute backen + Teig für So 29.11. und Di 01.12.“, „Nur Teig für Di
+ * 01.12.“, „Backtag ohne Teig – siehe Backliste“. Nur aus den Backtagen
+ * des Zettels (Server), nichts gerechnet.
+ *
+ * Der Kalender (U9: Feiertage, „vor Feiertag“, Samstags-Satz) stellt seinen
+ * Tagestyp davor - der Kopf hat dafür Platz (`.dd-daytype`).
+ */
+export function sheetDayTypeText(
+  day: Pick<BackzettelDay, 'date' | 'sections' | 'bakeDates' | 'isDoughDay'>
+): string {
+  if (day.sections.length === 0 || day.isDoughDay === false) {
+    return 'Backtag ohne Teig – was gebacken wird, steht auf der Backliste'
+  }
+  const dates = new Set<string>()
+  for (const b of day.bakeDates ?? []) if (b.lineCount > 0) dates.add(b.date)
+  if (dates.size === 0) {
+    for (const s of day.sections)
+      for (const l of s.lines) dates.add(l.bakeDate ?? day.date)
+  }
+  const later = Array.from(dates)
+    .filter((d) => d !== day.date)
+    .sort()
+  const forLater =
+    later.length === 0
+      ? ''
+      : `Teig für ${later
+          .map(formatDateShort)
+          .join(later.length === 2 ? ' und ' : ', ')}`
+  if (!dates.has(day.date)) return `Nur ${forLater}`
+  return forLater ? `Heute backen + ${forLater}` : 'Heute backen'
+}
+
+/**
+ * Für welche Backtage ein Maschinen-Kasten Teig macht: „heute + So + Di“
+ * (aus den Teilen der Teige vom Server). Leer, wenn der Server keine Teile
+ * nennt.
+ */
+export function boxBakeDaysText(
+  day: Pick<BackzettelDay, 'date' | 'doughs'>,
+  box: Pick<MachineBox, 'doughIds'>
+): string {
+  const dates = new Set<string>()
+  for (const d of day.doughs ?? []) {
+    if (!box.doughIds.includes(d.id)) continue
+    for (const p of d.parts) if (p.bakeDate) dates.add(p.bakeDate)
+  }
+  // Kurz („So + Di“): die Daten stehen groß im Kopf (Tagestyp).
+  return Array.from(dates)
+    .sort()
+    .map((d) => (d === day.date ? 'heute' : WEEKDAY_SHORT[isoWeekday(d)]))
+    .join(' + ')
+}
+
+// ---------------------------------------------------------------------------
+// Blöcke: je Teig ein Block in Arbeitsreihenfolge
+
+/** Brötchen eines Teigs für einen Backtag. */
+export interface RollsForDay {
+  bakeDate: string
+  groups: BruchGroup[]
+  singles: SingleRow[]
+}
+
+/**
+ * Alles, was aus einem Maschinen-Kasten (Teig oder gemeinsame Gruppe)
+ * entsteht: Brot, Brötchen je Backtag, Hefeteig-Posten. `box: null` sind
+ * die Sammelblöcke für Zeilen ohne Kasten („Weiteres Brot“ - z. B.
+ * Spezialbrote nach Liter oder Charge -, „Weitere Brötchen“, „Hefeteig“).
+ */
+export interface DoughPrintBlock {
+  key: string
+  title: string
+  box: MachineBox | null
+  bread: BreadRow[]
+  /** Chronologisch: heute, dann die späteren Backtage. */
+  rolls: RollsForDay[]
+  hefeteig: HefeteigPrintRow[]
+}
+
+/**
+ * Ordnet Brot-Zeilen, Bruch-Gruppen, Einzelstücke und Hefeteig-Posten ihrem
+ * Maschinen-Kasten zu. Reihenfolge = Reihenfolge der Kästen vom Server, also
+ * `doughs:` in hq `config/backzettel.yaml` - die Arbeitsreihenfolge stellt
+ * der Inhaber dort ein. Zugeordnet wird über die Teig-ID der Zeile bzw. die
+ * Teile der Teige (`day.doughs[].parts`); was keinem Kasten gehört, kommt in
+ * einen Sammelblock - nie weggelassen.
+ */
+export function doughPrintBlocks(
+  day: BackzettelDay,
+  parts: DayPrintParts = dayPrintParts(day)
+): DoughPrintBlock[] {
+  const boxes = day.machine ?? []
+  const blocks: DoughPrintBlock[] = boxes.map((box) => ({
+    key: box.id ?? 'offen',
+    title: box.name,
+    box,
+    bread: [],
+    rolls: [],
+    hefeteig: [],
+  }))
+  const byDough = new Map<string | null, DoughPrintBlock>()
+  boxes.forEach((box, i) => {
+    for (const id of box.doughIds) byDough.set(id, blocks[i])
+  })
+  // Teig eines Postens je Backtag aus den Teilen der Teige.
+  const partDough = new Map<string, string | null>()
+  const itemDough = new Map<string, string | null>()
+  for (const d of day.doughs ?? []) {
+    for (const p of d.parts) {
+      partDough.set(`${p.itemId}|${p.bakeDate}`, d.id)
+      if (!itemDough.has(p.itemId)) itemDough.set(p.itemId, d.id)
+    }
+  }
+  const extra: Record<'brot' | 'broetchen' | 'hefeteig', DoughPrintBlock> = {
+    brot: sammel('weiteres-brot', 'Weiteres Brot'),
+    broetchen: sammel('weitere-broetchen', 'Weitere Brötchen'),
+    hefeteig: sammel('hefeteig', 'Hefeteig'),
+  }
+  const find = (doughId: string | null | undefined) =>
+    doughId === undefined ? undefined : byDough.get(doughId)
+
+  for (const row of day.bread?.rows ?? []) {
+    // `from_dough` (Anteil aus einem anderen Teig): die Zeile hat keinen
+    // eigenen Teig, ihr Teil nennt ihn.
+    const key = `${row.itemId}|${row.bakeDate}`
+    const id =
+      row.doughId !== null
+        ? row.doughId
+        : partDough.has(key)
+        ? partDough.get(key)
+        : undefined
+    ;(find(id) ?? extra.brot).bread.push(row)
+  }
+  const rollsOf = (block: DoughPrintBlock, bakeDate: string) => {
+    let r = block.rolls.find((x) => x.bakeDate === bakeDate)
+    if (!r) {
+      r = { bakeDate, groups: [], singles: [] }
+      block.rolls.push(r)
+    }
+    return r
+  }
+  for (const rb of day.rolls ?? []) {
+    for (const g of rb.groups) {
+      rollsOf(find(g.doughId) ?? extra.broetchen, rb.bakeDate).groups.push(g)
+    }
+    for (const s of rb.singles) {
+      const key = `${s.itemId}|${rb.bakeDate}`
+      const id = partDough.has(key) ? partDough.get(key) : undefined
+      rollsOf(find(id) ?? extra.broetchen, rb.bakeDate).singles.push(s)
+    }
+  }
+  const hefeBox = blocks.find((b) => b.box?.section === HEFETEIG_SECTION)
+  for (const row of parts.hefeteig) {
+    const id = itemDough.has(row.itemId) ? itemDough.get(row.itemId) : undefined
+    ;(find(id) ?? hefeBox ?? extra.hefeteig).hefeteig.push(row)
+  }
+  for (const b of [...blocks, ...Object.values(extra)]) {
+    b.rolls.sort((a, c) => a.bakeDate.localeCompare(c.bakeDate))
+  }
+
+  // Sammelblöcke hinter den letzten Block derselben Art.
+  const has = (b: DoughPrintBlock) =>
+    b.bread.length + b.rolls.length + b.hefeteig.length > 0
+  const out = blocks.filter(has)
+  const insertAfter = (
+    block: DoughPrintBlock,
+    like: (b: DoughPrintBlock) => boolean
+  ) => {
+    if (!has(block)) return
+    let at = -1
+    out.forEach((b, i) => {
+      if (like(b)) at = i
+    })
+    out.splice(at + 1, 0, block)
+  }
+  insertAfter(extra.brot, (b) => b.bread.length > 0)
+  insertAfter(extra.broetchen, (b) => b.rolls.length > 0 || b.bread.length > 0)
+  insertAfter(extra.hefeteig, () => true)
+  return out
+}
+
+function sammel(key: string, title: string): DoughPrintBlock {
+  return { key, title, box: null, bread: [], rolls: [], hefeteig: [] }
+}
+
+/** Ein Block des Druckbilds - nie über einen Seitenumbruch geteilt. */
+export type SheetBlock =
+  /** „Teige heute“: Liter zuerst, ein Kasten je Zeile. */
+  | { kind: 'doughs'; key: string; boxes: MachineBox[] }
+  | { kind: 'dough'; key: string; block: DoughPrintBlock }
+  /**
+   * Übriger Abschnitt. Nur ein Abschnitt, der allein höher als ein Blatt
+   * ist, wird geteilt - das Stück auf dem nächsten Blatt heißt „… (Forts.)“.
+   */
+  | {
+      kind: 'section'
+      key: string
+      section: BackzettelSection
+      lines: BackzettelLine[]
+      continued: boolean
+    }
+  /** Kein Teig heute (Sonntag): Hinweis auf die Backliste. */
+  | { kind: 'empty'; key: string }
+  | { kind: 'deltas'; key: string }
+  /** „Hinweise“ und „Offen: …“. */
+  | { kind: 'footnotes'; key: string }
+
+/** Alle Blöcke in Druckreihenfolge (ohne Kopf und Notizzeilen). */
+export function sheetBlocks(
+  day: BackzettelDay,
+  parts: DayPrintParts = dayPrintParts(day)
+): SheetBlock[] {
+  const out: SheetBlock[] = []
+  const boxes = day.machine ?? []
+  if (boxes.length > 0) out.push({ kind: 'doughs', key: 'doughs', boxes })
+  for (const block of doughPrintBlocks(day, parts)) {
+    out.push({ kind: 'dough', key: `dough-${block.key}`, block })
+  }
+  for (const section of parts.others) {
+    out.push({
+      kind: 'section',
+      key: `section-${section.id}`,
+      section,
+      lines: section.lines,
+      continued: false,
+    })
+  }
+  if (day.sections.length === 0) out.push({ kind: 'empty', key: 'empty' })
+  if ((day.deltas ?? []).length > 0) out.push({ kind: 'deltas', key: 'deltas' })
+  if (parts.hints.length + parts.open.length > 0) {
+    out.push({ kind: 'footnotes', key: 'footnotes' })
+  }
+  return out
+}
+
+// ---------------------------------------------------------------------------
+// Höhe und Verteilung auf Blätter
+
+/**
+ * Dichtestufe des Teigtag-Zettels: Grundschrift, Zeilenhöhe, Menge je Zeile
+ * (`qtyPt`) und Literzahl (`bigPt`). Lesbar in der Backstube heißt: nie unter
+ * 9 pt, Mengen mindestens 13 pt - lieber ein Blatt mehr (U8).
+ */
+export interface SheetStep extends PrintStep {
+  qtyPt: number
+}
+
+/** Von luftig bis knapp; die letzte Stufe ist die dichteste. */
+export const SHEET_STEPS: readonly SheetStep[] = [
+  { fontPt: 11, rowMm: 7.6, qtyPt: 16, bigPt: 24 },
+  { fontPt: 10, rowMm: 6.8, qtyPt: 14.5, bigPt: 21 },
+  { fontPt: 9, rowMm: 6.0, qtyPt: 13, bigPt: 18 },
+]
+
+const PT_MM = 0.3528
+
+/** Höhe einer Textzeile in mm bei `pt` Schriftgröße. */
+function lineMm(pt: number, leading = 1.25): number {
+  return pt * PT_MM * leading
+}
+
 /** Zeilen (Text), die ein Fließtext von `chars` Zeichen braucht. */
-function textLines(chars: number, fontPt: number): number {
+function textLines(chars: number, fontPt: number, widthMm = PAGE_WIDTH_MM) {
   // Arial: im Mittel gut ein halbes Geviert je Zeichen.
-  const charMm = fontPt * 0.3528 * 0.52
-  const perLine = Math.max(20, Math.floor(PAGE_WIDTH_MM / charMm))
+  const charMm = fontPt * PT_MM * 0.52
+  const perLine = Math.max(12, Math.floor(widthMm / charMm))
   return Math.ceil(chars / perLine)
 }
 
@@ -123,368 +403,320 @@ export function hasPrintDetail(line: BackzettelLine): boolean {
       line.baseUnset ||
       line.previouslyDone ||
       line.loavesEstimate ||
+      line.preorders > 0 ||
+      line.cap > 0 ||
       (line.delta && line.delta.count > 0)
   )
 }
 
 /**
- * Abschnitte bis zu so vielen Zeilen bleiben im Zwei-Spalten-Druck in einer
- * Spalte (Review Z10 Runde 2); längere dürfen auf die zweite Spalte umbrechen.
+ * Ab so vielen Zeilen setzt ein übriger Abschnitt seine Zeilen in zwei
+ * Spalten (Überschrift über beiden, die Zeilen nie ohne Überschrift).
  */
-export const KEEP_SECTION_LINES = 8
-/**
- * Bricht ein langer Abschnitt um, stehen mindestens so viele Zeilen unter der
- * Überschrift und mindestens so viele unter „… (Forts.)“ - nie eine
- * Überschrift allein unten in der linken Spalte.
- */
-export const MIN_SPLIT_LINES = 3
-/** Höhe einer Abschnitts-Überschrift in Zeilen (Schätzung der Seite, eher zu groß). */
-const SECTION_HEAD_ROWS = 1.5
-/**
- * Zum Verteilen auf die Spalten: so hoch, wie sie im Druck wirklich sind
- * (gemessen mit `page.pdf()` am vollen Samstag: Überschrift und Zeile mit
- * kleiner Angabe kaum höher als eine Zeile). Mit den großzügigen Werten der
- * Schätzung stand links deutlich mehr als rechts.
- */
-const BALANCE_HEAD_ROWS = 1.1
-const BALANCE_DETAIL_ROWS = 1.1
+export const TWO_COLUMN_LINES = 6
 
-/** Ein Stück eines Abschnitts in einer Druckspalte. */
-export interface PrintColumnChunk {
-  section: BackzettelSection
-  lines: BackzettelLine[]
-  /** Fortsetzung aus der linken Spalte: Überschrift „… (Forts.)“. */
-  continued: boolean
+/** Höhe des Kopfs von Blatt 1 (Wochentag groß, Tagestyp, Freigabe) in mm. */
+export function firstHeaderMm(s: SheetStep): number {
+  return lineMm(30, 1.1) + lineMm(s.fontPt * 1.35) + 4 + lineMm(s.fontPt) + 3
 }
 
-/** Höhe einer Zeile der übrigen Abschnitte in Zeilen (mit kleiner Angabe höher). */
-function otherLineRows(line: BackzettelLine): number {
-  return hasPrintDetail(line) ? 1.7 : 1
+/** Höhe des Kopfs ab Blatt 2 („Samstag, 28.11.2026 – Blatt 2 von 3“) in mm. */
+export function nextHeaderMm(s: SheetStep): number {
+  return lineMm(s.fontPt * 1.35) + 5
 }
 
-/** Geschätzte Höhe einer Spalte in Zeilen (für die Seite, eher zu groß). */
-export function printColumnRows(chunks: PrintColumnChunk[]): number {
-  let rows = 0
-  for (const c of chunks) {
-    rows += SECTION_HEAD_ROWS
-    for (const l of c.lines) rows += otherLineRows(l)
-  }
-  return rows
+/** Überschrift eines Blocks (fett, mit Strich) in mm. */
+function blockHeadMm(s: SheetStep): number {
+  return lineMm(s.fontPt * 1.35) + 4
+}
+
+/** Eine Tabellen-/Listenzeile mit großer Menge in mm. */
+function qtyRowMm(s: SheetStep): number {
+  return Math.max(s.rowMm, lineMm(s.qtyPt, 1.1) + 1.2)
+}
+
+/** Die kleine zweite Zeile unter einem Namen in mm. */
+function detailMm(s: SheetStep): number {
+  return lineMm(s.fontPt * 0.85)
 }
 
 /**
- * Verteilt die übrigen Abschnitte auf zwei Spalten (links zuerst, Reihenfolge
- * bleibt). Gewählt wird die Teilung mit der niedrigsten höheren Spalte -
- * zwischen zwei Abschnitten oder in einem Abschnitt mit mehr als
- * `KEEP_SECTION_LINES` Zeilen, dort mit mindestens `MIN_SPLIT_LINES` Zeilen auf
- * jeder Seite. Die Fortsetzung bekommt ihre Überschrift „… (Forts.)“ - eine
- * Zeile steht nie ohne ihren Abschnitt oben in der rechten Spalte.
- *
- * Gerechnet wird hier und nicht mit CSS-Spalten: dort lässt Chrome eine
- * Überschrift unten links stehen und setzt die Zeilen ohne Überschrift nach
- * rechts (Review Z10, voller Samstag).
+ * Eine Zeile mit großer Menge, Name und `sub` kleinen Zeilen darunter
+ * (Aufteilung, Hinweis, Angaben): so hoch wie die höhere der beiden Spalten.
+ * Gemessen mit `page.pdf()` (U8): Name + kleine Zeilen + Rand 0,8 mm.
  */
-export function printColumns(
-  sections: BackzettelSection[]
-): [PrintColumnChunk[], PrintColumnChunk[]] {
-  const HEAD = BALANCE_HEAD_ROWS
-  const rowsOf = sections.map((s) =>
-    s.lines.map((l) => (hasPrintDetail(l) ? BALANCE_DETAIL_ROWS : 1))
-  )
-  const total = rowsOf.reduce(
-    (n, r) => n + HEAD + r.reduce((a, b) => a + b, 0),
-    0
-  )
-  // Kandidaten: vor Abschnitt i (k = 0) oder nach k Zeilen von Abschnitt i.
-  let best = { i: sections.length, k: 0, height: total, left: total }
-  const better = (height: number, k: number, left: number) => {
-    if (Math.abs(height - best.height) > 1e-9) return height < best.height
-    // Gleich hoch: lieber zwischen Abschnitten, dann links voller.
-    if (k > 0 !== best.k > 0) return k === 0
-    return left > best.left
-  }
-  let before = 0
-  for (let i = 0; i <= sections.length; i++) {
-    const consider = (k: number, left: number, right: number) => {
-      const height = Math.max(left, right)
-      if (better(height, k, left)) best = { i, k, height, left }
-    }
-    consider(0, before, total - before)
-    if (i === sections.length) break
-    const rows = rowsOf[i]
-    if (rows.length > KEEP_SECTION_LINES) {
-      let left = before + HEAD
-      for (let k = 1; k < rows.length; k++) {
-        left += rows[k - 1]
-        if (k < MIN_SPLIT_LINES || rows.length - k < MIN_SPLIT_LINES) continue
-        consider(k, left, total - left + HEAD)
-      }
-    }
-    before += HEAD + rows.reduce((a, b) => a + b, 0)
-  }
-  const { i, k } = best
-  const left: PrintColumnChunk[] = sections
-    .slice(0, i)
-    .map((section) => ({ section, lines: section.lines, continued: false }))
-  const right: PrintColumnChunk[] = []
-  if (i < sections.length) {
-    const split = sections[i]
-    if (k > 0) {
-      left.push({
-        section: split,
-        lines: split.lines.slice(0, k),
-        continued: false,
-      })
-      right.push({
-        section: split,
-        lines: split.lines.slice(k),
-        continued: true,
-      })
-    } else {
-      right.push({ section: split, lines: split.lines, continued: false })
-    }
-    for (const section of sections.slice(i + 1)) {
-      right.push({ section, lines: section.lines, continued: false })
-    }
-  }
-  return [left, right]
+function stackMm(s: SheetStep, sub: number): number {
+  return Math.max(qtyRowMm(s), lineMm(s.fontPt) + sub * detailMm(s) + 0.8)
 }
 
-export interface DayPrintLayout extends PrintStep {
-  /** Index in `DAY_PRINT_STEPS` (0 = luftig). */
-  step: number
-  /**
-   * Passt es selbst in der dichtesten Stufe nicht, kommen die übrigen
-   * Abschnitte auf ein zweites Blatt (docs/backzettel-v2.md §9 Nr. 3) - nie
-   * abgeschnitten, nie weggelassen.
-   */
-  othersOnSecondSheet: boolean
-  /**
-   * Notizzeilen am Ende von Seite 1: `NOTE_LINES`, weniger (bis 0), wenn die
-   * übrigen Abschnitte sonst auf Blatt 2 müssten - Notizen gehen vor.
-   */
-  noteLines: number
-  /** Geschätzte Höhe von Seite 1 in mm (für Specs und Fehlersuche). */
-  estimatedMm: number
-  /**
-   * Dichte von Blatt 2 (nur mit `othersOnSecondSheet`): eigene Stufe, nach
-   * der Höhe von Blatt 2 gewählt - nicht die von Seite 1, sonst lief ein
-   * Blatt 2, das knapp gesetzt passt, luftig auf ein drittes (Review Z10).
-   */
-  secondSheet: SecondSheetLayout | null
-}
-
-/** Dichte und geschätzte Höhe von Blatt 2 (übrige Abschnitte). */
-export interface SecondSheetLayout extends PrintStep {
-  /** Index in `DAY_PRINT_STEPS` (0 = luftig). */
-  step: number
-  /** Geschätzte Höhe von Blatt 2 in mm. */
-  estimatedMm: number
-}
-
-/**
- * Höhe des Kastens „ENTWURF – noch nicht freigegeben“ in mm (`.banner` aus
- * `backzettelPrintStyles`: 12 pt, 1,5 mm Innen-, 2 mm Außenabstand).
- */
-const DRAFT_BANNER_MM = 14
-
-/**
- * Geschätzte Höhe von Blatt 2 in mm: Titel (1,5-fache Schrift), beim Entwurf
- * der Kasten „ENTWURF“, dann die übrigen Abschnitte in zwei Spalten.
- */
-export function dayPrintSecondSheetHeight(
-  day: BackzettelDay,
-  parts: DayPrintParts,
-  s: PrintStep
+/** Höhe eines Bruch- oder Einzelstück-Eintrags (mit Aufteilung darunter). */
+function rollRowsMm(
+  r: RollsForDay,
+  s: SheetStep,
+  lineByKey: Map<string, BackzettelLine>
 ): number {
+  let h = lineMm(s.fontPt) + 2 // „für Sonntag, 29.11.“
+  // Name und Aufteilung stehen in einer Spalte von gut 100 mm; eine lange
+  // Aufteilung (Stern-Gruppe) bricht um. Zusatzzeilen (Hinweis je Posten,
+  // später z. B. Körner je Bruch) zählen als weitere kleine Zeile.
+  for (const g of r.groups) {
+    const chars =
+      g.split.reduce((n, x) => n + x.name.length + 6, 0) +
+      g.missing.length * 30 +
+      12
+    const hints = new Set(
+      g.split.map((x) => lineByKey.get(x.key)?.hint).filter(Boolean)
+    ).size
+    h += stackMm(s, textLines(chars, s.fontPt * 0.85, 100) + hints)
+  }
+  for (const x of r.singles) {
+    const sub =
+      (x.pieces === null || x.baseUnset ? 1 : 0) +
+      (lineByKey.get(x.key)?.hint ? 1 : 0)
+    h += stackMm(s, sub)
+  }
+  return h
+}
+
+/** Kleine Zeilen unter dem Namen: Hinweis (fett) und Angaben je eine. */
+function lineSubRows(line: BackzettelLine): number {
   return (
-    s.fontPt * 0.3528 * 1.5 * 1.2 +
-    (day.status === 'confirmed' ? 0 : DRAFT_BANNER_MM) +
-    dayPrintHeights(day, parts, s).others
+    (line.hint ? 1 : 0) + (hasPrintDetail({ ...line, hint: undefined }) ? 1 : 0)
+  )
+}
+
+/** Höhe eines Hefeteig-Postens: Name und je Sorte eine Zeile. */
+function hefeteigItemMm(row: HefeteigPrintRow, s: SheetStep): number {
+  const variants = row.lines.length > 1 || !!row.lines[0]?.variant
+  return (
+    (variants ? lineMm(s.fontPt) + 1.5 : 0) +
+    row.lines.reduce((h, l) => h + stackMm(s, lineSubRows(l)), 0)
   )
 }
 
 /**
- * Stufe von Blatt 2: die luftigste, in der es passt. Passt es selbst in der
- * dichtesten nicht, bleibt die dichteste - dann läuft Blatt 2 weiter
- * (docs/backzettel-v2.md §9 Nr. 3, Grenze).
+ * Zwei Spalten: Höhe der höheren, Einträge bleiben ganz. Chrome verteilt
+ * nicht immer optimal - eine halbe Zeile Reserve.
  */
-function secondSheetLayout(
-  day: BackzettelDay,
-  parts: DayPrintParts
-): SecondSheetLayout {
-  const heights = DAY_PRINT_STEPS.map((s) =>
-    dayPrintSecondSheetHeight(day, parts, s)
-  )
-  const found = heights.findIndex((h) => h <= PAGE_HEIGHT_MM)
-  const step = found === -1 ? DAY_PRINT_STEPS.length - 1 : found
-  return {
-    ...DAY_PRINT_STEPS[step],
-    step,
-    estimatedMm: Math.round(heights[step]),
+function twoColumnsMm(heights: number[], s: SheetStep): number {
+  if (heights.length === 0) return 0
+  const total = heights.reduce((a, b) => a + b, 0)
+  let best = total
+  let left = 0
+  for (const h of heights) {
+    left += h
+    best = Math.min(best, Math.max(left, total - left))
   }
+  return best + (heights.length > 1 ? s.rowMm / 2 : 0)
 }
 
-/** Geschätzte Höhen der Blöcke von Seite 1 in mm bei einer Dichtestufe. */
-export function dayPrintHeights(
+/** Zeilen eines Tages nach Schlüssel (für Hinweise an Brot und Brötchen). */
+function linesByKeyOf(day: BackzettelDay): Map<string, BackzettelLine> {
+  return new Map(day.sections.flatMap((x) => x.lines).map((l) => [l.key, l]))
+}
+
+/** Ob eine Brot-Zeile einen Hinweis (Zukauf, `note`) trägt. */
+function breadHasHint(
+  row: BreadRow,
+  lineByKey: Map<string, BackzettelLine>
+): boolean {
+  return [row.single, ...Object.values(row.cells)].some(
+    (c) => !!c && !!lineByKey.get(c.key)?.hint
+  )
+}
+
+/** Geschätzte Höhe eines Blocks in mm (eher zu groß). */
+export function blockHeightMm(
+  block: SheetBlock,
   day: BackzettelDay,
   parts: DayPrintParts,
-  s: PrintStep,
-  noteLines: number = NOTE_LINES
-): { fixed: number; others: number } {
-  const row = s.rowMm
-  const heading = row * 1.5
-  const small = row * 0.75
-  let fixed = 0
-
-  // Kopf: Titel, Teige heute, Freigabe/Entwurf.
-  fixed +=
-    s.fontPt * 0.3528 * 1.6 + row * 2 + (day.status === 'confirmed' ? 0 : row)
-
-  // Maschine: vier Kästen je Reihe, Höhe nach dem vollsten Kasten.
-  const machine = day.machine ?? []
-  for (let i = 0; i < machine.length; i += 4) {
-    const boxes = machine.slice(i, i + 4)
-    const lines = Math.max(
-      ...boxes.map(
-        (b) =>
-          3 + // Name, kg, Chargen
-          b.addons.length +
-          (b.liters.reason ? 1 : 0)
+  s: SheetStep
+): number {
+  const gap = 3
+  switch (block.kind) {
+    case 'doughs': {
+      let h = blockHeadMm(s) + lineMm(s.fontPt * 0.85) + 1.5
+      for (const box of block.boxes) {
+        // Literzahl groß; darunter der Grund, wenn sie unbekannt ist. Links
+        // je Zugabe eine kleine Zeile unter dem Namen.
+        const right =
+          lineMm(s.bigPt, 1.1) + 0.8 + (box.liters.reason ? detailMm(s) : 0)
+        const left = lineMm(s.fontPt) + box.addons.length * detailMm(s) + 0.8
+        h += Math.max(right, left, s.rowMm)
+      }
+      return h + gap
+    }
+    case 'dough': {
+      const b = block.block
+      const lineByKey = linesByKeyOf(day)
+      let h = blockHeadMm(s)
+      if (b.hefeteig.length > 0 && (day.hefeteig?.doughs ?? []).length > 0) {
+        h += lineMm(s.fontPt * 0.85) + 1 // „Testhefe: 12 Teigstücke · 6,6 kg“
+      }
+      if (b.bread.length > 0) {
+        h += lineMm(s.fontPt * 0.85) + 1.5
+        for (const r of b.bread) {
+          const sub =
+            (r.note ? 1 : 0) +
+            (!r.complete || r.single?.baseUnset ? 1 : 0) +
+            (breadHasHint(r, lineByKey) ? 1 : 0)
+          h += stackMm(s, sub)
+        }
+      }
+      for (const r of b.rolls) h += rollRowsMm(r, s, lineByKey)
+      if (b.hefeteig.length > 0) {
+        h += twoColumnsMm(
+          b.hefeteig.map((row) => hefeteigItemMm(row, s)),
+          s
+        )
+      }
+      return h + gap
+    }
+    case 'section': {
+      const rows = block.lines.map((l) => stackMm(s, lineSubRows(l)))
+      const body =
+        block.lines.length >= TWO_COLUMN_LINES
+          ? twoColumnsMm(rows, s)
+          : rows.reduce((a, b) => a + b, 0)
+      return blockHeadMm(s) + body + gap
+    }
+    case 'empty':
+      return s.rowMm * 2 + gap
+    case 'deltas': {
+      const keys = new Set((day.deltas ?? []).map((d) => d.key)).size
+      const doughChars = deltaDoughLines(day).join('; ').length
+      return (
+        blockHeadMm(s) +
+        Math.ceil(keys / 2) * qtyRowMm(s) +
+        (doughChars > 0
+          ? textLines(doughChars + 30, s.fontPt * 0.85) * detailMm(s) + 1
+          : 0) +
+        gap
       )
-    )
-    fixed += lines * small + s.bigPt * 0.3528 * 1.25 + 3
-  }
-
-  // Brot: Kopfzeile + je Brot eine Zeile (+ kleiner Hinweis).
-  const bread = day.bread?.rows ?? []
-  if (bread.length > 0) {
-    fixed += heading + row
-    // Der Hinweis steht klein hinter dem Namen; lange brechen um.
-    for (const r of bread) fixed += row + (r.note ? small * 0.5 : 0)
-  }
-
-  // Brötchen: je Backtag eine Spalte (höchstens drei nebeneinander).
-  const rolls = day.rolls ?? []
-  for (let i = 0; i < rolls.length; i += 3) {
-    const cols = rolls.slice(i, i + 3)
-    const tallest = Math.max(
-      ...cols.map(
-        (b) =>
-          row + // Backtag
-          b.groups.length * (row + small * 0.4) + // Brüche – Aufteilung
-          b.singles.length * row
+    }
+    case 'footnotes': {
+      const small = s.fontPt * 0.9
+      const hintChars = parts.hints.join('; ').length
+      const openChars = parts.open.join('; ').length
+      return (
+        (hintChars ? textLines(hintChars + 12, small) * lineMm(small) + 1 : 0) +
+        (openChars ? textLines(openChars + 8, small) * lineMm(small) + 1 : 0) +
+        gap
       )
-    )
-    fixed += (i === 0 ? heading : 2) + tallest
+    }
+  }
+}
+
+/** Ein Blatt des Druckbilds. */
+export interface DaySheet {
+  blocks: SheetBlock[]
+  /** Geschätzte Höhe in mm (Kopf, Blöcke, auf dem letzten die Notizen). */
+  estimatedMm: number
+}
+
+export interface DayPrintLayout extends SheetStep {
+  /** Index in `SHEET_STEPS` (0 = luftig). */
+  step: number
+  /** Mindestens ein Blatt; Blöcke werden nie zwischen zwei Blättern geteilt. */
+  sheets: DaySheet[]
+  /** Notizzeilen am Ende des letzten Blatts (0 … `NOTE_LINES`). */
+  noteLines: number
+}
+
+/** So viele Zeilen stehen mindestens unter einer Überschrift (geteilter Abschnitt). */
+export const MIN_SPLIT_LINES = 3
+
+/** Verteilt die Blöcke bei einer Stufe auf Blätter. */
+export function packSheets(
+  day: BackzettelDay,
+  parts: DayPrintParts,
+  blocks: SheetBlock[],
+  s: SheetStep
+): { sheets: DaySheet[]; noteLines: number } {
+  const sheets: DaySheet[] = [{ blocks: [], estimatedMm: firstHeaderMm(s) }]
+  const cur = () => sheets[sheets.length - 1]
+  const room = () => PAGE_HEIGHT_MM - cur().estimatedMm
+  const fresh = PAGE_HEIGHT_MM - nextHeaderMm(s)
+  const next = () => sheets.push({ blocks: [], estimatedMm: nextHeaderMm(s) })
+  const add = (b: SheetBlock, h: number) => {
+    cur().blocks.push(b)
+    cur().estimatedMm += h
+  }
+  const height = (b: SheetBlock) => blockHeightMm(b, day, parts, s)
+
+  for (const block of blocks) {
+    const h = height(block)
+    if (h <= room()) {
+      add(block, h)
+      continue
+    }
+    if (block.kind === 'section' && h > fresh) {
+      // Ein Abschnitt höher als ein Blatt: Stück für Stück, jedes mit
+      // Überschrift („… (Forts.)“) und mindestens MIN_SPLIT_LINES Zeilen.
+      let rest = block.lines
+      let continued = block.continued
+      while (rest.length > 0) {
+        let take = 0
+        while (take < rest.length) {
+          const chunk = { ...block, lines: rest.slice(0, take + 1), continued }
+          if (height(chunk) > room()) break
+          take++
+        }
+        if (take < Math.min(MIN_SPLIT_LINES, rest.length)) {
+          if (cur().blocks.length > 0) {
+            next()
+            continue
+          }
+          take = Math.max(1, take)
+        }
+        const chunk: SheetBlock = {
+          ...block,
+          key: continued ? `${block.key}-forts-${sheets.length}` : block.key,
+          lines: rest.slice(0, take),
+          continued,
+        }
+        add(chunk, height(chunk))
+        rest = rest.slice(take)
+        continued = true
+        if (rest.length > 0) next()
+      }
+      continue
+    }
+    if (cur().blocks.length > 0) next()
+    // Passt ein Block (Teig) allein nicht auf ein Blatt, steht er trotzdem
+    // ganz da; der Browser bricht dann zwischen Zeilen um.
+    add(block, h)
   }
 
-  // Hefeteig: zwei Spalten.
-  if (parts.hefeteig.length > 0) {
-    fixed += heading + Math.ceil(parts.hefeteig.length / 2) * row
-  }
-
-  // Nachträge: eine Zeile je Posten.
-  const deltaKeys = new Set((day.deltas ?? []).map((d) => d.key)).size
-  if (deltaKeys > 0) fixed += heading + Math.ceil(deltaKeys / 2) * row * 1.2
-  // … und was sie für Teig und Teilmaschine heißen (eine kleine Textzeile).
-  const doughChars = deltaDoughLines(day).join('; ').length
-  if (doughChars > 0) {
-    fixed += textLines(doughChars + 30, s.fontPt * 0.85) * small + 1
-  }
-
-  // Hinweise und „Offen: …“ in kleiner Schrift.
-  const smallPt = s.fontPt * 0.85
-  const hintChars = parts.hints.join(' · ').length
-  const openChars = parts.open.join('; ').length
-  if (hintChars > 0) fixed += textLines(hintChars + 10, smallPt) * small + 1
-  if (openChars > 0) fixed += textLines(openChars + 8, smallPt) * small + 1
-
-  // Notizzeilen (ohne Zeilen auch ohne Überschrift).
-  if (noteLines > 0) fixed += row + noteLines * NOTE_LINE_MM
-
-  // Übrige Abschnitte: zwei Spalten (`printColumns`), so hoch wie die höhere.
-  const others =
-    parts.others.length > 0
-      ? heading +
-        (Math.ceil(
-          Math.max(...printColumns(parts.others).map(printColumnRows))
-        ) +
-          1) *
-          row
-      : 0
-
-  return { fixed, others }
+  const noteHead = lineMm(SHEET_STEPS[0].fontPt) + 1
+  const noteLines = Math.max(
+    0,
+    Math.min(NOTE_LINES, Math.floor((room() - noteHead) / NOTE_LINE_MM))
+  )
+  if (noteLines > 0) cur().estimatedMm += noteHead + noteLines * NOTE_LINE_MM
+  for (const sheet of sheets) sheet.estimatedMm = Math.round(sheet.estimatedMm)
+  return { sheets, noteLines }
 }
 
 /**
- * Dichte des Druckbilds: die luftigste Stufe, in der Seite 1 passt. Passt es
- * nirgends, stehen die übrigen Abschnitte auf einem zweiten Blatt (mit
- * Hinweis auf Seite 1); Seite 1 und Blatt 2 wählen ihre Stufe dann je für
- * sich.
+ * Druckbild eines Teigtag-Zettels: so wenige Blätter wie möglich bei
+ * lesbarer Schrift (`SHEET_STEPS`, nie unter 9 pt), bei gleicher Blattzahl
+ * die luftigste Stufe. Ein Block (Teig, Abschnitt, Nachträge) wird nie
+ * zwischen zwei Blättern geteilt; der volle Samstag geht so auf zwei bis drei
+ * Blätter, die Grenze liegt zwischen zwei Teigen - wie beim alten
+ * Samstags-Satz, ein Blatt je Station.
  */
 export function dayPrintLayout(day: BackzettelDay): DayPrintLayout {
   const parts = dayPrintParts(day)
-  let tightest: { fixed: number; others: number } | null = null
-  for (let i = 0; i < DAY_PRINT_STEPS.length; i++) {
-    const h = dayPrintHeights(day, parts, DAY_PRINT_STEPS[i])
-    tightest = h
-    if (h.fixed + h.others <= PAGE_HEIGHT_MM) {
-      return {
-        ...DAY_PRINT_STEPS[i],
-        step: i,
-        othersOnSecondSheet: false,
-        noteLines: NOTE_LINES,
-        estimatedMm: Math.round(h.fixed + h.others),
-        secondSheet: null,
-      }
+  const blocks = sheetBlocks(day, parts)
+  let best: DayPrintLayout | null = null
+  SHEET_STEPS.forEach((s, step) => {
+    const packed = packSheets(day, parts, blocks, s)
+    if (!best || packed.sheets.length < best.sheets.length) {
+      best = { ...s, step, ...packed }
     }
-  }
-  const last = DAY_PRINT_STEPS.length - 1
-  // Vor Blatt 2: in der dichtesten Stufe erst die Notizzeilen kürzen
-  // (Review Z10 Runde 1 - ein voller Samstag ging sonst auf zwei Blätter,
-  // obwohl unten Platz blieb).
-  if (parts.others.length > 0) {
-    for (let n = NOTE_LINES - 1; n >= 0; n--) {
-      const h = dayPrintHeights(day, parts, DAY_PRINT_STEPS[last], n)
-      if (h.fixed + h.others <= PAGE_HEIGHT_MM) {
-        return {
-          ...DAY_PRINT_STEPS[last],
-          step: last,
-          othersOnSecondSheet: false,
-          noteLines: n,
-          estimatedMm: Math.round(h.fixed + h.others),
-          secondSheet: null,
-        }
-      }
-    }
-  }
-  const h = tightest as { fixed: number; others: number }
-  if (parts.others.length === 0) {
-    return {
-      ...DAY_PRINT_STEPS[last],
-      step: last,
-      othersOnSecondSheet: false,
-      noteLines: NOTE_LINES,
-      estimatedMm: Math.round(h.fixed + h.others),
-      secondSheet: null,
-    }
-  }
-  // Blatt 2: Seite 1 trägt statt der Abschnitte nur den Kasten „Weitere
-  // Abschnitte auf Blatt 2: …“ (zwei Zeilen) und darf wieder luftiger werden.
-  // Blatt 2 bekommt seine eigene Stufe (`secondSheet`).
-  const page1 = (s: PrintStep) =>
-    dayPrintHeights(day, parts, s).fixed + 2 * s.rowMm
-  const found = DAY_PRINT_STEPS.findIndex((s) => page1(s) <= PAGE_HEIGHT_MM)
-  const step = found === -1 ? last : found
-  return {
-    ...DAY_PRINT_STEPS[step],
-    step,
-    othersOnSecondSheet: true,
-    noteLines: NOTE_LINES,
-    estimatedMm: Math.round(page1(DAY_PRINT_STEPS[step])),
-    secondSheet: secondSheetLayout(day, parts),
-  }
+  })
+  return best as unknown as DayPrintLayout
 }
 
 export interface BakeListPrintLayout extends PrintStep {
@@ -506,7 +738,7 @@ export function bakeListPrintLayout(
     const row = s.rowMm * 1.15 // größere Zahlen als auf dem Zettel
     const body = (sections * 1.5 + lines) / columns + 1
     return (
-      s.fontPt * 0.3528 * 1.6 +
+      s.fontPt * PT_MM * 1.6 +
       s.rowMm * 3 + // Kopf, Quellen, Entwurf
       body * row +
       (deltaKeys > 0 ? (1.5 + deltaKeys * 1.1) * s.rowMm : 0) +

@@ -43,7 +43,7 @@ import { BackzettelPrintExtras } from './BackzettelPrintExtras'
  *
  * Seit Z10 druckt so nur noch ein Tag, der vor Z10 freigegeben wurde
  * (`sheetVersion: 1`); S. 2-3 stehen in `BackzettelPrintExtras`. Ein
- * Teigtag-Zettel druckt `DoughDayPrint` (eine Seite).
+ * Teigtag-Zettel druckt `DoughDayPrint` (Teige zuerst, je Teig ein Block; U8).
  */
 export const backzettelPrintStyles = (
   <GlobalStyles
