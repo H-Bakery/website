@@ -179,9 +179,10 @@ const UNIT_SUFFIX: Record<string, string> = {
   Liter: 'L',
   kg: 'kg',
   Blech: 'Bl.',
+  Charge: 'Charge',
 }
 
-/** Menge mit Einheit; Stück ohne Zusatz („40“, „4,5 L“, „3 Bl.“). */
+/** Menge mit Einheit; Stück ohne Zusatz („40“, „4,5 L“, „3 Bl.“, „1,12 Charge“). */
 export function formatQty(n: number, unit: BackzettelUnit | null): string {
   const suffix = unit ? UNIT_SUFFIX[unit] : undefined
   return suffix ? `${formatNumber(n)} ${suffix}` : formatNumber(n)

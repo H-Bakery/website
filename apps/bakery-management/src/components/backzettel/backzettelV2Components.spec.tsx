@@ -6,11 +6,13 @@ import { BreadTable } from './BreadTable'
 import { batchText } from './HefeteigCard'
 import { batchesText } from '../../lib/backzettelFormat'
 import { RollsByBakeDay, linesByKey, v2CoveredKeys } from './RollsByBakeDay'
+import { BackzettelSectionView } from './BackzettelSectionView'
 import {
   SAT,
   SUN,
   TEST_CONFIG_V2,
   V2_TUE,
+  line,
   saturdayV2Draft,
 } from '../../lib/backzettelFixtures'
 
@@ -27,6 +29,34 @@ const editProps = {
 }
 
 describe('Backzettel v2 - Bausteine', () => {
+  it('Abschnitt: Zukauf-Hinweis fett an Tabelle und Karte, nur an Zeilen mit Hinweis', () => {
+    const zukauf = line({
+      itemId: 'test-laugenstange',
+      name: 'Testlaugenstange',
+      section: 'laugen',
+      purchased: true,
+      note: 'mit Käse bestreuen',
+      hint: 'Zukauf – auflegen · mit Käse bestreuen',
+    })
+    const plain = line({ itemId: 'test-weck' })
+    render(
+      <BackzettelSectionView
+        section={{ id: 'laugen', label: 'Laugen', lines: [zukauf, plain] }}
+        config={null}
+        editable={false}
+        editingKey={null}
+        onEdit={noop}
+        onSaveCorrection={async () => undefined}
+      />
+    )
+    const hints = screen.getAllByTestId(`line-hint-${zukauf.key}`)
+    // Tabelle (ab md) und Karte (darunter) stehen beide im DOM
+    expect(hints).toHaveLength(2)
+    for (const h of hints)
+      expect(h).toHaveTextContent('Zukauf – auflegen · mit Käse bestreuen')
+    expect(screen.queryAllByTestId(`line-hint-${plain.key}`)).toHaveLength(0)
+  })
+
   it('MachineStrip: nichts ohne Kästen, Hinweise je Teig ohne Doppelte', () => {
     const { container } = render(<MachineStrip machine={[]} />)
     expect(container).toBeEmptyDOMElement()

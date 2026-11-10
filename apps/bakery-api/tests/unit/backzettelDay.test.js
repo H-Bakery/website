@@ -490,6 +490,24 @@ describe('Freigabe und freigegebene Zeilen', () => {
       day.frozenLine({ itemId: 'plunder', variant: '', total: 25 }, cfg).tray
     ).toBe('3 Bleche à 10 (Bleche 7, 8, 9)')
   })
+
+  it('frozenLine: Zukauf-Hinweis aus den aktuellen Stammdaten, sonst ohne', () => {
+    const raw = config()
+    const schnecke = raw.items.find((i) => i.id === 'schnecke')
+    schnecke.purchased = true
+    schnecke.note = 'mit Käse bestreuen'
+    const withHint = configCore.normalizeConfig(raw)
+    expect(
+      day.frozenLine({ itemId: 'schnecke', variant: '', total: 6 }, withHint)
+    ).toMatchObject({
+      purchased: true,
+      note: 'mit Käse bestreuen',
+      hint: 'Zukauf – auflegen · mit Käse bestreuen',
+    })
+    const plain = day.frozenLine({ itemId: 'weck', variant: '', total: 6 }, cfg)
+    expect(plain).not.toHaveProperty('hint')
+    expect(plain).not.toHaveProperty('purchased')
+  })
 })
 
 describe('Varianten-Formen', () => {

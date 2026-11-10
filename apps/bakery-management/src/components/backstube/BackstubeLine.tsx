@@ -125,6 +125,20 @@ export function BackstubeLine({
         >
           {[line.tray, lineBreakdown(line)].filter(Boolean).join(' · ')}
         </Typography>
+        {line.hint && (
+          <Typography
+            component="div"
+            data-testid={`bs-hint-${line.key}`}
+            sx={{
+              fontSize: { xs: '1rem', sm: '1.15rem' },
+              fontWeight: 700,
+              color: 'text.primary',
+              mt: 0.5,
+            }}
+          >
+            {line.hint}
+          </Typography>
+        )}
         {previously && (
           <Typography
             component="div"

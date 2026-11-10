@@ -918,6 +918,9 @@ function bakeDayLabel(bakeDate, sheetDate) {
 
 function breadNote(cfg, item) {
   const notes = []
+  // Zukauf und `note` aus der YAML zuerst - dieselben Worte wie an der Zeile
+  const hint = configCore.itemHint(item)
+  if (hint) notes.push(hint)
   const dough = item.dough
     ? cfg.doughs.find((d) => d.id === item.dough.id)
     : null

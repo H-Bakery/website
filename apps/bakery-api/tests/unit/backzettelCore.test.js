@@ -1144,12 +1144,50 @@ describe('formatTrayInfo (aus dem früheren feature-daily-prep/utils/trayInfo.ts
   })
 })
 
+describe('Zukauf und Hinweise an der Zeile', () => {
+  it('Zeile traegt purchased, note und hint nur, wenn der Posten sie hat', () => {
+    const raw = config()
+    const schnecke = raw.items.find((i) => i.id === 'schnecke')
+    schnecke.purchased = true
+    schnecke.note = 'mit Käse bestreuen'
+    raw.items.find((i) => i.id === 'plunder').note = 'für morgen'
+    const r = core.computeDay({ config: raw, date: TUE })
+    expect(line(r, 'schnecke')).toMatchObject({
+      purchased: true,
+      note: 'mit Käse bestreuen',
+      hint: 'Zukauf – auflegen · mit Käse bestreuen',
+    })
+    const plunder = line(r, 'plunder')
+    expect(plunder.hint).toBe('für morgen')
+    expect(plunder).not.toHaveProperty('purchased')
+    const weck = line(r, 'weck')
+    expect(weck).not.toHaveProperty('hint')
+    expect(weck).not.toHaveProperty('note')
+  })
+})
+
+describe('Einheit Charge (Spezialbrot)', () => {
+  it('rechnet Chargen-Faktoren wie Liter auf Hundertstel', () => {
+    const raw = config()
+    const korn = raw.items.find((i) => i.id === 'kornbrot')
+    korn.unit = 'Charge'
+    korn.base = { 2: 1.12 }
+    korn.pieces_per_liter = null
+    const r = core.computeDay({ config: raw, date: TUE, seasonFactor: 1.1 })
+    const l = line(r, 'kornbrot')
+    expect(l.unit).toBe('Charge')
+    expect(l.total).toBe(1.24) // 1,12 × 1,1 = 1,232 → aufgerundet 1,24
+    expect(l).not.toHaveProperty('loavesEstimate')
+  })
+})
+
 describe('roundUp', () => {
   it('rundet Stueck auf ganze Zahlen und Liter auf Hundertstel, tolerant gegen Fliesskomma', () => {
     expect(core.roundUp(0.1 * 3 * 10, 'Stück')).toBe(3)
     expect(core.roundUp(2.01, 'Stück')).toBe(3)
     expect(core.roundUp(1.37 * 1.0, 'Liter')).toBe(1.37)
     expect(core.roundUp(1.371, 'Liter')).toBe(1.38)
+    expect(core.roundUp(1.121, 'Charge')).toBe(1.13)
     expect(core.roundUp(Number.NaN, 'Stück')).toBe(0)
   })
 })

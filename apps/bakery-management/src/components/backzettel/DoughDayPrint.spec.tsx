@@ -226,6 +226,24 @@ describe('Druck eines Teigtag-Zettels (Z10 S6)', () => {
     ).toHaveLength(4)
   })
 
+  it('Zukauf-Hinweis und note stehen fett an der Zeile der übrigen Abschnitte', () => {
+    const day = saturdayV2Draft()
+    for (const s of day.sections)
+      for (const l of s.lines)
+        if (l.itemId === 'test-plunder')
+          Object.assign(l, {
+            purchased: true,
+            note: 'mit Käse bestreuen',
+            hint: 'Zukauf – auflegen · mit Käse bestreuen',
+          })
+    const page = renderPrint(day)
+    const row = page.getByTestId('dd-line-test-plunder|')
+    const hint = within(row).getByTestId('dd-hint-test-plunder|')
+    expect(hint.tagName).toBe('STRONG')
+    expect(hint).toHaveTextContent('Zukauf – auflegen · mit Käse bestreuen')
+    expect(page.queryAllByTestId(/^dd-hint-/)).toHaveLength(1)
+  })
+
   it('Nachträge mit Backtag, nicht in den Mengen; abgehakte Zeilen mit ✓', () => {
     const confirmed = saturdayV2Confirmed()
     const day: BackzettelDay = {

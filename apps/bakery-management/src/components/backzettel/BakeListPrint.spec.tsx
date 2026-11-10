@@ -52,6 +52,19 @@ describe('Druck der Backliste (Z10 S6)', () => {
     ).toBeInTheDocument()
   })
 
+  it('Zukauf-Hinweis steht an der Zeile', () => {
+    const list = tuesdayBakeList()
+    const target = list.sections[0].lines[0]
+    target.hint = 'Zukauf – auflegen'
+    const { getByTestId, getAllByTestId } = render(
+      <BakeListPrint list={list} config={TEST_CONFIG_V2} />
+    )
+    expect(getByTestId(`bl-hint-${target.key}`)).toHaveTextContent(
+      'Zukauf – auflegen'
+    )
+    expect(getAllByTestId(/^bl-hint-/)).toHaveLength(1)
+  })
+
   it('Sonntag nur aus Samstagsteig, ohne Nachträge', () => {
     const { getByTestId, queryByTestId } = render(
       <BakeListPrint list={sundayBakeList()} config={TEST_CONFIG_V2} />

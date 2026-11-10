@@ -183,6 +183,21 @@ describe('R4: ohne Rundung die genauen Liter', () => {
   })
 })
 
+describe('Zukauf und note in der Brot-Tabelle', () => {
+  it('Hinweis des Postens steht vorn in row.note', () => {
+    const s = sheet(SAT, {
+      config: v2((c) => {
+        rawItem(c, 'test-korn').note = 'Kasten zuerst'
+      }),
+    })
+    const row = s.bread.rows.find((r) => r.itemId === 'test-korn')
+    expect(row.note).toBe('Kasten zuerst · Gemeinsamer Teig: Korn + Holz')
+    // die Zeilen der Zellen tragen denselben Hinweis
+    const l = s.lines.find((x) => x.itemId === 'test-korn')
+    expect(l.hint).toBe('Kasten zuerst')
+  })
+})
+
 describe('R5: Teig je Größe = Σ Laibe × Teig je Laib', () => {
   it('Samstag: Testkorn 8 × 600 g + 3 × 1000 g = 7,8 kg', () => {
     const s = sheet(SAT)

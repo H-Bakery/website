@@ -429,6 +429,11 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
                   <tr key={line.key}>
                     <td>
                       <strong>{lineLabel(line, config)}</strong>
+                      {line.hint && (
+                        <div className="small">
+                          <strong>{line.hint}</strong>
+                        </div>
+                      )}
                       {(line.tray ||
                         line.correctionReason ||
                         line.loavesEstimate ||
