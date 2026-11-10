@@ -285,49 +285,66 @@ erweitertes `GET /api/backzettel/config`.
   `line-card-<key>`). Offene Nachträge: Zeile mit Warnrand + Chip, Karte „Nachträge seit der Freigabe"
   mit „Gesehen". `configChangedSinceConfirm` und `prepDateProvisional` stehen als Hinweise da.
   Bedienelemente ≥ 44 px.
-- **Druck eines Teigtag-Zettels (Z10 S6, `sheetVersion: 2`):** `components/backzettel/DoughDayPrint.tsx`,
-  **eine A4-Seite** je Teigtag, schwarz auf weiß: Kopf mit Stempel „FREIGEGEBEN" bzw. „ENTWURF – noch
-  nicht freigegeben" und „Teige heute", Maschinen-Leiste (Liter groß, kg, Chargen, Zugaben), Brot
-  (Größen als Spalten), Brötchen je Backtag (spätere Backtage zuerst, `n Bruch × g – Aufteilung`,
-  „+n frei" nur als Hinweis), Hefeteig (gefüllte Posten in einer Zeile mit den Sorten), die übrigen
-  Abschnitte knapp in zwei Spalten (Basis/Saison/Vorb./CAP stehen nur als Text dabei, wenn sie etwas
-  sagen; Aufteilung siehe unten „Spalten"), Nachträge (nie in den Mengen), „Hinweise", „Offen: …"
-  (offene Stammdaten und fehlende
-  Teig-Angaben, je einmal) und vier Notizzeilen. **Unbekanntes bleibt unbekannt:** Liter ohne
-  `kg_per_liter` sind „–" mit Grund („Liter unbekannt (kg je Liter offen)"), ohne Rundung stehen die
-  genauen Liter mit „Rundung offen", kg mit fehlendem Teil „≥ n kg", ganz unbekannt „– kg"; die
-  Seite summiert nichts (`printLiters`, `printKg`). **Wörter überall gleich** (Leiste, Karten,
-  Tablet, Druck): eine Stammdaten-Angabe, die fehlt, ist „offen" („Chargengröße offen", „kg je
-  Liter offen"); was sich daraus nicht rechnen lässt, ist „unbekannt" („Chargen: unbekannt
-  (Teiggewicht unbekannt)").
-  **Dichte:** `src/lib/dayPrintLayout.ts` schätzt die Höhe je Block in mm (wie `notfallLayout`) und
-  wählt die erste von fünf Stufen (10 pt … 7 pt, `DAY_PRINT_STEPS`), die auf 268 mm passt (A4, Rand
-  10 mm). Passt auch die dichteste nicht, werden zuerst die Notizzeilen gekürzt (bis keine,
-  `noteLines`); erst danach kommen die **übrigen Abschnitte auf Blatt 2**, und auf Seite 1 steht an
-  ihrer Stelle ein gerahmter Kasten „**Weitere Abschnitte auf Blatt 2:** Laugen, …"; weggelassen
-  wird nie etwas. Seite 1 nimmt dann wieder die luftigste Stufe, in der sie ohne die
-  Abschnitte passt; **Blatt 2 wählt seine Stufe für sich** (`layout.secondSheet`, die luftigste, in
-  der Titel, „ENTWURF“-Kasten und die zwei Spalten auf 268 mm passen) und trägt sie als eigene
-  CSS-Variablen `--dd-font`/`--dd-row` am Blatt (`.dd-sheet2`). Vorher erbte Blatt 2 die luftige
-  Stufe von Seite 1 und lief schon bei 75–100 Zeilen auf ein drittes Blatt, obwohl es knapp gesetzt
-  passte (Review Z10). Die Stufe steht als `data-print-step` am Druckbild und an Blatt 2.
-  **Spalten der übrigen Abschnitte:** keine CSS-Spalten (Chrome ließ eine Überschrift unten links
-  stehen und setzte die Zeilen ohne Überschrift nach rechts), sondern zwei feste Spalten, aufgeteilt
-  von `printColumns` in `dayPrintLayout.ts`: Reihenfolge bleibt, links zuerst; gewählt wird die
-  Teilung mit der niedrigsten höheren Spalte. Ein Abschnitt bis 8 Zeilen (`KEEP_SECTION_LINES`)
-  bleibt ganz; ein längerer darf umbrechen, mit mindestens 3 Zeilen (`MIN_SPLIT_LINES`) unter der
-  Überschrift und mindestens 3 rechts unter „**Kaffeestückchen (Forts.)**" - nie eine Überschrift
-  ohne ihre ersten Zeilen, nie Zeilen ohne Überschrift. Gewählt wurde die wiederholte Überschrift
-  statt „Überschrift mit den ersten Zeilen zusammenhalten", weil sonst rechts oben Zeilen ohne
-  Abschnitt stünden. Grenze: passen die übrigen Abschnitte auch in der dichtesten Stufe nicht in
-  zwei Spalten einer Seite (Schätzung, eher zu groß: ab etwa 120 Zeilen übriger Abschnitte), laufen beide Spalten
-  über die Seite weiter, auf der Folgeseite ohne Überschrift.
-  **Abwiegeliste, skalierte Rezepte und Vorbereitung** stehen in `BackzettelPrintExtras.tsx` und
-  kommen nur mit Haken bei „Abwiegeliste & Rezepte mitdrucken"
-  (`localStorage` `bakery-backzettel-print-extras`, Vorgabe aus, O8) auf eigene Blätter. Mit der
-  heutigen hq-Datei (ohne `lead`) liefert die API für Entwürfe und neue Freigaben schon
-  `sheetVersion: 2` - gedruckt wird also ab jetzt der Einseiter; alles außer Brot-Litern und Hefeteig
-  steht dann bei den übrigen Abschnitten.
+- **Druck eines Teigtag-Zettels (Z10 S6, überarbeitet U8/Z13, `sheetVersion: 2`):**
+  `components/backzettel/DoughDayPrint.tsx`, A4 hoch, schwarz auf weiß (nur Striche und
+  Schriftstärke, keine Flächen). Muss **nicht** wie der alte Papierzettel aussehen (Inhaber,
+  10.11.); übernommen ist, was dort funktionierte: je Teig ein Block mit der Literzahl, Brötchen
+  „für So“ / „für Di“ darunter, ein voller Samstag auf mehreren Blättern. Aufbau:
+  1. **Kopf:** Wochentag groß (30 pt), Datum, Stempel „FREIGEGEBEN“ bzw. „ENTWURF – noch nicht
+     freigegeben“; darunter gerahmt der **Tagestyp** (`sheetDayTypeText`: „Heute backen + Teig
+     für So 29.11. und Di 01.12.“, „Nur Teig für …“, „Backtag ohne Teig“). Hier stellt der
+     Kalender (U9) später „vor Feiertag“ o. Ä. davor. Darunter Freigabe, Saisonfaktor,
+     „Blatt 1 von n“.
+  2. **„Teige heute“ – Liter zuerst:** eine Zeile je Maschinen-Kasten, die Liter groß (24 pt),
+     kg, Chargen, Zugaben, für welche Backtage („heute + So + Di“, `boxBakeDaysText`) und ein
+     Kästchen „angesetzt“. Hefeteig: „Wasser … L“.
+  3. **Je Teig ein Block** in der Reihenfolge der Kästen vom Server, also der Reihenfolge unter
+     `doughs:` in hq `config/backzettel.yaml` - **die Arbeitsreihenfolge stellt der Inhaber dort
+     ein**. Kopf: Teigname und „12 L · 23,6 kg“ (Liter unbekannt: nur kg). Darunter Brot nach
+     Größe (nur die Größen des Blocks als Spalten, Teig-kg klein), Brötchen je Backtag
+     chronologisch (`n Bruch` groß, `× g`, Name, Aufteilung mit „+n frei“), Einzelstücke
+     („10 je 300 g Flit klein“), Hefeteig-Posten mit einer Zeile **je Sorte** (gefüllter Kranz:
+     Name, darunter „3 Nuss“, „1 Mohn“, je mit Kästchen) in zwei Spalten. Zugeordnet wird
+     in `doughPrintBlocks` (`dayPrintLayout.ts`) über die Teig-ID der Zeile bzw. die Teile der
+     Teige (`doughs[].parts`, auch `from_dough`); was keinem Kasten gehört, steht in einem
+     Sammelblock („Weiteres Brot“ - Spezialbrot nach Liter/Charge -, „Weitere Brötchen“,
+     „Hefeteig“), nie weggelassen.
+  4. **Übrige Abschnitte** (Laugen, Kaffeestückchen, Kuchen …, Reihenfolge `sections:`): Menge
+     groß links, Name fett, Hinweis fett darunter, Angaben klein (Vorbestellt, CAP, Blech,
+     Korrektur, Nachtrag); ab 6 Zeilen in zwei Spalten unter einer Überschrift.
+  5. **Schluss:** Nachträge seit der Freigabe (nie in den Mengen, was sie für Teig und
+     Teilmaschine heißen), „Hinweise“, „Offen: …“ (offene Stammdaten und fehlende Teig-Angaben,
+     je einmal), Notizzeilen auf dem letzten Blatt (bis zu vier, so viele wie Platz ist).
+     Jede Zeile hat ein **Kästchen**; abgehakte Zeilen (`doneAt`) stehen mit ✓ und Kürzel. **Hinweise**
+     der Posten („Zukauf – auflegen · mit Käse bestreuen“, `line.hint`) stehen fett an der Zeile -
+     in Abschnitten, beim Brot und an Bruch-Gruppen. **Unbekanntes bleibt unbekannt:** Liter ohne
+     `kg_per_liter` sind „–" mit Grund („Liter unbekannt (kg je Liter offen)"), ohne Rundung stehen
+     die genauen Liter mit „Rundung offen", kg mit fehlendem Teil „≥ n kg", ganz unbekannt „– kg";
+     die Seite summiert nichts (`printLiters`, `printKg`). **Wörter überall gleich** (Leiste, Karten,
+     Tablet, Druck): eine Stammdaten-Angabe, die fehlt, ist „offen" („Chargengröße offen", „kg je
+     Liter offen"); was sich daraus nicht rechnen lässt, ist „unbekannt".
+     **Blätter und Dichte:** `dayPrintLayout` schätzt die Höhe je Block in mm (eher zu groß,
+     nachgemessen mit `page.pdf()`: 5-10 % über der echten Höhe) und verteilt die Blöcke der Reihe
+     nach auf Blätter (`packSheets`, 268 mm nutzbar, Rand 10 mm). **Ein Block wird nie über zwei
+     Blätter geteilt** (`break-inside: avoid`, die Grenze liegt zwischen zwei Teigen); nur ein
+     Abschnitt, der allein höher als ein Blatt ist, geht unter „… (Forts.)“ weiter, jedes Stück mit
+     mindestens 3 Zeilen. Drei Stufen (`SHEET_STEPS`: 11/10/9 pt, Mengen 16/14,5/13 pt, Liter
+     24/21/18 pt) - **nie kleiner als 9 pt**, lieber ein Blatt mehr. Gewählt wird die Stufe mit den
+     wenigsten Blättern, bei gleicher Zahl die luftigste. Ab Blatt 2 steht oben „Samstag,
+     28.11.2026 – Blatt 2 von 3“ (beim Entwurf mit „ENTWURF“). Folge (vorläufig, U8): ein Werktag
+     mit vier, fünf Teigen braucht meist zwei Blätter (wie der alte Zettel: Arbeitsblatt + „Weck und
+     Flit“), ein voller Samstag drei (grob: Teige + Brot · Brötchen · übrige Abschnitte; wo die Grenzen
+     liegen, folgt aus der Reihenfolge der Teige).
+     Stufe und Blattzahl stehen als `data-print-step` / `data-print-sheets` am Druckbild, die
+     Schätzung je Blatt als `data-print-estimate`. **Platz für später:** Zusatzzeilen je Bruch
+     (U3, z. B. Körner je Bruch) gehören als weitere kleine Zeile (`.dd-sub`) unter die Bruch-Zeile
+     in `RollsTable` und als eine Zeile mehr in `rollRowsMm`; eine Zugabe je Teig steht schon unter
+     dem Teignamen bei „Teige heute“.
+     **Abwiegeliste, skalierte Rezepte und Vorbereitung** stehen in `BackzettelPrintExtras.tsx` und
+     kommen nur mit Haken bei „Abwiegeliste & Rezepte mitdrucken"
+     (`localStorage` `bakery-backzettel-print-extras`, Vorgabe aus, O8) auf eigene Blätter. Mit der
+     heutigen hq-Datei (ohne `lead`) liefert die API für Entwürfe und neue Freigaben schon
+     `sheetVersion: 2` - gedruckt wird also ab jetzt dieses Druckbild.
 - **Druck der Backliste (Z10 S6):** `components/backzettel/BakeListPrint.tsx` auf
   `/admin/backzettel/[datum]/backen`, eine Seite je Backtag: Posten, Stück, aus welchem Teig, Kästchen;
   Banner, wenn eine Quelle noch Entwurf ist; Nachträge getrennt unten (an der Zeile nur „Nachtrag +n
@@ -335,16 +352,14 @@ erweitertes `GET /api/backzettel/config`.
   (`bakeListPrintLayout`), nicht auf ein zweites Blatt.
 - **Geprüft wird mit `page.pdf()`, nie mit einem Screenshot:** Seite im Browser laden,
   `emulateMedia({ media: 'print' })` nur zum Messen, vor `page.pdf({ format: 'A4' })` mit
-  `media: null` zurücksetzen, Seiten zählen. Stand S6: geprüft war nur ein erfundener Samstag mit 34
-  Zeilen (Entwurf und freigegeben mit Nachträgen je 1 Seite, Backliste Sonntag/Dienstag/Samstag je 1 Seite, mit
-  Abwiegeliste 4 Blätter). Nachgeprüft mit dem vollen Samstag aus `make-hq.js --busy-saturday`
-  (58 Zeilen, nach der Freigabe 7 Nachträge für So/Di/Sa): Entwurf 1 Seite (Stufe 4, 237 mm),
-  freigegeben 1 Seite (Stufe 3), freigegeben mit Nachträgen 1 Seite (Stufe 4, 258 mm, 2 Notizzeilen);
-  Kaffeestückchen (10 Zeilen) brechen mit „Kaffeestückchen (Forts.)" um. Erzwungener Überlauf
-  (+40 Zeilen per Route-Umschreibung): Seite 1 mit Kasten „Weitere Abschnitte auf Blatt 2" in Stufe 1,
-  Blatt 2 = 1 Seite. In den Specs ist `busySaturdayV2Draft/Confirmed` (`backzettelFixtures.ts`, 60
-  Zeilen, 6 Nachträge) der größte Teigtag-Zettel; `dayPrintLayout.spec.ts` verlangt, dass jeder
-  Teigtag-Zettel der Specs auf ein Blatt passt.
+  `media: null` zurücksetzen, Seiten zählen. Jedes Blatt trägt `data-print-estimate` (geschätzte mm),
+  die Wurzel `data-print-step` und `data-print-sheets`; die gedruckte Seitenzahl muss gleich
+  `data-print-sheets` sein. Stand U8 (Z13), synthetische Instanz aus `make-hq.js --busy-saturday`:
+  voller Samstag (47 Zeilen) 3 Seiten in Stufe 0, Mittwoch bis Freitag und Sonntag je 2 Seiten in
+  Stufe 0; überall Seiten = geschätzte Blätter, die Schätzung liegt 5-10 % über der gemessenen Höhe.
+  In den Specs: `busySaturdayV2Draft/Confirmed` (`backzettelFixtures.ts`) ist der größte
+  Teigtag-Zettel; `dayPrintLayout.spec.ts` prüft Blöcke, Blattaufteilung, „(Forts.)"-Teilung und
+  dass kein Blatt über die Seitenhöhe geschätzt wird.
 - **Druck eines Tages von vor Z10 (Z7, `sheetVersion: 1`):** `components/backzettel/BackzettelPrint.tsx`, eigenes schlichtes HTML, auf dem
   Bildschirm unsichtbar; im Druck verschwinden `.bz-screen` und die App-Hülle. S. 1 Backzettel (alle
   Abschnitte, Gesamt groß, Kästchen, Nachträge, Hinweise; Entwurf mit Banner; knapp gesetzt, bricht nur

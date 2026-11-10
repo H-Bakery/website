@@ -668,9 +668,22 @@ Exit criteria:
     bake days; freeze and deltas follow the dough day; a slim bake list per bake day.
   - **One A4 page per dough day** (kneader strip, Brot, Brötchen per bake day, Hefeteig, notes)
     replaces the 3-page print for the bakers; weighing list and recipes stay optional.
+    Superseded by Z13: as many sheets as the day needs, never below 9 pt.
   - Hefeteig: one batch (kneader capacity in hq), water = dough ÷ 4, Kranz/Zopf variants Marzipan,
     Mohn, Spezial. The current core already reproduces the paper Hefeteig totals.
   - Tests with invented quantities only; the real reference values stay in hq.
+- [~] **Z13** (`feat/U8-backzettel-druck`, website PR #119, archive plan U8) Backzettel print for the
+  bakehouse (M, → Z10). The dough-day sheet (`DoughDayPrint.tsx`, `dayPrintLayout.ts`) is rebuilt
+  around how the bakers work instead of fitting one page: header with weekday, date and a framed
+  Tagestyp ("Heute backen + Teig für So und Di"), then "Teige heute" (litres first, large, kg,
+  batches, for which days, tick box), then one block per dough in the order of `doughs:` in
+  `backzettel.yaml` (bread by size, Brötchen per bake day as Bruch × g, Hefeteig per item), then
+  the other sections, Nachträge, open points and notes. A block never breaks across sheets; only a
+  section taller than a sheet continues as "(Forts.)". Three readable steps (11/10/9 pt), as few
+  sheets as possible: synthetic weekday 2 sheets, full Saturday 3. Provisional until the bakers
+  have used it: block order, weekday on 2 sheets, notes only on the last sheet. Room left for the
+  calendar's day type (U9) and extra lines such as Körner per Bruch (U3). Rules:
+  `docs/domains/backzettel.md`, "Druck eines Teigtag-Zettels".
 - [~] **B5b** (`feat/B5b-Z9-hq-writeback`, merged; live push needs the Q3 token, H1/H2 merged and the `install.sh` write-clone step run on the box) hq write-back as a rolling PR per §4a: worktree `app/edits`, rebase, commit as
   `Verwaltung (App)` + `Co-authored-by`, push with lease, open/append the PR, offline retry,
   "wartet auf Freigabe" badge until merged (M, → B5, H1, Q3).
