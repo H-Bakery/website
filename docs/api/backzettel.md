@@ -35,7 +35,7 @@ line plus `id` (row id, or null in a draft without a stored row), `correctionBy`
 JSON, `''` in the tables and in the URL (omit the segment).
 
 **Errors:** 400 `invalid_date` / `validation` / `reason_required` / `date_out_of_range`, 404
-`unknown_item` / `unknown_variant` / `not_found` / `not_on_bake_list` (O5, bake ticks), 409 `ruhetag` (weekday not in `config.days`),
+`unknown_item` / `unknown_variant` / `not_found` / `not_on_bake_list` (O5, bake ticks), 409 `ruhetag` (weekday not in `config.days`), `geschlossen` (U9: holiday or closing day of the calendar, `message` names it, `note`),
 `no_config` (with `reasons`), `confirmed`, `not_confirmed`, `season_changed`,
 `correction_changed`, `line_changed`.
 
@@ -68,6 +68,13 @@ screen showed, and the server refuses instead of overwriting:
   explicit `hqDir` option beats the env for the derived paths. Cached until the YAML/products mtime
   changes, at most 60 s. Missing/invalid → `no-config`, **never** invented numbers. The answer never
   carries the server path except inside a loader read error message.
+- **Calendar (U9):** `HQ_KALENDER`, else `${HQ_DIR}/config/kalender.yaml` (option `kalenderPath`),
+  part of the cache key. Loaded after a valid config and attached as `config.calendar`; missing or
+  invalid → the weekly plan as before (never `no-config` because of it). Every sheet carries
+  `dayKind` (`kind`, `bakeDay`, `doughDay`, `baseWeekday`, `before`, `label`, `detail`, `calendar`)
+  and `calendarHint` (`null` or `{ code: calendar_missing | calendar_invalid |
+calendar_year_missing, message }`); a draft also `prepDateReason` when the day before is closed.
+  A `teigtag` date has a sheet (dough only), its bake list is `status: 'ruhetag'` („nur Teig“).
 - **Draft is live:** nothing is stored by reading a draft. Season factor lives in `backzettel_days`,
   corrections in `backzettel_lines` rows (only `correction*` is read in a draft). Preorders =
   `preorders.pickup_date = date`, status ≠ `storniert`, mapped through `item.products[]` factors by
@@ -158,7 +165,7 @@ later bake day (Saturday: Sunday's and Tuesday's rolls). With today's hq file (n
 | -------------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /config`                                      | any session        | + `open` and `working.open`: open master data `[{ path, code, message }]` (explicit `null`s, §3)                                                                                                                                                                                                                                              |
 | `GET /:date`                                       | any session        | + `sheetVersion` (2; 1 = confirmed before Z10), `isDoughDay`, `bakeDates[{ date, weekday, weekdayName, label, lineCount }]`, `plan`, `doughs`, `machine`, `bread`, `rolls`, `openMasterData`; lines + `bakeDate`, `doughDate`, `lead`, `variantKind`, `variantLabel`, `bruch?`; deltas + `bakeDate`; confirmed + `deltaMachine`, `deltaBruch` |
-| `GET /:date/bake-list`                             | any session        | **new**: `{ date, weekday, weekdayName, status: ok \| no-config \| ruhetag, sources[{ doughDate, status: draft \| confirmed, confirmedAt, lineCount }], sections, rolls, deltas, deltasPending, warnings }` - no dough figures                                                                                                                |
+| `GET /:date/bake-list`                             | any session        | **new**: `{ date, weekday, weekdayName, status: ok \| no-config \| ruhetag \| geschlossen, sources[{ doughDate, status: draft \| confirmed, confirmedAt, lineCount }], sections, rolls, deltas, deltasPending, warnings }` - no dough figures                                                                                                 |
 | `PUT /:date/lines/:itemId[/:variant]/correction`   | inhaber, backstube | + optional `bakeDate` (default `date`): must be a bake day of the sheet on which the item is made from this sheet's dough → else 400 `invalid_bake_date`; a pair another confirmed sheet holds → 409 `owned_elsewhere` (`sheetDate`)                                                                                                          |
 | `POST /:date/lines/:lineId/done`, `…/deltas/…/ack` | inhaber, backstube | answers + `bakeDate`; on a lead > 0 line "done" means **made** - baked is its own tick on the bake list (next rows, O5)                                                                                                                                                                                                                       |
 | `POST /:date/bake/:lineId/baked` / `/unbaked`      | inhaber, backstube | **new (O5, 2026-11-08)**: „gebacken“ for one row of the bake list of `:date` (row id as for done); `{ expectedTotal? }` → `{ id, date, bakeDate, itemId, variant, bakedAt, bakedBy }`                                                                                                                                                         |
@@ -224,7 +231,8 @@ later bake day (Saturday: Sunday's and Tuesday's rolls). With today's hq file (n
   `doughDate`, `sheetStatus` and `madeOn` („Teig vom Samstag" / „Teig von heute"). Orphans
   (above) come from B's own draft, which is then a source even if no item is lead 0 on B; if B is
   confirmed too, warning `not_on_confirmed_sheet` - never silently dropped. Ruhetag answers
-  `status: 'ruhetag'` (200) with empty lists. `configStatus: 'ok'`. **Without loadable master
+  `status: 'ruhetag'` (200) with empty lists; a closed calendar day `status: 'geschlossen'` with
+  `note` and `message` (U9). `configStatus: 'ok'`. **Without loadable master
   data** the bake list is built from the confirmed sheets whose frozen plan bakes on B (lines and
   frozen `rolls`), `configStatus: 'no-config'`, `deltasPending: null`, warning `no_config`
   („Was noch im Entwurf ist, fehlt hier"); with no such sheet it stays `status: 'no-config'`.
