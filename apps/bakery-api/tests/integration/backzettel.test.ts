@@ -1543,7 +1543,13 @@ describe('resolveBackzettelPaths', () => {
       hqDir: '/srv/hq',
       configPath: '/srv/hq/config/backzettel.yaml',
       productsDir: '/srv/p',
+      kalenderPath: '/srv/hq/config/kalender.yaml',
     })
+    expect(
+      resolveBackzettelPaths({
+        env: { HQ_DIR: '/srv/hq', HQ_KALENDER: '/etc/kal.yaml' },
+      }).kalenderPath
+    ).toBe('/etc/kal.yaml')
     expect(
       resolveBackzettelPaths({
         env: { HQ_DIR: '/srv/hq', HQ_BACKZETTEL_CONFIG: '/etc/bz.yaml' },
@@ -1558,12 +1564,14 @@ describe('resolveBackzettelPaths', () => {
         env: {
           HQ_PRODUCTS_DIR: '/srv/p',
           HQ_BACKZETTEL_CONFIG: '/etc/bz.yaml',
+          HQ_KALENDER: '/etc/kal.yaml',
         },
       })
     ).toEqual({
       hqDir: '/tmp/hq',
       configPath: '/tmp/hq/config/backzettel.yaml',
       productsDir: '/tmp/hq/products',
+      kalenderPath: '/tmp/hq/config/kalender.yaml',
     })
   })
 

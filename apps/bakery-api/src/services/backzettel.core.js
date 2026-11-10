@@ -32,6 +32,7 @@ const configCore = require('./backzettel-config.core')
 const recipesCore = require('./backzettel-recipes.core')
 const planCore = require('./backzettel-plan.core')
 const doughCore = require('./backzettel-dough.core')
+const kalender = require('./kalender.core')
 
 const { SECTION_LABELS, INTEGER_UNITS, WEEKDAY_NAMES } = configCore
 
@@ -380,7 +381,11 @@ function computeLines(args) {
     ? Number(a.seasonFactor)
     : seasonFactorOf(a.seasonFactor, warnings)
 
-  const open = cfg.days.includes(weekday)
+  // U9: Backtag, Grundmengen-Wochentag und CAP-Wochentag aus dem Kalender;
+  // ohne Kalender genau der Wochenplan.
+  const dayInfo = kalender.dayKind(cfg, date)
+  const open = dayInfo.bakeDay
+  const baseWeekday = dayInfo.baseWeekday
   const resolveProduct = createProductResolver(cfg, a.catalog)
   const numericSlugs = numericIndex(a.catalog)
   const itemsById = new Map(cfg.items.map((i) => [i.id, i]))
@@ -467,11 +472,27 @@ function computeLines(args) {
       })
     }
     if (preordersOnClosedDay > 0) {
-      warnings.push({
-        code: 'preorders_on_closed_day',
-        qty: preordersOnClosedDay,
-        message: `${WEEKDAY_NAMES[weekday]} ist kein Produktionstag, es liegen aber Vorbestellungen vor.`,
-      })
+      warnings.push(
+        dayInfo.kind === 'geschlossen'
+          ? {
+              code: 'preorders_on_closed_day',
+              qty: preordersOnClosedDay,
+              date,
+              message: `${dayLabel(date)}${
+                dayInfo.note ? ` (${dayInfo.note})` : ''
+              } ist geschlossen, es liegen aber Vorbestellungen vor (${String(
+                round2(preordersOnClosedDay)
+              ).replace(
+                '.',
+                ','
+              )} Stück). Sie stehen auf keinem Zettel - bitte mit dem Kunden klären oder von Hand einplanen.`,
+            }
+          : {
+              code: 'preorders_on_closed_day',
+              qty: preordersOnClosedDay,
+              message: `${WEEKDAY_NAMES[weekday]} ist kein Produktionstag, es liegen aber Vorbestellungen vor.`,
+            }
+      )
     }
   }
 
@@ -483,7 +504,13 @@ function computeLines(args) {
     : []
   if (open) {
     for (const t of templates) {
-      if (!t || t.active === false || Number(t.weekday) !== weekday) continue
+      if (
+        !t ||
+        t.active === false ||
+        dayInfo.capWeekday === null ||
+        Number(t.weekday) !== dayInfo.capWeekday
+      )
+        continue
       for (const raw of Array.isArray(t.items) ? t.items : []) {
         const qty = Number(
           raw && raw.quantity !== undefined ? raw.quantity : raw && raw.qty
@@ -562,14 +589,35 @@ function computeLines(args) {
   const unset = []
   const clamped = []
   const noDoughDay = []
+  const doughFar = []
+  // U9: dieselben Stammdaten ohne Kalender - liegt der Teig nur wegen
+  // Schließtagen weiter vorn, warnt der Zettel (`dough_day_far`).
+  const weeklyCfg =
+    v2 && dayInfo.calendar !== 'missing' ? { ...cfg, calendar: null } : null
   if (open) {
     for (const item of cfg.items) {
       if (!included(item)) continue
-      const hasDay = Object.prototype.hasOwnProperty.call(item.base, weekday)
-      const baseDay = item.base[weekday]
+      // U9: Spalte des Tagestyps (vor_feiertag / samstag_ersatz), sonst
+      // die Grundmenge des Wochentags, nach dem gebacken wird
+      const baseSlot = kalender.baseFor(item, dayInfo)
+      const hasDay = baseSlot.has
+      const baseDay = baseSlot.value
       const variants =
         item.variants.length > 0 ? [...item.variants, null] : [null]
       const dough = v2 ? planCore.resolveDoughDate(cfg, item, date) : null
+      if (
+        dough &&
+        dough.found &&
+        dough.lead > 0 &&
+        weeklyCfg &&
+        kalender.leadDays(dough.date, date) > kalender.DOUGH_DAY_FAR_DAYS &&
+        planCore.resolveDoughDate(weeklyCfg, item, date).date !== dough.date &&
+        !doughFar.some(
+          (x) => x.doughDate === dough.date && x.name === item.name
+        )
+      ) {
+        doughFar.push({ doughDate: dough.date, name: item.name })
+      }
       for (const variant of variants) {
         let base = 0
         let baseUnset = false
@@ -705,9 +753,65 @@ function computeLines(args) {
       code: 'base_unset',
       items: unset,
       message: `Grundmenge für ${
-        WEEKDAY_NAMES[weekday]
+        WEEKDAY_NAMES[baseWeekday || weekday]
       } noch nicht festgelegt: ${unset.join(', ')}.`,
     })
+  }
+
+  // U9: Tag vor Schließtagen - Spalte gepflegt? Spezialbrot des Ausfalltags?
+  if (open && ownDay && dayInfo.before) {
+    const type = dayInfo.before.type
+    if (!cfg.items.some((i) => i.baseSpecial && type in i.baseSpecial)) {
+      warnings.push({
+        code: 'special_base_missing',
+        column: type,
+        message: `Mengen für ${
+          type === 'samstag_ersatz'
+            ? 'den Samstags-Satz'
+            : 'den Tag vor dem Feiertag'
+        } fehlen in den Stammdaten (Spalte ${type}) - gerechnet wird mit den Mengen für ${
+          WEEKDAY_NAMES[baseWeekday || weekday]
+        }. Bitte mit Korrekturen anpassen.`,
+      })
+    }
+    for (const c of dayInfo.before.closedDays) {
+      if (!cfg.days.includes(c.weekday)) continue
+      const specials = cfg.items.filter((i) => onlyOnWeekday(i, c.weekday))
+      if (specials.length === 0) continue
+      warnings.push({
+        code: 'closed_day_specials',
+        date: c.date,
+        items: specials.map((i) => i.id),
+        message: `${c.label}: ${specials
+          .map((i) => i.name)
+          .join(
+            ', '
+          )} - heute oder später backen? Bitte mit Korrekturen einplanen.`,
+      })
+    }
+  }
+
+  if (doughFar.length > 0) {
+    const byDough = new Map()
+    for (const x of doughFar) {
+      if (!byDough.has(x.doughDate)) byDough.set(x.doughDate, [])
+      byDough.get(x.doughDate).push(x.name)
+    }
+    for (const [doughDate, names] of byDough) {
+      const days = kalender.leadDays(doughDate, date)
+      warnings.push({
+        code: 'dough_day_far',
+        doughDate,
+        items: names,
+        message: `Teig für ${kalender.shortDate(
+          date
+        )} schon am ${kalender.shortDate(
+          doughDate
+        )} (${days} Tage vorher, wegen Schließtagen): ${names.join(
+          ', '
+        )} - Froster? Sonst im Kalender einen Teigtag eintragen.`,
+      })
+    }
   }
 
   if (noDoughDay.length > 0) {
@@ -737,11 +841,26 @@ function computeLines(args) {
     date,
     weekday,
     open,
+    dayKind: dayInfo,
     seasonFactor,
     sections,
     lines: ordered,
     warnings,
   }
+}
+
+/**
+ * Spezialbrot eines Wochentags (U9, Hinweis vor Schließtagen): Grundmenge > 0
+ * nur an diesem Wochentag.
+ */
+function onlyOnWeekday(item, weekday) {
+  const qty = (v) =>
+    v !== null && typeof v === 'object'
+      ? Object.values(v).reduce((n, x) => n + (Number(x) || 0), 0)
+      : Number(v) || 0
+  const entries = Object.entries(item.base || {})
+  if (!(qty(item.base[weekday]) > 0)) return false
+  return entries.every(([wd, v]) => Number(wd) === weekday || !(qty(v) > 0))
 }
 
 /** `2026-11-28` → „Samstag, 28.11.“ (Hinweise). */
@@ -812,17 +931,28 @@ function computeDay(args) {
   const a = args || {}
   const r = computeLines(a)
   if (r.error) return r
-  const { cfg, date, weekday, open, seasonFactor, sections, lines, warnings } =
-    r
+  const {
+    cfg,
+    date,
+    weekday,
+    open,
+    dayKind,
+    seasonFactor,
+    sections,
+    lines,
+    warnings,
+  } = r
   const hefeteig = computeHefeteig(cfg, lines)
   const fillings = computeFillings(cfg, lines, a.recipes || {}, warnings)
-  const prep = open ? computePrep(cfg, lines, weekday) : []
+  const prep = open ? computePrep(cfg, lines, dayKind.baseWeekday) : []
 
   return {
     date,
     weekday,
     weekdayName: WEEKDAY_NAMES[weekday],
     open,
+    // U9: nur mit Kalender - ohne bleibt der v1-Tag Byte für Byte gleich
+    ...(dayKind.calendar === 'missing' ? {} : { dayKind }),
     seasonFactor,
     sections,
     lines,
@@ -1185,12 +1315,12 @@ function computePreorderDeltas(args) {
   if (!isValidDate(a.date)) return []
   const cfg = ensureNormalized(a.config)
   const plan = a.plan || null
-  if (!plan && !cfg.days.includes(isoWeekday(a.date))) return []
+  if (!plan && !kalender.isBakeDay(cfg, a.date)) return []
   const resolve = createProductResolver(cfg, a.catalog)
   const bakeDates = plan
     ? planCore
         .planBakeDates(plan)
-        .filter((d) => isValidDate(d) && cfg.days.includes(isoWeekday(d)))
+        .filter((d) => isValidDate(d) && kalender.isBakeDay(cfg, d))
     : [a.date]
 
   const sum = (list) => {
@@ -1561,7 +1691,7 @@ function computeDoughDay(args) {
       Number.isFinite(Number(c.qty)) &&
       cfg.items.some((i) => i.id === c.itemId) &&
       isValidDate(c.bakeDate) &&
-      cfg.days.includes(isoWeekday(c.bakeDate)) &&
+      kalender.isBakeDay(cfg, c.bakeDate) &&
       !planned(c.bakeDate, c.itemId)
   )
   if (foreign.length > 0) {
@@ -1602,16 +1732,34 @@ function computeDoughDay(args) {
     })
   }
 
+  // U9: Vorbestellungen an geschlossenen Tagen nach diesem Teigtag (bis
+  // zum nächsten) - sie stünden sonst auf keinem Zettel.
+  for (const closed of kalender.closedDaysAfter(cfg, date)) {
+    const r = computeLines({
+      config: cfg,
+      date: closed,
+      preorderItems: inputsFor(closed).preorderItems,
+      catalog: a.catalog,
+      onlyItems: [],
+      sheetDate: closed,
+    })
+    for (const w of r.warnings || []) {
+      if (w.code === 'preorders_on_closed_day') warnings.push(w)
+    }
+  }
+
   const lines = sortSheetLines(cfg, tagged)
-  const open = cfg.days.includes(weekday)
+  const dayInfo = kalender.dayKind(cfg, date)
+  const open = dayInfo.bakeDay
   const parts = sheetParts(cfg, lines, date, a.recipes, warnings)
-  const prep = open ? computePrep(cfg, lines, weekday) : []
+  const prep = open ? computePrep(cfg, lines, dayInfo.baseWeekday) : []
 
   return {
     date,
     weekday,
     weekdayName: WEEKDAY_NAMES[weekday],
     open,
+    dayKind: dayInfo,
     seasonFactor,
     sections: sectionsOf(cfg, lines),
     lines,

@@ -7,6 +7,12 @@
  *   config   `options.configPath` → `HQ_BACKZETTEL_CONFIG` → `${hqDir}/config/backzettel.yaml`
  *   hq root  `options.hqDir` → `HQ_DIR` → `<cwd>/../hq` (cwd = website/, as the other loaders)
  *   products `options.productsDir` → `HQ_PRODUCTS_DIR` → `${hqDir}/products`
+ *   kalender `options.kalenderPath` → `HQ_KALENDER` → `${hqDir}/config/kalender.yaml`
+ *
+ * U9: the calendar (`kalender.core.js`) is attached to the normalised config
+ * as `config.calendar`, so the cores keep their signatures. Missing or
+ * invalid calendar = the weekly plan as before U9 (`calendar.status` says
+ * which; the sheets carry a hint) - never invented closing days.
  *
  * Missing or invalid config is `{ ok: false, reasons }` - the API answers
  * `status: 'no-config'` and never computes with invented numbers. The result
@@ -18,12 +24,14 @@ import * as path from 'path'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const loader = require('./backzettel-config.loader')
+const kalenderLoader = require('./kalender.loader')
 /* eslint-enable @typescript-eslint/no-var-requires */
 
 export interface BackzettelSourceOptions {
   configPath?: string
   hqDir?: string
   productsDir?: string
+  kalenderPath?: string
   /** Max cache age in ms (default 60 000; 0 = always reload). */
   cacheMs?: number
   env?: NodeJS.ProcessEnv
@@ -47,6 +55,15 @@ export interface CatalogProduct {
   available?: boolean
 }
 
+export interface CalendarState {
+  /** `ok` = applied; `missing`/`invalid` = weekly plan only. */
+  status: 'ok' | 'missing' | 'invalid'
+  /** File name only. */
+  source: string
+  errors: ConfigReason[]
+  warnings: ConfigReason[]
+}
+
 export interface LoadedBackzettelConfig {
   ok: boolean
   /** Normalised config (`normalizeConfig`) when ok, else null. */
@@ -64,6 +81,8 @@ export interface LoadedBackzettelConfig {
   recipes: Record<string, unknown>
   recipesMissing: { id: string; message: string }[]
   catalog: CatalogProduct[] | undefined
+  /** U9: state of `config/kalender.yaml` (applied only when `ok`). */
+  calendar: CalendarState
   /** File name only (no server path) for the UI. */
   source: string
   loadedAt: string
@@ -71,7 +90,12 @@ export interface LoadedBackzettelConfig {
 
 export interface BackzettelSource {
   load(): LoadedBackzettelConfig
-  paths: { configPath: string; hqDir: string; productsDir: string }
+  paths: {
+    configPath: string
+    hqDir: string
+    productsDir: string
+    kalenderPath: string
+  }
 }
 
 function mtime(file: string): number | null {
@@ -86,6 +110,7 @@ export function resolveBackzettelPaths(options: BackzettelSourceOptions = {}): {
   configPath: string
   hqDir: string
   productsDir: string
+  kalenderPath: string
 } {
   const env = options.env ?? process.env
   // An explicit `hqDir` option (tests, tools) also decides the derived
@@ -105,7 +130,12 @@ export function resolveBackzettelPaths(options: BackzettelSourceOptions = {}): {
       fromEnv('HQ_PRODUCTS_DIR') ??
       path.join(hqDir, 'products')
   )
-  return { configPath, hqDir, productsDir }
+  const kalenderPath = path.resolve(
+    options.kalenderPath ??
+      fromEnv('HQ_KALENDER') ??
+      path.join(hqDir, 'config', 'kalender.yaml')
+  )
+  return { configPath, hqDir, productsDir, kalenderPath }
 }
 
 export function createBackzettelSource(
@@ -125,6 +155,12 @@ export function createBackzettelSource(
       recipesMissing: [],
       source: path.basename(paths.configPath),
       loadedAt: new Date().toISOString(),
+      calendar: {
+        status: 'missing' as const,
+        source: path.basename(paths.kalenderPath),
+        errors: [],
+        warnings: [],
+      } as CalendarState,
     }
     if (mtime(paths.configPath) === null) {
       return {
@@ -178,10 +214,24 @@ export function createBackzettelSource(
       result.config,
       paths.hqDir
     )
+    const kal = kalenderLoader.loadKalender(paths.kalenderPath, {
+      config: result.config,
+    })
+    const calendar: CalendarState = {
+      status: kal.status,
+      source: path.basename(paths.kalenderPath),
+      errors: kal.errors,
+      warnings: kal.warnings,
+    }
+    const config = {
+      ...result.config,
+      calendar: kal.status === 'ok' ? kal.calendar : null,
+    }
     return {
       ...base,
+      calendar,
       ok: true,
-      config: result.config,
+      config,
       reasons: [],
       warnings: [...warnings, ...result.warnings],
       open: Array.isArray(result.open) ? result.open : [],
@@ -194,7 +244,9 @@ export function createBackzettelSource(
   return {
     paths,
     load() {
-      const key = `${mtime(paths.configPath)}|${mtime(paths.productsDir)}`
+      const key = `${mtime(paths.configPath)}|${mtime(
+        paths.productsDir
+      )}|${mtime(paths.kalenderPath)}`
       const now = Date.now()
       if (cached && cached.key === key && now - cached.at < cacheMs) {
         return cached.value

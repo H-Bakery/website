@@ -57,6 +57,7 @@ import type {
 const core = require('./backzettel.core')
 const dayCore = require('./backzettel-day.core')
 const planCore = require('./backzettel-plan.core')
+const kalender = require('./kalender.core')
 const { WEEKDAY_NAMES } = require('./backzettel-config.core')
 const shopOrders = require('./shop-orders.core')
 /* eslint-enable @typescript-eslint/no-var-requires */
@@ -154,16 +155,58 @@ function requireConfig(loaded: Loaded): void {
   }
 }
 
+/**
+ * A sheet exists on a bake day or a dough day (U9: weekly plan + calendar).
+ * Otherwise 409 `ruhetag` (weekly plan) or `geschlossen` (calendar, holiday)
+ * with the reason.
+ */
 function assertProductionDay(loaded: Loaded, date: string): void {
-  const weekday = core.isoWeekday(date)
-  if (!loaded.config.days.includes(weekday)) {
+  const reason = kalender.closedReason(loaded.config, date)
+  if (reason) {
+    const weekday = core.isoWeekday(date)
     throw new BackzettelError(
       409,
-      'ruhetag',
-      `${WEEKDAY_NAMES[weekday]} ist Ruhetag - an diesem Tag gibt es keinen Backzettel.`,
-      { weekday }
+      reason.code,
+      reason.message,
+      reason.code === 'geschlossen'
+        ? { weekday, note: reason.note }
+        : { weekday }
     )
   }
+}
+
+/**
+ * U9: the calendar hint of a sheet - missing or invalid `kalender.yaml`, or
+ * a year the file does not list. `null` when the calendar applies.
+ */
+function calendarWarning(loaded: Loaded, date: string) {
+  const state = loaded.calendar
+  if (!state) return null
+  if (state.status === 'invalid') {
+    return {
+      code: 'calendar_invalid',
+      message: `Der Kalender (${
+        state.source
+      }) ist ungültig und wird nicht benutzt - Feiertage und Schließtage fehlen auf dem Zettel. ${state.errors
+        .slice(0, 3)
+        .map((e) => `${e.path ? `${e.path}: ` : ''}${e.message}`)
+        .join(' ')}`,
+    }
+  }
+  if (state.status === 'missing') {
+    return {
+      code: 'calendar_missing',
+      message: `Kalender fehlt (${state.source}) - Feiertage und Schließtage werden nicht berücksichtigt, es gilt der Wochenplan.`,
+    }
+  }
+  const year = date.slice(0, 4)
+  if (kalender.dayKind(loaded.config, date).calendar === 'year-missing') {
+    return {
+      code: 'calendar_year_missing',
+      message: `Kalender für ${year} fehlt (${state.source}) - Feiertage ${year} werden nicht berücksichtigt.`,
+    }
+  }
+  return null
 }
 
 async function usersById(
@@ -365,7 +408,15 @@ async function loadSheetInputs(
   transaction?: Transaction
 ): Promise<SheetInputs> {
   const bakeDates: string[] = planCore.bakeDatesFor(loaded.config, date)
-  const dates = bakeDates.includes(date) ? bakeDates : [date, ...bakeDates]
+  // U9: closed days up to the next dough day - their preorders are reported
+  // on this sheet (`preorders_on_closed_day`), never silently dropped.
+  const closedAfter: string[] = kalender.closedDaysAfter(loaded.config, date)
+  const dates = [
+    ...new Set([
+      ...(bakeDates.includes(date) ? bakeDates : [date, ...bakeDates]),
+      ...closedAfter,
+    ]),
+  ]
   const [confirmed, snapshot, rows, templates] = await Promise.all([
     confirmedAround(date, transaction),
     loadPreorderSnapshot(dates, transaction),
@@ -742,10 +793,12 @@ export function createBackzettelService(
       hefeteig: result.hefeteig,
       fillings: result.fillings,
       prep: result.prep,
-      ...dayCore.prepDateFor(date, loaded.config.days),
+      ...dayCore.prepDateFor(date, loaded.config),
       deltas: [],
       warnings: result.warnings,
       configStatus: 'ok' as const,
+      dayKind: result.dayKind,
+      calendarHint: calendarWarning(loaded, date),
       ...sheetFields(result, result.isDoughDay),
     }
   }
@@ -1140,7 +1193,7 @@ export function createBackzettelService(
       hefeteig,
       fillings,
       prep,
-      ...dayCore.prepDateFor(date, config ? config.days : null),
+      ...dayCore.prepDateFor(date, config),
       deltas,
       deltaExtras,
       // Z10: per machine box, only boxes that change (v2 sheets).
@@ -1151,6 +1204,9 @@ export function createBackzettelService(
       deltaTotals: Object.fromEntries(deltaByKey),
       warnings,
       configStatus: loaded.ok ? ('ok' as const) : ('no-config' as const),
+      // U9: the day type from the current calendar (not frozen)
+      dayKind: config ? kalender.dayKind(config, date) : null,
+      calendarHint: loaded.ok ? calendarWarning(loaded, date) : null,
       configChangedSinceConfirm,
       ...(loaded.ok ? {} : { configReasons: loaded.reasons }),
       ...(v2 && snap
@@ -1579,7 +1635,7 @@ export function createBackzettelService(
       if (confirmedDates.has(d)) continue
       const day = await BackzettelDay.findByPk(d)
       if (day && day.status === 'confirmed') continue
-      if (!config.days.includes(core.isoWeekday(d))) continue
+      if (!kalender.isSheetDay(config, d)) continue
       sources.push({
         doughDate: d,
         status: 'draft',
@@ -1681,11 +1737,25 @@ export function createBackzettelService(
     }
     const weekday = core.isoWeekday(date)
     const head = { date, weekday, weekdayName: WEEKDAY_NAMES[weekday] }
-    if (!loaded.config.days.includes(weekday)) {
+    if (!kalender.isBakeDay(loaded.config, date)) {
+      // U9: closed by the calendar (holiday, Betriebsferien) or a dough-only
+      // day - no bake list, with the reason.
+      const info = kalender.dayKind(loaded.config, date)
+      const closed = info.kind === 'geschlossen'
       return {
         ...head,
-        status: 'ruhetag' as const,
-        message: `${WEEKDAY_NAMES[weekday]} ist Ruhetag - an diesem Tag wird nicht gebacken.`,
+        status: closed ? ('geschlossen' as const) : ('ruhetag' as const),
+        dayKind: info,
+        ...(closed ? { note: info.note } : {}),
+        message: closed
+          ? `${dayText(date)}${
+              info.note ? ` ${info.note}` : ''
+            } - geschlossen, an diesem Tag wird nicht gebacken.`
+          : info.kind === 'teigtag'
+          ? `${dayText(date)}${
+              info.note ? ` ${info.note}` : ''
+            } - nur Teig, an diesem Tag wird nicht gebacken.`
+          : `${WEEKDAY_NAMES[weekday]} ist Ruhetag - an diesem Tag wird nicht gebacken.`,
         sources: [],
         sections: [],
         rolls: [],
@@ -1748,7 +1818,7 @@ export function createBackzettelService(
     const loaded = source.load()
     if (!loaded.ok) return null
     const weekday = core.isoWeekday(date)
-    if (!loaded.config.days.includes(weekday)) return null
+    if (!kalender.isBakeDay(loaded.config, date)) return null
     const { sources } = await bakeSources(loaded, date, { light, pool })
     const withLines = sources.filter((s) => s.lines.length > 0)
     const allConfirmed =
@@ -1819,9 +1889,7 @@ export function createBackzettelService(
     const valid = [
       ...new Set(
         dates.filter(
-          (d) =>
-            core.isValidDate(d) &&
-            loaded.config.days.includes(core.isoWeekday(d))
+          (d) => core.isValidDate(d) && kalender.isBakeDay(loaded.config, d)
         )
       ),
     ].sort()
