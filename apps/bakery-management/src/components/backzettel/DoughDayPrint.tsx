@@ -16,12 +16,14 @@ import {
 import {
   addonText,
   bakeDayLabel,
+  bruchAddonsText,
   bruchCountText,
   bruchSpareText,
   bruchSplitText,
   deltaDoughLines,
   formatDate,
   formatDateLong,
+  dayKindLine,
   formatFactor,
   formatKnownGrams,
   formatNumber,
@@ -338,6 +340,12 @@ function FirstHeader({
         </div>
       </div>
       <div className="dd-daytype" data-testid="dd-daytype">
+        {/* U9: Tagestyp aus dem Kalender, fett vor dem Teig-Hinweis */}
+        {dayKindLine(day.dayKind) && (
+          <strong className="dd-sub" data-testid="dd-day-kind">
+            {dayKindLine(day.dayKind)}
+          </strong>
+        )}
         {sheetDayTypeText(day)}
       </div>
       <p className="dd-meta" data-testid="dd-meta">
@@ -661,6 +669,14 @@ function RollsTable({
                 </td>
                 <td>
                   <strong>{g.name}</strong>
+                  {bruchAddonsText(g) && (
+                    <strong
+                      className="dd-sub dd-hint"
+                      data-testid="dd-bruch-addons"
+                    >
+                      {bruchAddonsText(g)}
+                    </strong>
+                  )}
                   <span className="dd-sub">{split}</span>
                   {hints.map((h) => (
                     <strong key={h} className="dd-sub dd-hint">

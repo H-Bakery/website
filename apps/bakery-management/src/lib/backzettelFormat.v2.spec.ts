@@ -3,6 +3,7 @@ import {
   bakeDayLabel,
   bakeSourceText,
   batchesText,
+  bruchAddonsText,
   bruchGroupText,
   bruchKgText,
   bruchSpareText,
@@ -159,6 +160,40 @@ describe('Backzettel v2 - Anzeige-Helfer', () => {
         perProduct: null,
       })
     ).toMatch(/\+8 Teigstücke frei$/)
+  })
+
+  it('Zugabe je Bruch (U3): „+ 1,2 kg …“, „≥“ und „Menge offen“, nie 0', () => {
+    const [sun] = saturdayV2Draft().rolls ?? []
+    const g = {
+      ...sun.groups[0],
+      addons: [{ name: 'Testkörner', gPerBruch: 200, g: 1400, gKnown: 1400 }],
+    }
+    expect(bruchGroupText(g)).toBe(
+      '7 Bruch × 1.250 g + 1,4 kg Testkörner – 66 Testdoppel · +4 frei'
+    )
+    expect(
+      bruchAddonsText({
+        addons: [{ name: 'Testkörner', gPerBruch: 200, g: 400, gKnown: 400 }],
+      })
+    ).toBe(' + 400 g Testkörner')
+    expect(
+      bruchAddonsText({
+        addons: [{ name: 'Testkörner', gPerBruch: 200, g: null, gKnown: 200 }],
+      })
+    ).toBe(' + ≥ 200 g Testkörner')
+    expect(
+      bruchAddonsText({
+        addons: [
+          { name: 'Testkörner', gPerBruch: null, g: null, gKnown: null },
+        ],
+      })
+    ).toBe(' + Testkörner (Menge offen)')
+    expect(
+      bruchAddonsText({
+        addons: [{ name: 'Testkörner', gPerBruch: 200, g: null, gKnown: 0 }],
+      })
+    ).toBe(' + Testkörner (Menge offen)')
+    expect(bruchAddonsText({})).toBe('')
   })
 
   it('Hefeteig-Karte: Stück und Teig wie der Server, offen mit „≥“', () => {

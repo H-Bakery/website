@@ -698,6 +698,26 @@ Exit criteria:
   - Nightly, write `data/production/vorbestellungen/YYYY-MM-DD.json` (sums per product/variant
     only).
   - Push to `main`, only those paths, rebase + retry.
+- [~] **Z14** (`feat/backzettel-kalender`, PR #118; hq `config/kalender.yaml` in a separate hq PR,
+  merge website first) Holiday and closing-day calendar (U9, M, → Z10). **Must run before the
+  first sheet for Thu 24.12., i.e. mid-December.** Rules: `docs/domains/backzettel.md`
+  „Kalender“.
+  - [x] `kalender.core.js` (one `dayKind`, holiday formula moved from `vacation.core.js`),
+        loader + CLI (`validate-kalender.js`, vendored into the hq CI). No file = weekly plan as
+        before, with a hint - never an invented closing day.
+  - [x] Dough days skip closed days (`resolveDoughDate`, `bakeDatesFor`); a closed day has no
+        sheet (409 `geschlossen`, bake list `status: 'geschlossen'`); `teigtag` = dough-only sheet.
+  - [x] Day type `before` (`vor_feiertag` / `samstag_ersatz`) with base columns
+        `base.vor_feiertag` / `base.samstag_ersatz`, warnings `dough_day_far`,
+        `special_base_missing`, `closed_day_specials`; preorders on a closed day reported on the
+        sheet before it.
+  - [x] Day type on planning page, tablet and print.
+  - [ ] Sonderproduktion (orders on a closed day become a production day) - waits for the owner
+        (does the app allow orders on closed days at all?).
+  - [ ] Preorder form / shop reject closed calendar days; Rest am Abend and Dienstplan
+        (`vacation.core.js` `dayInfo`) from the same calendar.
+  - [ ] Editing the new base columns in the Grundmengen screen (hand-edited in hq until then);
+        Samstags-Satz print with 3 sheets (with U8).
 
 ### M3 Run through Christmas (27.11. – 24.12.): freeze
 

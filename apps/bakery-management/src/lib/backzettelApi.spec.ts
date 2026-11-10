@@ -56,6 +56,25 @@ describe('backzettelApi', () => {
     })
   })
 
+  it('U9: 409 geschlossen (Feiertag laut Kalender) wird ein Tag ohne Zettel mit Grund', async () => {
+    client.get.mockRejectedValue(
+      Object.assign(
+        new Error(
+          'Freitag 25.12. 1. Weihnachtstag - geschlossen, an diesem Tag gibt es keinen Backzettel.'
+        ),
+        { status: 409, code: 'geschlossen' }
+      )
+    )
+    await expect(fetchBackzettelDay('2026-12-25')).resolves.toEqual({
+      date: '2026-12-25',
+      status: 'ruhetag',
+      weekday: null,
+      closed: true,
+      message:
+        'Freitag 25.12. 1. Weihnachtstag - geschlossen, an diesem Tag gibt es keinen Backzettel.',
+    })
+  })
+
   it('wirft andere Fehler weiter', async () => {
     client.get.mockRejectedValue(
       Object.assign(new Error('Ungültiges Datum'), {

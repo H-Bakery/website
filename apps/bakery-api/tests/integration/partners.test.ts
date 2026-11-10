@@ -543,6 +543,32 @@ describe('mock contract details (D3)', () => {
     expect(again.body.id).toBe(created.body.id)
   })
 
+  it('template PUT with only "active" keeps the items (partial update)', async () => {
+    const partner = await as('inhaber')
+      .post('/api/partners')
+      .send({ name: 'Testmarkt Teilupdate' })
+    const url = `/api/partners/${partner.body.id}/templates/3`
+    await as('inhaber')
+      .put(url)
+      .send({ items: [{ ...KORNBROT, quantity: 2 }] })
+    const off = await as('inhaber').put(url).send({ active: false })
+    expect(off.status).toBe(200)
+    expect(off.body).toMatchObject({
+      active: false,
+      items: [{ productId: 1, productSlug: 'kornbrot-500g', quantity: 2 }],
+    })
+    const on = await as('inhaber').put(url).send({ active: true })
+    expect(on.body.items).toHaveLength(1)
+    // An explicit empty list still clears the items.
+    const cleared = await as('inhaber').put(url).send({ items: [] })
+    expect(cleared.body).toMatchObject({ active: true, items: [] })
+    // A new template without items starts empty.
+    const fresh = await as('inhaber')
+      .put(`/api/partners/${partner.body.id}/templates/5`)
+      .send({ active: false })
+    expect(fresh.body).toMatchObject({ active: false, items: [] })
+  })
+
   it('template PUT rejects huge, fractional, negative quantities and unknown products (W4-verify)', async () => {
     const partner = await as('inhaber')
       .post('/api/partners')

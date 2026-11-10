@@ -234,6 +234,53 @@ describe('Druck eines Teigtag-Zettels (U8)', () => {
     ).toHaveTextContent('Teigstücke offen')
   })
 
+  it('U9: Tagestyp aus dem Kalender fett im Tagestyp-Rahmen, am normalen Tag nicht', () => {
+    const day = {
+      ...saturdayV2Draft(),
+      dayKind: {
+        label: 'Samstags-Satz',
+        detail: 'danach geschlossen: Fr 25.12. Testfeiertag',
+      },
+    } as unknown as BackzettelDay
+    const page = within(renderPrint(day).getByTestId('bz-print'))
+    const kind = page.getByTestId('dd-day-kind')
+    expect(kind).toHaveTextContent(
+      'Samstags-Satz – danach geschlossen: Fr 25.12. Testfeiertag'
+    )
+    expect(kind.tagName).toBe('STRONG')
+    expect(page.getByTestId('dd-daytype')).toContainElement(kind)
+    const normal = within(
+      renderPrint({
+        ...saturdayV2Draft(),
+        dayKind: { label: null, detail: null },
+      } as unknown as BackzettelDay).getAllByTestId('bz-print')[1]
+    )
+    expect(normal.queryByTestId('dd-day-kind')).toBeNull()
+  })
+
+  it('Zugabe je Bruch (U3) steht fett am Brötchen', () => {
+    const day = saturdayV2Draft()
+    const rolls = (day.rolls ?? []).map((b) => ({
+      ...b,
+      groups: b.groups.map((g) =>
+        g.group === 'test-doppel'
+          ? {
+              ...g,
+              addons: [
+                { name: 'Testkörner', gPerBruch: 200, g: 1400, gKnown: 1400 },
+              ],
+            }
+          : g
+      ),
+    }))
+    const page = within(renderPrint({ ...day, rolls }).getByTestId('bz-print'))
+    const addons = page.getAllByTestId('dd-bruch-addons')
+    expect(addons.length).toBeGreaterThan(0)
+    expect(addons[0]).toHaveTextContent('+ 1,4 kg Testkörner')
+    expect(addons[0].tagName).toBe('STRONG')
+    expect(addons[0].closest('tr')).toHaveTextContent('Testdoppel')
+  })
+
   it('Hefeteig im Block seines Teigs: gefüllte Posten mit einer Zeile und einem Kästchen je Sorte', () => {
     const page = renderPrint(saturdayV2Draft())
     const hefe = within(page.getByTestId('dd-dough-test-hefe'))

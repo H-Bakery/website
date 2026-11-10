@@ -7,7 +7,8 @@ die Überarbeitung „Backzettel v2" (Z10) ist dort geplant - dieses Dokument be
 
 **Code:** Rechnung `apps/bakery-api/src/services/backzettel.core.js`, `backzettel-day.core.js`,
 `backzettel-config.core.js`, `backzettel-recipes.core.js`, `backzettel-config.loader.js`,
-`backzettel-config.editor.js`, `backzettel-reference.core.js`; API `src/routes/backzettel.routes.ts`,
+`backzettel-config.editor.js`, `backzettel-reference.core.js`, `kalender.core.js` +
+`kalender.loader.js` (U9); API `src/routes/backzettel.routes.ts`,
 `src/services/backzettel.service.ts`; Verwaltung `apps/bakery-management/src/lib/backzettelApi.ts`,
 `backzettelFormat.ts`, `grundmengenApi.ts`, `backstubeDay.ts`, `backstubeErrors.ts`,
 `src/app/admin/backzettel/**`, `src/app/backstube/`, `src/components/backzettel/`,
@@ -73,12 +74,57 @@ die Überarbeitung „Backzettel v2" (Z10) ist dort geplant - dieses Dokument be
   Exit 1 bei Fehlern. Der Loader braucht `js-yaml` ^4 (Root-`dependencies`); das hq-CI muss es selbst
   installieren. Im API-Bundle bleiben `js-yaml` und `yaml` extern (esbuild, `apps/bakery-api/build.mjs`).
 
+## Kalender: Feiertage und Schließtage (U9)
+
+Stammdaten in `hq/config/kalender.yaml` (privat), Regeln einmal in `kalender.core.js`
+(`dayKind(cfg, date)`); die Quelle hängt den Kalender als `config.calendar` an die Stammdaten, die
+Kerne behalten ihre Signaturen. Plan-Kern, Tagesrechnung, API und Druck fragen `isBakeDay` /
+`isDoughDay` / `dayKind`, nie mehr `days.includes(Wochentag)`.
+
+- **Grundregel:** gesetzlicher Feiertag (Saarland, `holidaysSaarland` - die Formel steht nur hier,
+  `vacation.core.js` nimmt sie von dort) = geschlossen, kein Back- und kein Teigtag. Gilt nur für
+  die Jahre, die die Datei unter `feiertage` aufführt; die Liste muss der Formel entsprechen (der
+  Validator rechnet nach). Sonst nur, was abweicht (`tage`): `geschlossen`, `wie-sonntag`
+  (Grundmengen von Sonntag), `sonderoeffnung` mit `wie` (Grundmengen dieses Wochentags), `teigtag`
+  (Laden zu, nur Teig). `datum` oder `von`/`bis` (+ `wochentage`), `notiz` Pflicht, späterer
+  Eintrag gewinnt.
+- **Kein Kalender, ungültiger Kalender oder ein Jahr ohne Feiertagsliste = der Wochenplan wie vor
+  U9** (ein Feiertag ist dann ein normaler Tag) - nie ein erfundener Schließtag. Die API sagt es
+  mit `calendarHint` (`calendar_missing`, `calendar_invalid`, `calendar_year_missing`); die
+  Planungsseite zeigt den Hinweis.
+- **Teigtage überspringen Schließtage:** `resolveDoughDate` zählt nur Tage mit `doughDay`. Fallen
+  Fr + Sa aus, macht der Do den Teig für So und Di (Blöcke je Backtag). Liegt der Teig dadurch
+  mehr als 3 Tage vor dem Backtag (normal höchstens Sa → Di), warnt der Zettel `dough_day_far`
+  („Froster? Sonst im Kalender einen Teigtag eintragen“) - nur wenn der Kalender den Teig
+  verschoben hat.
+- **Tagestyp `before`** (abgeleitet): letzter offener Teigtag vor einem `geschlossen`en Tag (nicht
+  der Ruhetag). `samstag_ersatz`, wenn ein geschlossener Samstag folgt und danach noch ein offener
+  Backtag (So) vor dem nächsten Teigtag; sonst `vor_feiertag`, wenn gleich der nächste Tag zu ist.
+  Grundmenge dann aus der Spalte `base.vor_feiertag` bzw. `base.samstag_ersatz` des Postens
+  (normalisiert als `item.baseSpecial`, nie unter den Wochentagen), sonst die eigene; hat kein
+  Posten die Spalte, Warnung `special_base_missing`. Spezialbrot des Ausfalltags (Grundmenge > 0
+  nur an dessen Wochentag) steht als Hinweis `closed_day_specials` da - verteilt wird nicht
+  automatisch.
+- **Vorbestellungen an einem geschlossenen Tag** fallen nie still weg: der Zettel des Teigtags davor
+  meldet sie (`preorders_on_closed_day` mit Datum und Feiertag). Sonderproduktion (der Tag wird
+  Backtag nur mit den Aufträgen) ist geplant, aber noch nicht gebaut (offene Inhaber-Frage).
+- **CAP:** Liefervorlage nach dem echten Wochentag, an einem gesetzlichen Feiertag keine (der Markt
+  hat zu), auch wenn die Bäckerei offen ist (vorläufig).
+- **Anzeige:** `dayKind` an jedem Teigtag-Zettel (`label` „Samstags-Satz“, „Vor Feiertag“, „Wie
+  Sonntag“, „Nur Teig (Laden geschlossen)“, `detail` mit Notiz und den geschlossenen Tagen);
+  Planungsseite und Tablet als Hinweis über dem Zettel, der Druck fett unter dem Datum.
+  `computeDay` (v1) trägt `dayKind` nur mit Kalender, damit die v1-Aufnahmen gleich bleiben.
+- **Prüfung:** `node apps/bakery-api/scripts/validate-kalender.js <kalender.yaml> [backzettel.yaml]`,
+  im hq-CI vendored (`sync-from-website.sh`). Fehlt die Datei, die es auf `main` gab, ist das im
+  hq-CI ein Fehler.
+
 ## Tagesablauf auf der API (Z3)
 
 - **Stammdaten:** `HQ_BACKZETTEL_CONFIG`, sonst `${HQ_DIR}/config/backzettel.yaml`. Fehlen sie oder
   sind sie ungültig, antwortet `GET /api/backzettel/:datum` mit `status: 'no-config'` und `reasons`,
   Schreibversuche mit 409 `no_config` - **nie** mit geschätzten Mengen. Ein schon freigegebener Tag
-  bleibt lesbar. Montag (allgemein: Wochentag nicht in `days`) ist 409 `ruhetag`.
+  bleibt lesbar. Montag (allgemein: Wochentag nicht in `days`) ist 409 `ruhetag`, ein Feiertag
+  oder Schließtag laut Kalender 409 `geschlossen` mit Grund (U9); ein `teigtag` hat einen Zettel.
 - **Entwurf wird live gerechnet.** Gespeichert werden nur Saisonfaktor und Korrekturen; eine Korrektur
   ≠ 0 braucht einen Grund. Saisonfaktor- und Korrektur-`PUT` schicken den Wert, auf dem der Editor
   begann (`expectedFactor`, `expected`); weicht der gespeicherte ab, 409 `season_changed` /
@@ -124,8 +170,9 @@ die Überarbeitung „Backzettel v2" (Z10) ist dort geplant - dieses Dokument be
   an der offenen Zeile, bis sie wieder abgehakt ist; Tablet, Planung und Druck zeigen „bereits 30
   erledigt … - noch +10".
 - **Wieder öffnen** kann nur der Inhaber.
-- `prepDate` ist der Kalender-Vortag; ist der selbst Ruhetag (Dienstag), steht
-  `prepDateProvisional: true` - wer dann vorbereitet, ist offen (Q-B2).
+- `prepDate` ist der Kalender-Vortag; ist der selbst Ruhetag (Dienstag) oder laut Kalender
+  geschlossen, steht `prepDateProvisional: true` (geschlossen: mit `prepDateReason`) - wer dann
+  vorbereitet, ist offen (Q-B2).
 - **Planen und Freigeben nur von heute − 7 bis heute + 90 Tage** (Berlin; 400 `date_out_of_range`) -
   ein Tippfehler in der URL committete sonst einen Backzettel für 9999-12-31 nach hq `main`.
 - **Rollen:** lesen jede Sitzung; planen, freigeben, abhaken, quittieren `inhaber` + `backstube`.
@@ -200,6 +247,15 @@ Rest am Abend/Schnappschuss (S4), Bildschirme (S5) und Druck (S6) sind auf dem Z
   `isMinimum` („≥ 15 × 500 g", „Zopf gefüllt ≥ 15", ohne bekannte Stück „offen"), ebenso ein
   Einzelstück (`singles[].kgKnown`, „Teig: ≥ 1,25 kg") - dieselben kg, die im `kgKnown` des Teigs
   stecken.
+- **Zugabe je Bruch (U3, `bruch.addons: [{ name, g }]`):** Gramm, die je Bruch **auf** das
+  Bruchgewicht kommen (Körner zum Vital-/4-Saat-Weckteig: `bruch: { g: 1800, addons: [{ name:
+Körnermischung, g: 600 }] }`). Der Kern (`bruchGroups`) rechnet `addons[].g` = Brüche × g je
+  Bruch (`gKnown` mit den bekannten Brüchen, „≥“); sie zählen **nicht** zu kg, Liter oder Chargen
+  des Teigs - `doughs[].addons` (g je Liter) träfen den ganzen Weckteig. Brüche oder Gramm offen →
+  `null` („Menge offen“, nie 0); `g: null` ist eine Lücke (`bruch_addon_g_unknown`), der Teig bleibt
+  vollständig. Mitglieder einer Bruch-Gruppe brauchen dieselben Zugaben. Bildschirm, Tablet und
+  Druck zeigen `bruchAddonsText`: „2 Bruch × 1.800 g **+ 1,2 kg Körnermischung** – …“ (im Druck
+  fett), der hq-Schnappschuss dasselbe in der Brötchen-Zeile.
 - **Unbekannt bleibt unbekannt, auch beim Bruch:** hat ein Mitglied einer Bruch-Gruppe keine
   Grundmenge, sind Brüche, kg und „frei“ `null`; `bruecheKnown`/`kgKnown` zählen nur die bekannten
   Mitglieder („≥ 1 Bruch“). „+n frei“ steht in Produkten (`spareProducts`, bei zwei Teigstücken je

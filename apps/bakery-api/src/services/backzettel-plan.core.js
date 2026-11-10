@@ -1,12 +1,18 @@
 // Backzettel v2 (Z10): Teigtag ≠ Backtag (docs/backzettel-v2.md §2.4).
 //
+// U9: Back- und Teigtage kommen aus `kalender.core.js` (Wochenplan plus
+// Kalender an `cfg.calendar`): ein geschlossener Tag ist weder Back- noch
+// Teigtag, die Teigtag-Suche springt über ihn. Ohne Kalender genau der
+// Wochenplan (`days`, `dough_days`) wie vor U9.
+//
 // Dependency-freies CommonJS wie `backzettel.core.js`. Hier steht genau
 // einmal, an welchem Teigtag die Ware eines Backtags gemacht wird und welche
 // Backtage ein Zettel einsammelt - keine Mengen.
 //
 //   doughDate(item, B) =
 //     lead(item, weekday(B)) === 0 ? B
-//     : der lead-te Tag D < B (höchstens 14 Tage zurück) mit weekday(D) ∈ dough_days
+//     : der lead-te Tag D < B (höchstens 14 Tage zurück), der Teigtag ist
+//       (weekday(D) ∈ dough_days und nicht geschlossen, oder `teigtag` im Kalender)
 //
 // Ein Posten ohne `lead` hat lead 0: sein Teigtag ist sein Backtag. Eine
 // Konfiguration ohne die neuen Schlüssel ergibt deshalb genau die v1-Tage.
@@ -15,6 +21,8 @@
 // `{ version: 2, doughDate, bakeDates: [{ date, itemIds }] }`. Der Plan eines
 // Tages, der vor Z10 freigegeben wurde, ist `legacyPlan(date)` - alle Posten
 // des Tages (`itemIds: null`).
+
+const kalender = require('./kalender.core')
 
 /** So weit sucht `doughDateFor` zurück bzw. `bakeDatesFor` voraus. */
 const LOOKAHEAD_DAYS = 14
@@ -44,10 +52,6 @@ function addDays(date, days) {
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
 }
 
-function doughDays(cfg) {
-  return Array.isArray(cfg.dough_days) ? cfg.dough_days : cfg.days || []
-}
-
 /**
  * Wie viele Teigtage vor dem Backtag (ISO-Wochentag des Backtags) der Posten
  * gemacht wird. Ohne `lead` 0.
@@ -70,11 +74,10 @@ function leadFor(item, weekday) {
 function resolveDoughDate(cfg, item, bakeDate) {
   const lead = leadFor(item, isoWeekday(bakeDate))
   if (lead <= 0) return { date: bakeDate, lead: 0, found: true }
-  const days = doughDays(cfg)
   let count = 0
   for (let k = 1; k <= LOOKAHEAD_DAYS; k++) {
     const d = addDays(bakeDate, -k)
-    if (!days.includes(isoWeekday(d))) continue
+    if (!kalender.isDoughDay(cfg, d)) continue
     count += 1
     if (count === lead) return { date: d, lead, found: true }
   }
@@ -94,7 +97,7 @@ function bakeDatesFor(cfg, doughDate) {
   const out = []
   for (let k = 0; k <= LOOKAHEAD_DAYS; k++) {
     const b = addDays(doughDate, k)
-    if (!cfg.days.includes(isoWeekday(b))) continue
+    if (!kalender.isBakeDay(cfg, b)) continue
     if (
       k === 0 ||
       cfg.items.some((item) => doughDateFor(cfg, item, b) === doughDate)
@@ -110,16 +113,21 @@ function bakeDatesFor(cfg, doughDate) {
  * (aufsteigend, ohne doppelte). Kein Backtag → leer.
  */
 function doughDatesFor(cfg, bakeDate) {
-  if (!cfg.days.includes(isoWeekday(bakeDate))) return []
+  if (!kalender.isBakeDay(cfg, bakeDate)) return []
   const set = new Set(
     cfg.items.map((item) => doughDateFor(cfg, item, bakeDate))
   )
   return [...set].sort()
 }
 
-/** Ist `date` ein Teigtag (`dough_days`)? */
+/** Ist `date` ein Teigtag (`dough_days`, Kalender)? */
 function isDoughDay(cfg, date) {
-  return doughDays(cfg).includes(isoWeekday(date))
+  return kalender.isDoughDay(cfg, date)
+}
+
+/** Ist `date` ein Backtag (`days`, Kalender)? */
+function isBakeDay(cfg, date) {
+  return kalender.isBakeDay(cfg, date)
 }
 
 function ownedKey(bakeDate, itemId) {
@@ -202,7 +210,7 @@ function planCovers(cfg, plan, bakeDate, item) {
  * @returns {Array<{itemId: string, name: string, doughDate: string}>}
  */
 function orphanedItems(cfg, bakeDate, confirmed) {
-  if (!cfg.days.includes(isoWeekday(bakeDate))) return []
+  if (!kalender.isBakeDay(cfg, bakeDate)) return []
   const list = Array.isArray(confirmed) ? confirmed : []
   const dates = new Set(list.map((c) => c.date))
   const out = []
@@ -233,6 +241,7 @@ module.exports = {
   bakeDatesFor,
   doughDatesFor,
   isDoughDay,
+  isBakeDay,
   ownedKey,
   planForSheet,
   legacyPlan,

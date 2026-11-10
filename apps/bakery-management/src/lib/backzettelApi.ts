@@ -354,6 +354,44 @@ export interface ConfigReason {
   message: string
 }
 
+/**
+ * U9: was an einem Tag laut Kalender gilt (`kalender.core.js` `dayKind`).
+ * `label` ist `null` am normalen Tag.
+ */
+export interface DayKind {
+  date: string
+  weekday: number
+  baseWeekday: number | null
+  kind:
+    | 'normal'
+    | 'ruhetag'
+    | 'geschlossen'
+    | 'wie-sonntag'
+    | 'sonderoeffnung'
+    | 'teigtag'
+  open: boolean
+  bakeDay: boolean
+  doughDay: boolean
+  holidayName: string | null
+  note: string | null
+  openUntil: string | null
+  before: {
+    type: 'vor_feiertag' | 'samstag_ersatz'
+    closedDays: { date: string; label: string; note: string | null }[]
+    nextDoughDay: string | null
+  } | null
+  /** `missing`/`year-missing`: es gilt nur der Wochenplan. */
+  calendar: 'ok' | 'missing' | 'year-missing'
+  label: string | null
+  detail: string | null
+}
+
+/** U9: Kalender fehlt, ist ungültig oder hat das Jahr nicht. */
+export interface CalendarHint {
+  code: 'calendar_missing' | 'calendar_invalid' | 'calendar_year_missing'
+  message: string
+}
+
 export interface BackzettelDay {
   date: string
   weekday: number
@@ -371,6 +409,12 @@ export interface BackzettelDay {
   prepDate: string
   /** Vortag ist selbst Ruhetag - wer vorbereitet, ist offen (Q-B2). */
   prepDateProvisional: boolean | null
+  /** U9: Vortag laut Kalender geschlossen („Sa 26.12. geschlossen …“). */
+  prepDateReason?: string
+  /** U9: Tagestyp aus dem Kalender (ältere Server: fehlt). */
+  dayKind?: DayKind | null
+  /** U9: Kalender fehlt/ungültig - `null`, wenn er gilt. */
+  calendarHint?: CalendarHint | null
   deltas: BackzettelDeltaEntry[]
   /** Nur freigegebene Tage mit Nachträgen, die Teig oder Füllung ändern. */
   deltaExtras?: DeltaExtras | null
@@ -582,9 +626,22 @@ export interface BruchGroup {
   piecesKnown?: number
   bruecheKnown?: number | null
   kgKnown?: number | null
+  /**
+   * Zugaben je Bruch (U3, z. B. Körner zum Vital-Weckteig): `g` = Brüche ×
+   * `gPerBruch`, `null` solange Brüche oder Gramm offen; `gKnown` nur die
+   * bekannten Brüche. Zählen nicht zum Teig. Ältere Server: fehlt.
+   */
+  addons?: BruchAddon[]
   split: BruchSplit[]
   complete: boolean
   missing: MissingPart[]
+}
+
+export interface BruchAddon {
+  name: string
+  gPerBruch: number | null
+  g: number | null
+  gKnown: number | null
 }
 
 export interface SingleRow {
@@ -645,8 +702,11 @@ export interface BakeList {
   date: string
   weekday: number | null
   weekdayName: string | null
-  status: 'ok' | 'no-config' | 'ruhetag'
+  /** U9: `geschlossen` = Feiertag/Schließtag laut Kalender (`note`). */
+  status: 'ok' | 'no-config' | 'ruhetag' | 'geschlossen'
   message?: string
+  note?: string | null
+  dayKind?: DayKind | null
   reasons?: ConfigReason[]
   sources: BakeListSource[]
   sections: BackzettelSection[]
@@ -675,6 +735,8 @@ export interface BackzettelRuhetag {
   status: 'ruhetag'
   weekday: number | null
   message: string
+  /** U9: laut Kalender geschlossen (409 `geschlossen`), nicht Wochenplan. */
+  closed?: boolean
 }
 
 export type BackzettelDayResult =
@@ -803,6 +865,17 @@ export async function fetchBackzettelDay(
         status: 'ruhetag',
         weekday: null,
         message: failed.message || 'An diesem Tag ist Ruhetag.',
+      }
+    }
+    // U9: Feiertag oder Schließtag laut Kalender - wie ein Ruhetag ohne
+    // Zettel, mit dem Grund aus der API.
+    if (failed && failed.status === 409 && failed.code === 'geschlossen') {
+      return {
+        date,
+        status: 'ruhetag',
+        weekday: null,
+        closed: true,
+        message: failed.message || 'An diesem Tag ist geschlossen.',
       }
     }
     throw error

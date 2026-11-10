@@ -32,6 +32,11 @@
 
 const { normalizeClosedWeekdays } = require('./targets.core')
 const { openingHoursForWeekday } = require('./opening-hours.core')
+const {
+  easterSunday,
+  holidaysSaarland,
+  holidayName,
+} = require('./kalender.core')
 
 const AREAS = ['verkauf', 'backstube', 'fahrer', 'buero']
 
@@ -144,72 +149,8 @@ function round2(value) {
 }
 
 // ============================================================================
-// FEIERTAGE SAARLAND
+// FEIERTAGE SAARLAND - einzige Fassung in `kalender.core.js` (U9)
 // ============================================================================
-
-/** Ostersonntag (gregorianisch, Anonymer Algorithmus nach Meeus/Jones/Butcher). */
-function easterSunday(year) {
-  const a = year % 19
-  const b = Math.floor(year / 100)
-  const c = year % 100
-  const d = Math.floor(b / 4)
-  const e = b % 4
-  const f = Math.floor((b + 8) / 25)
-  const g = Math.floor((b - f + 1) / 3)
-  const h = (19 * a + b - d - g + 15) % 30
-  const i = Math.floor(c / 4)
-  const k = c % 4
-  const l = (32 + 2 * e + 2 * i - h - k) % 7
-  const m = Math.floor((a + 11 * h + 22 * l) / 451)
-  const month = Math.floor((h + l - 7 * m + 114) / 31)
-  const day = ((h + l - 7 * m + 114) % 31) + 1
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(
-    2,
-    '0'
-  )}`
-}
-
-const holidayCache = new Map()
-
-/**
- * Gesetzliche Feiertage im Saarland (SFG): bundesweite plus Fronleichnam,
- * Mariä Himmelfahrt und Allerheiligen. Ostersonntag und Pfingstsonntag sind
- * im Saarland keine gesetzlichen Feiertage. Sortiert, `[{ date, name }]`.
- */
-function holidaysSaarland(year) {
-  if (!Number.isInteger(year) || year < 1900 || year > 2999) return []
-  if (holidayCache.has(year)) return holidayCache.get(year)
-  const easter = easterSunday(year)
-  const fixed = (md, name) => ({ date: `${year}-${md}`, name })
-  const moving = (offset, name) => ({ date: addDays(easter, offset), name })
-  const list = [
-    fixed('01-01', 'Neujahr'),
-    moving(-2, 'Karfreitag'),
-    moving(1, 'Ostermontag'),
-    fixed('05-01', 'Tag der Arbeit'),
-    moving(39, 'Christi Himmelfahrt'),
-    moving(50, 'Pfingstmontag'),
-    moving(60, 'Fronleichnam'),
-    fixed('08-15', 'Mariä Himmelfahrt'),
-    fixed('10-03', 'Tag der Deutschen Einheit'),
-    fixed('11-01', 'Allerheiligen'),
-    fixed('12-25', '1. Weihnachtstag'),
-    fixed('12-26', '2. Weihnachtstag'),
-  ].sort((x, y) => (x.date < y.date ? -1 : 1))
-  // Eingefroren: der Cache gilt für alle späteren Aufrufe im Prozess.
-  const frozen = Object.freeze(list.map((h) => Object.freeze(h)))
-  holidayCache.set(year, frozen)
-  return frozen
-}
-
-/** Name des Feiertags an `date` oder `null`. */
-function holidayName(date) {
-  if (!isValidDate(date)) return null
-  const hit = holidaysSaarland(Number(date.slice(0, 4))).find(
-    (h) => h.date === date
-  )
-  return hit ? hit.name : null
-}
 
 // ============================================================================
 // ÖFFNUNGSTAGE UND GEWICHT

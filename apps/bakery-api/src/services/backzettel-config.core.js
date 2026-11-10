@@ -24,6 +24,10 @@
 // gilt ebenso als unbekannt, mit Warnung. Die Normalisierung laesst den Wert
 // `null` - nichts wird geschaetzt oder mit einem Standardwert gefuellt.
 
+// U9: die Grundmengen-Spalten neben den Wochentagen (`base.vor_feiertag`,
+// `base.samstag_ersatz`) - eine Liste, im Kalender-Kern.
+const { SPECIAL_BASE_KEYS } = require('./kalender.core')
+
 const SECTIONS = [
   'vorbereitung',
   'brot',
@@ -108,7 +112,7 @@ const ITEM_KEYS = new Set([
   'from_dough',
 ])
 const SIZE_KEYS = new Set(['id', 'label', 'dough_g', 'plu'])
-const BRUCH_KEYS = new Set(['g', 'per_product', 'pieces', 'group'])
+const BRUCH_KEYS = new Set(['g', 'per_product', 'pieces', 'group', 'addons'])
 const FROM_DOUGH_KEYS = new Set(['id', 'mode', 'dough_kg', 'extras'])
 const FROM_DOUGH_MODES = ['fixed', 'per_dough']
 const ADDON_KEYS = new Set(['id', 'name', 'g_per_liter', 'rounding'])
@@ -250,6 +254,51 @@ function normalizeLead(raw) {
     if (wd !== null && Number.isInteger(v)) out[wd] = v
   }
   return out
+}
+
+/**
+ * `bruch.addons` (U3): Liste von `{ name, g }`, Gramm je Bruch auf das
+ * Bruchgewicht (zählen nicht zum Teig). `g: null` ist offen, fehlt `g`,
+ * warnt der Validator.
+ */
+function validateBruchAddons(b, path, label, { err, warn, markOpen }) {
+  if (!isSet(b, 'addons') || b.addons === null) return
+  if (!Array.isArray(b.addons)) {
+    err(`${path}.addons`, 'addons muss eine Liste von { name, g } sein.')
+    return
+  }
+  const seen = new Set()
+  b.addons.forEach((x, j) => {
+    const xp = `${path}.addons[${j}]`
+    if (!isPlainObject(x))
+      return err(xp, 'Eine Zugabe je Bruch muss { name, g } sein.')
+    warnUnknownKeys(x, new Set(['name', 'g']), xp, warn)
+    if (!isText(x.name)) {
+      err(`${xp}.name`, 'name muss ein nicht-leerer Text sein.')
+    } else if (seen.has(x.name)) {
+      err(`${xp}.name`, `Zugabe „${x.name}“ steht doppelt.`)
+    } else {
+      seen.add(x.name)
+    }
+    const xName = isText(x.name) ? x.name : xp
+    if (!isSet(x, 'g')) {
+      warn(
+        `${xp}.g`,
+        `Posten „${label}“: Gramm je Bruch für „${xName}“ fehlen; die Zugabe bleibt unbekannt.`
+      )
+    } else if (x.g === null) {
+      markOpen(
+        `${xp}.g`,
+        'bruch_addon_g_unknown',
+        `Posten „${label}“: Gramm „${xName}“ je Bruch sind noch offen.`
+      )
+    } else if (!isPositiveNumber(x.g)) {
+      err(
+        `${xp}.g`,
+        'g (Gramm je Bruch) muss eine Zahl größer 0 oder null sein.'
+      )
+    }
+  })
 }
 
 /**
@@ -1226,7 +1275,7 @@ function validateBackzettelConfig(obj, options) {
         if (!isPlainObject(b)) {
           err(
             `${p}.bruch`,
-            'bruch muss { g, per_product?, pieces?, group? } sein.'
+            'bruch muss { g, per_product?, pieces?, group?, addons? } sein.'
           )
         } else {
           warnUnknownKeys(b, BRUCH_KEYS, `${p}.bruch`, warn)
@@ -1267,6 +1316,7 @@ function validateBackzettelConfig(obj, options) {
           }
           if (isSet(b, 'group') && b.group !== null && !isSlug(b.group))
             err(`${p}.bruch.group`, 'group muss ein Slug sein.')
+          validateBruchAddons(b, `${p}.bruch`, label, { err, warn, markOpen })
           const ownPieces = isSet(b, 'pieces') ? b.pieces : obj.bruch_pieces
           bruchMembers.push({
             p,
@@ -1280,6 +1330,7 @@ function validateBackzettelConfig(obj, options) {
             pieces: isPositiveInt(ownPieces) ? ownPieces : null,
             lead: JSON.stringify(normalizeLead(item.lead)),
             section: item.section,
+            addons: JSON.stringify(normalizeBruchAddons(b.addons)),
           })
         }
       }
@@ -1420,11 +1471,13 @@ function validateBackzettelConfig(obj, options) {
           for (const [key, value] of Object.entries(item.base)) {
             const bp = `${p}.base.${key}`
             const wd = weekdayKey(key)
-            if (wd === null || wd < 1 || wd > 7) {
+            // U9: Spalten für den Tag vor Schließtagen (kalender.core.js)
+            const special = SPECIAL_BASE_KEYS.includes(key)
+            if (!special && (wd === null || wd < 1 || wd > 7)) {
               err(bp, `Ungültiger Wochentag „${key}“ in base.`)
               continue
             }
-            if (!daySet.has(wd)) {
+            if (!special && !daySet.has(wd)) {
               err(
                 bp,
                 `${WEEKDAY_NAMES[wd]} (${wd}) ist kein Produktionstag (days).`
@@ -1514,6 +1567,7 @@ function validateBackzettelConfig(obj, options) {
       if (m.pieces !== first.pieces) diff.push('Stück je Bruch')
       if (m.lead !== first.lead) diff.push('lead')
       if (m.section !== first.section) diff.push('Abschnitt')
+      if (m.addons !== first.addons) diff.push('Zugaben je Bruch')
       if (diff.length > 0)
         err(
           `${m.p}.bruch.group`,
@@ -1521,7 +1575,7 @@ function validateBackzettelConfig(obj, options) {
             first.label
           }“, weicht aber ab bei: ${diff.join(
             ', '
-          )}. Eine Gruppe teilt sich Brüche nur mit gleichem Teig, Bruchgewicht, Stück je Bruch, lead und Abschnitt.`
+          )}. Eine Gruppe teilt sich Brüche nur mit gleichem Teig, Bruchgewicht, Stück je Bruch, lead, Abschnitt und Zugaben je Bruch.`
         )
     }
   }
@@ -1653,6 +1707,18 @@ function normalizeRounding(value) {
     : null
 }
 
+/**
+ * Zugaben je Bruch (U3): `bruch.addons: [{ name, g }]` - Gramm, die je Bruch
+ * AUF das Bruchgewicht kommen (Körner zum Vital-Weckteig). Sie zählen nicht
+ * zum Teig (kg, Liter); `g: null` = noch offen.
+ */
+function normalizeBruchAddons(list) {
+  return (Array.isArray(list) ? list : []).filter(isPlainObject).map((x) => ({
+    name: isText(x.name) ? x.name : '',
+    g: positiveOrNull(x.g),
+  }))
+}
+
 function positiveOrNull(value) {
   return isPositiveNumber(value) ? value : null
 }
@@ -1668,7 +1734,7 @@ function positiveOrNull(value) {
  * `{ id, label, dough_g, plu }`, `plu` `null` = unbekannt), `variantKind`
  * (`'size'` | `'filling'` | `null`), `lead` (`{ default, <Wochentag>: n }`),
  * `bruch` (`{ g: { default, <Wochentag>: g }, per_product, group,
- * piecesPerBruch }` oder `null`), `from_dough` und `products[].size`. Bei
+ * piecesPerBruch, addons: [{ name, g }] }` oder `null`), `from_dough` und `products[].size`. Bei
  * einem Posten mit Groessen sind `variants` die Groessen-IDs. Offene Werte
  * bleiben `null`.
  *
@@ -1764,6 +1830,7 @@ function normalizeConfig(obj) {
           per_product: isPositiveInt(b.per_product) ? b.per_product : 1,
           group: isSlug(b.group) ? b.group : item.id,
           piecesPerBruch: isPositiveInt(pieces) ? pieces : null,
+          addons: normalizeBruchAddons(b.addons),
         }
       }
       let fromDough = null
@@ -1825,6 +1892,9 @@ function normalizeConfig(obj) {
         filling_g: fillingG,
         tray,
         base: toWeekdayMap(item.base, (v) => (isPlainObject(v) ? { ...v } : v)),
+        // U9: `base.vor_feiertag` / `base.samstag_ersatz` (YAML) bzw. schon
+        // normalisiert `baseSpecial` - nie unter den Wochentagen
+        baseSpecial: specialBaseOf(item),
         pieces_per_liter: isPositiveNumber(item.pieces_per_liter)
           ? item.pieces_per_liter
           : null,
@@ -1878,7 +1948,25 @@ function normalizeConfig(obj) {
     prep,
     dough_days: Array.isArray(src.dough_days) ? [...src.dough_days] : [...days],
     bruch_pieces: bruchPieces,
+    // U9: der Kalender (`config/kalender.yaml`), von der Quelle angehängt;
+    // `null` = keiner geladen (dann gilt der Wochenplan, kalender.core.js)
+    calendar: isPlainObject(src.calendar) ? src.calendar : null,
   }
+}
+
+/** Die Grundmengen-Spalten des Tagestyps eines Postens (U9). */
+function specialBaseOf(item) {
+  const out = {}
+  const from = isPlainObject(item.baseSpecial)
+    ? item.baseSpecial
+    : isPlainObject(item.base)
+    ? item.base
+    : {}
+  for (const key of SPECIAL_BASE_KEYS) {
+    if (hasOwn(from, key))
+      out[key] = isPlainObject(from[key]) ? { ...from[key] } : from[key]
+  }
+  return out
 }
 
 /**
@@ -1919,6 +2007,7 @@ module.exports = {
   WEEKDAY_NAMES,
   RECIPE_DIR,
   MAX_LEAD,
+  SPECIAL_BASE_KEYS,
   ROUNDING_MODES,
   FROM_DOUGH_MODES,
   isSlug,

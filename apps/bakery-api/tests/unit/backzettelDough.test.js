@@ -629,6 +629,76 @@ describe('R11: ein Bruch = Stück je Bruch; zwei Teigstücke je Brötchen', () =
   })
 })
 
+describe('U3: Zugabe je Bruch (Körner auf das Bruchgewicht)', () => {
+  const withAddon = (g) =>
+    v2(
+      (c) =>
+        (rawItem(c, 'test-doppel').bruch.addons = [{ name: 'Testkörner', g }])
+    )
+
+  it('6 Brüche × 300 g = 1800 g Testkörner; der Teig bleibt 7,2 kg', () => {
+    const s = sheet(SAT, { config: withAddon(300) })
+    expect(group(s, SUN, 'test-doppel')).toMatchObject({
+      brueche: 6,
+      kg: 7.2,
+      addons: [{ name: 'Testkörner', gPerBruch: 300, g: 1800, gKnown: 1800 }],
+    })
+    expect(group(s, SUN, 'test-doppel').addonGaps).toBeUndefined()
+    const plain = sheet(SAT)
+    expect(doughOf(s, 'test-weck-teig').kg).toBe(
+      doughOf(plain, 'test-weck-teig').kg
+    )
+    expect(box(s, 'test-weck-teig').kg).toBe(box(plain, 'test-weck-teig').kg)
+  })
+
+  it('wächst mit den Brüchen (aufgerundet)', () => {
+    const s = sheet(SAT, {
+      config: withAddon(300),
+      preorderItems: [pre('test-doppel', 3, SUN)],
+    })
+    expect(group(s, SUN, 'test-doppel')).toMatchObject({
+      brueche: 7,
+      addons: [{ g: 2100 }],
+    })
+  })
+
+  it('Gramm je Bruch offen: Zugabe null, Lücke, der Teig bleibt vollständig', () => {
+    const s = sheet(SAT, { config: withAddon(null) })
+    expect(group(s, SUN, 'test-doppel')).toMatchObject({
+      brueche: 6,
+      complete: true,
+      addons: [{ name: 'Testkörner', gPerBruch: null, g: null, gKnown: null }],
+    })
+    expect(doughOf(s, 'test-weck-teig').complete).toBe(true)
+    expect(s.openMasterData).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: 'items[5].bruch.addons[0].g',
+          code: 'bruch_addon_g_unknown',
+        }),
+      ])
+    )
+  })
+
+  it('Brüche unbekannt (Stück je Bruch offen): Zugabe null, nie 0', () => {
+    const s = sheet(SAT, {
+      config: v2((c) => {
+        c.bruch_pieces = null
+        rawItem(c, 'test-doppel').bruch.addons = [
+          { name: 'Testkörner', g: 300 },
+        ]
+      }),
+    })
+    expect(group(s, SUN, 'test-doppel').addons).toEqual([
+      { name: 'Testkörner', gPerBruch: 300, g: null, gKnown: null },
+    ])
+  })
+
+  it('ohne addons: leere Liste', () => {
+    expect(group(sheet(SAT), SUN, 'test-doppel').addons).toEqual([])
+  })
+})
+
 describe('R12: ein Bruch für mehrere Produkte einer Gruppe', () => {
   it('Stern 12 + Käse 13 = 25 Stück → 2 Brüche, 15 frei, Aufteilung', () => {
     const s = sheet(SAT, { preorderItems: [pre('test-kaese', 5, SUN)] })

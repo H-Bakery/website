@@ -325,7 +325,8 @@ export default function BakeListClient({ date }: BakeListClientProps) {
         {loadError ?? 'Die Backliste konnte nicht geladen werden.'}
       </Alert>
     )
-  } else if (list.status === 'ruhetag') {
+  } else if (list.status === 'ruhetag' || list.status === 'geschlossen') {
+    // U9: `geschlossen` = Feiertag/Schließtag laut Kalender (Grund in `message`)
     body = (
       <Alert severity="info" data-testid="bake-ruhetag">
         {list.message ??

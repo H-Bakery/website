@@ -243,6 +243,13 @@ function pickRolls(list) {
         piecesKnown: numOrNull(g.piecesKnown),
         bruecheKnown: numOrNull(g.bruecheKnown),
         kgKnown: numOrNull(g.kgKnown),
+        // Zugaben je Bruch (U3), zählen nicht zum Teig
+        addons: (Array.isArray(g.addons) ? g.addons : []).map((a) => ({
+          name: str(a.name),
+          gPerBruch: numOrNull(a.gPerBruch),
+          g: numOrNull(a.g),
+          gKnown: numOrNull(a.gKnown),
+        })),
         complete: g.complete !== false,
         missing: pickMissing(g.missing),
         split: (Array.isArray(g.split) ? g.split : []).map((x) => ({
@@ -587,6 +594,19 @@ function bruecheText(g) {
   return g.bruecheKnown ? `≥ ${deNumber(g.bruecheKnown)} Bruch` : '? Bruch'
 }
 
+/** „ + 600 g Körner“ per Bruch group (U3), „ + ≥ …“ or „(Menge offen)“, never 0. */
+function bruchAddonsText(g) {
+  const grams = (x) =>
+    Math.abs(x) < 1000 ? `${deNumber(x)} g` : `${deNumber(x / 1000)} kg`
+  return (g.addons || [])
+    .map((a) => {
+      if (a.g !== null) return ` + ${grams(a.g)} ${cell(a.name)}`
+      if (a.gKnown) return ` + ≥ ${grams(a.gKnown)} ${cell(a.name)}`
+      return ` + ${cell(a.name)} (Menge offen)`
+    })
+    .join('')
+}
+
 /** „ (+4 frei)“ in products, „ (+9 Teigstücke frei)“ for mixed groups. */
 function spareText(g) {
   if (g.spare === null || !(g.spare > 0)) return ''
@@ -704,6 +724,7 @@ function doughDayMarkdown(out, s) {
               : g.kgKnown
               ? ` = ≥ ${deNumber(g.kgKnown)} kg`
               : '') +
+            bruchAddonsText(g) +
             ` – ${split}` +
             spareText(g)
         )

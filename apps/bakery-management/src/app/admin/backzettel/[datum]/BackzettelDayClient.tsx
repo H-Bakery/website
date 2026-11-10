@@ -65,6 +65,7 @@ import { HefeteigCard } from '../../../../components/backzettel/HefeteigCard'
 import { PrepCard } from '../../../../components/backzettel/PrepCard'
 import { DeltasCard } from '../../../../components/backzettel/DeltasCard'
 import { BackzettelWarnings } from '../../../../components/backzettel/BackzettelWarnings'
+import { DayKindNotice } from '../../../../components/backzettel/DayKindNotice'
 import { DeltaDoughNote } from '../../../../components/backzettel/DeltaDoughNote'
 import { MachineStrip } from '../../../../components/backzettel/MachineStrip'
 import { OpenMasterDataNote } from '../../../../components/backzettel/OpenMasterDataNote'
@@ -604,7 +605,7 @@ export default function BackzettelDayClient({
   } else if (result?.status === 'ruhetag') {
     body = (
       <Alert severity="info" data-testid="ruhetag">
-        <AlertTitle>Ruhetag</AlertTitle>
+        <AlertTitle>{result.closed ? 'Geschlossen' : 'Ruhetag'}</AlertTitle>
         {result.message} Gebacken wird wieder am{' '}
         {next ? formatDateLong(next) : 'nächsten Produktionstag'}.
         {next && (
@@ -718,6 +719,8 @@ export default function BackzettelDayClient({
         )}
         {/* Planen: Hinweise oben, man kann sie beheben. Nur Ansicht (Verkauf):
             ans Ende - beheben kann sie dort niemand, die Mengen gehen vor. */}
+        {/* U9: Tagestyp aus dem Kalender (Samstags-Satz, vor Feiertag …) */}
+        <DayKindNotice dayKind={day.dayKind} calendarHint={day.calendarHint} />
         {canPlan && <BackzettelWarnings warnings={day.warnings} />}
 
         {editable && (
@@ -820,6 +823,7 @@ export default function BackzettelDayClient({
           prep={day.prep}
           prepDate={day.prepDate}
           prepDateProvisional={day.prepDateProvisional}
+          prepDateReason={day.prepDateReason}
         />
         {!canPlan && <BackzettelWarnings warnings={day.warnings} />}
 

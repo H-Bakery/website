@@ -928,15 +928,28 @@ export function createPartnerRouter(
         const stored = await PartnerDeliveryTemplate.findOne({
           where: { partnerId: partner.id, weekday },
         })
-        const checked = normalizeTemplateInput(
-          body.items || [],
-          catalogue(),
-          stored ? storedTemplateItems(stored.items) : []
-        )
-        if (checked.ok === false) {
-          return sendError(res, checked.status, checked.error, checked.message)
+        // Teil-Update: nur ein gesendetes `items` ersetzt die Posten; ohne
+        // `items` (z. B. nur `{ active: false }`) bleiben sie stehen.
+        const keepItems = body.items === undefined && stored !== null
+        let items: TemplateItemInput[]
+        if (keepItems) {
+          items = storedTemplateItems(stored.items)
+        } else {
+          const checked = normalizeTemplateInput(
+            body.items || [],
+            catalogue(),
+            stored ? storedTemplateItems(stored.items) : []
+          )
+          if (checked.ok === false) {
+            return sendError(
+              res,
+              checked.status,
+              checked.error,
+              checked.message
+            )
+          }
+          items = checked.items
         }
-        const items = checked.items
 
         const template = await getSequelize().transaction(
           async (transaction) => {
@@ -947,7 +960,7 @@ export function createPartnerRouter(
             let saved: PartnerDeliveryTemplate
             if (existing) {
               // `active` bleibt stehen, wenn der Request es nicht nennt.
-              const updates: any = { items }
+              const updates: any = keepItems ? {} : { items }
               if (active !== undefined) updates.active = active
               saved = await existing.update(updates, { transaction })
             } else {
