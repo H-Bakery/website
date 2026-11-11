@@ -1759,7 +1759,17 @@ describe('Dienstplan - Tagestyp aus dem Kalender (Z14)', () => {
     renderCalendar({ view: 'monat', month: '2026-11' })
     await ready()
     expect(screen.getByTestId('day-2026-11-18')).toHaveTextContent('×')
-    expect(screen.getByTestId('day-2026-11-23')).not.toHaveTextContent('×')
+    // Sonderöffnung: offen, kein × und kein ½ (kein halber Urlaubstag)
+    const special = screen.getByTestId('day-2026-11-23')
+    expect(special).not.toHaveTextContent(/[½×]/)
+    expect(special).not.toHaveTextContent('halber Tag')
+    expect(special).toHaveAttribute(
+      'title',
+      'Sonderöffnung (wie Samstag) · Testmarkt'
+    )
+    expect(within(special).getByRole('button')).toHaveAccessibleName(
+      'Mo, 23.11.2026 (Sonderöffnung (wie Samstag) · Testmarkt): Woche öffnen'
+    )
     const notes = screen.getByTestId('month-day-notes')
     expect(notes).toHaveTextContent('Mi 18.11. Geschlossen · Inventur (×)')
     expect(notes).toHaveTextContent(

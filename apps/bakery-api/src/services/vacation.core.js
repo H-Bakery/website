@@ -203,7 +203,7 @@ function calendarKind(date, closedWeekdays, calendar) {
  * (`geschlossen`, Betriebsferien, „nur Teig“) ist geschlossen, eine
  * Sonderöffnung oder „wie Sonntag“ offen - auch am Feiertag oder Ruhetag -
  * mit den Zeiten des Wochentags, nach dem geöffnet wird (`offen_bis` kürzt
- * das Ende). Ohne Kalender gilt genau die alte Regel: Ruhetag oder
+ * das Ende, verlängert es aber nie über das reguläre Ende hinaus). Ohne Kalender gilt genau die alte Regel: Ruhetag oder
  * gesetzlicher Feiertag = geschlossen. Für ein Jahr, das der Kalender nicht
  * führt, bleibt ein gesetzlicher Feiertag ohne eigenen Eintrag geschlossen
  * (wie ohne Kalender).
@@ -254,8 +254,13 @@ function dayInfo(date, closedWeekdays, calendar) {
     text = { label: k.label, detail: k.detail }
     if (!closed) {
       const hours = openingHoursForWeekday(k.baseWeekday)
+      // `offen_bis` kürzt nur: nach dem regulären Ende des Wochentags
+      // verlängert es die Öffnungszeit nicht (vorläufig, dienstplan.md).
       openingHours =
-        hours && k.openUntil && k.openUntil > hours.opens
+        hours &&
+        k.openUntil &&
+        k.openUntil > hours.opens &&
+        k.openUntil < hours.closes
           ? { ...hours, closes: k.openUntil }
           : hours
     }

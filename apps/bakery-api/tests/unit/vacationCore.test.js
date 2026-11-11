@@ -1003,6 +1003,48 @@ describe('dayInfo with the bakery calendar (Z14, kalender.core.js)', () => {
     })
   })
 
+  it('offen_bis only shortens: later than the regular end it does not extend the day', () => {
+    const late = kalender.normalizeKalender({
+      version: 1,
+      bundesland: 'saarland',
+      feiertage: { 2026: feiertage(2026) },
+      tage: [
+        {
+          datum: '2026-11-23',
+          typ: 'sonderoeffnung',
+          wie: 6,
+          offen_bis: '20:00',
+          notiz: 'Testmarkt',
+        },
+      ],
+    })
+    const regular = core.dayInfo('2026-11-21', MONDAY, late).openingHours
+    expect(core.dayInfo('2026-11-23', MONDAY, late)).toMatchObject({
+      closed: false,
+      kind: 'sonderoeffnung',
+      openingHours: regular,
+    })
+    // Besetzung: eine Schicht über die reguläre Zeit deckt den Tag
+    const [day] = core.calendarDays(
+      '2026-11-23',
+      '2026-11-23',
+      MONDAY,
+      [{ id: 1, area: 'verkauf' }],
+      [
+        {
+          employeeId: 1,
+          date: '2026-11-23',
+          startTime: regular.opens,
+          endTime: regular.closes,
+          breakMinutes: 0,
+        },
+      ],
+      [],
+      late
+    )
+    expect(day.besetzung).toMatchObject({ covered: true })
+  })
+
   it('a dough-only day keeps the shop closed', () => {
     expect(core.dayInfo('2026-11-24', MONDAY, calendar)).toMatchObject({
       closed: true,

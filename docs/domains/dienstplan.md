@@ -55,8 +55,9 @@ Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). AP
     keine Besetzung; im Kalender hinterlegt und mit Notiz benannt („Geschlossen ·
     Betriebsferien“). Eine Schicht an dem Tag bleibt ein Hinweis mit dem Grund.
   - **Sonderöffnung / „wie Sonntag“**: offen - auch am Ruhetag oder Feiertag -, mit den Zeiten des
-    Wochentags, nach dem geöffnet wird (`offen_bis` kürzt das Ende); die Besetzung des Verkaufs
-    wird über diese Zeit geprüft, der Tag ist benannt („Sonderöffnung (wie Samstag) · Notiz“).
+    Wochentags, nach dem geöffnet wird (`offen_bis` kürzt das Ende; ein späteres `offen_bis` als das
+    reguläre Ende dieses Wochentags verlängert die Öffnungszeit nicht - im Kalender ist es „nur
+    Anzeige“, **vorläufig**); die Besetzung des Verkaufs wird über diese Zeit geprüft, der Tag ist benannt („Sonderöffnung (wie Samstag) · Notiz“).
   - **Ohne Kalender** (Datei fehlt oder ungültig) gilt genau die Regel wie zuvor: Ruhetag oder
     gesetzlicher Feiertag = geschlossen. Für ein Jahr, das der Kalender nicht führt, bleibt ein
     gesetzlicher Feiertag ohne eigenen Eintrag geschlossen (der Backzettel behandelt ihn dann als
@@ -151,7 +152,7 @@ Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). AP
   - **Monat:** dieselbe Zeilenlogik, Tage als schmale Spalten (Gantt-artig). Abwesenheit als
     durchgehender Balken mit Kürzel (U/F/A, geplant gestrichelt), Schicht als Punkt in der Farbe
     der Person, geschlossene Tage hinterlegt und im Kopf mit „×“, halbe Tage (24./31.12.) mit „½“
-    markiert. Die Namen der Feiertage, Schließtage („Geschlossen · Notiz (×)“), Sonderöffnungen
+    markiert; eine Sonderöffnung bekommt im Kopf kein Zeichen (Name im Tooltip und darunter). Die Namen der Feiertage, Schließtage („Geschlossen · Notiz (×)“), Sonderöffnungen
     („… (offen)“) und halben Tage stehen zusätzlich unter der Tabelle - Touch kennt keinen Tooltip. Ein Tag einer Person öffnet
     **dieselben Dialoge wie die Woche**: leerer Tag → Schicht oder Abwesenheit anlegen; Tag mit
     Einträgen → Menü mit jedem Eintrag zum Bearbeiten, dazu „Schicht anlegen“ (aktive Personen,

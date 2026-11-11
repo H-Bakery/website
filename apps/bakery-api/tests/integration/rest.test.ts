@@ -621,6 +621,8 @@ describe('calendar (Z14): a closing day is „geschlossen“, not a gap', () => 
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const kalender = require('../../src/services/kalender.core')
   const SAT = '2026-12-05'
+  // a Monday after the range of the Rest tests: Sonderöffnung on the Ruhetag
+  const OPEN_MON = '2026-12-14'
   const kalenderFile = () => path.join(hqDir, 'config', 'kalender.yaml')
 
   beforeAll(() =>
@@ -634,7 +636,15 @@ describe('calendar (Z14): a closing day is „geschlossen“, not a gap', () => 
             .holidaysSaarland(2026)
             .map((h: any) => ({ datum: h.date, name: h.name })),
         },
-        tage: [{ datum: SAT, typ: 'geschlossen', notiz: 'Inventur' }],
+        tage: [
+          { datum: SAT, typ: 'geschlossen', notiz: 'Inventur' },
+          {
+            datum: OPEN_MON,
+            typ: 'sonderoeffnung',
+            wie: 6,
+            notiz: 'Testmarkt',
+          },
+        ],
       })
     )
   )
@@ -693,6 +703,27 @@ describe('calendar (Z14): a closing day is „geschlossen“, not a gap', () => 
       kindDetail: 'Inventur',
       calendar: 'ok',
       weight: 1,
+    })
+  })
+
+  // No `options.dienstplan.calendar` here: this is the wiring of app.ts
+  // (kalender.yaml -> Backzettel source -> `config.calendar` -> dayInfo).
+  it('the Dienstplan opens a Sonderöffnung of the file on the Ruhetag', async () => {
+    const res = await as('inhaber').get(
+      `/api/dienstplan?from=${OPEN_MON}&to=${OPEN_MON}`
+    )
+    expect(res.status).toBe(200)
+    expect(res.body.data.days[0]).toMatchObject({
+      date: OPEN_MON,
+      closed: false,
+      restDay: true,
+      kind: 'sonderoeffnung',
+      kindLabel: 'Sonderöffnung (wie Samstag)',
+      kindDetail: 'Testmarkt',
+      openingHours: { opens: '05:30', closes: '12:30' },
+      halfDayName: null,
+      weight: 0,
+      calendar: 'ok',
     })
   })
 })

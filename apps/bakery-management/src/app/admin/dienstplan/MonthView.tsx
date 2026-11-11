@@ -262,11 +262,14 @@ function MonthDayHeader({
 }) {
   const closedName = day ? closedDayLabel(day) : null
   const weekday = WEEKDAY_LETTERS[isoWeekday(date)]
+  // Halber Tag (½) nur, wenn die API ihn so führt - eine Sonderöffnung ist
+  // kein halber Urlaubstag und bekommt im Kopf kein Zeichen (ihr Name steht
+  // im Tooltip, im aria-label und unter der Tabelle).
+  const halfName = day && !day.closed ? day.halfDayName : null
+  const special = day ? specialDayLabel(day) : null
   const note =
-    closedName ??
-    (day ? specialDayLabel(day) : null) ??
-    day?.halfDayName ??
-    null
+    closedName ?? ([special, halfName].filter(Boolean).join(' · ') || null)
+  const mark = closedName ? '×' : halfName ? '½' : null
   return (
     <TableCell
       data-testid={`day-${date}`}
@@ -303,15 +306,15 @@ function MonthDayHeader({
         <Typography variant="caption" color="text.secondary" display="block">
           {weekday}
         </Typography>
-        {note && (
+        {mark && (
           // Sichtbar nur ein Zeichen (die Spalte ist schmal): × geschlossen,
           // ½ halber Tag. Der Name steht im Tooltip (title), für
           // Screenreader ausgeschrieben und unter der Tabelle
           // (`MonthDayNotes`) - Touch kennt keinen Tooltip.
           <Typography variant="caption" display="block">
-            <span aria-hidden>{closedName ? '×' : '½'}</span>
+            <span aria-hidden>{mark}</span>
             <Box component="span" sx={visuallyHidden}>
-              {closedName ?? `${note} (halber Tag)`}
+              {closedName ?? `${halfName} (halber Tag)`}
             </Box>
           </Typography>
         )}
