@@ -43,8 +43,10 @@ import {
   isBruchItem,
   WEEKDAY_LONG,
   WEEKDAY_SHORT,
+  SPECIAL_COLUMNS,
   withRestAverages,
   type BackzettelConfigView,
+  type BaseColumn,
   type BaseEdit,
   type GrundmengenConfig,
   type GrundmengenItem,
@@ -96,6 +98,11 @@ interface CellProps {
   onSave: (value: number | null) => Promise<void>
   /** Eingabe ist keine Zahl - die Statuszeile sagt es (W4-verify r2). */
   onInvalid?: (text: string) => void
+  /**
+   * Z14: Sonderspalte - kein Eintrag heißt „nicht gesetzt“ (leer, „–“),
+   * nicht 0; leeren entfernt die Spalte in hq.
+   */
+  special?: boolean
 }
 
 function ReferenceHint({
@@ -212,8 +219,10 @@ function BaseCell({
   editable,
   onSave,
   onInvalid,
+  special = false,
 }: CellProps) {
-  const initial = displayValue(value)
+  const unset = special && value === undefined
+  const initial = unset ? '' : displayValue(value)
   const [draft, setDraft] = useState(initial)
   const [saving, setSaving] = useState(false)
   const [invalid, setInvalid] = useState(false)
@@ -269,7 +278,7 @@ function BaseCell({
         <Box sx={{ position: 'relative' }}>
           <InputBase
             value={draft}
-            placeholder="offen"
+            placeholder={unset ? '–' : 'offen'}
             disabled={saving}
             onChange={(e) => {
               setDraft(e.target.value)
@@ -352,10 +361,10 @@ function BaseCell({
             textAlign: 'right',
             fontVariantNumeric: 'tabular-nums',
             fontStyle: value === null ? 'italic' : undefined,
-            color: value === null ? 'text.secondary' : 'text.primary',
+            color: value === null || unset ? 'text.secondary' : 'text.primary',
           }}
         >
-          {value === null ? 'offen' : displayValue(value)}
+          {unset ? '–' : value === null ? 'offen' : displayValue(value)}
         </Typography>
       )}
       {changed && !editable && (
@@ -387,7 +396,7 @@ interface GridProps {
 function approvedCell(
   props: GridProps,
   item: GrundmengenItem,
-  weekday: number,
+  weekday: BaseColumn,
   variant: string | null,
   value: number | null | undefined
 ): { value: number | null | undefined } | null {
@@ -395,7 +404,9 @@ function approvedCell(
   const was = props.approved.items.find((i) => i.id === item.id)
   if (!was) return null
   const before = cellValue(was, weekday, variant)
-  const norm = (v: number | null | undefined) => (v === undefined ? 0 : v)
+  // Sonderspalten (Z14): fehlt = nicht gesetzt, nicht 0.
+  const norm = (v: number | null | undefined) =>
+    v === undefined && typeof weekday === 'number' ? 0 : v
   return norm(before) === norm(value) ? null : { value: before }
 }
 
@@ -478,10 +489,25 @@ function GrundmengenGrid(props: GridProps) {
   }, [config, editable, reference])
   const days = [...config.days].sort((a, b) => a - b)
   const sections = groupBySection(config)
+  // Z14: nach den Wochentagen die Spalten für den Tag vor Schließtagen.
+  const columns: {
+    key: BaseColumn
+    short: string
+    long: string
+    hint?: string
+  }[] = [
+    ...days.map((wd) => ({
+      key: wd,
+      short: WEEKDAY_SHORT[wd],
+      long: WEEKDAY_LONG[wd],
+    })),
+    ...SPECIAL_COLUMNS,
+  ]
 
   const dayCells = (item: GrundmengenItem, variant: string | null) =>
-    days.map((wd) => {
-      const ref = cellReference(reference, wd, item, variant)
+    columns.map(({ key: wd, long }) => {
+      const special = typeof wd !== 'number'
+      const ref = special ? null : cellReference(reference, wd, item, variant)
       const hasVariants = item.variants.length > 0
       // Posten mit Sorten: die Postenzeile ist nur editierbar, wenn am Tag
       // eine Gesamtzahl (oder gar nichts mit Sorten) steht - sonst die Sorten.
@@ -492,12 +518,13 @@ function GrundmengenGrid(props: GridProps) {
         : true
       const label = `${item.name}${
         variant ? ` (${variantLabel(config, variant, item)})` : ''
-      }, ${WEEKDAY_LONG[wd]}`
+      }, ${long}`
       return (
         <TableCell key={wd} align="right" sx={{ px: 1, py: 0.5 }}>
           {showInput ? (
             <BaseCell
               label={label}
+              special={special}
               value={value}
               approved={approvedCell(props, item, wd, variant, value)}
               reference={ref}
@@ -526,7 +553,9 @@ function GrundmengenGrid(props: GridProps) {
               )}
             </Stack>
           )}
-          {showInput && <BruchCellHint item={item} value={value} wd={wd} />}
+          {showInput && !special && (
+            <BruchCellHint item={item} value={value} wd={wd as number} />
+          )}
         </TableCell>
       )
     })
@@ -542,7 +571,7 @@ function GrundmengenGrid(props: GridProps) {
           sx={{ mb: 0.5 }}
         >
           Nicht alle Tage passen nebeneinander - die Tabelle seitlich
-          verschieben (bis {WEEKDAY_LONG[days[days.length - 1]]}).
+          verschieben (bis {columns[columns.length - 1].long}).
         </Typography>
       )}
       <TableContainer
@@ -575,7 +604,7 @@ function GrundmengenGrid(props: GridProps) {
                 Posten
               </TableCell>
               <TableCell sx={UNIT_COLUMN}>Einheit</TableCell>
-              {days.map((wd) => (
+              {columns.map(({ key: wd, short, long, hint }) => (
                 <TableCell
                   key={wd}
                   align="right"
@@ -588,10 +617,10 @@ function GrundmengenGrid(props: GridProps) {
                   }}
                 >
                   <abbr
-                    title={WEEKDAY_LONG[wd]}
+                    title={hint ? `${long}: ${hint}` : long}
                     style={{ textDecoration: 'none' }}
                   >
-                    {WEEKDAY_SHORT[wd]}
+                    {short}
                   </abbr>
                 </TableCell>
               ))}
@@ -602,7 +631,7 @@ function GrundmengenGrid(props: GridProps) {
               <React.Fragment key={section.id}>
                 <TableRow>
                   <TableCell
-                    colSpan={days.length + 2}
+                    colSpan={columns.length + 2}
                     sx={{
                       bgcolor: 'action.hover',
                       fontWeight: 700,

@@ -303,11 +303,11 @@ idempotent, down; baked columns), `tests/unit/preorderVariants.test.ts`.
 Two additions to `/api/backzettel` (registered **before** `/:date`, which would otherwise read
 `reference` as a date). Both serve the management screen `/admin/backzettel/grundmengen`.
 
-| Endpoint                          | Who                | Body / answer                                                                                                                                                                                                 |
-| --------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /config` (extended)          | any session        | Z3's answer (approved = what the day computes with) **plus** `pendingApproval`, `writable`, `writeIssue`, `working { status, config, errors, warnings }` (the write-worktree version a save builds on)        |
-| `PUT /config/base`                | inhaber, backstube | `{ itemId, weekday, value }` or `{ itemId, weekday, variants: { <slug>: n \| null } }` → the `/config` view + `pending`, `changed`                                                                            |
-| `GET /reference?weekday=&weeks=6` | inhaber, backstube | `{ status, available, today, weeks, basis, weekdays: [{ weekday, weekdayName, weeks, dates, skippedDates, items: [{ itemId, plu, median, samples, status: ok \| no_plu \| no_data, converted, sizes? }] }] }` |
+| Endpoint                          | Who                | Body / answer                                                                                                                                                                                                               |
+| --------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /config` (extended)          | any session        | Z3's answer (approved = what the day computes with) **plus** `pendingApproval`, `writable`, `writeIssue`, `working { status, config, errors, warnings }` (the write-worktree version a save builds on)                      |
+| `PUT /config/base`                | inhaber, backstube | `{ itemId, weekday, value }` or `{ itemId, weekday, variants: { <slug>: n \| null } }` (`weekday` 1-7 or, Z14, `vor_feiertag` / `samstag_ersatz`: there `null` removes the key) → the `/config` view + `pending`, `changed` |
+| `GET /reference?weekday=&weeks=6` | inhaber, backstube | `{ status, available, today, weeks, basis, weekdays: [{ weekday, weekdayName, weeks, dates, skippedDates, items: [{ itemId, plu, median, samples, status: ok \| no_plu \| no_data, converted, sizes? }] }] }`               |
 
 Errors (`sendError`): 400 `validation` (with `errors` for new config errors), `invalid_weekday`
 (also a weekday not in `days`), `invalid_quantity` (negative, > 10000, not a number; `"1,5"` is

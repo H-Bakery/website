@@ -34,6 +34,12 @@ export interface GrundmengenItem {
   plu: number[]
   /** ISO-Wochentag → Wert; ein fehlender Tag heißt 0. */
   base: Record<string, BaseDayValue>
+  /**
+   * Z14: Spalten für den Tag vor Schließtagen (`base.vor_feiertag` /
+   * `base.samstag_ersatz`). Ein fehlender Schlüssel heißt hier **nicht
+   * gesetzt** (der Zettel nimmt die Wochentags-Menge), nicht 0.
+   */
+  baseSpecial?: Record<string, BaseDayValue>
   /** Z10: Laibgrößen - dann sind `variants` die Größen-IDs. */
   sizes?: {
     id: string
@@ -165,11 +171,37 @@ export interface ReferenceResponse {
   weekdays: ReferenceWeekday[]
 }
 
+/** Z14: die Sonderspalten neben den Wochentagen (wie `SPECIAL_BASE_KEYS`). */
+export type SpecialColumn = 'vor_feiertag' | 'samstag_ersatz'
+
+export const SPECIAL_COLUMNS: {
+  key: SpecialColumn
+  short: string
+  long: string
+  hint: string
+}[] = [
+  {
+    key: 'vor_feiertag',
+    short: 'Vor FT',
+    long: 'Vor Feiertag',
+    hint: 'Teigtag direkt vor einem Feiertag/Schließtag. Leer = wie der Wochentag.',
+  },
+  {
+    key: 'samstag_ersatz',
+    short: 'Sa-Satz',
+    long: 'Samstags-Satz',
+    hint: 'Teigtag vor einem geschlossenen Samstag, wenn danach noch ein Backtag kommt. Leer = wie der Wochentag.',
+  },
+]
+
+/** Wochentag 1…7 oder Sonderspalte (Z14). */
+export type BaseColumn = number | SpecialColumn
+
 export type BaseEdit =
-  | { itemId: string; weekday: number; value: number | null }
+  | { itemId: string; weekday: BaseColumn; value: number | null }
   | {
       itemId: string
-      weekday: number
+      weekday: BaseColumn
       variants: Record<string, number | null>
     }
 
@@ -236,11 +268,12 @@ function isRecord(value: unknown): value is Record<string, number | null> {
  * Steht am Tag eine Gesamtzahl, haben die Sorten-Zeilen keinen eigenen Wert.
  */
 export function cellValue(
-  item: Pick<GrundmengenItem, 'base'>,
-  weekday: number,
+  item: Pick<GrundmengenItem, 'base' | 'baseSpecial'>,
+  weekday: BaseColumn,
   variant: string | null
 ): number | null | undefined {
-  const day = item.base ? item.base[String(weekday)] : undefined
+  const map = typeof weekday === 'number' ? item.base : item.baseSpecial
+  const day = map ? map[String(weekday)] : undefined
   if (variant === null) {
     return isRecord(day) ? undefined : day
   }
@@ -251,10 +284,11 @@ export function cellValue(
 
 /** Steht am Tag eine Zuordnung je Sorte? */
 export function isPerVariant(
-  item: Pick<GrundmengenItem, 'base'>,
-  weekday: number
+  item: Pick<GrundmengenItem, 'base' | 'baseSpecial'>,
+  weekday: BaseColumn
 ): boolean {
-  return isRecord(item.base ? item.base[String(weekday)] : undefined)
+  const map = typeof weekday === 'number' ? item.base : item.baseSpecial
+  return isRecord(map ? map[String(weekday)] : undefined)
 }
 
 /** Text im Eingabefeld: kein Eintrag = „0“, offen = leer. */

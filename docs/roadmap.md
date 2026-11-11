@@ -716,8 +716,10 @@ Exit criteria:
         (does the app allow orders on closed days at all?).
   - [ ] Preorder form / shop reject closed calendar days; Rest am Abend and Dienstplan
         (`vacation.core.js` `dayInfo`) from the same calendar.
-  - [ ] Editing the new base columns in the Grundmengen screen (hand-edited in hq until then);
-        Samstags-Satz print with 3 sheets (with U8).
+  - [x] Editing the new base columns in the Grundmengen screen (PR #122): columns „Vor FT“ /
+        „Sa-Satz“, `PUT /config/base` with `weekday: 'vor_feiertag' | 'samstag_ersatz'`; empty =
+        key removed (not set), never 0. Not yet in the Grundmengen print.
+  - [ ] Samstags-Satz print with 3 sheets (with U8).
 
 ### M3 Run through Christmas (27.11. – 24.12.): freeze
 
