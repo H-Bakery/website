@@ -18,6 +18,9 @@ Landingpage auf GitHub Pages). Nicht im Pilot, nicht auf der Box.
 | DB2 | **Modell zuerst übernehmen, später vielleicht umziehen.** Quelle ist der fertige Zwilling aus dem Saar LiDAR Explorer. Der Generator bleibt dort, und Verbesserungen am Modell passieren dort. Ob er in die Bäckerei-Repos umzieht, entscheiden wir erst, wenn wir oft am Modell arbeiten (→ Phase 3). |
 | DB3 | Drei Blickpunkte: **Theke + Vitrine**, **Brotregal**, **Regale + Kühlschrank**.                                                                                                                                                                                                                        |
 | DB4 | Kamera: **fester Standort, leicht umschauen (≈ ±20°) und zoomen**. Kein Laufen, kein freier Orbit.                                                                                                                                                                                                     |
+| DB5 | **Start direkt an der Theke**, ohne Fassade: Straße und Nachbarhäuser fehlen im Modell noch. Ein Intro „Blick vom Kreisel“ kommt später (P3).                                                                                                                                                          |
+| DB6 | **Echte, aktuelle Produktdaten aus `hq/products`** (Name, Preis, Einheit, Text) statt des Standes im Modell. Die Texte werden vorher in hq überarbeitet (Gesundheitsversprechen).                                                                                                                      |
+| DB7 | Später bekommt jedes Produkt ein **eigenes, teilrealistisches 3D-Modell**, das auch die Landingpage nutzen kann (P4).                                                                                                                                                                                  |
 
 ## Quelle: der Zwilling im Explorer
 
@@ -40,7 +43,8 @@ Landingpage auf GitHub Pages). Nicht im Pilot, nicht auf der Box.
   `produkt/<slot>@<fill>` ist die Variante für einen anderen Zustand. Knoten mit `extras.ware`
   sind neutrale Waren (Gläser, Dosen) ohne eigene Karte; ein Tipp darauf zeigt die Karte des
   Regals. `catalogue.json` → `products[<id>]` liefert `name_de`, `short_de`, `info_de`,
-  `category`, `price_eur`, `sale_unit`. Die Daten stammen aus `hq/products` (Import im Explorer).
+  `category`, `price_eur`, `sale_unit` mit dem Stand des letzten Imports im Explorer. Die App
+  nutzt davon nur die Zuordnung; Texte und Preise kommen aus hq (DB6, Abschnitt Produktdaten).
 - Zustände: `fills.default = "morgens"` (volle Auslage) und `feierabend` (leer). Die App zeigt
   nur **Morgens**: Knoten ausblenden, deren `extras.fills` `morgens` nicht enthält.
 - Startwerte für die Kamera aus der Führung des Explorers (`catalogue/tour.json`, `eye` → `look`):
@@ -62,6 +66,25 @@ Landingpage auf GitHub Pages). Nicht im Pilot, nicht auf der Box.
   git-ignoriert). Tests und e2e nutzen ein **synthetisches** Mini-GLB und einen synthetischen
   Katalog mit erfundenen Produkten.
 - Kein Tracking, keine Cookies, keine Fremd-Fonts. Keine Personen, keine Fotos von Dritten.
+
+## Produktdaten (DB6)
+
+- Karte und Liste lesen `hq/products/*.md` beim Build (`HQ_PRODUCTS_DIR`). Die Landingpage hat
+  dafür schon einen Leser (`apps/bakery-landing/src/lib/products.ts`). Nicht kopieren: Wenn beide
+  Apps ihn brauchen, gehört er in eine gemeinsame Lib.
+- Zuordnung: `extras.product` im Modell = die hq-ID ohne Nummer (`1-kornbrot-500g.md` →
+  `kornbrot-500g`). Zeigt das Modell ein Produkt, das es in hq nicht (mehr) gibt, bleibt es
+  sichtbar, aber ohne Karte, und der Build meldet es.
+- **Preisschilder im Modell:** Auf den zwei unteren Brotebenen sind Preiskarten mit dem alten
+  Preisstand ins Modell gebacken (Materialien `preiskarte` / `preisschrift` in den
+  `produkt/*`-Knoten). Diese Teile ausblenden und, wenn gewünscht, eigene Schilder aus den
+  hq-Daten zeichnen. Sonst stehen zwei verschiedene Preise im Bild.
+- **CI:** Der Deploy-Workflow hat heute keinen Zugriff auf hq, deshalb fällt die Landingpage dort
+  auf Mock-Daten zurück. Für echte Daten braucht der Workflow Lesezugriff auf hq (Deploy-Key oder
+  Token der vorhandenen GitHub App als Secret, nur `products/`). Das entscheidet der Inhaber, und es
+  gilt dann für beide Apps. Ohne hq bricht der Build dieser App ab, statt Mocks zu zeigen.
+- Welches Produkt wo liegt (die Belegung), kommt weiter aus dem Explorer. Neue Produkte erscheinen
+  im Regal erst mit einer neuen Belegung dort oder mit P4.
 
 ## Aufbau
 
@@ -109,7 +132,7 @@ apps/bakery-digitale-baeckerei/
   _Regale_. Zusätzlich Wischen mit zwei Fingern oder Pfeile am Rand. Auf dem Desktop: Pfeiltasten.
 - **Produkt antippen:** kurzes Aufleuchten, dann ein Bottom-Sheet mit Name, Preis + Einheit
   („2,50 € / Laib“), Kurztext, aufklappbar der lange Text. Dazu „Stand der Preise: <Monat Jahr>“
-  (Abrufdatum aus `model.lock.json`). **Keine Allergene**, solange die Liste nicht vollständig
+  (Datum des Builds). **Keine Allergene**, solange die Liste nicht vollständig
   bestätigt ist. Ein Link „Mehr auf der Website“ führt zur Produktseite der Landingpage, falls es
   sie gibt.
 - **Liste „Alles hier“** je Blickpunkt: alle Produkte dieses Blickpunkts als Liste (Name, Preis).
@@ -131,18 +154,44 @@ Handy.
 Jede Phase endet mit einem grünen PR. Bei sichtbaren Änderungen kommen Screenshots bei 390 px
 und Desktop dazu (lokal, nicht eingecheckt).
 
-| Phase         | Inhalt                                                                                                                                     | Fertig, wenn                                                                                                                                                        |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **P0 Spike**  | App-Gerüst, `sync-model` + `model.lock.json`, Modell laden, Morgens-Filter, ein Blickpunkt (Theke)                                         | Die Theke sieht auf dem Handy aus wie im Explorer. Ladezeit und FPS auf einem echten Handy sind im PR notiert                                                       |
-| **P1 MVP**    | 3 Blickpunkte inkl. Hochformat-Werte, Kamera-Rig, Picking + Bottom-Sheet, Liste „Alles hier“, Ladebild, Ersatz ohne WebGL, Quellen-Hinweis | Unit-Tests (Blickpunkt-Grenzen, Produkt-Zuordnung, Morgens-Filter) und Playwright bei 390 px (laden, wechseln, antippen → Sheet) mit dem synthetischen Fixture grün |
-| **P2 Live**   | Deploy unter `/digitale-baeckerei/`, Abnahme durch den Inhaber am Handy, danach der Link von der Landingpage                               | Die Seite ist öffentlich erreichbar, und der Inhaber hat zugestimmt                                                                                                 |
-| **P3 später** | Außenraum aus dem GLB schneiden, Backstube als zweiter Raum, Umzug des Generators (DB2), evtl. Feierabend-Umschalter oder „entdeckt x/y“   | einzeln entscheiden                                                                                                                                                 |
+| Phase         | Inhalt                                                                                                                                                                                                | Fertig, wenn                                                                                                                                                        |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **P0 Spike**  | App-Gerüst, `sync-model` + `model.lock.json`, Modell laden, Morgens-Filter, ein Blickpunkt (Theke)                                                                                                    | Die Theke sieht auf dem Handy aus wie im Explorer. Ladezeit und FPS auf einem echten Handy sind im PR notiert                                                       |
+| **P1 MVP**    | Produktdaten aus hq, Preisschilder im Modell ausgeblendet, 3 Blickpunkte inkl. Hochformat-Werte, Kamera-Rig, Picking + Bottom-Sheet, Liste „Alles hier“, Ladebild, Ersatz ohne WebGL, Quellen-Hinweis | Unit-Tests (Blickpunkt-Grenzen, Produkt-Zuordnung, Morgens-Filter) und Playwright bei 390 px (laden, wechseln, antippen → Sheet) mit dem synthetischen Fixture grün |
+| **P2 Live**   | Produkttexte in hq überarbeitet, hq-Zugriff im Deploy (falls entschieden), Deploy unter `/digitale-baeckerei/`, Abnahme durch den Inhaber am Handy, danach der Link von der Landingpage               | Die Seite ist öffentlich erreichbar, und der Inhaber hat zugestimmt                                                                                                 |
+| **P3 später** | Intro „Blick vom Kreisel“, Außenraum aus dem GLB schneiden, Backstube als zweiter Raum, Umzug des Generators (DB2), evtl. Feierabend-Umschalter oder „entdeckt x/y“                                   | einzeln entscheiden                                                                                                                                                 |
+| **P4 später** | Echte 3D-Produkte (DB7), zuerst ein Test mit 3 Produkten                                                                                                                                              | eigener Plan, wenn es losgeht                                                                                                                                       |
+
+## Später: Intro „Blick vom Kreisel“ (P3)
+
+Ein kurzer, automatischer Kameraflug: Er beginnt am Kreisel, führt die Eckstraße entlang und durch
+die Tür bis zum Blickpunkt „Theke“. Er lässt sich überspringen und wird nur beim ersten Besuch
+gezeigt. Laufen gibt es auch hier nicht. Dafür muss das Modell im Explorer wachsen: Kreisel und
+Straße, die Nachbarhäuser stilisiert auf den LoD2-Grundformen (keine Details privater Häuser), dazu
+evtl. neues Video. Google Maps und Street View dienen **nur als Vorlage** zum Nachmodellieren. Weder
+Texturen noch 3D-Daten von dort übernehmen (Nutzungsbedingungen, Regel des Explorers). Keine
+Personen, keine Kennzeichen.
+
+## Später: echte 3D-Produkte (P4)
+
+Ziel: je Produkt ein teilrealistisches Modell, das man in der Digitalen Bäckerei aus der Nähe drehen
+kann (im Produkt-Sheet) und das auch die Produktseiten der Landingpage zeigen.
+
+- **Empfohlener Weg:** Fotogrammetrie der echten Ware, z. B. Object Capture auf dem iPhone, wie
+  schon beim Laden. In Blender säubern und auf ≈ 10–30 k Dreiecke und eine 1–2-K-Textur (KTX2 oder
+  WebP) reduzieren. Für Torten und Teilchen, die sich schlecht scannen lassen: in Blender modellieren.
+  Die stilisierten Formen aus dem Explorer (`products/shapes.py`) bleiben für die vielen Stücke im
+  Regal (≈ 570 Stück, Leistung).
+- **Zwei Detailstufen:** Im Regal liegen leichte Modelle, in der Nahansicht das Scan-Modell. Ob
+  teilrealistische Produkte neben dem stilisierten Laden passen, zuerst mit 3 Produkten testen
+  (Brezel, Kornbrot, ein Teilchen).
+- **Ablage offen:** ≈ 100 Modelle zu je 1–3 MB passen nicht gut in ein normales Git-Repo. In Frage
+  kommen hq mit Git LFS oder ein eigenes Daten-Repo wie `saar-lidar-data`. Rohfotos bleiben lokal.
+  Die Fotos der eigenen Ware gehören der Bäckerei und dürfen veröffentlicht werden.
 
 ## Offen (Inhaber)
 
-- Die Produkttexte enthalten zum Teil Gesundheitsversprechen (_gesund_, _reich an
-  Ballaststoffen_). Vor P2 prüfen; korrigiert wird in `hq/products`, danach Re-Import im Explorer.
-- Preise: Das Modell hat den Stand des letzten Imports. Sollen Preise überhaupt erscheinen, und ist
-  der Hinweis „Stand der Preise“ so in Ordnung?
-- Startbild: Soll vor dem Laden die Fassade gezeigt werden (Wiedererkennung), oder geht es direkt an
-  die Theke?
+- Preise: Sollen sie in der Digitalen Bäckerei erscheinen, mit dem Hinweis „Stand der Preise“?
+- hq-Lesezugriff für den Deploy-Workflow (DB6): ja oder nein? Davon hängt auch ab, ob die
+  Landingpage echte statt Mock-Daten zeigt.
+- Ablage der 3D-Produkte (P4): hq mit Git LFS oder ein eigenes Daten-Repo?
