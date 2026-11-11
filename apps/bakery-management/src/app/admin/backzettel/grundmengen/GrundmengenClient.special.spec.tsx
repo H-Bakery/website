@@ -160,6 +160,74 @@ describe('Grundmengen-Druckbild - Sonderspalten (Z14)', () => {
     expect(cell(`${kranz.id}-${first}-vor_feiertag`)).toHaveTextContent(/^$/)
   })
 
+  const renderWith = async (
+    edit: (item: ReturnType<typeof syntheticConfig>['items'][number]) => void,
+    editApproved?: (
+      item: ReturnType<typeof syntheticConfig>['items'][number]
+    ) => void
+  ) => {
+    const pick = (c: ReturnType<typeof syntheticConfig>) => {
+      const item = c.items.find((i) => i.variants.length > 1)
+      if (!item) throw new Error('Fixture ohne Sorten-Posten')
+      return item
+    }
+    const config = syntheticConfig()
+    edit(pick(config))
+    const approved = syntheticConfig()
+    if (editApproved) editApproved(pick(approved))
+    const view = syntheticView({
+      config: editApproved ? approved : config,
+      pendingApproval: Boolean(editApproved),
+      working: { status: 'ok', config, errors: [], warnings: [] },
+    })
+    apiClient.get.mockImplementation(async (url: string) => {
+      if (url === '/api/backzettel/config') return { success: true, data: view }
+      return { success: true, data: syntheticReference() }
+    })
+    renderWithTheme(<GrundmengenClient />)
+    const item = pick(config)
+    await screen.findByTestId(`row-${item.id}`)
+    return item
+  }
+
+  it('gesetzte Spalte, Sorte fehlt im Eintrag: „0“ wie der Zettel, nicht leer', async () => {
+    const item = await renderWith((i) => {
+      i.baseSpecial = { samstag_ersatz: { [i.variants[0]]: 10 } }
+    })
+    const [first, second] = item.variants
+    expect(cell(`${item.id}-samstag_ersatz`)).toHaveTextContent('je Sorte')
+    expect(cell(`${item.id}-${first}-samstag_ersatz`)).toHaveTextContent(/^10$/)
+    expect(cell(`${item.id}-${second}-samstag_ersatz`)).toHaveTextContent(/^0$/)
+    // die andere Spalte fehlt am Posten: leer
+    expect(cell(`${item.id}-${second}-vor_feiertag`)).toHaveTextContent(/^$/)
+  })
+
+  it('Gesamtzahl 0 an einem Posten mit Sorten: „0“ in Posten- und Sortenzeilen, Änderung mit *', async () => {
+    const item = await renderWith(
+      (i) => {
+        i.baseSpecial = { samstag_ersatz: 0 }
+      },
+      (i) => {
+        i.baseSpecial = { samstag_ersatz: 12 }
+      }
+    )
+    expect(cell(`${item.id}-samstag_ersatz`)).toHaveTextContent(/^0 \* \(12\)$/)
+    expect(
+      cell(`${item.id}-${item.variants[0]}-samstag_ersatz`)
+    ).toHaveTextContent(/^0$/)
+    expect(cell(`${item.id}-vor_feiertag`)).toHaveTextContent(/^$/)
+  })
+
+  it('Spalte am Posten offen (null): Postenzeile und Sorten „offen“', async () => {
+    const item = await renderWith((i) => {
+      i.baseSpecial = { samstag_ersatz: null }
+    })
+    expect(cell(`${item.id}-samstag_ersatz`)).toHaveTextContent(/^offen$/)
+    expect(
+      cell(`${item.id}-${item.variants[0]}-samstag_ersatz`)
+    ).toHaveTextContent(/^offen$/)
+  })
+
   it('wartende Änderung: neu gesetzt „7 * (–)“, entfernt „* (6)“ - nie 0', async () => {
     const approved = syntheticConfig()
     approved.items[0].baseSpecial = { vor_feiertag: 6 }

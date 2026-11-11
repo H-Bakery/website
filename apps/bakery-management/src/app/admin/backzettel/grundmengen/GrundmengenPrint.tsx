@@ -68,6 +68,26 @@ const cellSx: React.CSSProperties = {
   verticalAlign: 'top',
 }
 
+/**
+ * Wert einer Zelle, wie der Backzettel ihn rechnet. Wochentage: der Eintrag.
+ * Sonderspalten (Z14): fehlt die Spalte am Posten, ist sie „nicht gesetzt“
+ * (`undefined`, es gilt der Wochentag). Ist sie gesetzt, zählt eine Sorte
+ * ohne Wert 0 - im Sorten-Eintrag ausgelassen oder unter einer Gesamtzahl -,
+ * nicht die Menge des Wochentags.
+ */
+function effectiveValue(
+  item: GrundmengenItem,
+  column: BaseColumn,
+  variant: string | null
+): number | null | undefined {
+  const value = cellValue(item, column, variant)
+  if (typeof column === 'number' || value !== undefined) return value
+  const set =
+    item.baseSpecial !== undefined &&
+    Object.prototype.hasOwnProperty.call(item.baseSpecial, column)
+  return set && variant !== null ? 0 : undefined
+}
+
 function approvedValue(
   approved: GrundmengenConfig | null,
   item: GrundmengenItem,
@@ -78,7 +98,7 @@ function approvedValue(
   if (!approved) return null
   const was = approved.items.find((i) => i.id === item.id)
   if (!was) return null
-  const before = cellValue(was, weekday, variant)
+  const before = effectiveValue(was, weekday, variant)
   // Sonderspalten (Z14): fehlt = nicht gesetzt, nicht 0.
   const norm = (v: number | null | undefined) =>
     v === undefined && typeof weekday === 'number' ? 0 : v
@@ -130,11 +150,14 @@ export default function GrundmengenPrint({
     columns.map(({ key: wd }) => {
       const special = typeof wd !== 'number'
       const show = special ? printSpecialValue : printValue
-      const value = cellValue(item, wd, variant)
+      const value = effectiveValue(item, wd, variant)
       const parentOfVariants = item.variants.length > 0 && variant === null
+      // Sonderspalten: die Postenzeile zeigt auch 0 und „offen“ - leer hieße
+      // dort „nicht gesetzt, es gilt der Wochentag“.
       const hidden =
         parentOfVariants &&
-        (isPerVariant(item, wd) || !(typeof value === 'number' && value > 0))
+        (isPerVariant(item, wd) ||
+          (!special && !(typeof value === 'number' && value > 0)))
       const was = hidden
         ? null
         : approvedValue(approved, item, wd, variant, value)

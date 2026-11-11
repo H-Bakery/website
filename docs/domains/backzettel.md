@@ -104,10 +104,11 @@ Kerne behalten ihre Signaturen. Plan-Kern, Tagesrechnung, API und Druck fragen `
   (normalisiert als `item.baseSpecial`, nie unter den Wochentagen), sonst die eigene; hat kein
   Posten die Spalte, Warnung `special_base_missing`. Spezialbrot des Ausfalltags (Grundmenge > 0
   nur an dessen Wochentag) steht als Hinweis `closed_day_specials` da - verteilt wird nicht
-  automatisch. Ein Posten, der die Spalte des Tages hat (`base.samstag_ersatz` am
-  Samstags-Satz-Tag), steht schon mit dieser Menge auf dem Zettel und fehlt im Hinweis
-  (vorläufig, Z14: sonst fragte ein gepflegter Samstags-Satz bei jedem Posten „heute oder später
-  backen?“).
+  automatisch. Ein Posten, den die Spalte des Tages einplant (`base.samstag_ersatz` am
+  Samstags-Satz-Tag mit Menge > 0 oder offen/`null`), steht schon auf dem Zettel und fehlt im
+  Hinweis (vorläufig, Z14: sonst fragte ein gepflegter Samstags-Satz bei jedem Posten „heute oder
+  später backen?“). Eine **0** in der Spalte plant ihn nicht ein - er steht nicht auf dem Zettel,
+  also bleibt der Hinweis (gilt für jeden Ausfalltag, nicht nur den Samstag).
 - **Vorbestellungen an einem geschlossenen Tag** fallen nie still weg: der Zettel des Teigtags davor
   meldet sie (`preorders_on_closed_day` mit Datum und Feiertag). Sonderproduktion (der Tag wird
   Backtag nur mit den Aufträgen) ist geplant, aber noch nicht gebaut (offene Inhaber-Frage).
@@ -298,7 +299,10 @@ erweitertes `GET /api/backzettel/config`.
   neue Sorten-Spalte beginnt mit den übrigen Sorten offen (`null`), nie 0, und sind alle Sorten leer,
   verschwindet die Spalte. Keine Referenz, kein Bruch-Hinweis. Im Druckbild stehen beide Spalten
   nach So (immer, auch leer - zum Eintragen von Hand): gesetzt = Zahl, **nicht gesetzt = leeres
-  Feld, nie 0**, offene Sorte „offen“, Postenzeile mit Sorten „je Sorte“; eine wartende Änderung
+  Feld, nie 0**, offene Sorte „offen“, Postenzeile mit Sorten „je Sorte“. Leer heißt dort nur
+  „Spalte fehlt am Posten“: ist sie gesetzt, druckt jede Zelle, was der Zettel rechnet - eine im
+  Sorten-Eintrag fehlende Sorte und die Sorten unter einer Gesamtzahl „0“, die Postenzeile eine
+  Gesamtzahl auch als „0“ und eine ganz offene Spalte „offen“; eine wartende Änderung
   „7 \* (–)“ (vorher nicht gesetzt) bzw. „\* (6)“ (Eintrag entfernt). Die Kopfzeile erklärt die
   Kürzel („Vor FT = Vor Feiertag, Sa-Satz = Samstags-Satz: leer = nicht gesetzt, es gilt die Menge
   des Wochentags“).
