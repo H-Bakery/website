@@ -879,6 +879,29 @@ function machineDeltaExtras(config, lines, extras, sheetDate) {
 }
 
 /**
+ * Zugaben je Bruch (U3) vorher/nachher je Name. Ohne Gruppe vorher sind es
+ * vorher 0 g (die Gruppe gab es nicht); offene Gramm bleiben `null`.
+ */
+function addonsDelta(before, after, hadBefore) {
+  const known = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+  const byName = new Map((before || []).map((a) => [a.name, a]))
+  return (after || []).map((a) => {
+    const b = byName.get(a.name)
+    const gBefore = b ? known(b.g) : hadBefore ? null : 0
+    const g = known(a.g)
+    return {
+      name: a.name,
+      gBefore,
+      g,
+      gDelta:
+        gBefore !== null && g !== null
+          ? Math.round((g - gBefore) * 10) / 10
+          : null,
+    }
+  })
+}
+
+/**
  * Was die Nachtraege eines freigegebenen Zettels fuer die Bruch-Gruppen
  * heissen (Z10, Review Runde 1): Teigstuecke vorher/nachher, Brueche
  * vorher/nachher und die freien Stuecke - „+1 Bruch“ oder „passt in die
@@ -887,7 +910,11 @@ function machineDeltaExtras(config, lines, extras, sheetDate) {
  *
  * @returns {Array<{key, name, bakeDate, piecesBefore, pieces, piecesDelta,
  *   bruecheBefore, brueche, bruecheDelta, spareBefore, spare,
- *   spareProductsBefore, spareProducts, complete}>}
+ *   spareProductsBefore, spareProducts, addons, complete}>}
+ *
+ * `addons` (U3): je Zugabe je Bruch `{ name, gBefore, g, gDelta }` - Gramm
+ * vorher/nachher aus `bruchGroups` (Brueche x g je Bruch); `gDelta` `null`,
+ * solange Brueche oder Gramm offen sind, nie 0 fuer unbekannt.
  */
 function bruchDeltaExtras(config, lines, extras, sheetDate) {
   if (!config || !extras || Object.keys(extras).length === 0) return []
@@ -907,6 +934,7 @@ function bruchDeltaExtras(config, lines, extras, sheetDate) {
       brueche: 0,
       spare: 0,
       spareProducts: 0,
+      addons: [],
     }
     const piecesDelta = round2((g.piecesKnown || 0) - (b.piecesKnown || 0))
     if (piecesDelta === 0) continue
@@ -932,6 +960,7 @@ function bruchDeltaExtras(config, lines, extras, sheetDate) {
         b.spareProducts === undefined ? null : known(b.spareProducts),
       spareProducts:
         g.spareProducts === undefined ? null : known(g.spareProducts),
+      addons: addonsDelta(b.addons, g.addons, byKey.has(g.key)),
       complete: Boolean(g.complete),
     })
   }

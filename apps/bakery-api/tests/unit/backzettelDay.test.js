@@ -1526,6 +1526,46 @@ describe('Z10: Teigtag-Zettel im Tages-Core', () => {
     expect(day.bruchDeltaExtras(null, sheet.lines, { x: 1 }, SAT)).toEqual([])
   })
 
+  it('bruchDeltaExtras: Zugabe je Bruch (U3) - zusätzliche Gramm je Bruch mehr, offen bleibt null', () => {
+    const withAddons = (g) => {
+      const raw = configV2()
+      raw.items.find((i) => i.id === 'test-doppel').bruch.addons = [
+        { name: 'Testkörner', g },
+      ]
+      return configCore.normalizeConfig(raw)
+    }
+    const cfg = withAddons(150)
+    const sheet = core.computeDoughDay({
+      config: cfg,
+      date: SAT,
+      catalog: PRODUCTS_V2,
+    })
+    const before = sheet.rolls
+      .flatMap((r) => r.groups)
+      .find((g) => g.key === `${NEXT_TUE}|test-doppel`)
+    const extra = { [`test-doppel|@${NEXT_TUE}`]: before.spareProducts + 1 }
+    const [more] = day.bruchDeltaExtras(cfg, sheet.lines, extra, SAT)
+    expect(more.bruecheDelta).toBe(1)
+    expect(more.addons).toEqual([
+      {
+        name: 'Testkörner',
+        gBefore: before.brueche * 150,
+        g: (before.brueche + 1) * 150,
+        gDelta: 150,
+      },
+    ])
+    const open = withAddons(null)
+    const sheetOpen = core.computeDoughDay({
+      config: open,
+      date: SAT,
+      catalog: PRODUCTS_V2,
+    })
+    const [unknown] = day.bruchDeltaExtras(open, sheetOpen.lines, extra, SAT)
+    expect(unknown.addons).toEqual([
+      { name: 'Testkörner', gBefore: null, g: null, gDelta: null },
+    ])
+  })
+
   it('bruchDeltaExtras: Stück je Bruch offen - Brüche bleiben unbekannt, nie 0', () => {
     const cfg = configCore.normalizeConfig(configV2({ bruch_pieces: null }))
     const sheet = core.computeDoughDay({

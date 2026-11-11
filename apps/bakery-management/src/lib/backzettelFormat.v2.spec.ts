@@ -256,6 +256,51 @@ describe('Backzettel v2 - Anzeige-Helfer', () => {
     expect(deltaDoughLines({ date: SAT })).toEqual([])
   })
 
+  it('Nachträge: Zugabe je Bruch (U3) - zusätzliche Gramm, offen nur bei Bruch-Änderung', () => {
+    const [doppel] = v2DeltaDough().deltaBruch ?? []
+    const addon = (gBefore: number | null, g: number | null) => ({
+      name: 'Testkörner',
+      gBefore,
+      g,
+      gDelta: gBefore !== null && g !== null ? g - gBefore : null,
+    })
+    expect(
+      deltaDoughLines({
+        date: SAT,
+        deltaBruch: [{ ...doppel, addons: [addon(750, 900)] }],
+      })
+    ).toEqual([
+      'Testdoppel für Di: +14 Teigstücke – 1 Bruch mehr (jetzt 6) · +150 g Testkörner (jetzt 900 g)',
+    ])
+    expect(
+      deltaDoughLines({
+        date: SAT,
+        deltaBruch: [{ ...doppel, addons: [addon(null, null)] }],
+      })
+    ).toEqual([
+      'Testdoppel für Di: +14 Teigstücke – 1 Bruch mehr (jetzt 6) · Testkörner: Menge offen',
+    ])
+    // passt in die freien Stücke: keine Zugabe mehr, auch offen kein Hinweis
+    for (const a of [addon(750, 750), addon(null, null)]) {
+      expect(
+        deltaDoughLines({
+          date: SAT,
+          deltaBruch: [
+            {
+              ...doppel,
+              brueche: 5,
+              bruecheDelta: 0,
+              spareProducts: 2,
+              addons: [a],
+            },
+          ],
+        })
+      ).toEqual([
+        'Testdoppel für Di: +14 Teigstücke – passt in die freien Stücke (noch +2 frei)',
+      ])
+    }
+  })
+
   it('Kopfzeile „Teige heute“ aus den Kästen des Servers', () => {
     expect(doughsTodayText(saturdayV2Draft())).toBe(
       'Teige heute: Korn + Holz · Testweck für So + Di · Testflit für So + Di · Testhefe'
