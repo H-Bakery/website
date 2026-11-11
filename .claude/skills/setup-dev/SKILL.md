@@ -41,6 +41,7 @@ When it is up, give the user the addresses and logins that `up.sh` prints:
 | Inhaber                | `verify.inhaber`   | `Verify-Inhaber-2026`   | 1357 |
 | Verkauf                | `verify.verkauf`   | `Verify-Verkauf-2026`   | 2468 |
 | Backstube              | `verify.backstube` | `Verify-Backstube-2026` | 0420 |
+| Backstubenleitung      | `verify.leitung`   | `Verify-Leitung-2026`   | 4682 |
 | Fahrer (Mörsbach tour) | `verify.fahrer`    | `Verify-Fahrer-2026`    | 9753 |
 | Fahrer 2               | `verify.fahrer2`   | `Verify-Fahrer2-2026`   | 8531 |
 
@@ -50,8 +51,12 @@ Worth telling the user:
   the browser up as a tablet; then name tiles + PIN work.
 - Address search and routing (Nominatim/OSRM) are switched off on purpose - distances show
   "(geschätzt)".
-- Product and Grundmengen edits go to a synthetic hq with a fake GitHub;
+- Product, Grundmengen and recipe edits go to a synthetic hq with a fake GitHub;
   `scripts/hq-merge.sh dev` simulates "the PR was merged".
+- Recipes (`/admin/rezepte`): invented files in every hq format (`tools/e2e/hq-recipes`) plus the
+  fillings the Backzettel uses (`fillings/test.md`: editable, not deletable). `verify.leitung` and
+  `verify.inhaber` may write, `verify.backstube` reads. Deleting is switched on here
+  (`HQ_RECIPES_ALLOW_DELETE=1`); on the box it stays off until hq's path guard allows it.
 - `$STATE/dev/world.json` describes every seeded case (which preorder is paid, refunded,
   cancelled, which day has a Nachtrag, ...) - read it when the user asks "where can I see X".
 

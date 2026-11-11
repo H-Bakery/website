@@ -72,6 +72,9 @@ const productsCore = require('./hq-products.core')
  */
 export const APPROVED_TEXT_FILES: readonly string[] = ['config/backzettel.yaml']
 
+/** Recipes (`data/recipes/<category>/<file>`): kept like the products. */
+export const APPROVED_RECIPES_DIR = 'data/recipes'
+
 export interface SyncLog {
   info: (...args: unknown[]) => void
   warn: (...args: unknown[]) => void
@@ -176,6 +179,8 @@ export class HqEditsSync {
   private approved: Map<string, string> | null = null
   /** Other master-data files on `origin/main` (`APPROVED_TEXT_FILES`). */
   private approvedText = new Map<string, string>()
+  /** Recipe files on `origin/main`: path below `data/recipes` → content. */
+  private approvedRecipes = new Map<string, string>()
   private timer: NodeJS.Timeout | null = null
   private running: Promise<EditsSyncStatus> | null = null
   private again = false
@@ -270,6 +275,16 @@ export class HqEditsSync {
     if (!this.enabled || this.approved === null) return undefined
     if (!APPROVED_TEXT_FILES.includes(rel)) return undefined
     return this.approvedText.get(rel) ?? null
+  }
+
+  /**
+   * Recipe files on `origin/main` as fetched last: path below `data/recipes`
+   * (`fillings/x.md`) → raw content; `null` = unknown (sync disabled or not
+   * read yet) - `RecipesService` then compares with the read clone.
+   */
+  approvedRecipeFiles(): ReadonlyMap<string, string> | null {
+    if (!this.enabled || this.approved === null) return null
+    return this.approvedRecipes
   }
 
   status(): EditsSyncStatus {
@@ -432,15 +447,18 @@ export class HqEditsSync {
     if (!base) return
     const out = await this.git(dir, [
       'ls-tree',
+      '-r',
       '-z',
       '--full-tree',
       base,
       '--',
       'products/',
+      `${APPROVED_RECIPES_DIR}/`,
       ...APPROVED_TEXT_FILES,
     ])
     const entries: { id: string; file: string }[] = []
     const texts: { id: string; rel: string }[] = []
+    const recipes: { id: string; rel: string }[] = []
     for (const record of out.split('\0')) {
       const match = /^\d+ blob ([0-9a-f]+)\t(.+)$/.exec(record)
       if (!match) continue
@@ -449,13 +467,20 @@ export class HqEditsSync {
         texts.push({ id: match[1], rel })
         continue
       }
+      if (rel.startsWith(`${APPROVED_RECIPES_DIR}/`)) {
+        recipes.push({
+          id: match[1],
+          rel: rel.slice(APPROVED_RECIPES_DIR.length + 1),
+        })
+        continue
+      }
       if (path.posix.dirname(rel) !== 'products') continue
       const file = path.posix.basename(rel)
       if (!productsCore.isProductFileName(file)) continue
       entries.push({ id: match[1], file })
     }
     const blobs = await readBlobs(dir, [
-      ...new Set([...entries, ...texts].map((e) => e.id)),
+      ...new Set([...entries, ...texts, ...recipes].map((e) => e.id)),
     ])
     const approved = new Map<string, string>()
     for (const e of entries) {
@@ -467,6 +492,12 @@ export class HqEditsSync {
       const raw = blobs.get(t.id)
       if (raw !== undefined) approvedText.set(t.rel, raw)
     }
+    const approvedRecipes = new Map<string, string>()
+    for (const r of recipes) {
+      const raw = blobs.get(r.id)
+      if (raw !== undefined) approvedRecipes.set(r.rel, raw)
+    }
+    this.approvedRecipes = approvedRecipes
     this.approvedText = approvedText
     this.approved = approved
   }

@@ -7,7 +7,9 @@
  *                          dough days, bread by size, combined doughs with an
  *                          add-on, a fixed dough share, rolls in Bruch made the
  *                          day before, singles, and open (null) master data
- *   data/recipes/fillings/test.md
+ *   data/recipes/fillings/test.md   the fillings the Backzettel reads
+ *   data/recipes/**      copy of tools/e2e/hq-recipes (invented recipes in every
+ *                        format: standard, table, teig) - only on refs that have it
  *   data/reports/converted/  8 weeks up to yesterday (Berlin), Mondays closed, one gap
  *   data/finance/finance-summary.json + config/targets.json (last 3 full months)
  * Nothing here is real data.
@@ -487,6 +489,19 @@ w(
 | Zucker     | 200 g             |
 `
 )
+
+// Recipes for the recipe screens (Rezepte): invented files in every format.
+// Refs older than the feature have no fixture - then only the fillings above.
+const recipesSrc = path.join(ROOT, 'tools/e2e/hq-recipes')
+if (fs.existsSync(recipesSrc)) {
+  for (const category of fs.readdirSync(recipesSrc)) {
+    const from = path.join(recipesSrc, category)
+    if (!fs.statSync(from).isDirectory()) continue
+    fs.cpSync(from, path.join(dir, 'data/recipes', category), {
+      recursive: true,
+    })
+  }
+}
 
 // ---------------------------------------------------------------- reports
 // Deterministic PRNG so every instance gets the same numbers for the same day.

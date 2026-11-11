@@ -72,6 +72,7 @@ More in [`api/overview.md`](./api/overview.md).
 | `HQ_REPORTS_DIR`       | `<website>/../hq/data/reports`          | reports, analytics, Tagesziel          |
 | `HQ_FINANCE_DIR`       | `<website>/../hq/data/finance`          | finance, Tagesziel config              |
 | `HQ_BACKZETTEL_CONFIG` | `${HQ_DIR}/config/backzettel.yaml`      | Backzettel                             |
+| `HQ_RECIPES_DIR`       | `${HQ_DIR}/data/recipes`                | recipes (`/api/recipes`)               |
 | `HQ_WRITE_DIR`         | – (dev: write straight to the read dir) | real API write-back (box: `app/edits`) |
 
 A missing `hq` is not an error: reports/finance answer `status: 'no-data'`, the landing page falls

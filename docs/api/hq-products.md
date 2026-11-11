@@ -115,6 +115,10 @@ Roadmap D6, D13, D14, §4a. All git goes through `src/services/hq-git.ts`:
 
 **`hq-git.ts`:**
 
+- **Paths come back unquoted** (`-c core.quotePath=false` on every call): by default git prints a
+  non-ASCII path quoted and octal-escaped, and such a name fed back as a pathspec matches nothing.
+  With recipe files like `Käse….md` the squash-merge check took an unmerged edit for merged and
+  dropped the commit (regression test in `recipesHqSync.test.ts`).
 - `runHqGit(cwd, args, { token, timeoutMs })`: `execFile` with an argument array, timeout (60 s;
   network calls 120 s, `SIGKILL`), identity `Verwaltung (App) <verwaltung@bakery.local>` as author
   **and** committer. `HqGitError.code`: `git_missing`, `git_timeout`, `not_a_repo`, `network`,
@@ -131,7 +135,7 @@ Roadmap D6, D13, D14, §4a. All git goes through `src/services/hq-git.ts`:
   take the local lock inside - no deadlock). A stale lock (pid dead or > 10 min) is taken over via
   a `<lock>.takeover` guard that re-reads the file, so two waiters cannot both delete it.
 
-**B5b flow** (`HqEditsSync.sync()`, after every product/Grundmengen commit via `afterCommit`, every
+**B5b flow** (`HqEditsSync.sync()`, after every product/Grundmengen/recipe commit via `afterCommit`, every
 `HQ_SYNC_RETRY_MS` = 15 min via an unref'd timer, and `POST /api/hq-sync/retry`; concurrent calls
 coalesce into one rerun; never rejects - failures go to `lastError`). fetch and push run under the
 network lock; steps 2-5 under the local lock (the products service takes that lock for its write +

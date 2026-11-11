@@ -179,9 +179,7 @@ function loadFillingRecipes(config, hqRoot) {
       })
       continue
     }
-    const recipe = f.section
-      ? recipesCore.findRecipeBySection(all, f.section)
-      : recipesCore.findRecipeForFilling(all, f.id)
+    const recipe = recipesCore.findRecipeForReference(all, f)
     if (!recipe) {
       missing.push({
         id: f.id,

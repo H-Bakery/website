@@ -57,6 +57,7 @@ Logins (user / password / PIN):
   verify.inhaber   Verify-Inhaber-2026   1357
   verify.verkauf   Verify-Verkauf-2026   2468
   verify.backstube Verify-Backstube-2026 0420
+  verify.leitung   Verify-Leitung-2026   4682   (Backstubenleitung: Rezepte; only on refs with that role)
   verify.fahrer    Verify-Fahrer-2026    9753
 Saturday with Hefeteig + tours: ${SAT:-?}. Details: $STATE/$NAME/world.json
 Stop: $W/down.sh

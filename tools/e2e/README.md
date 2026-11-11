@@ -10,6 +10,7 @@ Gemeinsame Teile der Playwright-Suiten `apps/bakery-shop-e2e`,
 | `real-api.js`     | Startet das API-Bundle mit frischer SQLite-Datenbank im Temp-Verzeichnis (alle API-Suiten)         |
 | `serve-static.js` | Liefert `apps/bakery-landing/out` aus wie GitHub Pages (`/about` → `about.html`, 404 → `404.html`) |
 | `hq-products/`    | Synthetischer Produktkatalog im Format von `hq/products/*.md` (56 Produkte, 7 Kategorien)          |
+| `hq-recipes/`     | Erfundene Rezepte im Format von `hq/data/recipes/**` (je Formatvariante eine Datei, 8 Kategorien)  |
 
 ## Welche API
 
@@ -23,7 +24,9 @@ nicht mehr.
   (`BOOTSTRAP_ADMIN_*`, synthetisch). App und API lesen dasselbe synthetische
   `hq` aus `prepareE2eHq()`: eine Kopie des Fixture-Katalogs plus erfundene
   Kassenberichte und Finanzdaten aus
-  `apps/bakery-api/tests/fixtures/hq-data.synthetic.js`, im Temp-Verzeichnis je
+  `apps/bakery-api/tests/fixtures/hq-data.synthetic.js` und die erfundenen
+  Rezepte aus `hq-recipes/` (`HQ_RECIPES_DIR`; ohne `HQ_WRITE_DIR` schreibt die
+  API beim Speichern direkt in diese Kopie), im Temp-Verzeichnis je
   API-Port. Die App läuft im Pilotbetrieb und reicht `/api/*` über ihren
   `src/proxy.ts` an `API_URL` weiter - der Browser spricht nur die eigene Origin.
   `src/global-setup.ts` meldet einmal vor allen Tests drei Sitzungen an

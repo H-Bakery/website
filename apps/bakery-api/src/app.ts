@@ -7,8 +7,8 @@
  *
  * Mounted (roadmap §4): health, auth, users, partners (B6), the hq read-only
  * data (B4: reports, analytics, finance, targets), products (B5), preorders
- * (B7), the Backzettel (Z3), the delivery tours (B8), Rest am Abend (M4)
- * and the Dienstplan (TASK-042).
+ * (B7), the Backzettel (Z3), the delivery tours (B8), Rest am Abend (M4),
+ * the Dienstplan (TASK-042) and the recipes.
  * The other pilot domains get their mount points below as their tasks land.
  *
  * Every `/api` route needs a session (D5, B3) except the public auth
@@ -17,6 +17,8 @@
  * router mounted below the guard is protected automatically - mount new
  * domains there and use `requireRole(...)` for role checks.
  */
+import * as path from 'path'
+
 import express, { Application } from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
@@ -48,11 +50,14 @@ import {
   createBackzettel,
 } from './routes/backzettel.routes'
 import { createHqSyncRouter } from './routes/hq-sync.routes'
+import { createRecipesRouter } from './routes/recipes.routes'
+import { RecipesOptions } from './services/recipes.service'
 import { createRestRouter, RestRouterOptions } from './routes/rest.routes'
 import {
   createDienstplanRouter,
   DienstplanRouterOptions,
 } from './routes/dienstplan.routes'
+import { BACKZETTEL_CONFIG_REL } from './services/backzettel-config-write'
 import { HqEditsSync } from './services/hq-edits-sync.service'
 import { HqSnapshotWriter } from './services/hq-snapshots.service'
 import { createErrorHandler, notFoundHandler } from './utils/http-error'
@@ -124,6 +129,12 @@ export interface CreateAppOptions {
    * from `config/targets.json`) for tests. Default: `hq.financeDir`.
    */
   dienstplan?: DienstplanRouterOptions
+  /**
+   * Recipes (`hq/data/recipes`): read clone, write worktree and whether
+   * deleting is switched on. Default: `HQ_RECIPES_DIR`, else `data/recipes`
+   * next to the Backzettel master data; written like the products.
+   */
+  recipes?: RecipesOptions
 }
 
 export function createApp(options: CreateAppOptions = {}): Application {
@@ -298,6 +309,29 @@ export function createApp(options: CreateAppOptions = {}): Application {
       ...options.dienstplan,
     })
   )
+  // Rezepte: reads inhaber/backstubenleiter/backstube, writes
+  // inhaber/backstubenleiter; hq markdown, written like the products (B5/B5b).
+  // A recipe the Backzettel master data point at (approved or pending) is
+  // never deleted or moved.
+  const backzettelWriteConfig = hqProducts.service.writeDir
+    ? path.join(hqProducts.service.writeDir, BACKZETTEL_CONFIG_REL)
+    : null
+  const recipes = createRecipesRouter({
+    recipesDir:
+      process.env['HQ_RECIPES_DIR'] ||
+      path.join(backzettel.source.paths.hqDir, 'data', 'recipes'),
+    writeDir: hqProducts.service.writeDir,
+    writeBranch: hqProducts.service.writeBranch,
+    production: hqProducts.service.production,
+    approvedFiles: () => edits.approvedRecipeFiles(),
+    afterCommit: () => edits.notifyCommitted(),
+    backzettelConfigPaths: () =>
+      backzettelWriteConfig
+        ? [backzettel.source.paths.configPath, backzettelWriteConfig]
+        : [backzettel.source.paths.configPath],
+    ...options.recipes,
+  })
+  app.use('/api/recipes', recipes.router)
   // B5b/Z9 status + retry, inhaber only
   app.use('/api/hq-sync', createHqSyncRouter({ edits, snapshots }))
 
