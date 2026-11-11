@@ -714,8 +714,12 @@ Exit criteria:
   - [x] Day type on planning page, tablet and print.
   - [ ] Sonderproduktion (orders on a closed day become a production day) - waits for the owner
         (does the app allow orders on closed days at all?).
-  - [ ] Preorder form / shop reject closed calendar days; Rest am Abend and Dienstplan
-        (`vacation.core.js` `dayInfo`) from the same calendar.
+  - [x] `/api/preorders` rejects a new pickup day that the calendar closes (`geschlossen`,
+        holiday, `teigtag`; 400 `geschlossen`, also for pickup points); `sonderoeffnung` /
+        `wie-sonntag` lifts the Monday Ruhetag (`pickupDayClosed` in `delivery-preorders.core.js`).
+        No calendar = Monday rule only. Provisional until the owner confirms.
+  - [ ] Preorder form does not _offer_ closed days (date picker / suggestion), shop checkout;
+        Rest am Abend and Dienstplan (`vacation.core.js` `dayInfo`) from the same calendar.
   - [x] Editing the new base columns in the Grundmengen screen (PR #122): columns „Vor FT“ /
         „Sa-Satz“, `PUT /config/base` with `weekday: 'vor_feiertag' | 'samstag_ersatz'`; empty =
         key removed (not set), never 0. Not yet in the Grundmengen print.

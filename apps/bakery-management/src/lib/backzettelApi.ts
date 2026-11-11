@@ -487,7 +487,19 @@ export interface DeltaBruchGroup {
   spare: number | null
   spareProductsBefore: number | null
   spareProducts: number | null
+  /**
+   * Zugaben je Bruch (U3) vorher/nachher; `gDelta` `null`, solange Brüche
+   * oder Gramm offen sind. Ältere Server: fehlt.
+   */
+  addons?: DeltaBruchAddon[]
   complete: boolean
+}
+
+export interface DeltaBruchAddon {
+  name: string
+  gBefore: number | null
+  g: number | null
+  gDelta: number | null
 }
 
 // ---------------------------------------------------------------- Z10 (v2)

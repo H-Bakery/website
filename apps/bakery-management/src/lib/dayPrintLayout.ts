@@ -205,6 +205,25 @@ export interface DoughPrintBlock {
 }
 
 /**
+ * Hinweis einer Brot-Zeile im Druck: im Block eines Maschinen-Kastens steht
+ * der gemeinsame Teig schon im Kopf (Kastenname) - „Gemeinsamer Teig: …“
+ * vom Server fällt dort weg, der Rest bleibt. Planung und Tablet zeigen den
+ * Hinweis unverändert. `null`, wenn nichts übrig bleibt.
+ */
+export function printBreadNote(
+  note: string | null | undefined,
+  inDoughBox: boolean
+): string | null {
+  if (!note) return null
+  if (!inDoughBox) return note
+  const rest = note
+    .split(' · ')
+    .filter((part) => !part.startsWith('Gemeinsamer Teig:'))
+    .join(' · ')
+  return rest || null
+}
+
+/**
  * Ordnet Brot-Zeilen, Bruch-Gruppen, Einzelstücke und Hefeteig-Posten ihrem
  * Maschinen-Kasten zu. Reihenfolge = Reihenfolge der Kästen vom Server, also
  * `doughs:` in hq `config/backzettel.yaml` - die Arbeitsreihenfolge stellt
@@ -557,7 +576,7 @@ export function blockHeightMm(
         h += lineMm(s.fontPt * 0.85) + 1.5
         for (const r of b.bread) {
           const sub =
-            (r.note ? 1 : 0) +
+            (printBreadNote(r.note, b.box !== null) ? 1 : 0) +
             (!r.complete || r.single?.baseUnset ? 1 : 0) +
             (breadHasHint(r, lineByKey) ? 1 : 0)
           h += stackMm(s, sub)

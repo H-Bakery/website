@@ -29,7 +29,14 @@ Verwaltung `apps/bakery-management/src/lib/preordersApi.ts`, `preordersTypes.ts`
   und erst ab dem Abholtag erlaubt (409 `not_collected_too_early`).
 - **Eingaben:** Mengen sind ganze Zahlen; `"abc"` oder `2.7` sind 400 `invalid_quantity`, nur eine
   ausdrückliche `0` streicht eine Zeile. Ein neuer Abholtag muss zwischen 30 Tagen zurück und 366 Tagen
-  voraus liegen und im Laden kein Montag sein (400 `date_out_of_range` / `ruhetag`). Steuerzeichen im
+  voraus liegen und im Laden kein Montag sein (400 `date_out_of_range` / `ruhetag`). Mit gültigem
+  Kalender (`hq/config/kalender.yaml`, `docs/domains/backzettel.md` „Kalender") ist ein Schließtag -
+  `geschlossen`, gesetzlicher Feiertag, reiner `teigtag` - auch für Sammelstellen gesperrt (400
+  `geschlossen`, Meldung nennt Notiz bzw. Feiertag); eine Sonderöffnung oder „wie Sonntag" gibt den
+  Montag frei. Ohne Kalender oder für ein Jahr ohne Feiertagsliste gilt nur der Montag
+  (`pickupDayClosed()` in `delivery-preorders.core.js`). Vorläufig, bis der Inhaber entscheidet;
+  Sonderproduktion an Schließtagen (R2-23) gibt es noch nicht - die Maske bietet Schließtage noch an
+  und zeigt erst beim Speichern die Meldung. Steuerzeichen im
   Namen und eine Telefonnummer mit weniger als 5 Ziffern sind 400, statt still gespeichert oder
   verworfen zu werden.
 - **Doppeltes Anlegen:** `POST` nimmt eine optionale `requestId`; eine Wiederholung mit derselben

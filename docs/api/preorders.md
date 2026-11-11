@@ -46,7 +46,7 @@ quantity, lineTotal }], total, pickedUpAt, anonymizedAt, createdBy, updatedBy, c
 updatedAt, deadline, afterDeadline }`.
 - **Errors** via `sendError`: 400 `invalid_*` / `unknown_product` / `unknown_pickup_point` /
   `variant_required` / `invalid_delivery_day` / `invalid_quantity` / `invalid_expected_updated_at`
-  / `invalid_request_id` / `date_out_of_range` / `ruhetag` (the pickup-point `PUT` keeps the mock's
+  / `invalid_request_id` / `date_out_of_range` / `ruhetag` / `geschlossen` (the pickup-point `PUT` keeps the mock's
   codes: control characters in name, address or window are 400 `Invalid text`, notes keep
   newlines), 403 `forbidden` / `paid_undo_forbidden` / `handover_undo_forbidden`, 404 `not_found`,
   409 `already_picked_up` / `cancelled` / `anonymized` / `has_variants` / `stale_preorder` /
@@ -116,7 +116,11 @@ updatedAt, deadline, afterDeadline }`.
   `create()`/`update()` passes `pickupRules` + `notCollectedFrom` to `core.normalizeOrderInput`: a
   **new** pickup day must lie within 30 days back and 366 ahead of Berlin today (400
   `date_out_of_range`), a Laden pickup (no pickup point) not on a closed weekday
-  (`PREORDER_CLOSED_WEEKDAYS` = Monday, 400 `ruhetag`). An unchanged day is never re-checked, and
+  (`PREORDER_CLOSED_WEEKDAYS` = Monday, 400 `ruhetag`), and - in the shop and at a pickup point -
+  not on a day the calendar closes (`kalender.yaml` via the Backzettel source,
+  `service.useCalendar()` in `app.ts`; `geschlossen`, statutory holiday or `teigtag` → 400
+  `geschlossen`; a `sonderoeffnung` / `wie-sonntag` entry lifts the Monday rule; without a valid
+  calendar only the Monday rule applies). An unchanged day is never re-checked, and
   the lock errors (`already_picked_up`, `cancelled`) win. The Mörsbach alias does not get the day
   rules (mock contract). For **every** caller (alias and shop too): `customerName` with C0/C1, DEL
   or bidi control characters is 400 `invalid_customer`, a note with them (newline/tab allowed) 400

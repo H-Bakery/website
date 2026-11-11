@@ -26,6 +26,7 @@
 'use strict'
 
 const tours = require('./delivery-tours.core')
+const kalender = require('./kalender.core')
 
 /**
  * Zustaende einer Vorbestellung. `cancelled` statt Loeschen: die Vorbestellung
@@ -1542,21 +1543,11 @@ function normalizeOrderInput(body, existing, options) {
     }
   }
 
-  // Abholung im Laden nicht an einem Ruhetag (Sammelstellen haben ihren
-  // eigenen Liefertag, der oben geprueft wird).
-  if (
-    rules &&
-    !pickupPoint &&
-    Array.isArray(rules.closedWeekdays) &&
-    pickupDate !== base.pickupDate &&
-    rules.closedWeekdays.includes(weekdayOf(pickupDate))
-  ) {
-    return fail(
-      'ruhetag',
-      `Am ${WEEKDAY_LABELS[weekdayOf(pickupDate)]}, ${formatGermanDate(
-        pickupDate
-      )}, ist Ruhetag - bitte einen anderen Abholtag wählen.`
-    )
+  // Abholtag an einem Schließtag des Kalenders (Z14) oder - im Laden - an
+  // einem Ruhetag. Nur fuer einen neuen Tag, wie oben.
+  if (rules && pickupDate !== base.pickupDate) {
+    const closed = pickupDayClosed(rules, pickupDate, Boolean(pickupPoint))
+    if (closed) return fail(closed.code, closed.message)
   }
 
   return {
@@ -1574,6 +1565,52 @@ function normalizeOrderInput(body, existing, options) {
       total: orderTotal(items.map((i) => ({ lineTotal: i.lineTotal }))),
     },
   }
+}
+
+/**
+ * Ist `date` als Abholtag gesperrt? (`/api/preorders`, `opts.pickupRules`)
+ *
+ * - `rules.calendar`: die Backzettel-Stammdaten mit Kalender (`cfg.calendar`,
+ *   `kalender.core.js`). Ein Schließtag (`geschlossen`, auch der gesetzliche
+ *   Feiertag) oder ein reiner Teigtag sperrt den Tag - im Laden wie an der
+ *   Sammelstelle, denn gebacken wird dann nicht (Z14). Eine Sonderöffnung
+ *   oder ein Tag „wie Sonntag" gibt einen Ruhetag im Laden frei.
+ * - `rules.closedWeekdays`: Ruhetage des Ladens (`Date.getDay()`), nur ohne
+ *   Sammelstelle - die hat ihren eigenen Liefertag.
+ *
+ * Ohne Kalender gilt nur `closedWeekdays`, wie vor Z14.
+ * @returns {{ code: 'geschlossen'|'ruhetag', message: string } | null}
+ */
+function pickupDayClosed(rules, date, atPickupPoint) {
+  if (!rules || !tours.isBusinessDate(date)) return null
+  const where = `Am ${WEEKDAY_LABELS[weekdayOf(date)]}, ${formatGermanDate(
+    date
+  )}`
+  const cfg = rules.calendar
+  if (cfg && kalender.calendarOf(cfg)) {
+    const day = kalender.dayKind(cfg, date)
+    if (day.kind === 'geschlossen' || day.kind === 'teigtag') {
+      const reason = day.note || day.holidayName
+      return {
+        code: 'geschlossen',
+        message: `${where}${
+          reason ? ` (${reason})` : ''
+        }, ist die Bäckerei geschlossen - bitte einen anderen Abholtag wählen.`,
+      }
+    }
+    if (day.kind === 'wie-sonntag' || day.kind === 'sonderoeffnung') return null
+  }
+  if (
+    !atPickupPoint &&
+    Array.isArray(rules.closedWeekdays) &&
+    rules.closedWeekdays.includes(weekdayOf(date))
+  ) {
+    return {
+      code: 'ruhetag',
+      message: `${where}, ist Ruhetag - bitte einen anderen Abholtag wählen.`,
+    }
+  }
+  return null
 }
 
 /** Code-Kuerzel: Sammelstelle (`MO`) oder Laden (`LA`). */
@@ -2020,6 +2057,7 @@ module.exports = {
   orderTotal,
   formatGermanDate,
   weekdayOf,
+  pickupDayClosed,
   placeLabel,
   referencePrefix,
   nextReference,

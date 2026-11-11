@@ -13,6 +13,7 @@ import type {
   BackzettelLineDelta,
   BackzettelUnit,
   BruchGroup,
+  DeltaBruchGroup,
   DeltaExtras,
   DoughAddon,
   DoughLiters,
@@ -1142,6 +1143,28 @@ export function bruchKgText(group: BruchGroup): string {
 }
 
 /**
+ * Zugaben je Bruch in den Nachträgen (U3): „ · +150 g Testkörner (jetzt
+ * 900 g)“; offen nur, wenn sich die Brüche ändern oder unbekannt sind -
+ * „ · Testkörner: Menge offen“. Leer ohne Änderung.
+ */
+export function deltaAddonsText(
+  g: Pick<DeltaBruchGroup, 'addons' | 'bruecheDelta'>
+): string {
+  return (g.addons ?? [])
+    .map((a) => {
+      if (a.gDelta === null) {
+        return g.bruecheDelta === 0 ? '' : ` · ${a.name}: Menge offen`
+      }
+      if (a.gDelta === 0) return ''
+      const sign = a.gDelta > 0 ? '+' : '−'
+      return ` · ${sign}${formatGrams(Math.abs(a.gDelta))} ${a.name}${
+        a.g !== null ? ` (jetzt ${formatGrams(a.g)})` : ''
+      }`
+    })
+    .join('')
+}
+
+/**
  * Was die Nachträge eines freigegebenen Teigtag-Zettels für Teilmaschine und
  * Teige heißen (Review Z10 Runde 1) - nur Text aus den Server-Zahlen
  * (`deltaBruch`, `deltaMachine`), gerechnet wird hier nichts:
@@ -1178,7 +1201,7 @@ export function deltaDoughLines(
     } else {
       effect = 'gleich viele Brüche'
     }
-    out.push(`${g.name}${when}: ${pieces} – ${effect}`)
+    out.push(`${g.name}${when}: ${pieces} – ${effect}${deltaAddonsText(g)}`)
   }
   for (const m of day.deltaMachine ?? []) {
     const parts = [

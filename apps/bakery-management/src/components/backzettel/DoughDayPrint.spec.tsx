@@ -2,6 +2,7 @@ import React from 'react'
 import { render, within } from '@testing-library/react'
 import { DoughDayPrint, printKg, printLiters } from './DoughDayPrint'
 import type { BackzettelDay, BackzettelLine } from '../../lib/backzettelApi'
+import { dayPrintLayout } from '../../lib/dayPrintLayout'
 import {
   SAT,
   SUN,
@@ -119,7 +120,8 @@ describe('Druck eines Teigtag-Zettels (U8)', () => {
       'offen'
     )
     expect(korn.getByText('7,8 kg')).toBeInTheDocument()
-    expect(korn.getAllByText(/Gemeinsamer Teig: Korn \+ Holz/)).toHaveLength(2)
+    // Im Block steht der gemeinsame Teig schon im Kopf - nicht je Brot (U8).
+    expect(korn.queryByText(/Gemeinsamer Teig/)).not.toBeInTheDocument()
     // Testhafer (alter Liter-Posten, kein Teig): eigener Block, Spalte „Menge“
     const weiteres = within(page.getByTestId('dd-dough-weiteres-brot'))
     expect(weiteres.getByText('Weiteres Brot')).toBeInTheDocument()
@@ -191,9 +193,8 @@ describe('Druck eines Teigtag-Zettels (U8)', () => {
     expect(
       page.getByTestId(`dd-bread-detail-test-korn|${SAT}`)
     ).toHaveTextContent('1 kg: Korr. +2 (Testfest)')
-    expect(
-      page.getByTestId(`dd-bread-detail-test-holz|${SAT}`)
-    ).not.toHaveTextContent('Korr.')
+    // Testholz: ohne Korrektur und ohne „Gemeinsamer Teig“ (steht im Kopf)
+    expect(page.queryByTestId(`dd-bread-detail-test-holz|${SAT}`)).toBeNull()
   })
 
   it('Brötchen im Block ihres Teigs, je Backtag: Bruch groß, × Gewicht, Aufteilung mit „+n frei“', () => {
@@ -464,12 +465,19 @@ describe('Druck eines Teigtag-Zettels (U8)', () => {
       for (const id of ['dd-machine', 'dd-dough-test-weck-teig']) {
         expect(page.getAllByTestId(id)).toHaveLength(1)
       }
-      // Notizen nur auf dem letzten Blatt
+      // Notizen nur auf dem letzten Blatt - so viele Zeilen wie Platz ist
+      sheets
+        .slice(0, -1)
+        .forEach((sheet) =>
+          expect(
+            within(sheet as HTMLElement).queryByTestId('dd-notes')
+          ).toBeNull()
+        )
       expect(
         within(sheets[sheets.length - 1] as HTMLElement).queryByTestId(
           'dd-notes'
-        ) ?? null
-      ).not.toBeNull()
+        ) !== null
+      ).toBe(dayPrintLayout(day).noteLines > 0)
       page.unmount()
     }
   })
