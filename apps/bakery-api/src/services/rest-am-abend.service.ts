@@ -26,7 +26,6 @@ import { BackzettelError, BackzettelService } from './backzettel.service'
 /* eslint-disable @typescript-eslint/no-var-requires */
 const core = require('./rest-am-abend.core')
 const files = require('./reports-files.core')
-const kalender = require('./kalender.core')
 /* eslint-enable @typescript-eslint/no-var-requires */
 
 export interface RestOptions {
@@ -268,12 +267,15 @@ export function createRestService(
       )
     }
     const weekday = core.isoWeekday(date)
-    // U9: Feiertag/Schließtag laut Kalender wie ein Ruhetag
-    if (!kalender.isBakeDay(loaded.config, date)) {
+    // U9/Z14: Ruhetag (Wochenplan) oder Schließtag laut Kalender
+    const countDay = core.countDayStatus(loaded.config, date)
+    if (countDay.status !== 'ok') {
       throw new BackzettelError(
         409,
-        'ruhetag',
-        'An einem Ruhetag gibt es keinen Rest zu zählen.',
+        countDay.status,
+        countDay.status === 'ruhetag'
+          ? 'An einem Ruhetag gibt es keinen Rest zu zählen.'
+          : countDay.issue,
         { weekday }
       )
     }

@@ -123,6 +123,12 @@ Kerne behalten ihre Signaturen. Plan-Kern, Tagesrechnung, API und Druck fragen `
   Sonntag“, „Nur Teig (Laden geschlossen)“, `detail` mit Notiz und den geschlossenen Tagen);
   Planungsseite und Tablet als Hinweis über dem Zettel, der Druck fett unter dem Datum.
   `computeDay` (v1) trägt `dayKind` nur mit Kalender, damit die v1-Aufnahmen gleich bleiben.
+- **Derselbe Kalender für alle (Z14):** Vorbestellungen (Abholtag), **Rest am Abend**
+  (`countDayStatus` in `rest-am-abend.core.js`: Schließtag = `geschlossen`, keine Lücke) und der
+  **Dienstplan** (`dayInfo` in `vacation.core.js`: `closed`, Tagestyp, Öffnungszeit) fragen
+  `dayKind` - keine zweite Feiertags- oder Schließtag-Regel. Der Dienstplan nimmt als Wochenplan
+  seine Öffnungstage (alle außer den Ruhetagen der Finanz-Config). Details:
+  [rest-am-abend.md](rest-am-abend.md), [dienstplan.md](dienstplan.md).
 - **Prüfung:** `node apps/bakery-api/scripts/validate-kalender.js <kalender.yaml> [backzettel.yaml]`,
   im hq-CI vendored (`sync-from-website.sh`). Fehlt die Datei, die es auf `main` gab, ist das im
   hq-CI ein Fehler.

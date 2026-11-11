@@ -1,4 +1,5 @@
 import {
+  dayKindText,
   draftChanges,
   draftConflicts,
   formatQtyUnit,
@@ -202,5 +203,28 @@ describe('restApi helpers', () => {
       throw new Error('gesperrt')
     })
     expect(loadDraft(1, '2026-12-01')).toEqual({})
+  })
+})
+
+describe('dayKindText (Kalender, Z14)', () => {
+  const kind = {
+    kind: 'sonderoeffnung' as const,
+    label: 'Sonderöffnung (wie Samstag)',
+    detail: 'Testmarkt',
+    note: 'Testmarkt',
+    holidayName: null,
+    baseWeekday: 6,
+    openUntil: null,
+  }
+
+  it('Text mit Notiz, ohne Notiz, nichts am normalen Tag oder ohne Kalender', () => {
+    expect(dayKindText(kind)).toBe('Sonderöffnung (wie Samstag) · Testmarkt')
+    expect(dayKindText({ ...kind, detail: null })).toBe(
+      'Sonderöffnung (wie Samstag)'
+    )
+    expect(
+      dayKindText({ ...kind, kind: 'normal', label: null, detail: null })
+    ).toBeNull()
+    expect(dayKindText(undefined)).toBeNull()
   })
 })

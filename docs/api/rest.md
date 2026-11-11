@@ -8,20 +8,29 @@ sold / rest / waste rate. Screens and rules as seen from outside:
 in `routes/rest.routes.ts` (`createRestRouter(source, backzettel, options)`, mounted by `app.ts`
 after `/api/backzettel` with the Backzettel source and service from `createBackzettel()`).
 
-| Endpoint                          | Who                | Answer                                                                                                                                       |
-| --------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/rest?date=`             | verkauf, backstube | day view (default today, Berlin): `{ date, status ok\|no-config\|ruhetag, backzettelStatus, window, editable, editIssue, lines[], summary }` |
-| `PUT /api/rest/:date`             | verkauf            | `{ items: [{ itemId, variant?, productId?, qty \| null, expected? }] }` → day view + `changed`                                               |
-| `GET /api/rest/summary?from=&to=` | inhaber            | `{ counts, totals[] per unit, items[] (baked, cap, shopBaked, sold, rest, rate, variants, weeks), days[] }`                                  |
-| `GET /api/rest/summary.csv`       | inhaber            | same as CSV (`;`, decimal comma, `csvCell`, BOM, `rest-am-abend-<from>-bis-<to>.csv`)                                                        |
-| `GET /api/rest/averages?weeks=6`  | backstube          | Rest Ø per weekday and item (Grundmengen, info only); `weeks` 1-26                                                                           |
+| Endpoint                          | Who                | Answer                                                                                                                                                              |
+| --------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/rest?date=`             | verkauf, backstube | day view (default today, Berlin): `{ date, status ok\|no-config\|ruhetag\|geschlossen, dayKind?, backzettelStatus, window, editable, editIssue, lines[], summary }` |
+| `PUT /api/rest/:date`             | verkauf            | `{ items: [{ itemId, variant?, productId?, qty \| null, expected? }] }` → day view + `changed`                                                                      |
+| `GET /api/rest/summary?from=&to=` | inhaber            | `{ counts, totals[] per unit, items[] (baked, cap, shopBaked, sold, rest, rate, variants, weeks), days[] }`                                                         |
+| `GET /api/rest/summary.csv`       | inhaber            | same as CSV (`;`, decimal comma, `csvCell`, BOM, `rest-am-abend-<from>-bis-<to>.csv`)                                                                               |
+| `GET /api/rest/averages?weeks=6`  | backstube          | Rest Ø per weekday and item (Grundmengen, info only); `weeks` 1-26                                                                                                  |
 
 `inhaber` passes every check, `fahrer` gets 403. Station (PIN) sessions are fine - the shop tablet
 is where Verkauf counts. Errors via `sendError`: 400 `invalid_date` / `date_out_of_range` /
 `validation` / `unknown_item` / `not_countable` / `unknown_variant` / `variant_required` /
 `unknown_product` /
 `duplicate_item` / `invalid_quantity` / `invalid_range` / `range_too_large`, 409 `ruhetag` /
-`no_config` / `rest_changed` (with `current`).
+`geschlossen` / `no_config` / `rest_changed` (with `current`).
+
+- **Calendar (Z14):** the day is classified once, by `countDayStatus` (`rest-am-abend.core.js`)
+  from `kalender.core.js` `dayKind`: `ok` (bake day, also Sonderöffnung / wie-sonntag), `ruhetag`
+  (weekly plan) or `geschlossen` (holiday, closing day, dough-only day - with the reason in
+  `editIssue` / the 409 `message`). `dayKind { kind, label, detail, note, holidayName,
+baseWeekday, openUntil }` is part of the day view and of `summary.days[]` (there only when the
+  calendar has something to say) - only when a calendar is loaded. `summary.counts.geschlossen`
+  counts closing days apart from `ruhetag` and from `notCounted`. Without a calendar: weekly plan
+  as before, no `dayKind`.
 
 - **Table `rest_counts`** (migration `20261201000000-rest-am-abend.js`, additive, model
   `RestCount`): one row per `business_date` × `item_id` × `variant` (`''` = none) × `product_id`
@@ -42,7 +51,7 @@ is where Verkauf counts. Errors via `sendError`: 400 `invalid_date` / `date_out_
   of unchanged values writes and audits nothing. One `audit_log` row per save (`rest_count` on
   `rest_day`/date, `data.changes [{ itemId, variant, productId, from, to, correction? }]`).
 - **Window:** writes only today − 7 … today (Berlin, `COUNT_DAYS_BACK`), never on a weekday not
-  in `config.days` (409 `ruhetag`), never without valid master data (409 `no_config`). Reads are
+  in `config.days` (409 `ruhetag`) or a closing day of the calendar (409 `geschlossen`), never without valid master data (409 `no_config`). Reads are
   not limited. `createApp({ hq: { today } })` / `rest: { today, now }` pin the clock in tests.
 - **Baked** = the confirmed Backzettel's frozen `total` plus acknowledged deltas (`bake −
 bakeOpen`, fallback `qty − openQty`) - unacknowledged Nachträge are not counted as baked. A

@@ -139,7 +139,14 @@ diffMinutes, targetDays, creditedDays, status }`. Plan = Σ (end − start − b
   `weeklyHours`: `status: 'no-target'`, `targetMinutes`/`diffMinutes` `null` ("offen"), never 0.
   `diffMinutes` = plan − target. Actual hours (time clock) are a later stage.
 - **`days[]`**: `{ date, weekday (ISO), holidayName, restDay, closed, weight, halfDayName,
-openingHours, verkaufBesetzt, besetzung }`. The browser computes no holidays, coverage, hours
+openingHours, kind, kindLabel, kindDetail, calendar, verkaufBesetzt, besetzung }`.
+  **Calendar (Z14):** `closed`, `openingHours` and `kind` (`normal` | `ruhetag` | `geschlossen` |
+  `wie-sonntag` | `sonderoeffnung` | `teigtag`) come from `kalender.core.js` `dayKind` when the
+  app supplies a calendar (`DienstplanOptions.calendar`, wired in `app.ts` to the Backzettel
+  source's `config.calendar`); `calendar` says `ok` | `missing` | `year-missing`. Without a
+  calendar: Ruhetag or legal holiday = closed, as before. `weight` (vacation days, target hours)
+  never depends on the calendar (provisional, see the domain doc). The `closed_day` warning names
+  the reason ("Am 18.11.2026 ist der Laden geschlossen (Inventur)."). The browser computes no holidays, coverage, hours
   or balances itself.
 - **Employee changes:** changing `entryDate`/`exitDate` so that shifts or absences fall outside →
   409 `entries_outside_employment`; deactivating them (`active: false`) while they have shifts

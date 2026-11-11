@@ -13,6 +13,9 @@
  *
  * Opening days: `closed_weekdays` from `HQ_FINANCE_DIR/config/targets.json`
  * (same field and rule as the Tagesziel); without a valid list Monday.
+ * Whether a date is open comes from the bakery calendar (`kalender.core.js`,
+ * hq `config/kalender.yaml`, Z14) when `options.calendar` supplies one -
+ * the same calendar as Backzettel and Rest am Abend.
  */
 import * as fs from 'fs'
 import * as path from 'path'
@@ -49,6 +52,12 @@ export interface DienstplanOptions {
   financeDir?: string
   /** Today as `YYYY-MM-DD` (Berlin). Default: the wall clock. */
   today?: string | (() => string)
+  /**
+   * Z14: the bakery calendar (normalised `config.calendar` of the Backzettel
+   * master data) or `null` when none is loaded - then Ruhetag and legal
+   * holidays decide as before. Read on each call.
+   */
+  calendar?: () => unknown | null
   log?: (message: string) => void
 }
 
@@ -382,6 +391,24 @@ export class DienstplanService {
       )
     }
     return core.closedWeekdaysFrom(raw)
+  }
+
+  /**
+   * Z14: Kalender der Bäckerei (`kalender.yaml`) oder `null` - nie ein
+   * Grund, den Dienstplan nicht zu zeigen.
+   */
+  calendarData(): unknown | null {
+    if (!this.options.calendar) return null
+    try {
+      return this.options.calendar() ?? null
+    } catch (error) {
+      this.log(
+        `Dienstplan: Kalender nicht lesbar (${
+          (error as Error).message
+        }) - Ruhetag und Feiertage wie ohne Kalender`
+      )
+      return null
+    }
   }
 
   // ------------------------------------------------------------ employees
@@ -987,13 +1014,26 @@ export class DienstplanService {
         }“ (${a.status}${a.halfDay ? ', halber Tag' : ''}) eingetragen.`,
       })
     }
-    const day = core.dayInfo(shift.date, this.closedWeekdays().weekdays)
+    const day = core.dayInfo(
+      shift.date,
+      this.closedWeekdays().weekdays,
+      this.calendarData()
+    )
     if (day.closed) {
       warnings.push({
         code: 'closed_day',
-        message: day.holidayName
-          ? `Der ${de(shift.date)} ist ein Feiertag (${day.holidayName}).`
-          : `Der ${de(shift.date)} ist Ruhetag.`,
+        message:
+          day.kind === 'ruhetag'
+            ? `Der ${de(shift.date)} ist Ruhetag.`
+            : day.kind === 'teigtag'
+            ? `Am ${de(shift.date)} ist der Laden geschlossen (nur Teig${
+                day.kindDetail ? `: ${day.kindDetail}` : ''
+              }).`
+            : day.holidayName && day.kindDetail === day.holidayName
+            ? `Der ${de(shift.date)} ist ein Feiertag (${day.holidayName}).`
+            : `Am ${de(shift.date)} ist der Laden geschlossen${
+                day.kindDetail ? ` (${day.kindDetail})` : ''
+              }.`,
       })
     }
     return warnings
@@ -1452,7 +1492,8 @@ export class DienstplanService {
           closed.weekdays,
           shown.map((e) => ({ id: e.id, area: e.area })),
           plainShifts,
-          plainAbsences
+          plainAbsences,
+          this.calendarData()
         ),
         // Plan- und Soll-Stunden je gezeigter Person für from…to (Woche,
         // Monat oder Jahr - der Zeitraum der Ansicht).

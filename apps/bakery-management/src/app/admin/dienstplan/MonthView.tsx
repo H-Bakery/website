@@ -25,6 +25,7 @@ import {
   WEEKDAY_LETTERS,
   cellKey,
   closedDayLabel,
+  specialDayLabel,
   entriesByCell,
   formatMonthTitle,
   monthDates,
@@ -261,7 +262,14 @@ function MonthDayHeader({
 }) {
   const closedName = day ? closedDayLabel(day) : null
   const weekday = WEEKDAY_LETTERS[isoWeekday(date)]
-  const note = closedName ?? day?.halfDayName ?? null
+  // Halber Tag (½) nur, wenn die API ihn so führt - eine Sonderöffnung ist
+  // kein halber Urlaubstag und bekommt im Kopf kein Zeichen (ihr Name steht
+  // im Tooltip, im aria-label und unter der Tabelle).
+  const halfName = day && !day.closed ? day.halfDayName : null
+  const special = day ? specialDayLabel(day) : null
+  const note =
+    closedName ?? ([special, halfName].filter(Boolean).join(' · ') || null)
+  const mark = closedName ? '×' : halfName ? '½' : null
   return (
     <TableCell
       data-testid={`day-${date}`}
@@ -298,15 +306,15 @@ function MonthDayHeader({
         <Typography variant="caption" color="text.secondary" display="block">
           {weekday}
         </Typography>
-        {note && (
+        {mark && (
           // Sichtbar nur ein Zeichen (die Spalte ist schmal): × geschlossen,
           // ½ halber Tag. Der Name steht im Tooltip (title), für
           // Screenreader ausgeschrieben und unter der Tabelle
           // (`MonthDayNotes`) - Touch kennt keinen Tooltip.
           <Typography variant="caption" display="block">
-            <span aria-hidden>{closedName ? '×' : '½'}</span>
+            <span aria-hidden>{mark}</span>
             <Box component="span" sx={visuallyHidden}>
-              {closedName ?? `${note} (halber Tag)`}
+              {closedName ?? `${halfName} (halber Tag)`}
             </Box>
           </Typography>
         )}
@@ -317,8 +325,9 @@ function MonthDayHeader({
 
 /**
  * Unter der Tabelle ausgeschrieben, was die Köpfe nur als Zeichen zeigen:
- * Feiertage (×) und halbe Tage (½) des Monats mit Namen. Der Ruhetag steht
- * nicht einzeln da - er ist jede Woche derselbe.
+ * Feiertage und Schließtage des Kalenders (×), Sonderöffnungen und halbe
+ * Tage (½) des Monats mit Namen. Der Ruhetag steht nicht einzeln da - er ist
+ * jede Woche derselbe.
  */
 function MonthDayNotes({
   dates,
@@ -331,9 +340,16 @@ function MonthDayNotes({
   for (const date of dates) {
     const day = days.get(date)
     if (!day) continue
-    if (day.holidayName) {
-      named.push(`${formatDateShort(date)} ${day.holidayName} (×)`)
-    } else if (day.halfDayName) {
+    const special = specialDayLabel(day)
+    if (
+      day.closed &&
+      (day.holidayName || (day.kind && day.kind !== 'ruhetag'))
+    ) {
+      named.push(`${formatDateShort(date)} ${closedDayLabel(day)} (×)`)
+    } else if (special) {
+      named.push(`${formatDateShort(date)} ${special} (offen)`)
+    }
+    if (day.halfDayName && !day.closed) {
       named.push(`${formatDateShort(date)} ${day.halfDayName} (½, halber Tag)`)
     }
   }
@@ -345,7 +361,8 @@ function MonthDayNotes({
       data-testid="month-day-notes"
       sx={{ px: { xs: 2, md: 3 }, pb: 1.5, m: 0 }}
     >
-      × = geschlossen (Ruhetag oder Feiertag) · ½ = zählt als halber Urlaubstag
+      × = geschlossen (Ruhetag, Feiertag oder Schließtag) · ½ = zählt als halber
+      Urlaubstag
       {named.length > 0 && <> · {named.join(' · ')}</>}
     </Typography>
   )

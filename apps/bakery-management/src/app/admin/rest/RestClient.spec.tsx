@@ -561,3 +561,60 @@ describe('Rest am Abend - Zählung', () => {
     })
   })
 })
+
+describe('Rest am Abend - Tagestyp aus dem Kalender (Z14)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+  })
+
+  it('ein Schließtag sagt „geschlossen“ mit Grund und lässt sich nicht zählen', async () => {
+    mocked.fetchRestDay.mockResolvedValueOnce(
+      makeDay({
+        status: 'geschlossen',
+        editable: false,
+        editIssue:
+          'Dienstag 01.12.: geschlossen (Inventur) - an diesem Tag gibt es keinen Rest zu zählen.',
+        backzettelStatus: null,
+        lines: [],
+        dayKind: {
+          kind: 'geschlossen',
+          label: 'Geschlossen',
+          detail: 'Inventur',
+          note: 'Inventur',
+          holidayName: null,
+          baseWeekday: null,
+          openUntil: null,
+        },
+      })
+    )
+    renderAs('verkauf')
+    expect(await screen.findByTestId('rest-closed-day')).toHaveProperty(
+      'textContent',
+      'Dienstag 01.12.: geschlossen (Inventur) - an diesem Tag gibt es keinen Rest zu zählen.'
+    )
+    expect(screen.queryByTestId('rest-day-kind')).toBeNull()
+  })
+
+  it('eine Sonderöffnung steht über der Zählliste, gezählt wird wie sonst', async () => {
+    mocked.fetchRestDay.mockResolvedValueOnce(
+      makeDay({
+        dayKind: {
+          kind: 'sonderoeffnung',
+          label: 'Sonderöffnung (wie Samstag)',
+          detail: 'Testmarkt',
+          note: 'Testmarkt',
+          holidayName: null,
+          baseWeekday: 6,
+          openUntil: null,
+        },
+      })
+    )
+    renderAs('verkauf')
+    expect(await screen.findByTestId('rest-day-kind')).toHaveProperty(
+      'textContent',
+      'Sonderöffnung (wie Samstag) · Testmarkt'
+    )
+    expect(screen.getByTestId('rest-line-weck|')).toBeTruthy()
+    expect(screen.queryByTestId('rest-closed-day')).toBeNull()
+  })
+})

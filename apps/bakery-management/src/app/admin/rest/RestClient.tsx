@@ -31,6 +31,7 @@ import { useOptionalSession } from '../../../lib/session'
 import { describeBackstubeError } from '../../../lib/backstubeErrors'
 import {
   addDaysIso,
+  dayKindText,
   draftChanges,
   draftConflicts,
   fetchRestDay,
@@ -772,8 +773,16 @@ export default function RestClient({ initialDate }: RestClientProps) {
           {day.editIssue}
         </Alert>
       )}
-      {day && day.status === 'ruhetag' && (
-        <Alert severity="info">{day.editIssue}</Alert>
+      {day && (day.status === 'ruhetag' || day.status === 'geschlossen') && (
+        <Alert severity="info" data-testid="rest-closed-day">
+          {day.editIssue}
+        </Alert>
+      )}
+      {/* Z14: Sonderöffnung, „wie Sonntag“, Tag vor einem Schließtag */}
+      {day && day.status === 'ok' && dayKindText(day.dayKind) && (
+        <Alert severity="info" data-testid="rest-day-kind">
+          {dayKindText(day.dayKind)}
+        </Alert>
       )}
       {day && day.status === 'ok' && !day.editable && day.editIssue && (
         <Alert severity="info">{day.editIssue}</Alert>

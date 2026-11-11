@@ -23,6 +23,9 @@ let api: TestApp
 let owner: Record<string, string>
 let ownerStation: Record<string, string>
 const tokens: Record<string, Record<string, string>> = {}
+/** Z14: the bakery calendar the app hands to the Dienstplan (`null` = none). */
+let calendar: unknown = null
+let calendarThrows = false
 
 function writeTargets(content: unknown): void {
   const dir = path.join(root, 'config')
@@ -63,7 +66,17 @@ beforeAll(async () => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'bakery-dienstplan-'))
   writeTargets({ closed_weekdays: [1] })
   api = await createTestApp({
-    app: { dienstplan: { today: TODAY, financeDir: root } },
+    app: {
+      dienstplan: {
+        today: TODAY,
+        financeDir: root,
+        log: () => undefined,
+        calendar: () => {
+          if (calendarThrows) throw new Error('Kalender kaputt')
+          return calendar
+        },
+      },
+    },
   })
   const ownerUser = await createUser({
     username: 'test.inhaber',
@@ -957,5 +970,112 @@ describe('calendar aggregate', () => {
       tuesday.body.data.days.map((d: { closed: boolean }) => d.closed)
     ).toEqual([false, true])
     writeTargets({ closed_weekdays: [1] })
+  })
+})
+
+describe('bakery calendar (Z14)', () => {
+  /* eslint-disable @typescript-eslint/no-var-requires */
+  const kalender = require('../../src/services/kalender.core')
+  /* eslint-enable @typescript-eslint/no-var-requires */
+  const RANGE = '/api/dienstplan?from=2026-11-18&to=2026-11-23'
+
+  const synthetic = () =>
+    kalender.normalizeKalender({
+      version: 1,
+      bundesland: 'saarland',
+      feiertage: {
+        2026: kalender
+          .holidaysSaarland(2026)
+          .map((h: { date: string; name: string }) => ({
+            datum: h.date,
+            name: h.name,
+          })),
+      },
+      tage: [
+        { datum: '2026-11-18', typ: 'geschlossen', notiz: 'Inventur' },
+        {
+          datum: '2026-11-23',
+          typ: 'sonderoeffnung',
+          wie: 6,
+          notiz: 'Testmarkt',
+        },
+      ],
+    })
+
+  afterEach(() => {
+    calendar = null
+    calendarThrows = false
+  })
+
+  it('no calendar: days as before (open day, Ruhetag)', async () => {
+    const res = await as().get(RANGE)
+    expect(res.status).toBe(200)
+    expect(res.body.data.days[0]).toMatchObject({
+      closed: false,
+      kind: 'normal',
+      kindLabel: null,
+      calendar: 'missing',
+    })
+    expect(res.body.data.days[5]).toMatchObject({
+      closed: true,
+      restDay: true,
+      kind: 'ruhetag',
+    })
+  })
+
+  it('days[] carry the day kind of the calendar; a shift on a closing day warns with the reason', async () => {
+    calendar = synthetic()
+    const res = await as().get(RANGE)
+    expect(res.status).toBe(200)
+    expect(res.body.data.days[0]).toMatchObject({
+      date: '2026-11-18',
+      closed: true,
+      restDay: false,
+      kind: 'geschlossen',
+      kindLabel: 'Geschlossen',
+      kindDetail: 'Inventur',
+      openingHours: null,
+      weight: 1,
+      calendar: 'ok',
+    })
+    expect(res.body.data.days[5]).toMatchObject({
+      date: '2026-11-23',
+      closed: false,
+      restDay: true,
+      kind: 'sonderoeffnung',
+      openingHours: { opens: '05:30', closes: '12:30' },
+      weight: 0,
+    })
+
+    const id = await employee({ displayName: 'Kira Kalender', area: 'buero' })
+    const shift = (date: string) =>
+      as().post('/api/dienstplan/shifts', {
+        employeeId: id,
+        date,
+        startTime: '06:00',
+        endTime: '12:00',
+      })
+    const closed = await shift('2026-11-18')
+    expect(closed.status).toBe(201)
+    expect(closed.body.warnings).toEqual([
+      {
+        code: 'closed_day',
+        message: 'Am 18.11.2026 ist der Laden geschlossen (Inventur).',
+      },
+    ])
+    // Sonderöffnung on the Ruhetag: open, no warning
+    const open = await shift('2026-11-23')
+    expect(open.status).toBe(201)
+    expect(open.body.warnings).toEqual([])
+  })
+
+  it('a calendar source that throws never breaks the Dienstplan', async () => {
+    calendarThrows = true
+    const res = await as().get(RANGE)
+    expect(res.status).toBe(200)
+    expect(res.body.data.days[0]).toMatchObject({
+      closed: false,
+      calendar: 'missing',
+    })
   })
 })
