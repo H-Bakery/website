@@ -6,6 +6,7 @@ import {
   bakeListPrintLayout,
   blockHeightMm,
   boxBakeDaysText,
+  dayKindHeadLines,
   dayPrintLayout,
   dayPrintParts,
   doughPrintBlocks,
@@ -29,6 +30,8 @@ import {
   busySaturdayV2Confirmed,
   busySaturdayV2Draft,
   line,
+  SAMSTAGS_SATZ_DAY,
+  samstagsSatzV2Draft,
   saturdayDraft,
   saturdayV2Confirmed,
   saturdayV2Draft,
@@ -47,6 +50,7 @@ const V2_DAYS: [string, () => BackzettelDay][] = [
     () => busySaturdayV2Confirmed(),
   ],
   ['Sonntag', () => sundayV2Sheet()],
+  ['Samstags-Satz am Freitag (Z14)', () => samstagsSatzV2Draft()],
 ]
 
 function section(id: string, n: number): BackzettelSection {
@@ -368,6 +372,107 @@ describe('dayPrintLayout: Blätter (U8)', () => {
       .flatMap((s) => s.blocks)
       .filter((b) => b.kind === 'section' && b.section.id === 'test-klein')
     expect(chunks).toHaveLength(1)
+  })
+})
+
+describe('Samstags-Satz (Z14): druckt wie ein voller Samstag', () => {
+  /** Langer Tagestyp: Notiz und drei Schließtage (erfunden). */
+  const longKind = (): BackzettelDay => {
+    const day = samstagsSatzV2Draft()
+    const closed = [
+      'Fr 25.12. 1. Testfeiertag',
+      'Sa 26.12. 2. Testfeiertag',
+      'Mo 28.12. Testbetriebsferien zwischen den Jahren',
+    ]
+    return {
+      ...day,
+      dayKind: day.dayKind
+        ? {
+            ...day.dayKind,
+            detail: `Testnotiz zum Tag · danach geschlossen: ${closed.join(
+              ', '
+            )}`,
+          }
+        : null,
+    }
+  }
+
+  it('Fixture: Freitag mit Tagestyp `samstag_ersatz`, heute backen + Teig für So und Di', () => {
+    const day = samstagsSatzV2Draft()
+    expect(day.date).toBe(SAMSTAGS_SATZ_DAY)
+    expect(day.dayKind?.before?.type).toBe('samstag_ersatz')
+    expect(day.dayKind?.label).toBe('Samstags-Satz')
+    expect(sheetDayTypeText(day)).toBe(
+      'Heute backen + Teig für So 29.11. und Di 01.12.'
+    )
+    // dieselben Zeilen wie der volle Samstag, keine mehr mit dem Samstag
+    const lines = (d: BackzettelDay) => d.sections.flatMap((s) => s.lines)
+    expect(lines(day)).toHaveLength(lines(busySaturdayV2Draft()).length)
+    expect(lines(day).some((l) => l.bakeDate === SAT)).toBe(false)
+    expect((day.bakeDates ?? []).map((b) => b.date)).toEqual([
+      SAMSTAGS_SATZ_DAY,
+      SUN,
+      V2_TUE,
+    ])
+  })
+
+  it('genau drei Blätter, lesbar (≥ 9 pt), kein Blatt über der Seitenhöhe', () => {
+    for (const day of [samstagsSatzV2Draft(), longKind()]) {
+      const layout = dayPrintLayout(day)
+      expect(layout.sheets).toHaveLength(3)
+      expect(layout.sheets).toHaveLength(
+        dayPrintLayout(busySaturdayV2Draft()).sheets.length
+      )
+      expect(layout.fontPt).toBeGreaterThanOrEqual(9)
+      expect(layout.qtyPt).toBeGreaterThanOrEqual(13)
+      for (const sheet of layout.sheets) {
+        expect(sheet.estimatedMm).toBeLessThanOrEqual(PAGE_HEIGHT_MM)
+        expect(sheet.blocks.length).toBeGreaterThan(0)
+      }
+      expect(layout.sheets[0].blocks[0].kind).toBe('doughs')
+    }
+  })
+
+  it('kein Block über zwei Blätter: jeder Block genau einmal, in Druckreihenfolge', () => {
+    const day = samstagsSatzV2Draft()
+    const layout = dayPrintLayout(day)
+    const placed = layout.sheets.flatMap((s) => s.blocks.map((b) => b.key))
+    expect(placed).toEqual(sheetBlocks(day).map((b) => b.key))
+    expect(new Set(placed).size).toBe(placed.length)
+    // nichts als „(Forts.)“ geteilt
+    expect(
+      layout.sheets
+        .flatMap((s) => s.blocks)
+        .some((b) => b.kind === 'section' && b.continued)
+    ).toBe(false)
+  })
+
+  it('der Tagestyp aus dem Kalender zählt in der Kopfhöhe mit, je Zeile', () => {
+    const day = samstagsSatzV2Draft()
+    const long = longKind()
+    for (const s of SHEET_STEPS) {
+      expect(dayKindHeadLines(null, s)).toBe(0)
+      expect(dayKindHeadLines({ label: null, detail: null }, s)).toBe(0)
+      expect(dayKindHeadLines(day.dayKind, s)).toBe(1)
+      expect(dayKindHeadLines(long.dayKind, s)).toBe(2)
+      expect(firstHeaderMm(s, busySaturdayV2Draft())).toBe(firstHeaderMm(s))
+      const one = firstHeaderMm(s, day) - firstHeaderMm(s)
+      expect(one).toBeGreaterThan(4)
+      expect(firstHeaderMm(s, long) - firstHeaderMm(s)).toBeCloseTo(2 * one, 5)
+    }
+    // Blatt 1 trägt den höheren Kopf: mehr geschätzte Höhe oder ein Block
+    // weniger als derselbe Zettel ohne Tagestyp.
+    const s = SHEET_STEPS[0]
+    const parts = dayPrintParts(day)
+    const blocks = sheetBlocks(day, parts)
+    const withKind = packSheets(day, parts, blocks, s).sheets[0]
+    const without = packSheets({ ...day, dayKind: null }, parts, blocks, s)
+      .sheets[0]
+    if (withKind.blocks.length === without.blocks.length) {
+      expect(withKind.estimatedMm).toBeGreaterThan(without.estimatedMm)
+    } else {
+      expect(withKind.blocks.length).toBeLessThan(without.blocks.length)
+    }
   })
 })
 

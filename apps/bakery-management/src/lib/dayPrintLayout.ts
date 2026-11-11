@@ -130,7 +130,8 @@ export function dayPrintParts(day: BackzettelDay): DayPrintParts {
  * des Zettels (Server), nichts gerechnet.
  *
  * Der Kalender (U9: Feiertage, „vor Feiertag“, Samstags-Satz) stellt seinen
- * Tagestyp davor - der Kopf hat dafür Platz (`.dd-daytype`).
+ * Tagestyp davor (`.dd-daykind` im Rahmen `.dd-daytype`); seine Höhe zählt
+ * `firstHeaderMm` mit.
  */
 export function sheetDayTypeText(
   day: Pick<BackzettelDay, 'date' | 'sections' | 'bakeDates' | 'isDoughDay'>
@@ -434,9 +435,40 @@ export function hasPrintDetail(line: BackzettelLine): boolean {
  */
 export const TWO_COLUMN_LINES = 6
 
-/** Höhe des Kopfs von Blatt 1 (Wochentag groß, Tagestyp, Freigabe) in mm. */
-export function firstHeaderMm(s: SheetStep): number {
-  return lineMm(30, 1.1) + lineMm(s.fontPt * 1.35) + 4 + lineMm(s.fontPt) + 3
+/**
+ * Zeilen, die der Tagestyp aus dem Kalender (U9/Z14: „Samstags-Satz –
+ * danach geschlossen: …“) im Rahmen des Kopfs braucht; 0 am normalen Tag.
+ * Der Name steht in der großen Schrift des Rahmens, die Angaben dahinter in
+ * der Grundschrift - eine lange Liste von Schließtagen bricht um.
+ */
+export function dayKindHeadLines(
+  dayKind: { label: string | null; detail: string | null } | null | undefined,
+  s: SheetStep
+): number {
+  if (!dayKind?.label) return 0
+  // In Zeichen der Grundschrift: der Name ist 1,35-mal so groß und fett.
+  const chars =
+    Math.ceil(dayKind.label.length * 1.35 * 1.1) +
+    (dayKind.detail ? dayKind.detail.length + 3 : 0)
+  return textLines(chars, s.fontPt, PAGE_WIDTH_MM - 6)
+}
+
+/**
+ * Höhe des Kopfs von Blatt 1 (Wochentag groß, Tagestyp, Freigabe) in mm.
+ * Mit `day` zählt der Tagestyp aus dem Kalender mit (jede seiner Zeilen ist
+ * so hoch wie die große Schrift des Rahmens).
+ */
+export function firstHeaderMm(
+  s: SheetStep,
+  day?: Pick<BackzettelDay, 'dayKind'>
+): number {
+  return (
+    lineMm(30, 1.1) +
+    (1 + dayKindHeadLines(day?.dayKind, s)) * lineMm(s.fontPt * 1.35) +
+    4 +
+    lineMm(s.fontPt) +
+    3
+  )
 }
 
 /** Höhe des Kopfs ab Blatt 2 („Samstag, 28.11.2026 – Blatt 2 von 3“) in mm. */
@@ -652,7 +684,9 @@ export function packSheets(
   blocks: SheetBlock[],
   s: SheetStep
 ): { sheets: DaySheet[]; noteLines: number } {
-  const sheets: DaySheet[] = [{ blocks: [], estimatedMm: firstHeaderMm(s) }]
+  const sheets: DaySheet[] = [
+    { blocks: [], estimatedMm: firstHeaderMm(s, day) },
+  ]
   const cur = () => sheets[sheets.length - 1]
   const room = () => PAGE_HEIGHT_MM - cur().estimatedMm
   const fresh = PAGE_HEIGHT_MM - nextHeaderMm(s)

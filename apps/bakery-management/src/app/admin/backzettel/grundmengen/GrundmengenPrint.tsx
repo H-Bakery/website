@@ -8,7 +8,9 @@ import {
   isPerVariant,
   cellReference,
   variantLabel,
+  SPECIAL_COLUMNS,
   WEEKDAY_SHORT,
+  type BaseColumn,
   type GrundmengenConfig,
   type GrundmengenItem,
   type ReferenceResponse,
@@ -18,7 +20,8 @@ import {
  * Druckbild der Grundmengen: eine schlichte Tabelle Posten × Di–So auf A4
  * quer, schwarz auf weiß - unabhängig vom Bildschirm-Raster, dessen
  * Eingabefelder und Referenz-Spalten auf dem Blatt nicht Platz hätten (der
- * Samstag fiele hinten herunter).
+ * Samstag fiele hinten herunter). Nach den Wochentagen stehen die
+ * Sonderspalten „Vor FT“ / „Sa-Satz“ (Z14): nicht gesetzt = leer, nie 0.
  *
  * Am Bildschirm unsichtbar (`grundmengen-print-only`), im Druck verschwinden
  * App-Hülle (AppBar, Navigation, Breadcrumb aus `admin/layout.tsx`) und alles
@@ -68,7 +71,7 @@ const cellSx: React.CSSProperties = {
 function approvedValue(
   approved: GrundmengenConfig | null,
   item: GrundmengenItem,
-  weekday: number,
+  weekday: BaseColumn,
   variant: string | null,
   value: number | null | undefined
 ): { value: number | null | undefined } | null {
@@ -76,12 +79,22 @@ function approvedValue(
   const was = approved.items.find((i) => i.id === item.id)
   if (!was) return null
   const before = cellValue(was, weekday, variant)
-  const norm = (v: number | null | undefined) => (v === undefined ? 0 : v)
+  // Sonderspalten (Z14): fehlt = nicht gesetzt, nicht 0.
+  const norm = (v: number | null | undefined) =>
+    v === undefined && typeof weekday === 'number' ? 0 : v
   return norm(before) === norm(value) ? null : { value: before }
 }
 
 function printValue(value: number | null | undefined): string {
   return value === null ? 'offen' : displayValue(value)
+}
+
+/**
+ * Wert einer Sonderspalte (Z14): kein Eintrag heißt „nicht gesetzt“ und
+ * druckt leer - nie „0“ (der Zettel nimmt dann die Menge des Wochentags).
+ */
+function printSpecialValue(value: number | null | undefined): string {
+  return value === undefined ? '' : printValue(value)
 }
 
 export interface GrundmengenPrintProps {
@@ -104,8 +117,19 @@ export default function GrundmengenPrint({
   let anyUnknown = false
   const showReference = Boolean(reference && reference.status === 'ok')
 
+  const columns: { key: BaseColumn; short: string; title?: string }[] = [
+    ...days.map((wd) => ({ key: wd, short: WEEKDAY_SHORT[wd] })),
+    ...SPECIAL_COLUMNS.map((c) => ({
+      key: c.key,
+      short: c.short,
+      title: c.long,
+    })),
+  ]
+
   const dayCells = (item: GrundmengenItem, variant: string | null) =>
-    days.map((wd) => {
+    columns.map(({ key: wd }) => {
+      const special = typeof wd !== 'number'
+      const show = special ? printSpecialValue : printValue
       const value = cellValue(item, wd, variant)
       const parentOfVariants = item.variants.length > 0 && variant === null
       const hidden =
@@ -115,14 +139,24 @@ export default function GrundmengenPrint({
         ? null
         : approvedValue(approved, item, wd, variant, value)
       if (was) anyChanged = true
-      // Z10: Laibgrößen-Zeilen mit dem Median der Größe (§9 Punkt 10)
-      const ref = showReference
-        ? cellReference(reference, wd, item, variant)
-        : null
+      // Z10: Laibgrößen-Zeilen mit dem Median der Größe (§9 Punkt 10).
+      // Sonderspalten haben keine Referenz (kein Wochentag).
+      const ref =
+        showReference && !special
+          ? cellReference(reference, wd, item, variant)
+          : null
       if (ref?.status === 'unknown') anyUnknown = true
       const refKey = `${item.id}${variant ? `-${variant}` : ''}-${wd}`
       return (
-        <td key={wd} style={{ ...cellSx, textAlign: 'right' }}>
+        <td
+          key={wd}
+          style={{ ...cellSx, textAlign: 'right' }}
+          data-testid={
+            special
+              ? `print-special-${item.id}${variant ? `-${variant}` : ''}-${wd}`
+              : undefined
+          }
+        >
           {hidden ? (
             parentOfVariants && isPerVariant(item, wd) ? (
               <span style={{ fontSize: '8pt' }}>je Sorte</span>
@@ -134,8 +168,8 @@ export default function GrundmengenPrint({
                 fontStyle: value === null ? 'italic' : undefined,
               }}
             >
-              {printValue(value)}
-              {was ? ` * (${printValue(was.value)})` : ''}
+              {show(value)}
+              {was ? ` * (${show(was.value) || '–'})` : ''}
             </span>
           )}
           {ref && ref.status === 'unknown' ? (
@@ -167,7 +201,7 @@ export default function GrundmengenPrint({
     <React.Fragment key={section.id}>
       <tr>
         <th
-          colSpan={days.length + 2}
+          colSpan={columns.length + 2}
           style={{ ...cellSx, textAlign: 'left', fontSize: '10pt' }}
         >
           {section.label}
@@ -213,7 +247,9 @@ export default function GrundmengenPrint({
       </div>
       <div style={{ marginBottom: '3mm' }}>
         Stand {printedAt.toLocaleDateString('de-DE')} · leer/„offen“ = noch
-        nicht festgelegt, 0 = wird an dem Tag nicht gebacken
+        nicht festgelegt, 0 = wird an dem Tag nicht gebacken ·{' '}
+        {SPECIAL_COLUMNS.map((c) => `${c.short} = ${c.long}`).join(', ')}: leer
+        = nicht gesetzt, es gilt die Menge des Wochentags
       </div>
       <table
         aria-hidden="true"
@@ -226,17 +262,21 @@ export default function GrundmengenPrint({
         <colgroup>
           <col style={{ width: '26%' }} />
           <col style={{ width: '8%' }} />
-          {days.map((wd) => (
-            <col key={wd} />
+          {columns.map((c) => (
+            <col key={c.key} />
           ))}
         </colgroup>
         <thead style={{ display: 'table-header-group' }}>
           <tr>
             <th style={{ ...cellSx, textAlign: 'left' }}>Posten</th>
             <th style={{ ...cellSx, textAlign: 'left' }}>Einheit</th>
-            {days.map((wd) => (
-              <th key={wd} style={{ ...cellSx, textAlign: 'right' }}>
-                {WEEKDAY_SHORT[wd]}
+            {columns.map((c) => (
+              <th
+                key={c.key}
+                title={c.title}
+                style={{ ...cellSx, textAlign: 'right' }}
+              >
+                {c.short}
               </th>
             ))}
           </tr>

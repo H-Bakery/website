@@ -776,7 +776,13 @@ function computeLines(args) {
     }
     for (const c of dayInfo.before.closedDays) {
       if (!cfg.days.includes(c.weekday)) continue
-      const specials = cfg.items.filter((i) => onlyOnWeekday(i, c.weekday))
+      // Hat der Posten die Spalte des Tages (z. B. `samstag_ersatz`), steht
+      // er schon mit dieser Menge auf dem Zettel - kein „heute oder später?“.
+      const specials = cfg.items.filter(
+        (i) =>
+          onlyOnWeekday(i, c.weekday) &&
+          !(i.baseSpecial && type in i.baseSpecial)
+      )
       if (specials.length === 0) continue
       warnings.push({
         code: 'closed_day_specials',

@@ -104,7 +104,10 @@ Kerne behalten ihre Signaturen. Plan-Kern, Tagesrechnung, API und Druck fragen `
   (normalisiert als `item.baseSpecial`, nie unter den Wochentagen), sonst die eigene; hat kein
   Posten die Spalte, Warnung `special_base_missing`. Spezialbrot des Ausfalltags (Grundmenge > 0
   nur an dessen Wochentag) steht als Hinweis `closed_day_specials` da - verteilt wird nicht
-  automatisch.
+  automatisch. Ein Posten, der die Spalte des Tages hat (`base.samstag_ersatz` am
+  Samstags-Satz-Tag), steht schon mit dieser Menge auf dem Zettel und fehlt im Hinweis
+  (vorläufig, Z14: sonst fragte ein gepflegter Samstags-Satz bei jedem Posten „heute oder später
+  backen?“).
 - **Vorbestellungen an einem geschlossenen Tag** fallen nie still weg: der Zettel des Teigtags davor
   meldet sie (`preorders_on_closed_day` mit Datum und Feiertag). Sonderproduktion (der Tag wird
   Backtag nur mit den Aufträgen) ist geplant, aber noch nicht gebaut (offene Inhaber-Frage).
@@ -112,7 +115,9 @@ Kerne behalten ihre Signaturen. Plan-Kern, Tagesrechnung, API und Druck fragen `
   hat zu), auch wenn die Bäckerei offen ist (vorläufig).
 - **Anzeige:** `dayKind` an jedem Teigtag-Zettel (`label` „Samstags-Satz“, „Vor Feiertag“, „Wie
   Sonntag“, „Nur Teig (Laden geschlossen)“, `detail` mit Notiz und den geschlossenen Tagen);
-  Planungsseite und Tablet als Hinweis über dem Zettel, der Druck fett unter dem Datum.
+  Planungsseite und Tablet als Hinweis über dem Zettel, der Druck im Tagestyp-Rahmen unter dem
+  Datum: `label` so groß wie der Rahmen, `detail` dahinter in der Grundschrift (siehe „Druck eines
+  Teigtag-Zettels“).
   `computeDay` (v1) trägt `dayKind` nur mit Kalender, damit die v1-Aufnahmen gleich bleiben.
 - **Prüfung:** `node apps/bakery-api/scripts/validate-kalender.js <kalender.yaml> [backzettel.yaml]`,
   im hq-CI vendored (`sync-from-website.sh`). Fehlt die Datei, die es auf `main` gab, ist das im
@@ -291,7 +296,12 @@ erweitertes `GET /api/backzettel/config`.
   gesetzt“** (Feld leer, Platzhalter „–“; der Zettel nimmt die Wochentags-Menge), nicht 0. Leeren
   entfernt den Schlüssel in hq (`PUT /config/base` mit `weekday: 'vor_feiertag'`, `value: null`); eine
   neue Sorten-Spalte beginnt mit den übrigen Sorten offen (`null`), nie 0, und sind alle Sorten leer,
-  verschwindet die Spalte. Keine Referenz, kein Bruch-Hinweis; das Druckbild zeigt sie (noch) nicht.
+  verschwindet die Spalte. Keine Referenz, kein Bruch-Hinweis. Im Druckbild stehen beide Spalten
+  nach So (immer, auch leer - zum Eintragen von Hand): gesetzt = Zahl, **nicht gesetzt = leeres
+  Feld, nie 0**, offene Sorte „offen“, Postenzeile mit Sorten „je Sorte“; eine wartende Änderung
+  „7 \* (–)“ (vorher nicht gesetzt) bzw. „\* (6)“ (Eintrag entfernt). Die Kopfzeile erklärt die
+  Kürzel („Vor FT = Vor Feiertag, Sa-Satz = Samstags-Satz: leer = nicht gesetzt, es gilt die Menge
+  des Wochentags“).
 - **Referenzwert grau neben jeder Zelle:** Median der verkauften Stück an den letzten 6 gleichen
   Wochentagen **mit Kassenbericht**, über die `plu`-Liste des Postens. Tage ohne Bericht sind Lücken,
   nicht 0. Er wird **nie** übernommen - nur Information. Umgerechnet mit **demselben Faktor wie der
@@ -304,7 +314,8 @@ erweitertes `GET /api/backzettel/config`.
   Kassennummer der Größe (fehlt oder `null` = offen) steht „unbekannt“ - nie 0, nie ein Anteil;
   hat der Posten selbst keine `plu`, bleiben auch die Größen-Zeilen leer. Im Hinweis steht zusätzlich „Rest am Abend Ø"
   (`GET /api/rest/averages`, nur Information, siehe [rest-am-abend.md](rest-am-abend.md)).
-- **Drucken:** eigenes Druckbild (`GrundmengenPrint.tsx`, A4 quer, schwarz auf weiß, alle Tage Di–So,
+- **Drucken:** eigenes Druckbild (`GrundmengenPrint.tsx`, A4 quer, schwarz auf weiß, alle Tage Di–So
+  und die Sonderspalten „Vor FT“ / „Sa-Satz“,
   geänderte Werte mit `*` und dem freigegebenen in Klammern, Referenz „≈ n“ klein unter dem Wert,
   bei einer Größe ohne eigene Kassennummer „≈ unbekannt“ wie am Bildschirm, nie leer); das Bildschirm-Raster
   (`grundmengen-screen-only`) und die App-Hülle fallen im Druck weg. Mit `page.pdf()` prüfen, nicht mit
@@ -354,9 +365,13 @@ erweitertes `GET /api/backzettel/config`.
   „für So“ / „für Di“ darunter, ein voller Samstag auf mehreren Blättern. Aufbau:
   1. **Kopf:** Wochentag groß (30 pt), Datum, Stempel „FREIGEGEBEN“ bzw. „ENTWURF – noch nicht
      freigegeben“; darunter gerahmt der **Tagestyp** (`sheetDayTypeText`: „Heute backen + Teig
-     für So 29.11. und Di 01.12.“, „Nur Teig für …“, „Backtag ohne Teig“). Hier stellt der
-     Kalender (U9) später „vor Feiertag“ o. Ä. davor. Darunter Freigabe, Saisonfaktor,
-     „Blatt 1 von n“.
+     für So 29.11. und Di 01.12.“, „Nur Teig für …“, „Backtag ohne Teig“). Der Kalender (U9)
+     stellt seinen Tagestyp als eigene Zeile davor (`.dd-daykind`): der Name („Samstags-Satz“,
+     „Vor Feiertag“ …) fett in der Größe des Rahmens, dahinter in der Grundschrift die Angaben
+     („– danach geschlossen: Fr 25.12. …, Sa 26.12. …“) - nicht mehr in der kleinen Schrift, die
+     in der dichtesten Stufe unter 9 pt läge (Z14, vorläufig bis die Bäcker es benutzt haben).
+     `firstHeaderMm(s, day)` zählt diese Zeile(n) mit (`dayKindHeadLines`, eine lange Liste von
+     Schließtagen bricht um). Darunter Freigabe, Saisonfaktor, „Blatt 1 von n“.
   2. **„Teige heute“ – Liter zuerst:** eine Zeile je Maschinen-Kasten, die Liter groß (24 pt),
      kg, Chargen, Zugaben, für welche Backtage („heute + So + Di“, `boxBakeDaysText`) und ein
      Kästchen „angesetzt“. Hefeteig: „Wasser … L“.
@@ -419,6 +434,14 @@ erweitertes `GET /api/backzettel/config`.
   `data-print-sheets` sein. Stand U8 (Z13), synthetische Instanz aus `make-hq.js --busy-saturday`:
   voller Samstag (47 Zeilen) 3 Seiten in Stufe 0, Mittwoch bis Freitag und Sonntag je 2 Seiten in
   Stufe 0; überall Seiten = geschätzte Blätter, die Schätzung liegt 5-10 % über der gemessenen Höhe.
+  **Samstags-Satz (Z14, Tagestyp `before` / `samstag_ersatz`):** druckt wie ein voller Samstag -
+  drei Blätter, Tagestyp gerahmt auf Blatt 1, kein Block geteilt. Nachgemessen mit
+  `MAKE_HQ_FLAGS=--samstag-ersatz` (`start.sh`; `make-hq.js` schreibt dann die Spalte
+  `samstag_ersatz` an jeden Samstags-Posten und einen Kalender mit einem geschlossenen Samstag,
+  das Datum des Samstags-Satz-Tags steht als `samstagErsatz` in `hq-info.json`): Fr vor dem
+  geschlossenen Sa und Do 24.12.2026 (Fr + Sa Feiertag) je 3 Seiten in Stufe 0 (11 pt), Seiten =
+  geschätzte Blätter, Kopf mit Tagestyp 6,5 mm höher als ohne (geschätzt 6,5 mm). Spec-Fixture:
+  `samstagsSatzV2Draft` (der volle Samstag am Freitag davor).
   In den Specs: `busySaturdayV2Draft/Confirmed` (`backzettelFixtures.ts`) ist der größte
   Teigtag-Zettel; `dayPrintLayout.spec.ts` prüft Blöcke, Blattaufteilung, „(Forts.)"-Teilung und
   dass kein Blatt über die Seitenhöhe geschätzt wird.
