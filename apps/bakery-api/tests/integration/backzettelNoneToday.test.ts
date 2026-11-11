@@ -82,7 +82,9 @@ const box = (day: any, id: string): any =>
 const warning = (day: any, code: string): any[] =>
   day.warnings.filter((w: any) => w.code === code)
 const kaeseRow = () =>
-  BackzettelLine.findOne({ where: { date: SAT, itemId: 'test-kaese' } })
+  BackzettelLine.findOne({
+    where: { date: SAT, bakeDate: TUE, itemId: 'test-kaese' },
+  })
 
 beforeAll(async () => {
   hqDir = fs.mkdtempSync(path.join(os.tmpdir(), 'none-today-hq-'))
@@ -408,5 +410,156 @@ describe('a single Kranz added on a weekday', () => {
     }
     expect(dough(res.body.data, 'test-hefe')).toMatchObject(expected)
     expect(box(res.body.data, 'test-hefe')).toMatchObject(expected)
+  })
+})
+
+describe('a stored „Heute keine“ after hq got a base for the day (review PR #129)', () => {
+  const KORN_URL = `/api/backzettel/${TUE}/lines/test-korn/kasten/correction`
+  const KORN = 'test-korn|kasten'
+  const kornRow = () =>
+    BackzettelLine.findOne({
+      where: { date: TUE, itemId: 'test-korn', variant: 'kasten' },
+    })
+  const lastAudit = (entityId: string) =>
+    AuditLog.findOne({
+      where: { action: 'correction', entityId },
+      order: [['id', 'DESC']],
+    })
+
+  /** Rewrites the synthetic master data (cacheMs 0: read on the next call). */
+  function writeConfig(mutate: (config: any) => void): void {
+    const config = fixture.configV2()
+    config.items.find((i: any) => i.id === 'test-kaese').base[2] = null
+    mutate(config)
+    fs.writeFileSync(
+      path.join(hqDir, 'config', 'backzettel.yaml'),
+      JSON.stringify(config, null, 2)
+    )
+  }
+  const item = (config: any, id: string) =>
+    config.items.find((i: any) => i.id === id)
+
+  it('base > 0: the line counts its base, shows no correction author, and can be corrected - no 409', async () => {
+    // Testkorn „Kasten“ is open on Tuesdays: decide „Heute keine“ …
+    const none = await as('backstube').put(KORN_URL).send({ noneToday: true })
+    expect(none.status).toBe(200)
+    expect(line(none.body.data, KORN)).toMatchObject({ dayDecision: 'none' })
+    // … then hq gets a base of 5 for that day.
+    writeConfig((c) => (item(c, 'test-korn').base[2].kasten = 5))
+
+    const get = await as('backstube').get(`/api/backzettel/${TUE}`)
+    const stale = line(get.body.data, KORN)
+    expect(stale).toMatchObject({
+      base: 5,
+      baseUnset: false,
+      total: 5,
+      correction: 0,
+      correctionBy: null,
+    })
+    expect(stale.noneToday).toBeUndefined()
+    expect(stale.dayDecision).toBeUndefined()
+    expect(warning(get.body.data, 'none_today_obsolete')).toHaveLength(1)
+
+    // what the warning asks for: correct to 0, with `expected` as the
+    // screen builds it from that line
+    const fix = await as('backstube')
+      .put(KORN_URL)
+      .send({
+        correction: -5,
+        reason: 'heute keine',
+        expected: { correction: 0, reason: null },
+      })
+    expect(fix.status).toBe(200)
+    expect(line(fix.body.data, KORN)).toMatchObject({
+      base: 5,
+      correction: -5,
+      total: 0,
+      correctionBy: { displayName: expect.any(String) },
+    })
+    expect(warning(fix.body.data, 'none_today_obsolete')).toEqual([])
+    expect(await kornRow()).toMatchObject({ noneToday: false })
+    // the audit says what was stored, and that it no longer applied
+    expect((await lastAudit(TUE))?.data).toMatchObject({
+      itemId: 'test-korn',
+      from: { correction: 0, noneToday: true, noneTodayObsolete: true },
+      to: { correction: -5, noneToday: false },
+    })
+  })
+
+  it('base > 0: a plain clear removes the stale flag (and the warning)', async () => {
+    // back to open, decide again, base again
+    writeConfig(() => undefined)
+    await as('backstube')
+      .put(KORN_URL)
+      .send({
+        correction: 0,
+        expected: { correction: -5, reason: 'heute keine' },
+      })
+    const none = await as('backstube').put(KORN_URL).send({ noneToday: true })
+    expect(line(none.body.data, KORN)).toMatchObject({ dayDecision: 'none' })
+    writeConfig((c) => (item(c, 'test-korn').base[2].kasten = 5))
+
+    const clear = await as('backstube')
+      .put(KORN_URL)
+      .send({ correction: 0, expected: { correction: 0, reason: null } })
+    expect(clear.status).toBe(200)
+    expect(warning(clear.body.data, 'none_today_obsolete')).toEqual([])
+    expect(line(clear.body.data, KORN)).toMatchObject({ base: 5, total: 5 })
+    expect(await kornRow()).toMatchObject({
+      noneToday: false,
+      correctionBy: null,
+    })
+    expect((await lastAudit(TUE))?.data).toMatchObject({
+      from: { noneToday: true, noneTodayObsolete: true },
+      to: { correction: 0, noneToday: false },
+    })
+  })
+
+  it('a flag that still applies is still a conflict for a screen that did not see it', async () => {
+    // Testkäse (Saturday's sheet, for Tuesday) still carries „Heute keine“
+    expect(await kaeseRow()).toMatchObject({ noneToday: true })
+    const res = await as('backstube')
+      .put(KAESE_URL)
+      .send({
+        correction: 3,
+        reason: 'Testgrund',
+        bakeDate: TUE,
+        expected: { correction: 0, reason: null },
+      })
+    expect(res.status).toBe(409)
+    expect(res.body).toMatchObject({ error: 'correction_changed' })
+  })
+
+  it('base 0: the line is an item to add again and takes a correction - no 409', async () => {
+    writeConfig((c) => (item(c, 'test-kaese').base[2] = 0))
+    const get = await as('backstube').get(`/api/backzettel/${SAT}`)
+    expect(line(get.body.data, KAESE)).toBeUndefined()
+    const addable = (get.body.data.addable ?? []).flatMap((s: any) => s.lines)
+    const entry = addable.find((l: any) => l.key === KAESE)
+    expect(entry).toMatchObject({ base: 0, baseUnset: false, correction: 0 })
+    expect(entry.noneToday).toBeUndefined()
+
+    // as AddLineCard sends it
+    const add = await as('backstube')
+      .put(KAESE_URL)
+      .send({
+        correction: 2,
+        reason: 'bestellt',
+        bakeDate: TUE,
+        expected: { correction: 0, reason: null },
+      })
+    expect(add.status).toBe(200)
+    expect(line(add.body.data, KAESE)).toMatchObject({
+      base: 0,
+      correction: 2,
+      total: 2,
+    })
+    expect(line(add.body.data, KAESE).dayDecision).toBeUndefined()
+    expect(await kaeseRow()).toMatchObject({ noneToday: false })
+    expect((await lastAudit(SAT))?.data).toMatchObject({
+      itemId: 'test-kaese',
+      from: { noneToday: true, noneTodayObsolete: true },
+      to: { correction: 2, noneToday: false },
+    })
   })
 })

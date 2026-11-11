@@ -53,6 +53,11 @@ JSON, `''` in the tables and in the URL (omit the segment).
   decided lines - frozen with the sheet), `none_today_obsolete` (a stored „Heute keine“ on a line
   that has a base > 0 meanwhile: it no longer applies, the line counts its base). `base_unset`
   lists only undecided lines. A none line is in no Bruch group and no dough part.
+- A stored flag only counts while the line is still open. Once hq has a base for the day (stale
+  flag), the line view carries no `noneToday`/`correctionBy`, `expected` without `noneToday` is
+  no conflict, and the next correction write (also a plain clear, also from „Weiteren Posten
+  aufnehmen“ when the base became 0) resets the flag; its audit row says
+  `from.noneToday: true, noneTodayObsolete: true`.
 - Confirm stores the flag with the row, reopen keeps it, a re-confirm without the decision resets
   it. The hq snapshot (schema 2) adds `dayDecision` to such a line, `base` stays `null`.
 

@@ -1263,12 +1263,20 @@ export function deltaDoughLines(
     // Liter: gerundet, sonst die genauen mit „Rundung offen“ (Review Z10
     // Runde 2 - die Maschinenleiste darüber zeigt sie auch); „unbekannt“ nur,
     // wenn kg je Liter offen oder der Teig unvollständig ist.
+    // Liter je Seite nach ihrem eigenen Stand: gerundet, sonst die genauen
+    // mit Grund („Rundung offen“ bzw. kleine Menge unter der Rundungsstufe) -
+    // wie die Maschinenleiste sie vorher und jetzt zeigt. „unbekannt“ nur,
+    // wenn kg je Liter offen oder der Teig unvollständig ist.
     const liters = m.liters
-    const exactOnly = liters?.rounded == null && liters?.exact != null
-    const value = (l: DoughLiters | null | undefined) =>
-      l == null ? null : exactOnly ? l.exact : l.rounded
-    const before = value(m.litersBefore)
-    const after = value(liters)
+    const shown = (l: DoughLiters | null | undefined): string | null => {
+      if (l == null) return null
+      if (l.rounded != null) return `${formatNumber(l.rounded)} L`
+      if (l.exact != null)
+        return `${formatNumber(l.exact)} L (${litersExactWhy(l)})`
+      return null
+    }
+    const before = shown(m.litersBefore)
+    const after = shown(liters)
     if (after === null) {
       parts.push(
         liters?.reason === 'kg_per_liter_unknown'
@@ -1278,13 +1286,20 @@ export function deltaDoughLines(
           : 'Liter unbekannt'
       )
     } else if (before !== after) {
-      parts.push(
-        `Liter ${
-          before === null ? '–' : `${formatNumber(before)} L`
-        } → ${formatNumber(after)} L${
-          exactOnly && liters ? ` (${litersExactWhy(liters)})` : ''
-        }`
-      )
+      // gleiche Angabe auf beiden Seiten: der Grund steht einmal, hinten
+      const why = (l: DoughLiters | null | undefined) =>
+        l && l.rounded == null && l.exact != null
+          ? ` (${litersExactWhy(l)})`
+          : ''
+      const sameWhy =
+        why(m.litersBefore) !== '' && why(m.litersBefore) === why(liters)
+      const left =
+        before === null
+          ? '–'
+          : sameWhy
+          ? before.slice(0, -why(m.litersBefore).length)
+          : before
+      parts.push(`Liter ${left} → ${after}`)
     }
     if (
       m.batches !== null &&

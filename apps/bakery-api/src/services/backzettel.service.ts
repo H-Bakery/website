@@ -758,8 +758,10 @@ export function createBackzettelService(
       return {
         id: row ? row.id : null,
         ...line,
+        // „Heute keine“ zählt nur, solange es gilt (Grundmenge noch offen) -
+        // ein überholtes Kennzeichen ist keine Korrektur
         correctionBy:
-          row && (toNumber(row.correction) !== 0 || dayCore.isNoneToday(row))
+          row && (toNumber(row.correction) !== 0 || line.noneToday === true)
             ? userRef(users, row.correctionBy)
             : null,
         doneAt: ticked && row ? (row.doneAt as Date | null) : null,
@@ -1014,7 +1016,7 @@ export function createBackzettelService(
           preordersExact: line.preorders,
           preorderIds: [],
           correctionBy:
-            toNumber(row.correction) !== 0 || dayCore.isNoneToday(row)
+            toNumber(row.correction) !== 0 || line.noneToday === true
               ? userRef(users, row.correctionBy)
               : null,
           doneAt: row.doneAt,
@@ -2134,10 +2136,14 @@ export function createBackzettelService(
   async function assertCorrectionUnchanged(
     row: BackzettelLine | null,
     expected: { correction: number; reason: string | null; noneToday: boolean },
-    transaction: Transaction
+    transaction: Transaction,
+    // false: a stored „Heute keine“ that no longer applies (the line has a
+    // base meanwhile) - the screen shows a line without it, so it is no
+    // conflict (review PR #129: every correction ran into a 409).
+    noneApplies = true
   ) {
     const current = row ? toNumber(row.correction) : 0
-    const currentNone = current === 0 && dayCore.isNoneToday(row)
+    const currentNone = noneApplies && current === 0 && dayCore.isNoneToday(row)
     const active = current !== 0 || currentNone
     const currentReason =
       row && active && row.correctionReason ? row.correctionReason : null
@@ -2253,6 +2259,36 @@ export function createBackzettelService(
     }
   }
 
+  /**
+   * Does the stored „Heute keine“ of this line still apply - is its
+   * Grundmenge still open on the sheet as computed now? When hq got a base
+   * for the day meanwhile, the flag is stale: the line shows its base (and
+   * the warning `none_today_obsolete`), or, with a base of 0, is an item to
+   * add. Only computed for rows that carry the flag.
+   */
+  async function storedNoneApplies(
+    date: string,
+    day: BackzettelDay,
+    loaded: Loaded,
+    row: BackzettelLine | null,
+    transaction: Transaction
+  ): Promise<boolean> {
+    if (!row || !dayCore.isNoneToday(row) || toNumber(row.correction) !== 0)
+      return false
+    const inputs = await loadSheetInputs(loaded, date, transaction)
+    const result = computeSheet(
+      loaded,
+      date,
+      inputs,
+      toNumber(day.seasonFactor) || 1
+    )
+    const key = rowKey(row, date)
+    const hit = (result.lines as Array<Record<string, unknown>>).find(
+      (l) => l.key === key
+    )
+    return !!hit && hit.baseUnset === true
+  }
+
   async function setCorrection(
     date: string,
     itemId: string,
@@ -2296,11 +2332,22 @@ export function createBackzettelService(
           transaction
         )
       }
+      // The audit says what was stored; a „Heute keine“ that no longer
+      // applied (base set in hq meanwhile) is marked as such.
+      const storedNone = dayCore.isNoneToday(row)
+      const noneApplies = await storedNoneApplies(
+        date,
+        day,
+        loadedNow,
+        row,
+        transaction
+      )
       const from = row
         ? {
             correction: toNumber(row.correction),
             reason: row.correctionReason,
-            noneToday: dayCore.isNoneToday(row),
+            noneToday: storedNone,
+            ...(storedNone && !noneApplies ? { noneTodayObsolete: true } : {}),
           }
         : { correction: 0, reason: null, noneToday: false }
       const to = {
@@ -2314,7 +2361,8 @@ export function createBackzettelService(
         from.noneToday === to.noneToday
       )
         return
-      if (expected) await assertCorrectionUnchanged(row, expected, transaction)
+      if (expected)
+        await assertCorrectionUnchanged(row, expected, transaction, noneApplies)
       const values = {
         correction: to.correction,
         correctionReason: to.reason,
