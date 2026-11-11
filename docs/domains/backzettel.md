@@ -286,6 +286,12 @@ erweitertes `GET /api/backzettel/config`.
 - **Zellen:** leer = `null` („noch nicht festgelegt"), `0` = wird nicht gebacken, kein Eintrag zeigt
   „0". Komma geht. Gespeichert wird bei Enter/Verlassen nur, wenn sich der Wert geändert hat; Escape
   verwirft.
+- **Sonderspalten „Vor FT“ / „Sa-Satz“ (Z14)** nach So: `base.vor_feiertag` /
+  `base.samstag_ersatz` (Tagestyp `before`, siehe „Kalender“). Hier heißt **kein Eintrag „nicht
+  gesetzt“** (Feld leer, Platzhalter „–“; der Zettel nimmt die Wochentags-Menge), nicht 0. Leeren
+  entfernt den Schlüssel in hq (`PUT /config/base` mit `weekday: 'vor_feiertag'`, `value: null`); eine
+  neue Sorten-Spalte beginnt mit den übrigen Sorten offen (`null`), nie 0, und sind alle Sorten leer,
+  verschwindet die Spalte. Keine Referenz, kein Bruch-Hinweis; das Druckbild zeigt sie (noch) nicht.
 - **Referenzwert grau neben jeder Zelle:** Median der verkauften Stück an den letzten 6 gleichen
   Wochentagen **mit Kassenbericht**, über die `plu`-Liste des Postens. Tage ohne Bericht sind Lücken,
   nicht 0. Er wird **nie** übernommen - nur Information. Umgerechnet mit **demselben Faktor wie der
