@@ -136,6 +136,12 @@ export const runHqGit: HqGit = (cwd, args, options = {}) =>
     const fullArgs = [
       '-c',
       'commit.gpgsign=false',
+      // Paths as they are: by default git prints non-ASCII paths quoted and
+      // octal-escaped (`"data/recipes/cakes/K\303\244sekuchen.md"`). Fed back
+      // as a pathspec such a name matches nothing - the squash-merge check
+      // then took an edit of a file with an umlaut for merged and dropped it.
+      '-c',
+      'core.quotePath=false',
       ...credentialArgs(options.token),
       ...args,
     ]

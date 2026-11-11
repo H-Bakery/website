@@ -151,6 +151,29 @@ describe('runHqGit', () => {
     )
   })
 
+  it('prints paths with umlauts as they are, so they work as pathspecs again', async () => {
+    const a = makeHqRemote()
+    const rel = 'data/recipes/cakes/Käse-Probe.md'
+    fs.mkdirSync(path.dirname(path.join(a.write, rel)), { recursive: true })
+    fs.writeFileSync(path.join(a.write, rel), 'x\n')
+    await runHqGit(a.write, ['add', '--', rel])
+    await runHqGit(a.write, ['commit', '-q', '-m', 'test', '--', rel])
+    // plain git quotes and escapes the name
+    expect(git(a.write, 'diff', '--name-only', 'HEAD~1', 'HEAD')).toBe(
+      '"data/recipes/cakes/K\\303\\244se-Probe.md"'
+    )
+    const listed = (
+      await runHqGit(a.write, ['diff', '--name-only', 'HEAD~1', 'HEAD'])
+    ).trim()
+    expect(listed).toBe(rel)
+    const again = await runHqGit(
+      a.write,
+      ['diff', '--name-only', 'HEAD~1', 'HEAD', '--', listed],
+      { env: { GIT_LITERAL_PATHSPECS: '1' } }
+    )
+    expect(again.trim()).toBe(rel)
+  })
+
   it('error codes: not_a_repo, network, git_timeout', async () => {
     const dir = tempDir('no-repo-')
     await expect(runHqGit(dir, ['status'])).rejects.toMatchObject({
