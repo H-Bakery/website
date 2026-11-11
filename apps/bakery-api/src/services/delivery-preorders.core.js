@@ -1579,7 +1579,8 @@ function normalizeOrderInput(body, existing, options) {
  *   Sammelstelle - die hat ihren eigenen Liefertag.
  *
  * Ohne Kalender gilt nur `closedWeekdays`, wie vor Z14.
- * @returns {{ code: 'geschlossen'|'ruhetag', message: string } | null}
+ * `reason` ist die Notiz bzw. der Feiertag (`null` am Ruhetag).
+ * @returns {{ code: 'geschlossen'|'ruhetag', reason: string|null, message: string } | null}
  */
 function pickupDayClosed(rules, date, atPickupPoint) {
   if (!rules || !tours.isBusinessDate(date)) return null
@@ -1593,6 +1594,7 @@ function pickupDayClosed(rules, date, atPickupPoint) {
       const reason = day.note || day.holidayName
       return {
         code: 'geschlossen',
+        reason: reason || null,
         message: `${where}${
           reason ? ` (${reason})` : ''
         }, ist die Bäckerei geschlossen - bitte einen anderen Abholtag wählen.`,
@@ -1607,10 +1609,54 @@ function pickupDayClosed(rules, date, atPickupPoint) {
   ) {
     return {
       code: 'ruhetag',
+      reason: null,
       message: `${where}, ist Ruhetag - bitte einen anderen Abholtag wählen.`,
     }
   }
   return null
+}
+
+/**
+ * Die gesperrten Abholtage im Fenster, das `/api/preorders` annimmt
+ * (`today - maxDaysBack` … `today + maxDaysAhead`) - für die Maske, damit sie
+ * diese Tage gar nicht erst anbietet (Z14). Keine zweite Regel: jeder Tag
+ * wird mit `pickupDayClosed()` gefragt.
+ *
+ * `closed[]`: `{ date, code, reason, message, shopOnly }` - `shopOnly: true`
+ * heißt, der Tag ist nur im Laden gesperrt (Ruhetag); eine Sammelstelle
+ * darf ihn nehmen. `calendar` sagt, ob ein gültiger Kalender mitgerechnet
+ * hat (sonst gilt nur der Ruhetag).
+ * @returns {{ from: string, to: string, calendar: boolean, closed: object[] } | null}
+ */
+function closedPickupDays(rules) {
+  if (
+    !rules ||
+    !tours.isBusinessDate(rules.today) ||
+    !tours.isNumber(rules.maxDaysAhead) ||
+    !tours.isNumber(rules.maxDaysBack)
+  ) {
+    return null
+  }
+  const from = kalender.addDays(rules.today, -rules.maxDaysBack)
+  const to = kalender.addDays(rules.today, rules.maxDaysAhead)
+  const closed = []
+  for (let date = from; date <= to; date = kalender.addDays(date, 1)) {
+    const shop = pickupDayClosed(rules, date, false)
+    if (!shop) continue
+    closed.push({
+      date,
+      code: shop.code,
+      reason: shop.reason,
+      message: shop.message,
+      shopOnly: !pickupDayClosed(rules, date, true),
+    })
+  }
+  return {
+    from,
+    to,
+    calendar: Boolean(rules.calendar && kalender.calendarOf(rules.calendar)),
+    closed,
+  }
 }
 
 /** Code-Kuerzel: Sammelstelle (`MO`) oder Laden (`LA`). */
@@ -2058,6 +2104,7 @@ module.exports = {
   formatGermanDate,
   weekdayOf,
   pickupDayClosed,
+  closedPickupDays,
   placeLabel,
   referencePrefix,
   nextReference,

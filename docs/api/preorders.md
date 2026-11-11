@@ -13,7 +13,7 @@ the Backzettel-variant hook in `src/services/preorder-variants.ts`.
 | `GET /api/preorders`                   | verkauf, fahrer                                    | `{ success, data: Preorder[], count }`; filters below                                                               |
 | `GET /api/preorders/sums?date=`        | verkauf, fahrer, backstube                         | `{ success, data: { date, pickupPointId, preorderCount, items, summary } }`; optional `&pickupPointId=`             |
 | `GET /api/preorders/day?date=`         | verkauf, fahrer                                    | `{ success, data: { date, pickupPointId, summary, sums, pickupPoints, preorders } }`; optional `&pickupPointId=`    |
-| `GET /api/preorders/pickup-points`     | verkauf, fahrer                                    | `{ success, data: (PickupPoint + updatedAt)[] }`                                                                    |
+| `GET /api/preorders/pickup-points`     | verkauf, fahrer                                    | `{ success, data: (PickupPoint + updatedAt)[], count, pickupDays }` (closed pickup days, see below)                 |
 | `PUT /api/preorders/pickup-points/:id` | inhaber                                            | `{ success, data: PickupPoint + updatedAt }`; 400 `invalid_window` / `Text too long`, 404, 409 `stale_pickup_point` |
 | `POST /api/preorders/bulk-status`      | verkauf; fahrer only `abgeholt` / `nicht_abgeholt` | `{ ids, status?, notCollected?, paid?, expectedUpdatedAt? }` → `{ success, data: { counts, results } }`             |
 | `GET /api/preorders/variants`          | verkauf, fahrer                                    | `{ success, data: { [productId]: string[] }, configured, count }`                                                   |
@@ -138,6 +138,13 @@ updatedAt, deadline, afterDeadline }`.
   is 400 `invalid_pickup_point`) and echoes `pickupPointId` (`null` without the filter).
   `pickupPoints[].preorderCount` still counts the whole day. This is what the Abholliste and the
   Mörsbach screens read - one request, totals from the server.
+- **Closed pickup days (Z14).** `GET /pickup-points` also answers
+  `pickupDays: { from, to, calendar, closed: [{ date, code, reason, message, shopOnly }] }` for the
+  window a new pickup date may lie in (30 days back, 366 ahead). `core.closedPickupDays()` asks
+  `pickupDayClosed()` for every day, so the list is exactly what `POST`/`PATCH` reject: `code`
+  `geschlossen` (calendar; `reason` = note or holiday name) or `ruhetag` (`shopOnly: true` - a
+  Sammelstelle may take it). `calendar: false` = no valid `kalender.yaml`, only the Monday rule.
+  The preorder form reads it to not offer those days.
 - **Pickup points.** `PUT /pickup-points/:id` (only `inhaber`) takes the mock's Lieferstelle body
   (`name`, `street`, `zip`, `city`, `weekday`, `window`, `orderDeadline`, `notes`, `active`) via
   `service.updatePickupPoint`, the same function the Mörsbach alias

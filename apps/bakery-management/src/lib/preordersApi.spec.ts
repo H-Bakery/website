@@ -1,5 +1,6 @@
 import {
   bulkPreorderStatus,
+  fetchPickupPointInfo,
   fetchPreorderSums,
   requestFailureKind,
   savePickupPoint,
@@ -82,6 +83,27 @@ describe('preordersApi (W4)', () => {
       '/api/preorders/pickup-points/p',
       input
     )
+  })
+
+  it('fetchPickupPointInfo liefert Sammelstellen und gesperrte Abholtage (Z14)', async () => {
+    const pickupDays = {
+      from: '2026-10-13',
+      to: '2027-11-13',
+      calendar: true,
+      closed: [],
+    }
+    apiClient.get.mockResolvedValue({ success: true, data: [], pickupDays })
+    await expect(fetchPickupPointInfo()).resolves.toEqual({
+      points: [],
+      pickupDays,
+    })
+    expect(apiClient.get).toHaveBeenCalledWith('/api/preorders/pickup-points')
+    // ältere API ohne das Feld: nur der Ruhetag gilt
+    apiClient.get.mockResolvedValue({ success: true, data: [] })
+    await expect(fetchPickupPointInfo()).resolves.toEqual({
+      points: [],
+      pickupDays: null,
+    })
   })
 
   it('fetchPreorderSums fragt je Abholort', async () => {

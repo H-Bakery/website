@@ -873,4 +873,5 @@ module.exports = {
   baseFor,
   leadDays,
   shortDate,
+  addDays,
 }

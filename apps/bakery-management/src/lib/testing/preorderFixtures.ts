@@ -4,6 +4,8 @@
  */
 import type {
   CatalogueProduct,
+  ClosedPickupDay,
+  PickupDays,
   PickupPoint,
   Preorder,
   PreorderDay,
@@ -126,6 +128,49 @@ export function day(overrides: Partial<PreorderDay> = {}): PreorderDay {
         pickupDate: '2026-11-14',
         status: 'storniert',
       }),
+    ],
+    ...overrides,
+  }
+}
+
+/**
+ * Gesperrte Abholtage, wie `GET /api/preorders/pickup-points` sie liefert
+ * (Z14) - erfunden, „heute“ ist Do 12.11.2026: Fr 13. und Sa 14.11.
+ * Betriebsferien, Mo 16.11. Ruhetag, Mo 23.11. Sonderöffnung (fehlt also in
+ * der Liste), Mo 30.11. wieder Ruhetag.
+ */
+export function pickupDays(overrides: Partial<PickupDays> = {}): PickupDays {
+  const ferien = (date: string, weekday: string): ClosedPickupDay => ({
+    date,
+    code: 'geschlossen',
+    reason: 'Betriebsferien',
+    message: `Am ${weekday}, ${date
+      .split('-')
+      .reverse()
+      .join(
+        '.'
+      )} (Betriebsferien), ist die Bäckerei geschlossen - bitte einen anderen Abholtag wählen.`,
+    shopOnly: false,
+  })
+  const ruhetag = (date: string): ClosedPickupDay => ({
+    date,
+    code: 'ruhetag',
+    reason: null,
+    message: `Am Montag, ${date
+      .split('-')
+      .reverse()
+      .join('.')}, ist Ruhetag - bitte einen anderen Abholtag wählen.`,
+    shopOnly: true,
+  })
+  return {
+    from: '2026-10-13',
+    to: '2027-11-13',
+    calendar: true,
+    closed: [
+      ferien('2026-11-13', 'Freitag'),
+      ferien('2026-11-14', 'Samstag'),
+      ruhetag('2026-11-16'),
+      ruhetag('2026-11-30'),
     ],
     ...overrides,
   }

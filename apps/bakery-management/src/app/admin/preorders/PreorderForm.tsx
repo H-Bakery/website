@@ -37,7 +37,7 @@ import {
   changePreorderStatus,
   createPreorder,
   fetchCatalogue,
-  fetchPickupPoints,
+  fetchPickupPointInfo,
   fetchPreorderVariants,
   isPreorderConflict,
   listPreorders,
@@ -67,17 +67,20 @@ import {
   formatCurrency,
   formatDateWithWeekday,
   formatShortDate,
+  closedPickupDay,
+  formatClosedDay,
   isBusinessDate,
-  isProductionDay,
   jsWeekdayOf,
   nextProductionDate,
   nextProductionDates,
   pickupPointDates,
+  skippedPickupDays,
   preorderPatch,
   shiftDate,
   toBusinessDate,
   variantLabel,
   type CatalogueProduct,
+  type PickupDays,
   type PickupPoint,
   type Preorder,
   type PreorderChannel,
@@ -286,6 +289,8 @@ export default function PreorderForm({
 
   const [catalogue, setCatalogue] = useState<CatalogueProduct[]>([])
   const [points, setPoints] = useState<PickupPoint[]>([])
+  // Gesperrte Abholtage vom Server (Z14); `null` = nur der Ruhetag.
+  const [pickupDays, setPickupDays] = useState<PickupDays | null>(null)
   const [variants, setVariants] = useState<Record<string, string[]>>({})
   const [frequent, setFrequent] = useState<CatalogueProduct[]>([])
   const [recentIds, setRecentIds] = useState<string[]>([])
@@ -384,13 +389,14 @@ export default function PreorderForm({
     loadingDataRef.current = true
     Promise.all([
       fetchCatalogue(),
-      fetchPickupPoints(),
+      fetchPickupPointInfo(),
       fetchPreorderVariants(),
     ])
-      .then(([products, pointList, variantInfo]) => {
+      .then(([products, pointInfo, variantInfo]) => {
         if (!activeRef.current) return
         setCatalogue(products)
-        setPoints(pointList)
+        setPoints(pointInfo.points)
+        setPickupDays(pointInfo.pickupDays)
         setVariants(variantInfo.products)
         setLoadError(null)
         // „Häufig“ ist Beiwerk: scheitert es, fehlen nur die Knöpfe.
@@ -582,12 +588,13 @@ export default function PreorderForm({
   useEffect(() => {
     if (!today || pickupDate || loading) return
     if (point) {
-      const [first] = pickupPointDates(point, today, 1)
+      const [first] = pickupPointDates(point, today, 1, pickupDays)
       if (first) setPickupDate(first)
     } else {
-      setPickupDate(nextProductionDate(today))
+      const first = nextProductionDate(today, pickupDays)
+      if (first) setPickupDate(first)
     }
-  }, [today, pickupDate, point, loading])
+  }, [today, pickupDate, point, loading, pickupDays])
 
   // Fokus: Name zuerst (Telefon: „Wer spricht?“).
   useEffect(() => {
@@ -608,9 +615,31 @@ export default function PreorderForm({
   const dateChoices = useMemo(() => {
     if (!today) return []
     return point
-      ? pickupPointDates(point, today, 4)
-      : nextProductionDates(today, 6)
-  }, [today, point])
+      ? pickupPointDates(point, today, 4, pickupDays)
+      : nextProductionDates(today, 6, pickupDays)
+  }, [today, point, pickupDays])
+  // Schließtage, die in den Vorschlägen fehlen - der Hinweis sagt, warum.
+  const skippedDays = useMemo(
+    () =>
+      skippedPickupDays(
+        pickupDays,
+        today,
+        dateChoices[dateChoices.length - 1] ?? '',
+        point
+      ),
+    [pickupDays, today, dateChoices, point]
+  )
+
+  /**
+   * Warum der Abholtag am Ort `atPoint` nicht geht (Ruhetag, Schließtag laut
+   * Kalender - Z14). Der schon gespeicherte Tag einer Bestellung ist nie
+   * gesperrt: die API prüft nur einen neuen Tag, und ein inzwischen
+   * geschlossener Tag darf beim Bearbeiten nicht still verschwinden.
+   */
+  const closedFor = (date: string, atPoint: boolean) =>
+    preorder && date === preorder.pickupDate
+      ? null
+      : closedPickupDay(pickupDays, date, atPoint)
 
   // W4-verify r6: hat die Verkäuferin den Bestellweg schon angetippt
   // (Telefon, WhatsApp, Laden - so die Reihenfolge der Kurzanleitung), bleibt
@@ -631,13 +660,17 @@ export default function PreorderForm({
         setChannel('sammelstelle')
       }
       setPickupTime('')
-      if (jsWeekdayOf(pickupDate) !== next.weekday && today) {
-        setPickupDate(pickupPointDates(next, today, 1)[0] ?? '')
+      if (
+        (jsWeekdayOf(pickupDate) !== next.weekday ||
+          closedFor(pickupDate, true)) &&
+        today
+      ) {
+        setPickupDate(pickupPointDates(next, today, 1, pickupDays)[0] ?? '')
       }
     } else {
       if (channel === 'sammelstelle') setChannel(readChannel())
-      if (!isProductionDay(pickupDate) && today) {
-        setPickupDate(nextProductionDate(today))
+      if (closedFor(pickupDate, false) && today) {
+        setPickupDate(nextProductionDate(today, pickupDays))
       }
     }
   }
@@ -650,13 +683,24 @@ export default function PreorderForm({
           JS_WEEKDAY_LABELS[point.weekday] ?? 'am Liefertag'
         }s beliefert.`
       }
-      return null
     }
-    if (!isProductionDay(pickupDate)) {
-      return 'Montag ist Ruhetag - bitte einen anderen Tag wählen.'
-    }
-    return null
+    return closedFor(pickupDate, Boolean(point))?.message ?? null
   })()
+  // Bearbeiten: der gespeicherte Tag ist inzwischen gesperrt - er bleibt
+  // stehen, aber die Maske sagt es.
+  const keptClosedDay =
+    preorder && pickupDate === preorder.pickupDate && !dateError
+      ? closedPickupDay(pickupDays, pickupDate, Boolean(point))
+      : null
+  const keptClosedHint = keptClosedDay
+    ? `${
+        keptClosedDay.code === 'ruhetag'
+          ? 'Dieser Tag ist ein Ruhetag'
+          : `An diesem Tag ist die Bäckerei geschlossen${
+              keptClosedDay.reason ? ` (${keptClosedDay.reason})` : ''
+            }`
+      } - der Abholtag bleibt stehen, bis er geändert wird.`
+    : null
   const datePast = Boolean(
     today && isBusinessDate(pickupDate) && pickupDate < today
   )
@@ -1212,6 +1256,17 @@ export default function PreorderForm({
                   />
                 ))}
               </Box>
+              {skippedDays.length > 0 && (
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  data-testid="closed-days-hint"
+                  sx={{ mt: -0.5, mb: 1.5 }}
+                >
+                  Geschlossen, deshalb nicht wählbar:{' '}
+                  {skippedDays.map(formatClosedDay).join(', ')}
+                </Typography>
+              )}
 
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
                 <TextField
@@ -1227,9 +1282,16 @@ export default function PreorderForm({
                   helperText={
                     dateError && (showErrors || isBusinessDate(pickupDate))
                       ? dateError
+                      : keptClosedHint
+                      ? keptClosedHint
                       : datePast
                       ? 'Liegt in der Vergangenheit - nur zum Nachtragen.'
                       : ' '
+                  }
+                  inputProps={
+                    pickupDays
+                      ? { min: pickupDays.from, max: pickupDays.to }
+                      : undefined
                   }
                   sx={{ flex: 1 }}
                 />

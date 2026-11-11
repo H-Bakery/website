@@ -7,6 +7,7 @@ import {
   cancelPreorder,
   changePreorderStatus,
   fetchCatalogue,
+  fetchPickupPointInfo,
   fetchPickupPoints,
   fetchPreorderVariants,
   getPreorder,
@@ -15,6 +16,7 @@ import {
 import {
   CATALOGUE,
   ONLY_DATE,
+  pickupDays,
   POINT,
   preorder,
 } from '../../../../lib/testing/preorderFixtures'
@@ -26,6 +28,7 @@ jest.mock('../../../../lib/preordersApi', () => ({
   cancelPreorder: jest.fn(),
   changePreorderStatus: jest.fn(),
   fetchCatalogue: jest.fn(),
+  fetchPickupPointInfo: jest.fn(),
   fetchPickupPoints: jest.fn(),
   fetchPreorderVariants: jest.fn(),
   getPreorder: jest.fn(),
@@ -65,6 +68,10 @@ beforeEach(() => {
   mockGet.mockResolvedValue(preorder())
   ;(fetchCatalogue as jest.Mock).mockResolvedValue(CATALOGUE)
   ;(fetchPickupPoints as jest.Mock).mockResolvedValue([POINT])
+  ;(fetchPickupPointInfo as jest.Mock).mockImplementation(async () => ({
+    points: await fetchPickupPoints(),
+    pickupDays: null,
+  }))
   ;(fetchPreorderVariants as jest.Mock).mockResolvedValue({
     configured: false,
     products: {},
@@ -123,6 +130,42 @@ describe('PreorderDetailClient (P3)', () => {
     expect(
       await screen.findByText(/neuer Code LA-2026-11-14-01/)
     ).toBeInTheDocument()
+  })
+
+  it('Abholtag inzwischen geschlossen: der Tag bleibt mit Hinweis stehen und lässt sich speichern (Z14)', async () => {
+    const user = userEvent.setup()
+    ;(fetchPickupPointInfo as jest.Mock).mockResolvedValue({
+      points: [POINT],
+      pickupDays: pickupDays(),
+    })
+    mockUpdate.mockResolvedValue(preorder({ note: 'Bitte schneiden' }))
+    renderAs('verkauf')
+    await user.click(await screen.findByRole('button', { name: 'Bearbeiten' }))
+    // Fr 13.11. ist laut Kalender zu - das Datum bleibt, kein Fehler
+    const date = await screen.findByLabelText('Abholtag')
+    expect(date).toHaveValue('2026-11-13')
+    expect(
+      await screen.findByText(
+        'An diesem Tag ist die Bäckerei geschlossen (Betriebsferien) - der Abholtag bleibt stehen, bis er geändert wird.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('radio', { name: 'Fr 13.11.' })).toBeNull()
+    expect(screen.queryByText(/bitte einen anderen Abholtag wählen/)).toBeNull()
+
+    await user.click(
+      screen.getByRole('button', { name: 'Kornbrot 500g eins mehr' })
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Änderungen speichern' })
+    )
+    await waitFor(() =>
+      expect(mockUpdate).toHaveBeenCalledWith(
+        7,
+        { items: [{ productId: 'kornbrot-500g', variant: '', quantity: 3 }] },
+        '2026-11-12T09:00:00.000Z'
+      )
+    )
+    expect(date).toHaveValue('2026-11-13')
   })
 
   it('Sitzung endet beim Bearbeiten: nach neuer Anmeldung sind die Änderungen wieder da und werden auf der alten Version gespeichert (W4-verify r6)', async () => {
