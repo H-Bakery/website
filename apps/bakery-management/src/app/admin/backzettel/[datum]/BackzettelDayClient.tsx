@@ -69,6 +69,7 @@ import { DayKindNotice } from '../../../../components/backzettel/DayKindNotice'
 import { DeltaDoughNote } from '../../../../components/backzettel/DeltaDoughNote'
 import { MachineStrip } from '../../../../components/backzettel/MachineStrip'
 import { OpenMasterDataNote } from '../../../../components/backzettel/OpenMasterDataNote'
+import { AddLineCard } from '../../../../components/backzettel/AddLineCard'
 import { BreadTable } from '../../../../components/backzettel/BreadTable'
 import {
   RollsByBakeDay,
@@ -812,6 +813,14 @@ export default function BackzettelDayClient({
               onSaveCorrection={saveCorrection}
             />
           ))
+        )}
+
+        {editable && (
+          <AddLineCard
+            addable={day.addable}
+            config={config}
+            onSave={saveCorrection}
+          />
         )}
 
         <HefeteigCard

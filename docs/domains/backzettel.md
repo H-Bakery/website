@@ -65,6 +65,15 @@ die Überarbeitung „Backzettel v2" (Z10) ist dort geplant - dieses Dokument be
 - **Eine Korrektur darf die Zeile nicht unter 0 drücken** (400 `correction_exceeds_line`). Wird eine
   Zeile später kleiner (Grundmenge, Storno), steht sie mit `correctionClamped` und der Warnung
   `correction_exceeds_line` da - nie still auf 0.
+- **Posten ohne Menge stehen nicht auf dem Zettel, lassen sich aber aufnehmen (`addable`).** Eine
+  Zeile mit Grundmenge 0 (oder ohne Eintrag für den Wochentag) und ohne Vorbestellung, CAP und
+  Korrektur fehlt in `lines`/`sections` - so sind Posten gepflegt, die nur an manchen Tagen laufen
+  („0, Korrektur am Tag“). `computeDoughDay` nennt sie je Abschnitt in `addable` (dieselbe
+  Zeilenform, alles 0, mit `bakeDate`/`doughDate`), die API gibt sie am **Entwurf** weiter. Eine
+  Korrektur ≠ 0 nimmt die Zeile auf: sie steht dann im Zettel und zählt in Teig, Liter und Bruch;
+  Korrektur 0 nimmt sie wieder herunter. Nie dabei: Zeilen mit offener Grundmenge (`null` - die
+  stehen als „offen“ auf dem Zettel), die Zeile „ohne Sorte“ eines Postens mit Sorten, Posten
+  eines Backtags, den der Zettel nicht trägt. `computeDay` (v1) kennt das Feld nicht.
 - **Bleche zählen nach der Menge der Zeile** (`trayText(tray, total, unit)`): `per_tray` ist Stück je
   Blech, bei 40 Croissants à 12 heißt es „4 Bleche à 12 (Bleche 1, 2 + 2 weitere)", nicht „2 Bleche
   à 12". Ohne `per_tray`, ohne Menge oder bei Litern bleibt die reine Blechliste aus der YAML.
@@ -342,6 +351,12 @@ erweitertes `GET /api/backzettel/config`.
   erste nach heute** (heute wird schon gebacken). Je Tag ein `GET /api/backzettel/:datum` (ohne
   Nebenwirkung) und „Vorbestellungen in N Zeilen" statt einer Stücksumme (Zeilen stehen in
   Produktionseinheiten, Viertel aufgerundet).
+- **„Weiteren Posten aufnehmen“** (`components/backzettel/AddLineCard.tsx`, nur Entwurf und nur
+  wer planen darf): unter den Abschnitten ein Knopf mit der Zahl der Posten ohne Menge; Auswahl je
+  Abschnitt (`day.addable`, Brötchen eines späteren Backtags mit „· für Mi 02.12.“), dann der
+  gewöhnliche Korrektur-Editor (Menge, Grund Pflicht). Gespeichert wird über denselben
+  `PUT …/correction` wie an einer Zeile, mit `bakeDate`. Ohne das ließ sich ein Posten mit
+  Grundmenge 0 am Tag gar nicht eintragen (zwei Marmorkuchen, ein Kranz unter der Woche).
 - **Bildschirm:** ab `md` eine Tabelle je Abschnitt (feste Spaltenbreiten), darunter Karten; beide
   stehen im DOM und werden per CSS umgeschaltet (Specs greifen über `table-<abschnitt>` /
   `line-card-<key>`). Offene Nachträge: Zeile mit Warnrand + Chip, Karte „Nachträge seit der Freigabe"
@@ -510,7 +525,7 @@ zu den Namenskacheln). Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhabe
   `admin/backzettel/[datum]/BackzettelDayClient.spec.tsx`,
   `admin/backzettel/grundmengen/GrundmengenClient.spec.tsx`,
   `components/backzettel/BackzettelPrint.spec.tsx`, Z10-Druck: `src/lib/dayPrintLayout.spec.ts`,
-  `components/backzettel/{DoughDayPrint,BakeListPrint}.spec.tsx`, Druck-Auswahl in
+  `components/backzettel/{DoughDayPrint,BakeListPrint,AddLineCard}.spec.tsx`, Druck-Auswahl in
   `admin/backzettel/[datum]/BackzettelDayClient.v2.spec.tsx`; `app/backstube/BackstubeClient.spec.tsx`,
   `components/backstube/backstubeColors.spec.ts`. Fixtures erfunden: `src/lib/backzettelFixtures.ts`
   (eindeutige Zeilen-IDs je Zeile), `src/lib/grundmengenFixtures.ts`.

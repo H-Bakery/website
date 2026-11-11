@@ -20,6 +20,7 @@ import {
   v2DeltaDough,
   saturdayV2Draft,
   sundayV2Sheet,
+  v2Line,
 } from '../../../../lib/backzettelFixtures'
 import type { PilotRole } from '../../../../lib/roles'
 
@@ -207,6 +208,67 @@ describe('Backzettel-Tagesplanung - Teigtag-Zettel (Z10)', () => {
         { bakeDate: V2_TUE }
       )
     )
+  })
+
+  it('Weiteren Posten aufnehmen: Korrektur für einen Posten ohne Menge, mit Backtag', async () => {
+    const extra = v2Line({
+      itemId: 'test-flit-klein',
+      name: 'Testflit klein',
+      section: 'broetchen',
+      bakeDate: V2_TUE,
+    })
+    mocked.fetchBackzettelDay.mockResolvedValue(
+      saturdayV2Draft({
+        addable: [{ id: 'broetchen', label: 'Brötchen', lines: [extra] }],
+      })
+    )
+    mocked.setCorrection.mockResolvedValue(saturdayV2Draft())
+    renderDay()
+    const card = within(await screen.findByTestId('add-line'))
+    fireEvent.click(
+      card.getByRole('button', { name: 'Weiteren Posten aufnehmen' })
+    )
+    fireEvent.change(card.getByLabelText('Posten aufnehmen'), {
+      target: { value: extra.key },
+    })
+    fireEvent.change(card.getByLabelText('Korrektur'), {
+      target: { value: '3' },
+    })
+    fireEvent.change(card.getByLabelText('Grund'), {
+      target: { value: 'Testbestellung' },
+    })
+    fireEvent.click(card.getByRole('button', { name: 'Speichern' }))
+    await waitFor(() =>
+      expect(mocked.setCorrection).toHaveBeenCalledWith(
+        SAT,
+        'test-flit-klein',
+        null,
+        3,
+        'Testbestellung',
+        { correction: 0, reason: null },
+        { bakeDate: V2_TUE }
+      )
+    )
+    // der neu geladene Zettel hat nichts mehr aufzunehmen
+    await waitFor(() =>
+      expect(screen.queryByTestId('add-line')).not.toBeInTheDocument()
+    )
+  })
+
+  it('Weiteren Posten aufnehmen gibt es nur beim Planen eines Entwurfs', async () => {
+    const extra = v2Line({ itemId: 'test-x', name: 'Testposten' })
+    const addable = [{ id: 'kuchen', label: 'Kuchen', lines: [extra] }]
+    mocked.fetchBackzettelDay.mockResolvedValue(saturdayV2Draft({ addable }))
+    const view = renderDay('verkauf')
+    await screen.findByTestId('machine-strip')
+    expect(screen.queryByTestId('add-line')).not.toBeInTheDocument()
+    view.unmount()
+    mocked.fetchBackzettelDay.mockResolvedValue(
+      saturdayV2Confirmed({ addable })
+    )
+    renderDay('inhaber')
+    await screen.findByTestId('machine-strip')
+    expect(screen.queryByTestId('add-line')).not.toBeInTheDocument()
   })
 
   it('Korrektur am Zettel-Tag selbst bleibt ohne Backtag', async () => {
