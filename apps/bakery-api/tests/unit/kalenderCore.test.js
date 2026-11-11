@@ -430,6 +430,91 @@ describe('Zettel je Teigtag mit Kalender (computeDoughDay)', () => {
     expect(w.message).toMatch(/Testfreitagsbrot - heute oder später backen\?/)
   })
 
+  it('Spezialbrot mit gepflegter Sonderspalte steht nicht im Hinweis (schon eingeplant)', () => {
+    const cfg = cfgWith([FERIEN], (raw) => {
+      raw.items.push(
+        {
+          id: 'test-sa-brot',
+          name: 'Testsamstagsbrot',
+          section: 'brot',
+          unit: 'Liter',
+          base: { 6: 3, samstag_ersatz: 3 },
+        },
+        {
+          id: 'test-sa-kuchen',
+          name: 'Testsamstagskuchen',
+          section: 'kuchen',
+          base: { 6: 2 },
+        }
+      )
+    })
+    const r = core.computeDoughDay({ config: cfg, date: '2026-12-24' })
+    expect(r.dayKind.before.type).toBe('samstag_ersatz')
+    const w = r.warnings.find(
+      (x) => x.code === 'closed_day_specials' && x.date === '2026-12-26'
+    )
+    expect(w.items).toContain('test-sa-kuchen')
+    expect(w.items).not.toContain('test-sa-brot')
+    expect(w.message).not.toMatch(/Testsamstagsbrot/)
+    // die Menge der Spalte steht auf dem Zettel
+    expect(r.lines.find((l) => l.itemId === 'test-sa-brot')).toMatchObject({
+      base: 3,
+    })
+  })
+
+  it('Sonderspalte 0 plant nicht ein: der Hinweis bleibt (auch für den Freitag)', () => {
+    const cfg = cfgWith([FERIEN], (raw) => {
+      raw.items.push(
+        {
+          id: 'test-fr-brot',
+          name: 'Testfreitagsbrot',
+          section: 'brot',
+          unit: 'Liter',
+          base: { 5: 4, samstag_ersatz: 0 },
+        },
+        {
+          id: 'test-fr-korn',
+          name: 'Testfreitagskorn',
+          section: 'brot',
+          unit: 'Liter',
+          base: { 5: 2, samstag_ersatz: 2 },
+        },
+        {
+          id: 'test-sa-brot',
+          name: 'Testsamstagsbrot',
+          section: 'brot',
+          unit: 'Liter',
+          base: { 6: 3, samstag_ersatz: 0 },
+        },
+        {
+          id: 'test-sa-offen',
+          name: 'Testsamstagoffen',
+          section: 'brot',
+          unit: 'Liter',
+          base: { 6: 3, samstag_ersatz: null },
+        }
+      )
+    })
+    const r = core.computeDoughDay({ config: cfg, date: '2026-12-24' })
+    expect(r.dayKind.before.type).toBe('samstag_ersatz')
+    const of = (date) =>
+      r.warnings.find(
+        (x) => x.code === 'closed_day_specials' && x.date === date
+      )
+    // Fr 25.12.: mit 0 nicht auf dem Zettel -> gefragt; mit 2 eingeplant
+    expect(r.lines.filter((l) => l.itemId === 'test-fr-brot')).toEqual([])
+    expect(of('2026-12-25').items).toEqual(['test-fr-brot'])
+    expect(r.lines.find((l) => l.itemId === 'test-fr-korn')).toMatchObject({
+      base: 2,
+    })
+    // Sa 26.12.: 0 -> gefragt; offen steht als Zeile „Grundmenge fehlt“ da
+    expect(of('2026-12-26').items).toContain('test-sa-brot')
+    expect(of('2026-12-26').items).not.toContain('test-sa-offen')
+    expect(r.lines.find((l) => l.itemId === 'test-sa-offen')).toMatchObject({
+      baseUnset: true,
+    })
+  })
+
   it('Do 31.12.: Teig für Di 05.01. 5 Tage vorher; mit teigtag am 04.01. nicht', () => {
     const r = core.computeDoughDay({ config: cfgWith(), date: '2026-12-31' })
     expect(r.dayKind.before.type).toBe('vor_feiertag')

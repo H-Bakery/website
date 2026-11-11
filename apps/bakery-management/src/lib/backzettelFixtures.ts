@@ -2525,3 +2525,93 @@ export function busySaturdayV2Confirmed(
     ...overrides,
   }
 }
+
+// ---------------------------------------------------------------- Samstags-Satz (Z14)
+
+/** Freitag vor einem geschlossenen Samstag: der Tag backt den Samstags-Satz. */
+export const SAMSTAGS_SATZ_DAY = '2026-11-27'
+
+/** Erfundene Schließtage nach dem Samstags-Satz-Tag (Kalender, U9). */
+const SAMSTAGS_SATZ_CLOSED = [
+  {
+    date: SAT,
+    weekday: 6,
+    holidayName: null,
+    note: 'Testschließtag',
+    label: 'Sa 28.11. Testschließtag',
+  },
+]
+
+/**
+ * Samstags-Satz (Z14, Tagestyp `before` / `samstag_ersatz`): der volle
+ * Samstag (`busySaturdayV2Draft`, Mengen aus `base.samstag_ersatz`) am
+ * Freitag davor, weil der Samstag geschlossen ist - gebacken wird heute,
+ * Teig für So 29.11. und Di 01.12. Dazu, was der Kalender auf den Zettel
+ * schreibt: Tagestyp, Spezialbrot des Ausfalltags ohne Spalte, langer
+ * Vorlauf bis Dienstag. Muss wie ein voller Samstag auf drei Blätter gehen.
+ */
+export function samstagsSatzV2Draft(
+  overrides: Partial<BackzettelDay> = {}
+): BackzettelDay {
+  // Derselbe Zettel einen Tag früher: jedes Datum des Samstags (Zeilen,
+  // Backtage, Teile der Teige) wird der Freitag.
+  const moved = JSON.parse(
+    JSON.stringify(busySaturdayV2Draft()).split(SAT).join(SAMSTAGS_SATZ_DAY)
+  ) as BackzettelDay
+  return {
+    ...moved,
+    weekday: 5,
+    weekdayName: 'Freitag',
+    bakeDates: (moved.bakeDates ?? []).map((b) =>
+      b.date === SAMSTAGS_SATZ_DAY
+        ? { ...b, weekday: 5, weekdayName: 'Freitag' }
+        : b
+    ),
+    dayKind: {
+      date: SAMSTAGS_SATZ_DAY,
+      weekday: 5,
+      baseWeekday: 5,
+      kind: 'normal',
+      open: true,
+      bakeDay: true,
+      doughDay: true,
+      holidayName: null,
+      note: null,
+      openUntil: null,
+      before: {
+        type: 'samstag_ersatz',
+        closedDays: SAMSTAGS_SATZ_CLOSED,
+        nextDoughDay: V2_TUE,
+      },
+      calendar: 'ok',
+      label: 'Samstags-Satz',
+      detail: `danach geschlossen: ${SAMSTAGS_SATZ_CLOSED.map(
+        (c) => c.label
+      ).join(', ')}`,
+    },
+    calendarHint: null,
+    warnings: [
+      {
+        code: 'base_unset',
+        message:
+          'Grundmenge für Freitag noch nicht festgelegt: Testroggen (Kasten), Testzwetschge, Testzopf gefüllt (Testapfelfüllung).',
+      },
+      {
+        code: 'closed_day_specials',
+        message:
+          'Sa 28.11. Testschließtag: Testtorte Probe, Testkuchen Rahm - heute oder später backen? Bitte mit Korrekturen einplanen.',
+      },
+      {
+        code: 'dough_day_far',
+        message:
+          'Teig für Di 01.12. schon am Fr 27.11. (4 Tage vorher, wegen Schließtagen): Testdoppel, Testkornweck, Testflit klein - Froster? Sonst im Kalender einen Teigtag eintragen.',
+      },
+      {
+        code: 'unmapped_product',
+        message:
+          'Vorbestelltes Produkt „Testtorte Probe“ (1 Stück) gehört zu keinem Backzettel-Posten.',
+      },
+    ],
+    ...overrides,
+  }
+}

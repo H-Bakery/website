@@ -10,6 +10,7 @@ import {
   V2_TUE,
   busySaturdayV2Confirmed,
   busySaturdayV2Draft,
+  samstagsSatzV2Draft,
   line,
   saturdayV2Confirmed,
   saturdayV2Draft,
@@ -235,7 +236,7 @@ describe('Druck eines Teigtag-Zettels (U8)', () => {
     ).toHaveTextContent('Teigstücke offen')
   })
 
-  it('U9: Tagestyp aus dem Kalender fett im Tagestyp-Rahmen, am normalen Tag nicht', () => {
+  it('U9: Tagestyp aus dem Kalender groß im Tagestyp-Rahmen, am normalen Tag nicht', () => {
     const day = {
       ...saturdayV2Draft(),
       dayKind: {
@@ -248,7 +249,15 @@ describe('Druck eines Teigtag-Zettels (U8)', () => {
     expect(kind).toHaveTextContent(
       'Samstags-Satz – danach geschlossen: Fr 25.12. Testfeiertag'
     )
-    expect(kind.tagName).toBe('STRONG')
+    // der Name groß und fett (nicht in der kleinen Schrift `.dd-sub`), die
+    // Schließtage dahinter in der Grundschrift
+    const label = page.getByTestId('dd-day-kind-label')
+    expect(label.tagName).toBe('STRONG')
+    expect(label).toHaveTextContent(/^Samstags-Satz$/)
+    expect(kind).not.toHaveClass('dd-sub')
+    expect(kind.querySelector('.dd-daykind-detail')).toHaveTextContent(
+      '– danach geschlossen: Fr 25.12. Testfeiertag'
+    )
     expect(page.getByTestId('dd-daytype')).toContainElement(kind)
     const normal = within(
       renderPrint({
@@ -480,6 +489,49 @@ describe('Druck eines Teigtag-Zettels (U8)', () => {
       ).toBe(dayPrintLayout(day).noteLines > 0)
       page.unmount()
     }
+  })
+
+  it('Samstags-Satz (Z14): drei Blätter wie der volle Samstag, Tagestyp gerahmt auf Blatt 1, kein Block geteilt', () => {
+    const day = samstagsSatzV2Draft()
+    const page = renderPrint(day)
+    const root = page.getByTestId('bz-print')
+    const sheets = Array.from(root.querySelectorAll('section.dd-sheet'))
+    expect(sheets).toHaveLength(3)
+    expect(root).toHaveAttribute('data-print-sheets', '3')
+    const first = within(sheets[0] as HTMLElement)
+    expect(first.getByTestId('dd-title')).toHaveTextContent('Freitag27.11.2026')
+    expect(first.getByTestId('dd-day-kind-label')).toHaveTextContent(
+      /^Samstags-Satz$/
+    )
+    expect(first.getByTestId('dd-daytype')).toHaveTextContent(
+      'Samstags-Satz – danach geschlossen: Sa 28.11. TestschließtagHeute backen + Teig für So 29.11. und Di 01.12.'
+    )
+    expect(first.getByTestId('dd-meta')).toHaveTextContent('Blatt 1 von 3')
+    sheets.slice(1).forEach((sheet, i) => {
+      expect(sheet).toHaveClass('bz-break')
+      expect(sheet).toHaveTextContent(
+        `Freitag, 27.11.2026 – Blatt ${i + 2} von 3`
+      )
+      // der Tagestyp steht nur im Kopf von Blatt 1
+      expect(
+        within(sheet as HTMLElement).queryByTestId('dd-daytype')
+      ).toBeNull()
+    })
+    // jede Zeile und jeder Block genau einmal - nichts über zwei Blätter
+    for (const sec of day.sections) {
+      for (const l of sec.lines) {
+        if (sec.id === 'brot' || sec.id === 'broetchen') continue
+        expect(page.getAllByTestId(`dd-line-${l.key}`)).toHaveLength(1)
+      }
+    }
+    expect(page.getAllByTestId(/^dd-bruch-/)).toHaveLength(10)
+    expect(page.getAllByTestId(/^dd-single-/)).toHaveLength(4)
+    for (const id of ['dd-machine', 'dd-dough-test-weck-teig']) {
+      expect(page.getAllByTestId(id)).toHaveLength(1)
+    }
+    // Hinweise des Kalenders stehen auf dem Zettel
+    expect(root).toHaveTextContent('heute oder später backen?')
+    expect(root).toHaveTextContent('Froster?')
   })
 
   it('ein Abschnitt höher als ein Blatt geht weiter unter „… (Forts.)“, jede Zeile einmal', () => {

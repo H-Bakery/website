@@ -1250,6 +1250,38 @@ describe('calendar (U9): holidays and closing days from kalender.yaml', () => {
     )
   })
 
+  it('Samstags-Satz: an item with base.samstag_ersatz is planned, not asked about again (Z14)', async () => {
+    const cfg = fixture.configV2()
+    const kranz = cfg.items.find((i: any) => i.id === 'test-kranz')
+    kranz.base = { ...kranz.base, samstag_ersatz: 3 }
+    fs.writeFileSync(
+      path.join(hqDir, 'config', 'backzettel.yaml'),
+      JSON.stringify(cfg, null, 2)
+    )
+    try {
+      const res = await as('backstube').get('/api/backzettel/2026-12-24')
+      expect(res.status).toBe(200)
+      const day = res.body.data
+      expect(day.dayKind).toMatchObject({ label: 'Samstags-Satz' })
+      const codes = day.warnings.map((w: any) => w.code)
+      expect(codes).not.toContain('special_base_missing')
+      const specials = day.warnings.find(
+        (w: any) => w.code === 'closed_day_specials' && w.date === '2026-12-26'
+      )
+      // Saturday-only items without the column are still asked about …
+      expect(specials.items).toContain('test-party')
+      // … the one with the column is on the sheet with that quantity.
+      expect(specials.items).not.toContain('test-kranz')
+      expect(specials.message).not.toMatch(/Testkranz/)
+      const line = day.sections
+        .flatMap((s: any) => s.lines)
+        .find((l: any) => l.itemId === 'test-kranz')
+      expect(line).toMatchObject({ base: 3 })
+    } finally {
+      writeHq(hqDir)
+    }
+  })
+
   it('a dough-only day has a sheet (dough for Tuesday) but no bake list', async () => {
     const res = await as('backstube').get('/api/backzettel/2027-01-04')
     expect(res.status).toBe(200)

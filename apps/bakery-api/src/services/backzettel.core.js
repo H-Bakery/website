@@ -787,7 +787,13 @@ function computeLines(args) {
     }
     for (const c of dayInfo.before.closedDays) {
       if (!cfg.days.includes(c.weekday)) continue
-      const specials = cfg.items.filter((i) => onlyOnWeekday(i, c.weekday))
+      // Steht der Posten über die Spalte des Tages (z. B. `samstag_ersatz`)
+      // schon auf dem Zettel - mit Menge > 0 oder offen (`null`, Zeile
+      // „Grundmenge fehlt“) -, braucht es kein „heute oder später?“. Eine 0
+      // in der Spalte plant ihn nicht ein: der Hinweis bleibt.
+      const specials = cfg.items.filter(
+        (i) => onlyOnWeekday(i, c.weekday) && !plannedBySpecial(i, type)
+      )
       if (specials.length === 0) continue
       warnings.push({
         code: 'closed_day_specials',
@@ -866,13 +872,32 @@ function computeLines(args) {
  * nur an diesem Wochentag.
  */
 function onlyOnWeekday(item, weekday) {
-  const qty = (v) =>
-    v !== null && typeof v === 'object'
-      ? Object.values(v).reduce((n, x) => n + (Number(x) || 0), 0)
-      : Number(v) || 0
   const entries = Object.entries(item.base || {})
-  if (!(qty(item.base[weekday]) > 0)) return false
-  return entries.every(([wd, v]) => Number(wd) === weekday || !(qty(v) > 0))
+  if (!(baseQty(item.base[weekday]) > 0)) return false
+  return entries.every(([wd, v]) => Number(wd) === weekday || !(baseQty(v) > 0))
+}
+
+/** Summe eines Grundmengen-Eintrags (Zahl oder je Sorte); offen zählt 0. */
+function baseQty(v) {
+  return v !== null && typeof v === 'object'
+    ? Object.values(v).reduce((n, x) => n + (Number(x) || 0), 0)
+    : Number(v) || 0
+}
+
+/**
+ * Steht der Posten über die Spalte des Tagestyps auf dem Zettel? Ja bei
+ * Menge > 0 und bei „offen“ (`null`, auch je Sorte: die Zeile erscheint mit
+ * `baseUnset`); nein ohne Spalte und bei 0 (keine Zeile).
+ */
+function plannedBySpecial(item, type) {
+  const special = item.baseSpecial
+  if (!special || !Object.prototype.hasOwnProperty.call(special, type))
+    return false
+  const v = special[type]
+  if (v === null) return true
+  if (typeof v === 'object' && Object.values(v).some((x) => x === null))
+    return true
+  return baseQty(v) > 0
 }
 
 /** `2026-11-28` → „Samstag, 28.11.“ (Hinweise). */

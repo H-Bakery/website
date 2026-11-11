@@ -23,7 +23,6 @@ import {
   deltaDoughLines,
   formatDate,
   formatDateLong,
-  dayKindLine,
   formatFactor,
   formatKnownGrams,
   formatNumber,
@@ -109,14 +108,19 @@ const doughDayPrintStyles = (
           lineHeight: 1.2,
         },
         '.dd-print .dd-stamp.draft': { borderStyle: 'dashed' },
-        // Tagestyp: gerahmt, groß - hier setzt der Kalender (U9) später
-        // „vor Feiertag“ o. Ä. davor.
+        // Tagestyp: gerahmt, groß - der Kalender (U9) setzt „Samstags-Satz“,
+        // „Vor Feiertag“ o. Ä. in derselben Größe davor (`.dd-daykind`).
         '.dd-print .dd-daytype': {
           border: '1.5pt solid #000',
           padding: '0.8mm 2.5mm',
           margin: '2mm 0 1mm',
           fontSize: 'calc(var(--dd-font) * 1.35)',
           fontWeight: 700,
+        },
+        '.dd-print .dd-daykind strong': { fontWeight: 800 },
+        '.dd-print .dd-daykind-detail': {
+          fontSize: 'var(--dd-font)',
+          fontWeight: 400,
         },
         '.dd-print .dd-meta': { margin: '0 0 1mm' },
         // Kopf ab Blatt 2.
@@ -341,11 +345,18 @@ function FirstHeader({
         </div>
       </div>
       <div className="dd-daytype" data-testid="dd-daytype">
-        {/* U9: Tagestyp aus dem Kalender, fett vor dem Teig-Hinweis */}
-        {dayKindLine(day.dayKind) && (
-          <strong className="dd-sub" data-testid="dd-day-kind">
-            {dayKindLine(day.dayKind)}
-          </strong>
+        {/* U9/Z14: Tagestyp aus dem Kalender - der Name („Samstags-Satz“)
+            so groß wie der Rahmen, die Schließtage dahinter in Grundschrift */}
+        {day.dayKind?.label && (
+          <div className="dd-daykind" data-testid="dd-day-kind">
+            <strong data-testid="dd-day-kind-label">{day.dayKind.label}</strong>
+            {day.dayKind.detail && (
+              <span className="dd-daykind-detail">
+                {' – '}
+                {day.dayKind.detail}
+              </span>
+            )}
+          </div>
         )}
         {sheetDayTypeText(day)}
       </div>
