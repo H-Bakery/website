@@ -36,6 +36,7 @@ import {
   formatDateLong,
   formatDateShort,
   minQtyText,
+  baseOpenText,
   isIsoDate,
   lineLabel,
   neighbourProductionDay,
@@ -116,8 +117,13 @@ function BakeLine({
             <Chip
               size="small"
               variant="outlined"
-              label="Grundmenge offen"
-              title="Grundmenge noch nicht festgelegt"
+              color={line.dayDecision ? 'info' : 'default'}
+              label={baseOpenText(line)}
+              title={
+                line.dayDecision
+                  ? 'Tagesentscheidung – die Grundmenge bleibt offen'
+                  : 'Grundmenge noch nicht festgelegt'
+              }
             />
           )}
           {delta && delta.count > 0 && (

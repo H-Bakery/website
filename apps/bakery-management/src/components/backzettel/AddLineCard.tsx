@@ -97,6 +97,8 @@ export function AddLineCard({ addable, config, onSave }: AddLineCardProps) {
               idPrefix="add"
               line={line}
               label={lineLabel(line, config)}
+              // aufnehmbare Posten haben eine Grundmenge (0) - „Heute keine“
+              // gibt es hier nicht
               onSave={async (correction, reason) => {
                 await onSave(line, correction, reason)
                 close()

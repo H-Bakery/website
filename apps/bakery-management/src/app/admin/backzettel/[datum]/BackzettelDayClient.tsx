@@ -280,7 +280,8 @@ export default function BackzettelDayClient({
   const saveCorrection = async (
     line: BackzettelLine,
     correction: number,
-    reason: string | null
+    reason: string | null,
+    options?: { noneToday?: boolean }
   ) => {
     // Fehler wirft der Editor in die Zeile; hier kein globaler Hinweis -
     // außer der Tag hat sich auf dem Server geändert: dann neu laden.
@@ -289,29 +290,31 @@ export default function BackzettelDayClient({
       const expected = {
         correction: line.correction,
         reason: line.correctionReason,
+        // „Heute keine“ stand schon da (Grundmenge offen)
+        ...(line.noneToday === true ? { noneToday: true } : {}),
       }
       // Z10: Brötchen für einen späteren Backtag auf diesem Teigtag-Zettel
       // tragen ihren Backtag mit, sonst träfe die Korrektur den Zettel-Tag.
+      // „Heute keine“ (Grundmenge offen) geht als eigenes Kennzeichen mit.
+      const saveOptions = {
+        ...(line.bakeDate && line.bakeDate !== date
+          ? { bakeDate: line.bakeDate }
+          : {}),
+        ...(options?.noneToday === true ? { noneToday: true } : {}),
+      }
+      const args = [
+        date,
+        line.itemId,
+        line.variant,
+        correction,
+        reason,
+        // der Stand, auf dem der Editor geöffnet wurde (W4-verify r4)
+        expected,
+      ] as const
       updated =
-        line.bakeDate && line.bakeDate !== date
-          ? await setCorrection(
-              date,
-              line.itemId,
-              line.variant,
-              correction,
-              reason,
-              expected,
-              { bakeDate: line.bakeDate }
-            )
-          : await setCorrection(
-              date,
-              line.itemId,
-              line.variant,
-              correction,
-              reason,
-              // der Stand, auf dem der Editor geöffnet wurde (W4-verify r4)
-              expected
-            )
+        Object.keys(saveOptions).length > 0
+          ? await setCorrection(...args, saveOptions)
+          : await setCorrection(...args)
     } catch (error) {
       const code = (error as { code?: unknown } | null)?.code
       if (code === 'correction_changed' || code === 'owned_elsewhere') {

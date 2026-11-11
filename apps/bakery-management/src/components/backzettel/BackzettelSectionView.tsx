@@ -35,7 +35,10 @@ import {
   lineLabel,
   previouslyDoneText,
 } from '../../lib/backzettelFormat'
-import { CorrectionEditor } from './CorrectionEditor'
+import {
+  CorrectionEditor,
+  type CorrectionSaveOptions,
+} from './CorrectionEditor'
 import { PageSection } from '../layout'
 
 export interface BackzettelSectionViewProps {
@@ -53,7 +56,8 @@ export interface BackzettelSectionViewProps {
   onSaveCorrection: (
     line: BackzettelLine,
     correction: number,
-    reason: string | null
+    reason: string | null,
+    options?: CorrectionSaveOptions
   ) => Promise<void>
 }
 
@@ -101,6 +105,31 @@ function BaseValue({ line }: { line: BackzettelLine }) {
   return <>{formatNumber(line.base)}</>
 }
 
+/**
+ * Tagesentscheidung bei offener Grundmenge: „Heute keine“ bzw. „Für heute
+ * festgelegt“ - sichtbar, dass die Menge eine Entscheidung des Tages ist und
+ * keine Grundmenge (die bleibt „offen“).
+ */
+export function DayDecisionChip({
+  line,
+}: {
+  line: Pick<BackzettelLine, 'key' | 'baseUnset' | 'dayDecision'>
+}) {
+  if (!line.baseUnset || !line.dayDecision) return null
+  return (
+    <Chip
+      size="small"
+      variant="outlined"
+      color="info"
+      label={
+        line.dayDecision === 'none' ? 'Heute keine' : 'Für heute festgelegt'
+      }
+      title="Tagesentscheidung – die Grundmenge bleibt offen"
+      data-testid={`day-decision-${line.key}`}
+    />
+  )
+}
+
 function LineName({
   line,
   config,
@@ -131,6 +160,7 @@ function LineName({
           </Tooltip>
         )}
         <DeltaChip line={line} />
+        <DayDecisionChip line={line} />
       </Stack>
       {after && (
         <Typography
@@ -199,7 +229,9 @@ function CorrectionValue({
           Runde 2). */}
       <Box sx={{ textAlign: 'right', minWidth: 0, flex: '1 1 auto' }}>
         <Typography component="span">
-          {formatSigned(line.correction)}
+          {line.dayDecision === 'none'
+            ? 'heute keine'
+            : formatSigned(line.correction)}
         </Typography>
         {line.correctionClamped && (
           <Typography
@@ -311,8 +343,10 @@ export function BackzettelSectionView({
 }: BackzettelSectionViewProps) {
   const reopened = (line: BackzettelLine) =>
     (deltaAfterDone(line, deltas ?? null)?.bake ?? 0) > 0
-  const save = (line: BackzettelLine) => (c: number, r: string | null) =>
-    onSaveCorrection(line, c, r)
+  const save =
+    (line: BackzettelLine) =>
+    (c: number, r: string | null, o?: CorrectionSaveOptions) =>
+      onSaveCorrection(line, c, r, o)
 
   return (
     <PageSection

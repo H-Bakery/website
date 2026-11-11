@@ -95,6 +95,17 @@ function rawLiters(dough, kg) {
  */
 function litersFromRaw(raw, rounding) {
   const rounded = roundTo(round(raw, 9), rounding)
+  // Eine kleine Menge unter der Rundungsstufe (1,2 kg Hefeteig ÷ 4 = 0,3 L,
+  // „auf ganze Liter“ → 0) ist nicht „0 L“: die Rundung gilt für die großen
+  // Ansätze. Dann stehen nur die genauen Liter da (`below_rounding_step`).
+  if (rounded === 0 && raw > EPSILON) {
+    return {
+      exact: round2(raw),
+      rounded: null,
+      reason: 'below_rounding_step',
+      step: rounding.step,
+    }
+  }
   return {
     exact: round2(raw),
     rounded,
@@ -124,6 +135,14 @@ function addonsFor(dough, rawLitersOfDough) {
     const grams = base.g_per_liter * exactLiters
     const exact = round1(grams)
     const rounded = roundTo(round(grams, 9), a.rounding)
+    // wie bei den Litern: nie „0 g“ für eine Menge unter der Rundungsstufe
+    if (rounded === 0 && grams > EPSILON) {
+      return {
+        ...base,
+        grams: { exact, rounded: null },
+        reason: 'below_rounding_step',
+      }
+    }
     return {
       ...base,
       grams: { exact, rounded },
@@ -165,9 +184,28 @@ function lineLabel(line) {
   return v ? `${line.name} – ${v}` : line.name
 }
 
-/** Menge der Zeile unbekannt: Grundmenge offen und keine Korrektur. */
+/**
+ * Tagesentscheidung an einer Zeile mit offener Grundmenge: `'amount'` = die
+ * Menge für heute steht als Korrektur da, `'none'` = „Heute keine“
+ * (`noneToday`, ausdrücklich gesetzt - eine Korrektur 0 allein heißt nur
+ * „keine Korrektur“). `null`: nichts entschieden oder Grundmenge nicht offen.
+ * Die Grundmenge selbst bleibt offen; nichts wird still zu 0.
+ */
+function dayDecision(line) {
+  if (!line || !line.baseUnset) return null
+  if (Number(line.correction)) return 'amount'
+  return line.noneToday === true ? 'none' : null
+}
+
+/** `{ dayDecision }` für Zeilen, Zellen und Bruch-Mitglieder - fehlt ohne. */
+function dayDecisionField(line) {
+  const d = dayDecision(line)
+  return d ? { dayDecision: d } : {}
+}
+
+/** Menge der Zeile unbekannt: Grundmenge offen und am Tag nichts entschieden. */
 function qtyUnknown(line) {
-  return Boolean(line.baseUnset) && !Number(line.correction)
+  return Boolean(line && line.baseUnset) && dayDecision(line) === null
 }
 
 function baseUnsetMissing(line) {
@@ -273,6 +311,7 @@ function bruchGroups(cfg, lines, sheetDate) {
       // Grundmenge offen: `total` ist nur das Bekannte (Vorbestellt, CAP) -
       // eine Mindestmenge („≥ 7“), nie „offen“ statt der bekannten Stücke.
       totalIsMinimum: qtyUnknown(line),
+      ...dayDecisionField(line),
     })
     if (!g._names.includes(line.name)) g._names.push(line.name)
     if (qtyUnknown(line)) {
@@ -1039,6 +1078,7 @@ function breadView(cfg, lines, parts, sheetDate) {
       total: Number(line.total) || 0,
       baseUnset: Boolean(line.baseUnset),
       totalIsMinimum: qtyUnknown(line),
+      ...dayDecisionField(line),
     }
     if (sized && line.variant) row.cells[line.variant] = cell
     else row.single = { ...cell, unit: item.unit }
@@ -1154,6 +1194,7 @@ function rollsView(cfg, lines, groups, sheetDate) {
       total,
       baseUnset: Boolean(line.baseUnset),
       totalIsMinimum: qtyUnknown(line),
+      ...dayDecisionField(line),
       piece_g: isNum(pieceG) ? pieceG : null,
       pieces: isNum(pieces) ? pieces : null,
       kg:
@@ -1202,4 +1243,6 @@ module.exports = {
   isSizeItem,
   isPieceItem,
   qtyUnknown,
+  dayDecision,
+  dayDecisionField,
 }

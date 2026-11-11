@@ -90,6 +90,43 @@ describe('parseCorrection', () => {
     ).toEqual({ ok: true, value: { correction: -3, reason: 'Markt zu' } })
   })
 
+  it('„Heute keine“ (noneToday): Korrektur 0, Grund freiwillig', () => {
+    expect(day.parseCorrection({ noneToday: true }, weck)).toEqual({
+      ok: true,
+      value: { correction: 0, reason: null, noneToday: true },
+    })
+    expect(
+      day.parseCorrection(
+        { correction: 0, noneToday: true, reason: ' Froster voll ' },
+        weck
+      )
+    ).toEqual({
+      ok: true,
+      value: { correction: 0, reason: 'Froster voll', noneToday: true },
+    })
+    // false ist wie weggelassen: 0 löscht
+    expect(
+      day.parseCorrection({ correction: 0, noneToday: false }, weck)
+    ).toEqual({ ok: true, value: { correction: 0, reason: null } })
+  })
+
+  it('„Heute keine“ mit Menge oder falschem Typ ist ein Fehler mit deutscher Meldung', () => {
+    expect(
+      day.parseCorrection({ correction: 5, noneToday: true, reason: 'x' }, weck)
+    ).toEqual({
+      ok: false,
+      error: 'validation',
+      message:
+        '„Heute keine“ und eine Menge schließen sich aus - bitte nur eines von beiden eintragen.',
+    })
+    expect(
+      day.parseCorrection({ correction: 0, noneToday: 'ja' }, weck)
+    ).toMatchObject({ ok: false, error: 'validation' })
+    expect(
+      day.parseCorrection({ noneToday: true, reason: 'Grund\u0000' }, weck)
+    ).toMatchObject({ ok: false, error: 'INVALID_TEXT' })
+  })
+
   it('lehnt Steuerzeichen im Grund ab (W4-verify r3)', () => {
     for (const reason of ['Grund\u0000', 'Grund\u202eTSET', 'Grund\u0007']) {
       expect(day.parseCorrection({ correction: 1, reason }, weck)).toEqual({
@@ -403,6 +440,81 @@ describe('Freigabe und freigegebene Zeilen', () => {
       { itemId: 'weck', variant: null, qty: 5, reason: 'a' },
       { itemId: 'zopf-gefuellt', variant: 'nuss', qty: -1, reason: 'b' },
     ])
+  })
+
+  it('correctionsFromRows: „Heute keine“ zählt auch mit Korrektur 0 (SQLite 1 oder true)', () => {
+    expect(
+      day.correctionsFromRows([
+        { itemId: 'weck', variant: '', correction: 0, noneToday: 1 },
+        {
+          itemId: 'kranz',
+          variant: '',
+          correction: 0,
+          noneToday: true,
+          correctionReason: 'Froster',
+          bakeDate: '2026-11-28',
+        },
+        { itemId: 'plunder', variant: '', correction: 0, noneToday: 0 },
+      ])
+    ).toEqual([
+      { itemId: 'weck', variant: null, qty: 0, reason: null, noneToday: true },
+      {
+        bakeDate: '2026-11-28',
+        itemId: 'kranz',
+        variant: null,
+        qty: 0,
+        reason: 'Froster',
+        noneToday: true,
+      },
+    ])
+  })
+
+  it('linesForConfirm / frozenLine: „Heute keine“ bleibt nach der Freigabe eine Tagesentscheidung', () => {
+    const [row] = day.linesForConfirm([
+      {
+        key: 'weck|',
+        itemId: 'weck',
+        variant: null,
+        name: 'Weck',
+        section: 'broetchen',
+        unit: 'Stück',
+        base: 0,
+        baseUnset: true,
+        seasonal: 0,
+        preorders: 0,
+        cap: 0,
+        correction: 0,
+        correctionReason: 'Froster voll',
+        noneToday: true,
+        total: 0,
+      },
+    ])
+    expect(row).toMatchObject({
+      correction: 0,
+      correctionReason: 'Froster voll',
+      noneToday: true,
+      total: 0,
+    })
+    const frozen = day.frozenLine(row, cfg, ['weck|'])
+    expect(frozen).toMatchObject({
+      baseUnset: true,
+      noneToday: true,
+      dayDecision: 'none',
+      correctionReason: 'Froster voll',
+      total: 0,
+    })
+    // ohne das Kennzeichen (alte Zeile): offen bleibt offen, nie 0
+    const old = day.frozenLine({ ...row, noneToday: 0 }, cfg, ['weck|'])
+    expect(old.baseUnset).toBe(true)
+    expect(old).not.toHaveProperty('dayDecision')
+    // Grundmenge war nicht offen: das Kennzeichen sagt nichts
+    expect(day.frozenLine(row, cfg, [])).not.toHaveProperty('dayDecision')
+    // Menge für heute über die Korrektur
+    expect(
+      day.frozenLine({ ...row, noneToday: 0, correction: 30, total: 30 }, cfg, [
+        'weck|',
+      ])
+    ).toMatchObject({ dayDecision: 'amount', total: 30 })
   })
 
   it('frozenSections: gleiche Zahlen wie bei der Freigabe, Reihenfolge der Stammdaten', () => {

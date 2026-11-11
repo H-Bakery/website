@@ -17,6 +17,7 @@ import {
   formatSignedQty,
   formatTimestamp,
   minQtyText,
+  baseOpenText,
   lineLabel,
   previouslyBakedText,
 } from '../../lib/backzettelFormat'
@@ -191,7 +192,9 @@ function BakeRow({
               mt: 0.5,
             }}
           >
-            Grundmenge offen - Menge ohne Basis, bitte nachfragen
+            {line.dayDecision
+              ? baseOpenText(line)
+              : 'Grundmenge offen - Menge ohne Basis, bitte nachfragen'}
           </Typography>
         )}
         {line.delta && line.delta.count > 0 && (

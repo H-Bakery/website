@@ -120,13 +120,34 @@ function resolveLine(config, itemId, variant) {
  * Korrektur aus `{ correction, reason }`. Eine Korrektur ungleich 0 braucht
  * einen Grund; 0 loescht Korrektur und Grund. Stueck/Blech ganzzahlig,
  * Liter/kg auf 0,01.
- * @returns {{ok:true, value:{correction:number, reason:string|null}} | {ok:false, error, message}}
+ *
+ * `noneToday: true` ist die Tagesentscheidung „Heute keine“ an einer Zeile
+ * mit offener Grundmenge: nur mit Korrektur 0 (auch ohne Angabe), der Grund
+ * ist freiwillig. Ob die Grundmenge wirklich offen ist, prüft der Schreibweg.
+ * @returns {{ok:true, value:{correction:number, reason:string|null, noneToday?:true}} | {ok:false, error, message}}
  */
 function parseCorrection(body, item) {
   const b = body && typeof body === 'object' ? body : {}
-  const correction = parseNumber(b.correction)
+  if (
+    b.noneToday !== undefined &&
+    b.noneToday !== null &&
+    typeof b.noneToday !== 'boolean'
+  ) {
+    return fail('validation', 'noneToday muss true oder false sein.')
+  }
+  const noneToday = b.noneToday === true
+  const correction =
+    noneToday && (b.correction === undefined || b.correction === null)
+      ? 0
+      : parseNumber(b.correction)
   if (!Number.isFinite(correction)) {
     return fail('validation', 'Korrektur fehlt oder ist keine Zahl.')
+  }
+  if (noneToday && correction !== 0) {
+    return fail(
+      'validation',
+      '„Heute keine“ und eine Menge schließen sich aus - bitte nur eines von beiden eintragen.'
+    )
   }
   if (Math.abs(correction) > MAX_CORRECTION) {
     return fail(
@@ -150,7 +171,7 @@ function parseCorrection(body, item) {
       `Korrekturen in ${unit} haben höchstens zwei Nachkommastellen.`
     )
   }
-  if (correction === 0) {
+  if (correction === 0 && !noneToday) {
     return { ok: true, value: { correction: 0, reason: null } }
   }
   if (
@@ -161,7 +182,7 @@ function parseCorrection(body, item) {
     return fail('validation', 'Der Grund muss ein Text sein.')
   }
   const reason = typeof b.reason === 'string' ? b.reason.trim() : ''
-  if (!reason) {
+  if (!reason && !noneToday) {
     return fail('reason_required', 'Für eine Korrektur ist ein Grund nötig.')
   }
   if (reason.length > MAX_REASON_LENGTH) {
@@ -175,7 +196,14 @@ function parseCorrection(body, item) {
   if (hasNameControlChars(reason)) {
     return fail('INVALID_TEXT', REASON_CONTROL_MESSAGE)
   }
-  return { ok: true, value: { correction: round2(correction), reason } }
+  return {
+    ok: true,
+    value: {
+      correction: round2(correction),
+      reason: reason || null,
+      ...(noneToday ? { noneToday: true } : {}),
+    },
+  }
 }
 
 /**
@@ -384,26 +412,38 @@ function linesForConfirm(computedLines) {
     preorders: l.preorders,
     cap: l.cap,
     correction: l.correction,
-    correctionReason: l.correction === 0 ? null : l.correctionReason,
+    correctionReason:
+      l.correction === 0 && l.noneToday !== true ? null : l.correctionReason,
+    // „Heute keine“ (Tagesentscheidung bei offener Grundmenge) - nur dann
+    // gesetzt; der Schreibweg der Freigabe speichert sonst `false`.
+    ...(l.noneToday === true ? { noneToday: true } : {}),
     total: l.total,
   }))
 }
 
+/** „Heute keine“ einer gespeicherten Zeile (SQLite liefert 0/1). */
+function isNoneToday(row) {
+  return Boolean(row) && (row.noneToday === true || row.noneToday === 1)
+}
+
 /**
  * Korrekturen eines Entwurfs aus den gespeicherten Zeilen, in der Form, die
- * `computeDay` erwartet. Zeilen ohne Korrektur zaehlen nicht.
+ * `computeDay` erwartet. Zeilen ohne Korrektur zaehlen nicht - ausser sie
+ * tragen „Heute keine“ (`noneToday`, Menge 0 als Entscheidung des Tages).
  */
 function correctionsFromRows(rows) {
   const out = []
   for (const r of Array.isArray(rows) ? rows : []) {
     const qty = Number(r.correction)
-    if (!Number.isFinite(qty) || qty === 0) continue
+    const noneToday = isNoneToday(r)
+    if (!Number.isFinite(qty) || (qty === 0 && !noneToday)) continue
     out.push({
       ...(r.bakeDate ? { bakeDate: r.bakeDate } : {}),
       itemId: r.itemId,
       variant: apiVariant(r.variant),
       qty,
       reason: r.correctionReason || null,
+      ...(noneToday ? { noneToday: true } : {}),
     })
   }
   return out
@@ -434,6 +474,7 @@ function frozenLine(row, config, unsetKeys) {
     bakeDate,
     sheetDate || bakeDate
   )
+  const baseUnset = Array.isArray(unsetKeys) ? unsetKeys.includes(key) : false
   const line = {
     key,
     itemId: row.itemId,
@@ -442,17 +483,21 @@ function frozenLine(row, config, unsetKeys) {
     unit,
     variant: apiVariant(row.variant),
     base: Number(row.base) || 0,
-    baseUnset: Array.isArray(unsetKeys) ? unsetKeys.includes(key) : false,
+    baseUnset,
     seasonal: Number(row.seasonal) || 0,
     preorders: Number(row.preorders) || 0,
     cap: Number(row.cap) || 0,
     correction: Number(row.correction) || 0,
     correctionReason: row.correctionReason || null,
     total,
+    ...(baseUnset && isNoneToday(row) && !(Number(row.correction) || 0)
+      ? { noneToday: true }
+      : {}),
     tray: item ? core.trayText(item.tray, total, unit) : null,
     plu: item ? item.plu : [],
     ...(item ? core.itemHintFields(item) : {}),
   }
+  Object.assign(line, doughCore.dayDecisionField(line))
   if (item && unit === 'Liter' && item.pieces_per_liter) {
     line.loavesEstimate = Math.round(total * item.pieces_per_liter)
   }
@@ -1266,6 +1311,7 @@ module.exports = {
   reconcileDeltas,
   linesForConfirm,
   correctionsFromRows,
+  isNoneToday,
   frozenLine,
   frozenSections,
   FROZEN_QTY_FIELDS,

@@ -52,6 +52,29 @@ die Überarbeitung „Backzettel v2" (Z10) ist dort geplant - dieses Dokument be
   `null`-Zeile erscheint mit `baseUnset: true` (Warnung `base_unset`); nicht zu 0 zusammenlegen.
   Gefüllte Posten (`filling_g`) brauchen die Grundmenge je Variante, sonst fehlt sie im
   Füllungsbedarf (der Validator lehnt eine bloße Zahl ab).
+- **Tagesentscheidung bei offener Grundmenge („Heute keine“ / Menge für heute).** Eine offene
+  Zeile lässt sich am Tag entscheiden, ohne die Grundmenge anzufassen: eine **Menge** über die
+  Korrektur (Korrektur ≠ 0 auf `baseUnset`), **„Heute keine“** über das eigene Kennzeichen
+  `noneToday` - eine Korrektur 0 heißt weiter nur „keine Korrektur“, daraus wird nie eine 0. Eine
+  Regel im Teig-Kern: `dayDecision(line)` → `'none'` | `'amount'` | `null`; `qtyUnknown` (und damit
+  `totalIsMinimum`, Teig-kg, Liter, Chargen, Bruch, Füllungsbedarf) ist nur noch `true`, solange
+  nichts entschieden ist. **Ein Teig hat seine Literzahl, sobald jede offene Zeile dieses Teigs
+  entschieden ist.** „Heute keine“ gilt der Grundmenge: Vorbestelltes und CAP werden trotzdem
+  gemacht (Gesamt = das Bekannte, als fertige Zahl). Die Zeile behält `baseUnset: true`, trägt
+  `dayDecision` (und `noneToday`), steht nicht mehr in der Warnung `base_unset`, dafür im Hinweis
+  `day_decisions` („Tagesentscheidung für Dienstag (Grundmenge offen): Testkäse – heute keine,
+  Testvital – 30.“). Bildschirm, Tablet, Backliste und Druck zeigen es über `baseOpenText` /
+  `minQtyText` (`backzettelFormat.ts`): Menge „keine“ bzw. die Zahl, dazu „Heute keine ·
+  Grundmenge offen“ / „Für heute festgelegt · Grundmenge offen“ - nie eine Basis 0. Eine
+  „Heute keine“-Zeile zählt in keinem Bruch und keinem Teig; sie steht deshalb nicht im
+  Brötchen-Block, sondern als Zeile ihres Abschnitts darunter (Planung, Druck) bzw. in der
+  Zeilenliste (Tablet). Freigeben friert die Entscheidung ein (`backzettel_lines.none_today`,
+  `unsetKeys`), der hq-Schnappschuss trägt `dayDecision` an der Zeile (`base` bleibt `null`).
+  Wird die Grundmenge später in hq gesetzt (> 0), gilt ein gespeichertes „Heute keine“ nicht
+  mehr - mit Warnung `none_today_obsolete`, nie still. Im Editor (`CorrectionEditor`) heißt das
+  Feld bei offener Grundmenge „Menge für heute“ (kein ±, Grund vorbelegt „Menge für heute“);
+  Knopf „Heute keine“ oder eine eingetippte 0 = keine, leeres Feld bzw. „Wieder offen“ = wieder
+  offen. Die API lehnt „Heute keine“ an einer Zeile mit Grundmenge ab (400 `base_not_open`).
 - **Variante = Füllungs-ID.** Gefüllte Ware ohne Variante zählt im Teig, aber nicht in der Füllung
   (`filling_unassigned`); unbekannte Produkte/Varianten werden als Warnung gemeldet, nie verschluckt.
 - **Vorbereitungen mit Variante** (`by_weekday: { 6: gross }`) zeigen die ID nur als Notbehelf
@@ -283,6 +306,14 @@ Körnermischung, g: 600 }] }`). Der Kern (`bruchGroups`) rechnet `addons[].g` = 
   Doppelweck die Hälfte), `spare` in Teigstücken. Liter werden vom ungerundeten Quotienten
   gerundet (6,01 kg ÷ 3 = 2,003 L → auf 0,5 L aufgerundet 2,5). Die Hefeteig-Karte nimmt kg, Liter
   und Chargen aus der Teigsumme des Zettels - dieselbe Zahl wie die Maschinenleiste.
+- **Kleine Menge unter der Rundungsstufe: nie „0 L“.** Rundet die Regel des Teigs eine Menge > 0
+  auf 0 (Hefeteig „auf ganze Liter“: ein unter der Woche aufgenommener Kranz, 1,2 kg ÷ kg je Liter
+  = 0,3 L → 0), liefert `litersFromRaw` `rounded: null`, `reason: 'below_rounding_step'` und
+  `step`; überall stehen dann die kg und die **genauen Liter** mit Grund („0,3 L · unter 1 L,
+  nicht gerundet“, `litersExactWhy`). Die Rundung selbst ändert sich nicht - sie gilt den großen
+  Ansätzen. Gleiches für Zugaben je Liter (Gramm, nie „0 g“). Ob ein Kranz unter der Woche
+  überhaupt frischen Hefeteig braucht (oder aus dem Froster kommt), ist eine offene
+  Inhaber-Frage - bis dahin zeigt der Kasten, was die Stammdaten ergeben.
 
 ## Grundmengen (Z4, `/admin/backzettel/grundmengen`)
 

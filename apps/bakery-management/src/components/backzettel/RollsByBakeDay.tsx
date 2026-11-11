@@ -26,7 +26,7 @@ import {
   v2CoveredKeys,
 } from '../../lib/backzettelFormat'
 import { CorrectionEditor } from './CorrectionEditor'
-import { DeltaChip } from './BackzettelSectionView'
+import { DayDecisionChip, DeltaChip } from './BackzettelSectionView'
 import type { V2EditProps } from './BreadTable'
 
 export interface RollsByBakeDayProps extends V2EditProps {
@@ -45,7 +45,11 @@ function RollLine({
   lineKey: string
   name: string
   /** Menge; mit `totalIsMinimum` (Grundmenge offen) „≥ n“ bzw. „offen“. */
-  qty: { total: number | null; totalIsMinimum?: boolean }
+  qty: {
+    total: number | null
+    totalIsMinimum?: boolean
+    dayDecision?: 'none' | 'amount'
+  }
   detail?: string | null
   /** Stück je Bruch für „+1 Bruch“; `null` = kein Knopf. */
   step: number | null
@@ -93,6 +97,7 @@ function RollLine({
           {minQtyText(qty)}
         </Typography>
         {line && <DeltaChip line={line} />}
+        {line && <DayDecisionChip line={line} />}
         {editable && line && !editing && (
           <>
             {step !== null && (
@@ -124,7 +129,7 @@ function RollLine({
           line={line}
           label={label}
           initialCorrection={prefill ?? undefined}
-          onSave={(c, r) => props.onSaveCorrection(line, c, r)}
+          onSave={(c, r, o) => props.onSaveCorrection(line, c, r, o)}
           onCancel={() => onEdit(null)}
         />
       )}

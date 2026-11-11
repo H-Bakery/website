@@ -56,6 +56,7 @@ describe('createTestApp', () => {
       '20270201000000-backzettel-dough-day.js',
       '20270210000000-backzettel-baked.js',
       '20270301000000-dienstplan.js',
+      '20270310000000-backzettel-none-today.js',
     ])
   })
 })

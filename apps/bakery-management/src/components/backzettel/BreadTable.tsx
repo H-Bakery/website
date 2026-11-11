@@ -32,8 +32,12 @@ import {
   kgText,
   lineLabel,
   minQtyText,
+  baseOpenText,
 } from '../../lib/backzettelFormat'
-import { CorrectionEditor } from './CorrectionEditor'
+import {
+  CorrectionEditor,
+  type CorrectionSaveOptions,
+} from './CorrectionEditor'
 import { DeltaChip } from './BackzettelSectionView'
 
 export interface V2EditProps {
@@ -50,7 +54,8 @@ export interface V2EditProps {
   onSaveCorrection: (
     line: BackzettelLine,
     correction: number,
-    reason: string | null
+    reason: string | null,
+    options?: CorrectionSaveOptions
   ) => Promise<void>
 }
 
@@ -77,7 +82,7 @@ function rowKg(row: BreadRow): string {
  */
 function singleQty(cell: BreadCell, unit: string): string {
   const text = minQtyText(cell, unit as BackzettelUnit)
-  if (text === 'offen') return text
+  if (text === 'offen' || text === 'keine') return text
   const plain = formatQty(cell.total, unit as BackzettelUnit)
   return plain === formatNumber(cell.total) ? `${text} ${unit}` : text
 }
@@ -132,8 +137,14 @@ function CellValue({
           <Chip
             size="small"
             variant="outlined"
-            label="Grundmenge offen"
-            title="Grundmenge noch nicht festgelegt - bekannt sind nur Vorbestellungen und CAP"
+            color={cell.dayDecision ? 'info' : 'default'}
+            label={baseOpenText(cell)}
+            title={
+              cell.dayDecision
+                ? 'Tagesentscheidung – die Grundmenge bleibt offen'
+                : 'Grundmenge noch nicht festgelegt - bekannt sind nur Vorbestellungen und CAP'
+            }
+            data-testid={`${testId}-base-open`}
           />
         )}
         {correction !== 0 && (
@@ -239,7 +250,7 @@ export function BreadTable({
       line={line}
       label={lineLabel(line, config)}
       initialCorrection={prefill ?? undefined}
-      onSave={(c, r) => onSaveCorrection(line, c, r)}
+      onSave={(c, r, o) => onSaveCorrection(line, c, r, o)}
       onCancel={() => onEdit(null)}
     />
   )

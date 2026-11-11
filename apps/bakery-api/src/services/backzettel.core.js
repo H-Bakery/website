@@ -572,6 +572,9 @@ function computeLines(args) {
       }
       const b = bucket(item, variant)
       b.correction += qty
+      // „Heute keine“ an einer offenen Grundmenge: ausdrücklich gesetzt,
+      // nie aus einer Korrektur 0 abgeleitet
+      if (c.noneToday === true) b.noneToday = true
       if (typeof c.reason === 'string' && c.reason.trim())
         b.reasons.push(c.reason.trim())
     }
@@ -587,6 +590,8 @@ function computeLines(args) {
   // auch ohne Menge, und es gibt eine Warnung `base_unset`.
   const lines = []
   const unset = []
+  const decided = []
+  const noneObsolete = []
   const clamped = []
   const emptyLines = []
   const noDoughDay = []
@@ -636,10 +641,6 @@ function computeLines(args) {
             base = Number(baseDay) || 0
           }
         }
-        if (baseUnset)
-          unset.push(
-            variant ? `${item.name} – ${displayName(item, variant)}` : item.name
-          )
         const b = acc.get(lineKey(item.id, variant)) || {
           preorders: 0,
           cap: 0,
@@ -665,6 +666,22 @@ function computeLines(args) {
         const preorders = pooled ? round2(b.preorders) : preordersUp
         const cap = pooled ? round2(b.cap) : capUp
         const correction = tidy(b.correction, item.unit)
+        // Tagesentscheidung bei offener Grundmenge: Menge für heute (über die
+        // Korrektur) oder „Heute keine“. Die Grundmenge bleibt offen.
+        const noneToday = b.noneToday === true && correction === 0
+        const decision = doughCore.dayDecision({
+          baseUnset,
+          correction,
+          noneToday,
+        })
+        const fullName = variant
+          ? `${item.name} – ${displayName(item, variant)}`
+          : item.name
+        if (baseUnset && !decision) unset.push(fullName)
+        // „Heute keine“ wurde gesetzt, als die Grundmenge offen war - jetzt
+        // steht dort eine Zahl: nie still weiterrechnen.
+        if (noneToday && !baseUnset && base > 0)
+          noneObsolete.push({ name: fullName, base })
         const empty =
           base === 0 && preorders === 0 && cap === 0 && correction === 0
         // Ohne jede Menge steht die Zeile nicht auf dem Zettel - der
@@ -712,6 +729,8 @@ function computeLines(args) {
           correctionReason: b.reasons.length ? b.reasons.join('; ') : null,
           total,
           ...(raw < 0 ? { correctionClamped: true } : {}),
+          ...(decision === 'none' ? { noneToday: true } : {}),
+          ...(decision ? { dayDecision: decision } : {}),
           tray: trayText(item.tray, total, item.unit),
           plu: item.plu,
           ...itemHintFields(item),
@@ -726,6 +745,15 @@ function computeLines(args) {
           line.totalIsMinimum = doughCore.qtyUnknown(line)
           if (!hidden && !dough.found && !noDoughDay.includes(item.name))
             noDoughDay.push(item.name)
+        }
+        if (decision && !hidden) {
+          decided.push(
+            decision === 'none'
+              ? `${fullName} – heute keine`
+              : `${fullName} – ${String(total).replace('.', ',')}${
+                  item.unit === 'Stück' ? '' : ` ${item.unit}`
+                }`
+          )
         }
         if (hidden) {
           // Die Zeile „ohne Sorte“ eines Postens mit Sorten sammelt nur
@@ -766,6 +794,29 @@ function computeLines(args) {
       message: `Grundmenge für ${
         WEEKDAY_NAMES[baseWeekday || weekday]
       } noch nicht festgelegt: ${unset.join(', ')}.`,
+    })
+  }
+
+  // Sichtbar auf Planung, Tablet und Druck: diese Mengen sind eine
+  // Entscheidung des Tages, keine Grundmenge (die bleibt offen).
+  if (decided.length > 0) {
+    warnings.push({
+      code: 'day_decisions',
+      items: decided,
+      message: `Tagesentscheidung für ${
+        WEEKDAY_NAMES[weekday]
+      } (Grundmenge offen): ${decided.join(', ')}.`,
+    })
+  }
+  if (noneObsolete.length > 0) {
+    warnings.push({
+      code: 'none_today_obsolete',
+      items: noneObsolete.map((x) => x.name),
+      message: `„Heute keine“ gilt nicht mehr, weil inzwischen eine Grundmenge eingetragen ist: ${noneObsolete
+        .map((x) => `${x.name} (jetzt ${String(x.base).replace('.', ',')})`)
+        .join(
+          ', '
+        )}. Bitte prüfen und, wenn heute nichts gemacht wird, mit einer Korrektur auf 0 bringen.`,
     })
   }
 
