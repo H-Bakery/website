@@ -17,63 +17,25 @@ _Single working document. Created 2026-11-05 (KW 45), owner huhn511. Supersedes
 
 ## 0. How to work with this document
 
-**Current status (2026-11-06, after wave 4a).**
+**Current status (2026-11-11).**
 
-- **Merged on `pilot` (website, not pushed):** wave 1 (B0, B1, B2, F2, O1–O4 software, Z1/Z2
-  core), wave 2 (B3, F3, B4, B5, B6, B7 + P4, Z3, F1) and wave 3: B5b + Z9
-  (`feat/B5b-Z9-hq-writeback`), Z4 (`feat/Z4-grundmengen`), F4 (`feat/F4-real-api-wiring`),
-  P1/P3 + P2 (`feat/P1-P3-preorder-screens`, `feat/P2-abholliste`), Z5/Z7 + Z6
-  (`feat/Z5-Z7-backzettel-day`, `feat/Z6-backstube-tablet`), each after review + fix. Wave 4a:
-  the W4 hardening of the wave-3 follow-ups (`feat/W4-hardening`) and P6 onboarding
-  (`feat/P6-onboarding`).
-- **What now exists end to end:** the management app talks to the real API on the same origin
-  (`/api` via Caddy on the box, `src/proxy.ts` locally; `API_URL` read at start). Pilot screens:
-  dashboard, products (with "wartet auf Freigabe"), partners, reports/analytics/finance/Tagesziel,
-  Vorbestellungen (entry, list, detail, day view, version check `expectedUpdatedAt`), Abholliste
-  per day and pickup point (handover, A4), Mörsbach on `/api/preorders`, Backzettel overview + day
-  planning + Freigeben + 3-page print, Grundmengen (writes `config/backzettel.yaml` via the
-  `app/edits` worktree, sales reference), Backstube tablet (ticks, deltas, prep, 12 h idle for
-  `backstube` at the station). The API pushes product/config edits as a rolling `app/edits` PR
-  (B5b) and production snapshots to hq `main` (Z9) - both switched off until the box has
-  `HQ_WRITE_DIR`/`HQ_SNAPSHOT_DIR` and a token (Q3). The management E2E runs against the real API
-  bundle.
-- **W4 hardening (wave 4a):** `POST /api/preorders/bulk-status` (one serialised transaction,
-  per-id `ok`/`conflict`/`anonymized`/`not_found`/`refused`, top-level 400 for a value wrong for
-  every order) drives the Abholliste bulk actions, with separate German messages for conflict,
-  offline and server error and a "Stand von HH:MM" banner when a silent reload fails; "Nicht
-  abgeholt" only from the pickup day (409 `not_collected_too_early`, not on the Mörsbach alias);
-  pickup points read-only except inhaber, field limits and 409 `stale`; Backliste reads `/sums`
-  (no names; `summary` with money figures not for `backstube`); Backzettel deltas are recorded in
-  the preorder write transaction, `GET /api/backzettel/:datum` writes nothing itself but starts a
-  background catch-up when `deltasPending`, which `/backstube` and the planning page now show;
-  login rate limit counts only failed attempts, aborted waiters free their slot, waiting capped at
-  5 s; `/api/notifications` 404/501 stops polling outside pilot mode; 12 h idle on `/backstube`
-  for every role, leaving it after > 10 min idle logs a non-`backstube` session out; `yaml` ^2 is a
-  root dependency (external in the bundle). New E2E `management-preorders.spec.ts` (Mörsbach +
-  Abholliste handover against the real API).
-- **P6 (wave 4a):** `/admin/hilfe` for every role (cheat sheet per role, own role first, each
-  sheet prints as one A4 page), Papierbetrieb section (wall notice, Vorbestellschein 2/4 per page,
-  Backzettel-Notfallblatt from `GET /api/backzettel/config`), `docs/onboarding.md` and runbook §9.
-- **Verified on `pilot` (2026-11-06, after wave 4a):** `npm run type-check` ok;
-  `bakery-api:typecheck` ok; API jest 91 suites / 2128 tests green (6 suites, 62 tests skipped);
-  `nx test bakery-management` 81 suites / 799 tests green; bundle builds; `boot-smoke.sh` ok;
-  `deploy/tests/run-tests.sh` 157 ok; `npm run lint:all` 9 projects, 0 errors; management E2E
-  (built app, pilot mode, real API) 30 passed / 14 skipped. Wave 3's cross-feature smoke (40/40)
-  was not re-run on the combined build.
-- **`hq` branches, committed but unpushed** (worktrees in the session scratchpad):
-  `feat/H1-pipeline-hardening` (H1, needs the on-Pi test), `feat/Z1-backzettel-config` (draft
-  `config/backzettel.yaml`, open values `null`, needs Z0), `feat/H2-hq-ci` (H2, needs a push,
-  actionlint and one throwaway `app/edits` PR; check Actions write permission),
-  `feat/H3-pipeline-fixes` (H3 on top of H1, GNU `date` branch needs a run on the Pi),
-  `feat/H5-docs` (H5 on top of H2; its docs are only true once H3 is merged and B5b is live).
-- **Next (wave 4b):** a verification loop across all pilot screens (every role × phone/tablet/PC ×
-  light/dark against the real API on one combined build, fixing what it finds, including the P6
-  help texts against the screens), and the owner-dependent items: Z0 baker session + Z1 values, Z8
-  CAP templates, P5 Christmas products, Q3 token, the box (O1 hardware, first `deploy.sh` with an
-  empty `NEXT_PUBLIC_API_URL` behind Caddy, `create-user` per person, `import-partners` /
-  `import-preorders` dry run then real, restore drill), pushing H1/H2/Z1. Owner decisions waiting:
-  see §11 (wave 2, 3 and 4a entries).
-
+- **Everything is on `main`.** website: #105 (release: waves 1–4, B8, B12, Rest am Abend), #110
+  (Z10), #111 (Dienstplan), #112, #118–#126; hq: #2 (H1–H5, Z1), #4 (Z10 YAML), #18 (calendar),
+  #20 (comparison with the paper sheets). The branches `pilot` and `next` are gone. Unmerged is
+  only the recipes work (`feat/rezepte`; hq `fix/rezepte-abgleich-2026-11-11`).
+- **Running:** provisionally on the agents' Pi `robot0` (D4) over LAN HTTP; the app pushes the
+  nightly preorder snapshot to hq since 2026-11-08 (existing GitHub App, Q3). What was merged on
+  2026-11-11 (#123–#126) shows there after the next deploy.
+- **Verified on `main` (2026-11-11, after #123–#126):** `npm run type-check` ok for landing, shop,
+  management and delivery (locally it stops at `bakery-partybrezel`, `three` is not installed);
+  `bakery-api:typecheck` ok; API jest 75 suites / 2467 tests - two local runs each had 2
+  different tests red from the local cross-talk between jest processes
+  ([known-issues](known-issues.md)), the suites concerned are green alone; `nx test
+bakery-management` 122 suites / 1573 tests green; `npm run lint:all` 6 projects, 0 errors; CI
+  on `main` green.
+- **Open:** the owner and data items (Z0 answers and the open values of Z1, Z8, P5, Q1, Q2, Q4,
+  Q8), the checks on the Pi (H1 conflict test, B5b first edit, Z9 Backzettel snapshot, H7
+  rollout), the rest of Z14 and Z15, and the recipes screen.
 - **Source of truth.** This file is the plan, the decisions and the progress log in one place.
   Nothing else in `.mc/proposals` or `.mc/research` holds pilot decisions.
 - **Status.** Tasks use checkboxes. `[ ]` open, `[~]` in progress (add branch/PR), `[x]` done
@@ -567,24 +529,25 @@ Exit criteria:
 - [~] **O1** Box: hardware, OS, Node 20, check `sqlite3` prebuild, systemd units (api,
   management), Caddy LAN HTTPS (DNS-01), fixed IP, hq read clone with fetch + `reset --hard`
   every 10 min and at 14:50/17:50 (§4a), `.env` (S–M, → Q1, Q2).
-  `feat/O1-O4-ops` (merged on `pilot`): software in `deploy/` + [runbook](runbook.md); hardware,
-  Q1, Q2 open.
+  Software in `deploy/` + [runbook](runbook.md) on `main` (#105, #106). Runs provisionally on
+  `robot0` over LAN HTTP since 2026-11-08 (D4). Open: DNS-01 certificate / Caddy HTTPS (Q2), the
+  own box (Q1).
 
 **hq (minimal set, D15)**
 
-- [~] **H1** Harden `hq/data/reports/scripts/daily_pipeline.sh` (S). Must land before the app
-  pushes anything (B5b, Z9). `hq` branch `feat/H1-pipeline-hardening` (unpushed): own paths only,
-  replay in a throwaway worktree + one retry, 66/66 local test checks; the on-Pi run is open:
+- [~] **H1** (hq #2) Harden `hq/data/reports/scripts/daily_pipeline.sh` (S). Own paths only,
+  replay in a throwaway worktree + one retry; the pipeline has been committing on the Pi since
+  the merge. Open: the test on the Pi with a deliberately conflicting push.
   - `git commit -- "${DATA_PATHS[@]}"` (only its paths).
   - On a rejected push, `git pull --rebase` + one retry.
-  - Tested on the Pi with a deliberately conflicting push.
 - [~] **O2** Backup: nightly SQLite `.backup` + restic off-site, restore drill; health check every
-  5 min → Telegram alert (S, → O1, Q4). `feat/O1-O4-ops`: scripts + timers; Q4, drill open.
+  5 min → Telegram alert (S, → O1, Q4). Scripts + timers on `main` (#105); Q4 and the restore
+  drill are open.
 - [~] **O3** Pull-based deploy script (`git pull`, `npm ci`, build, restart) + `docs/runbook.md` (S).
-  `feat/O1-O4-ops` (merged on `pilot`): B0's `bakery-api:bundle` exists; first real run needs
-  the box.
+  On `main` (#105); the app is deployed on `robot0`. Open: the first run on the own box (Q1).
 - [~] **O4** Remote maintenance path for the developer, e.g. Tailscale on the box only (S, → Q8).
-  `feat/O1-O4-ops`: Tailscale steps in runbook §7; Q8 open.
+  Tailscale steps in runbook §7, decision paper `docs/fernzugriff-fahrer.md`; the owner's Q8
+  decision is open.
 
 ### M1 Vorbestellungen (build 09.–16.11., live Tue 17.11.)
 
@@ -627,13 +590,12 @@ Exit criteria:
 - [ ] **Z0** Baker session before 12.11. (owner): photo of today's Backzettel; answers to Q-B1…Q-B11 (§7).
 - [~] **Z1** `hq/config/backzettel.yaml`: schema, loader and validation, seeded from
   `standard-prep-config.yaml`, `Teigstücke-Hefeteig.md` and Z0 answers; via PR (S–M, → Z0).
-  Validator/loader/CLI on `pilot` (`feat/Z1-Z2-backzettel-core`); draft YAML on `hq` branch
-  `feat/Z1-backzettel-config` (unpushed), open values `null` until Z0.
-- [~] **Z2** `backzettel.core.js` + tests (M, → Z1, B7 sums): port `HefezopfCalculator`/filling
-  scaling and its spec (filled Kranz per Q-B3), quarters, CAP template, deltas, prep by
-  weekday; `trayInfo` reused. Core + 117 tests on `pilot` (`feat/Z1-Z2-backzettel-core`),
-  per-preorder deltas. B7 landed (and fixed the `storniert` filter in the core); waits for the
-  Q-B answers.
+  Schema, loader and validator on `main`, the YAML in hq (#2, #4 and later config PRs), checked
+  by the hq CI. Open: the values still marked open in the YAML (61 `null`, 48 `OFFEN` on
+  2026-11-11) - they wait for the bakers' answers (Z0).
+- [x] **Z2** (#105, extended by #110) `backzettel.core.js` + tests (M, → Z1, B7 sums): port
+      `HefezopfCalculator`/filling scaling and its spec (filled Kranz per Q-B3), quarters, CAP
+      template, deltas, prep by weekday; `trayInfo` reused. The quantities are data (Z0/Z1).
 - [x] **Z3** Models `backzettel_days/lines/deltas` + `/api/backzettel` (get day, recompute draft,
       correction, confirm, tick line, deltas) + audit (M, → B2, Z2, `feat/Z3-backzettel-api`).
       A confirmed day is frozen (`computed_snapshot`); deltas are recorded on read until B7's
@@ -645,16 +607,16 @@ Exit criteria:
 - [x] **Z6** (`feat/Z6-backstube-tablet`) Backstube tablet view (M, → Z3).
 - [x] **Z7** (`feat/Z5-Z7-backzettel-day`) Print, 3 pages (S, → Z5).
 - [ ] **Z8** Fill the CAP delivery templates Tue–Sat (S, owner).
-- [~] **Z10** (`feat/Z10-backzettel-v2`, slices S1–S6 committed, **unmerged**; the v2 hq YAML only after
-  deployment, open values stay `null` in hq until the bakers answer) Backzettel v2 - the sheet the bakers actually work from (L, → Z1-Z7, Q-L answers).
-  Progress: S1 schema/validator, S2 core (plan, doughs, sheet, bake list, deltas), S3 API + migration,
-  S4 Rest am Abend + Z9 snapshot v2, S5 screens (planning, Backliste, tablet tabs Zettel/Backen,
-  Grundmengen), S6 one-page print per dough day + bake-list print + optional weighing sheet, Hilfe,
-  docs (`docs/domains/backzettel.md`); owner decision O5 (2026-11-08): own „gebacken" tick per
-  bake-list row and Nachtrag on the tablet's Backen tab (API + migration `20270210000000`).
-  Design record: `docs/backzettel-v2.md`.
-  Domain reference (private, with real reference values): `hq/notes/procedures/backliste.md`;
-  baker questionnaire `hq/notes/procedures/backliste-fragebogen.md`. Scope:
+- [x] **Z10** (website #110, hq #4; the open values in hq are data, see Z1) Backzettel v2 - the sheet
+      the bakers actually work from (L, → Z1-Z7, Q-L answers).
+      Progress: S1 schema/validator, S2 core (plan, doughs, sheet, bake list, deltas), S3 API + migration,
+      S4 Rest am Abend + Z9 snapshot v2, S5 screens (planning, Backliste, tablet tabs Zettel/Backen,
+      Grundmengen), S6 one-page print per dough day + bake-list print + optional weighing sheet, Hilfe,
+      docs (`docs/domains/backzettel.md`); owner decision O5 (2026-11-08): own „gebacken" tick per
+      bake-list row and Nachtrag on the tablet's Backen tab (API + migration `20270210000000`).
+      Design record: `docs/backzettel-v2.md`.
+      Domain reference (private, with real reference values): `hq/notes/procedures/backliste.md`;
+      baker questionnaire `hq/notes/procedures/backliste-fragebogen.md`. Scope:
   - **Doughs as master data** (`doughs[]`: `kg_per_liter` - the bakers' "Liter" is the recipe
     unit, 1 L water + flour + rest -, `liter_rounding`, `batch_max_kg`, shared doughs, add-ons
     such as Dunkelsauer per litre). Litres are computed, never estimated: without `kg_per_liter`
@@ -672,36 +634,42 @@ Exit criteria:
   - Hefeteig: one batch (kneader capacity in hq), water = dough ÷ 4, Kranz/Zopf variants Marzipan,
     Mohn, Spezial. The current core already reproduces the paper Hefeteig totals.
   - Tests with invented quantities only; the real reference values stay in hq.
-- [~] **Z13** (`feat/U8-backzettel-druck`, website PR #119, archive plan U8) Backzettel print for the
-  bakehouse (M, → Z10). The dough-day sheet (`DoughDayPrint.tsx`, `dayPrintLayout.ts`) is rebuilt
-  around how the bakers work instead of fitting one page: header with weekday, date and a framed
-  Tagestyp ("Heute backen + Teig für So und Di"), then "Teige heute" (litres first, large, kg,
-  batches, for which days, tick box), then one block per dough in the order of `doughs:` in
-  `backzettel.yaml` (bread by size, Brötchen per bake day as Bruch × g, Hefeteig per item), then
-  the other sections, Nachträge, open points and notes. A block never breaks across sheets; only a
-  section taller than a sheet continues as "(Forts.)". Three readable steps (11/10/9 pt), as few
-  sheets as possible: synthetic weekday 2 sheets, full Saturday 3. Provisional until the bakers
-  have used it: block order, weekday on 2 sheets, notes only on the last sheet. Room left for the
-  calendar's day type (U9) and extra lines such as Körner per Bruch (U3). Rules:
-  `docs/domains/backzettel.md`, "Druck eines Teigtag-Zettels".
-- [~] **B5b** (`feat/B5b-Z9-hq-writeback`, merged; live push needs the Q3 token, H1/H2 merged and the `install.sh` write-clone step run on the box) hq write-back as a rolling PR per §4a: worktree `app/edits`, rebase, commit as
+- [x] **Z13** (website #119, #120; hq #17; archive plan U8) Backzettel print for the
+      bakehouse (M, → Z10). The dough-day sheet (`DoughDayPrint.tsx`, `dayPrintLayout.ts`) is rebuilt
+      around how the bakers work instead of fitting one page: header with weekday, date and a framed
+      Tagestyp ("Heute backen + Teig für So und Di"), then "Teige heute" (litres first, large, kg,
+      batches, for which days, tick box), then one block per dough in the order of `doughs:` in
+      `backzettel.yaml` (bread by size, Brötchen per bake day as Bruch × g, Hefeteig per item), then
+      the other sections, Nachträge, open points and notes. A block never breaks across sheets; only a
+      section taller than a sheet continues as "(Forts.)". Three readable steps (11/10/9 pt), as few
+      sheets as possible: synthetic weekday 2 sheets, full Saturday 3. Provisional until the bakers
+      have used it: block order, weekday on 2 sheets, notes only on the last sheet. Room left for the
+      calendar's day type (U9) and extra lines such as Körner per Bruch (U3). Rules:
+      `docs/domains/backzettel.md`, "Druck eines Teigtag-Zettels".
+- [~] **B5b** (#105) hq write-back as a rolling PR per §4a: worktree `app/edits`, rebase, commit as
   `Verwaltung (App)` + `Co-authored-by`, push with lease, open/append the PR, offline retry,
-  "wartet auf Freigabe" badge until merged (M, → B5, H1, Q3).
-- [~] **H2** (`hq` branch `feat/H2-hq-ci`, committed, **unpushed**; never run on GitHub, no actionlint yet; merges with merge commits, not squash, for B5b) `hq` CI (S–M, → Z1):
+  "wartet auf Freigabe" badge until merged (M, → B5, H1, Q3). The prerequisites are met (token of
+  the existing GitHub App, H1/H2 merged). Open: the first real edit from the app (e.g.
+  Grundmengen) → `app/edits` PR → auto-merge, checked on the Pi. No `app/edits` PR has existed yet.
+- [~] **H2** (hq #2; merges with merge commits, not squash, for B5b) `hq` CI (S–M, → Z1). Green on
+  GitHub on PRs, pushes and the daily schedule, all products included; actionlint 1.7.7 and
+  shellcheck without findings (2026-11-11). Open: the auto-merge job has never run, because no
+  `app/edits` PR exists yet (B5b).
   - `.github/workflows/validate.yml` with the product frontmatter schema, the `backzettel.yaml`
     schema (Z1's validator) and the path guard.
   - Auto-merge of green `app/edits` PRs via `gh pr merge`.
-  - Run once against all 103 products and fix what it finds via PR.
-- [~] **Z9** (`feat/B5b-Z9-hq-writeback`, merged; needs `HQ_SNAPSHOT_DIR` on the box + the `bakery-snapshot-preorders.timer`, push credentials per Q3) Snapshots to `hq` (D14) (S, → Z3, B7, H1):
+  - Run once against all products and fix what it finds via PR.
+- [~] **Z9** (#105) Snapshots to `hq` (D14) (S, → Z3, B7, H1). The nightly preorder snapshot is live
+  since 2026-11-08. Open: the first Backzettel snapshot - hq `data/production/backzettel/` does
+  not exist yet, because no day has been confirmed in the app on the Pi.
   - On confirm, write `data/production/backzettel/YYYY-MM-DD.{md,json}` (German Markdown, readable
     by Anna and people).
   - Nightly, write `data/production/vorbestellungen/YYYY-MM-DD.json` (sums per product/variant
     only).
   - Push to `main`, only those paths, rebase + retry.
-- [~] **Z14** (`feat/backzettel-kalender`, PR #118; hq `config/kalender.yaml` in a separate hq PR,
-  merge website first) Holiday and closing-day calendar (U9, M, → Z10). **Must run before the
-  first sheet for Thu 24.12., i.e. mid-December.** Rules: `docs/domains/backzettel.md`
-  „Kalender“.
+- [~] **Z14** (website #118, #121–#125; hq #18) Holiday and closing-day calendar (U9, M, → Z10).
+  **Must run before the first sheet for Thu 24.12., i.e. mid-December.** Rules:
+  `docs/domains/backzettel.md` „Kalender“.
   - [x] `kalender.core.js` (one `dayKind`, holiday formula moved from `vacation.core.js`),
         loader + CLI (`validate-kalender.js`, vendored into the hq CI). No file = weekly plan as
         before, with a hint - never an invented closing day.
@@ -718,12 +686,32 @@ Exit criteria:
         holiday, `teigtag`; 400 `geschlossen`, also for pickup points); `sonderoeffnung` /
         `wie-sonntag` lifts the Monday Ruhetag (`pickupDayClosed` in `delivery-preorders.core.js`).
         No calendar = Monday rule only. Provisional until the owner confirms.
-  - [ ] Preorder form does not _offer_ closed days (date picker / suggestion), shop checkout;
-        Rest am Abend and Dienstplan (`vacation.core.js` `dayInfo`) from the same calendar.
-  - [x] Editing the new base columns in the Grundmengen screen (PR #122): columns „Vor FT“ /
+  - [x] The preorder form (entry, edit, Sammelstelle) does not offer closed days (#123): default
+        and quick picks skip Ruhe- and closing days and name the reason; the list comes with
+        `GET /api/preorders/pickup-points` (`pickupDays`, `closedPickupDays` asks
+        `pickupDayClosed`). The shop checkout has no pickup-date field, so nothing changes there.
+  - [ ] Grey out single days inside the date field: the native input only takes `min`/`max`;
+        needs a calendar component (a new dependency or an own one).
+  - [x] Rest am Abend and Dienstplan read the same calendar (#124): a closing day is
+        `geschlossen` (not a gap, not 0, not a Ruhetag), Sonderöffnungen count and are staffed;
+        without a calendar both behave as before. Provisional: holiday weights and Soll do not
+        follow the calendar (owner question in `docs/domains/dienstplan.md`).
+  - [x] Editing the new base columns in the Grundmengen screen (#122): columns „Vor FT“ /
         „Sa-Satz“, `PUT /config/base` with `weekday: 'vor_feiertag' | 'samstag_ersatz'`; empty =
-        key removed (not set), never 0. Not yet in the Grundmengen print.
-  - [ ] Samstags-Satz print with 3 sheets (with U8).
+        key removed (not set), never 0. Also in the Grundmengen print (#125).
+  - [x] Samstags-Satz print on 3 sheets (#125): prints like a full Saturday, day type framed on
+        sheet 1; `closed_day_specials` no longer names an item that has the day's column.
+- [~] **Z15** Comparison of the app's sheets with the bakery's paper sheets of 03.–12.11. (website
+  #126, hq #20). The report with the real values is private:
+  `hq/notes/procedures/backzettel-abgleich.md`.
+  - [x] „Weiteren Posten aufnehmen“ in the day planning (#126): an item without any quantity
+        (`addable`) gets onto the draft through the usual correction with a reason and then
+        counts in dough, litres and Bruch.
+  - [x] Three provisional base values in hq (#20) - the owner confirms them.
+  - [ ] An explicit „heute keine“ for an open base quantity: a correction of 0 means "no
+        correction", so the dough stays incomplete. Needs a decision how "today 0" is stored.
+  - [ ] Two Bruch weights for one item on the same bake day (an item has one per bake day).
+  - [ ] A Kranz added on a weekday produces a Hefeteig box with 0 L (litres rounded to whole).
 
 ### M3 Run through Christmas (27.11. – 24.12.): freeze
 
@@ -739,27 +727,33 @@ Exit criterion: the Christmas preorders were handed over from the app and no dat
 ### M4 Review and v2 (January 2027)
 
 - [ ] Retrospective with all staff → `hq/meetings/`.
-- [~] **H3** (`feat/H3-pipeline-fixes`, hq branch, unpushed; pulled forward from M4, also the
-  Monday-to-Sunday weekly report, converter exit 1 on failure and `create_baking_plan.py` per
-  opening day) Pipeline bug fixes: weekly report week (`last monday -1 day` → the week just ended);
-  Monday footer regex ("Wochenbericht generiert am").
+- [x] **H3** (hq #2; pulled forward from M4, also the Monday-to-Sunday weekly report, converter
+      exit 1 on failure and `create_baking_plan.py` per opening day) Pipeline bug fixes: weekly
+      report week (`last monday -1 day` → the week just ended); Monday footer regex
+      ("Wochenbericht generiert am"). The Pi wrote the report for the week just ended on
+      2026-11-09.
 - [ ] **H4** Pipeline runs in its own clone or worktree on the Pi, not in Anna's chat workspace.
-- [~] **H5** (`feat/H5-docs`, hq branch, unpushed; `group_name` is in H3) Update `hq/CLAUDE.md` + `README.md` (remove the `products.csv` claims, document §4a
-  ownership), fix `products/_template.md` (categories, `numeric_id`, allergens), keep the
-  `group_name` in `convert_reports.js`.
+- [x] **H5** (hq #2) Update `hq/CLAUDE.md` + `README.md` (remove the `products.csv` claims,
+      document §4a ownership), fix `products/_template.md` (categories, `numeric_id`, allergens),
+      keep the `group_name` in `convert_reports.js`.
 - [ ] **H6** Separate GitHub App (or at least committer) for the app; Telegram notice to the
       owner on failed `hq` CI or a pending PR.
-- [ ] **H7** Anna skill update (`agent/fleet/skills/bakery-hq`): she reads
-      `data/production/backzettel/` and `vorbestellungen/` and can answer "Was steht morgen auf
-      dem Backzettel?"; she knows the ownership table and the auto-merge.
-- [~] **B12** (branch `next`) Cutover cleanup: delete `simple-server.js`, the legacy root JS layer (`index.js`,
-  `controllers/`, `models/`, `routes/`, `middleware/`, `config/`, …) and its 36 tests, the
-  unmounted `libs/api/*`, the old pages listed in §5.1, and the `ambient.d.ts` stubs.
-- [~] **B8** (branch `next`) Deliveries/tours router on the real API + remote access for drivers (revisit D4/D11).
-- [~] "Rest am Abend" (branch `next`): unsold count per product at closing. This measures the waste target.
-  Im Pilot freigegeben (Entscheidung 2026-11-08): Verkauf/Backstube zählen, Auswertung nur Inhaber.
+- [~] **H7** Anna skill update (`agent/fleet/skills/bakery-hq`, no repo): she reads
+  `data/production/backzettel/` and `vorbestellungen/` read-only, answers "noch nicht
+  freigegeben" when a day has no file, and knows the ownership table and the auto-merge. The
+  skill file is updated (2026-11-11). Open: the rollout to the Pi (`deploy-on-pi.sh`, gateway
+  restart, one smoke turn).
+- [x] **B12** (#105) Cutover cleanup: delete `simple-server.js`, the legacy root JS layer (`index.js`,
+      `controllers/`, `models/`, `routes/`, `middleware/`, `config/`, …) and its 36 tests, the
+      unmounted `libs/api/*`, the old pages listed in §5.1, and the `ambient.d.ts` stubs.
+- [x] **B8** (#105) Deliveries/tours router on the real API. Remote access for drivers (D4/D11) is
+      a decision paper only (`docs/fernzugriff-fahrer.md`) and waits for Q8.
+- [x] "Rest am Abend" (#105, #112): unsold count per product at closing. This measures the waste target.
+      Im Pilot freigegeben (Entscheidung 2026-11-08): Verkauf/Backstube zählen, Auswertung nur Inhaber.
+- [~] **Rezepte** (`feat/rezepte`) Recipes screen `/admin/rezepte` for the role `backstubenleiter`.
+  Pulled forward from M5 by the owner on 2026-11-11.
 - [ ] Backzettel v2 suggestions (§5.4).
-- [ ] Fix the `group_name` loss in `hq` `convert_reports.js`; fix `create_baking_plan.py`.
+- [x] Fix the `group_name` loss in `hq` `convert_reports.js`; fix `create_baking_plan.py` (hq #2, with H3/H5).
 
 ### M5 Next workflows (Feb–Mar 2027, prioritise in M4)
 
@@ -778,16 +772,16 @@ Exit criterion: the Christmas preorders were handed over from the app and no dat
 
 **Owner to-dos (blocking):**
 
-| ID  | Item                                                                          | Needed by | For    |
-| --- | ----------------------------------------------------------------------------- | --------- | ------ |
-| Q1  | Buy the box (Pi 5 8 GB + NVMe or a mini-PC). Fallback: the office PC.         | 09.11.    | O1     |
-| Q2  | Router: fixed IP; DNS API token for `intern.<domain>`                         | 11.11.    | O1     |
-| Q3  | GitHub App or fine-grained token for `H-Bakery/hq` (contents + pull requests) | 11.11.    | B5b    |
-| Q4  | Backup target (RustFS bucket and/or cloud) + credentials                      | 12.11.    | O2     |
-| Q5  | Staff list: name, role, device                                                | 12.11.    | B3, F1 |
-| Q6  | Photo of today's Backzettel + 30 min with the baker                           | 12.11.    | Z0     |
-| Q7  | Tablets for the shop and the Backstube + a mount for the Backstube            | 16.11.    | M1, M2 |
-| Q8  | Remote maintenance: Tailscale on the box only?                                | 13.11.    | O4     |
+| ID  | Item                                                                                                                     | Needed by | For    |
+| --- | ------------------------------------------------------------------------------------------------------------------------ | --------- | ------ |
+| Q1  | Buy the box (Pi 5 8 GB + NVMe or a mini-PC). Fallback: the office PC. 2026-11-08: provisionally `robot0`, own box later. | 09.11.    | O1     |
+| Q2  | Router: fixed IP; DNS API token for `intern.<domain>`. Open; LAN HTTP until then.                                        | 11.11.    | O1     |
+| Q3  | GitHub App or fine-grained token for `H-Bakery/hq` (contents + pull requests). Done 2026-11-08: the existing GitHub App. | 11.11.    | B5b    |
+| Q4  | Backup target (RustFS bucket and/or cloud) + credentials                                                                 | 12.11.    | O2     |
+| Q5  | Staff list: name, role, device                                                                                           | 12.11.    | B3, F1 |
+| Q6  | Photo of today's Backzettel + 30 min with the baker                                                                      | 12.11.    | Z0     |
+| Q7  | Tablets for the shop and the Backstube + a mount for the Backstube                                                       | 16.11.    | M1, M2 |
+| Q8  | Remote maintenance: Tailscale on the box only?                                                                           | 13.11.    | O4     |
 
 **Questions for the baker (Z0):**
 
@@ -917,3 +911,4 @@ PC width, in light and dark. It checks role filtering, 401s without a session, a
 | 2026-11-06 | Abschluss-Verifikation next (`fix/next-verify`, merged `--no-ff` into `next` as `0a393014`): 23 findings from 5 personas (3 high, 11 medium, 9 low; L13/M14/L23 are the same defect). 21 fixed in 8 commits, 0 rejected, 2 deferred. Sammelstelle: the driver app's handover list shows paid/rest/refund per order (`paidAmount`, `paymentBalance` on the alias) and no longer collects prepaid orders twice; a handover sets `paid` only for unpaid orders; `flushQueue` no longer loses a tick queued during a flush; taps carry their own `completedAt` (tour day −1…+3); the inhaber assigns drivers, sorts stops and deletes tours; offline copies are cleared at the login form; stop input checked (quantity, `driverId`, tour date, bidi in `failureReason`). Rest am Abend: `rest_counts.line_rows` keeps the count rows of the day (a later YAML product no longer turns old days "partial"); miscounts flagged on the unit tile and CSV and excluded from Rest Ø; German errors, conflict value at the line and in the save bar, "Meine Zahlen speichern", other-day drafts listed, logout warns. Notifications load only with a session (no 401 console error, no permission prompt). Shop: no "Danke" for an unverifiable code, unavailable items leave the total and block checkout, 44-px touch targets. Deferred: M5 service worker for the driver app (needs the HTTPS/hosting decision, Q8) and L15 unknown `/admin` URLs (owner: 404 for every role, revealing which routes exist, or keep "Kein Zugriff"?). Checks on the merge: type-check, API jest 1,897, management 979, delivery 116, bundle, boot-smoke, deploy tests 159 ok.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 2026-11-08 | Owner decision: the Dienstplan (TASK-042, PR #111) is im Pilot für den Inhaber freigegeben (Entscheidung 2026-11-08). `/admin/dienstplan` moved from `PILOT_HIDDEN_ROUTES` to `PILOT_ALLOWED_ROUTES`; still `inhaber` only with a personal session (`ROLE_ACCESS`, `PERSONAL_ONLY_ROUTES`, API `requireRole('inhaber')` + `requirePersonalSession`). D11 and the M5 table updated.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | 2026-11-08 | Owner decision (Dienstplan, TASK-042 follow-up): opening hours in the week view with the Verkauf Besetzung per day (one source: `opening-hours.core.js`, the landing page checked against it), shifts in every area (Besetzung still counts only Verkauf), planned hours per week/month next to the target from `weekly_hours`. Later: actual hours from a time clock and plan vs. actual - not part of this stage. Details: `docs/domains/dienstplan.md`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| 2026-11-11 | Merged: Z14 follow-ups (#121–#125: closing days in `/api/preorders` and in the preorder form, Grundmengen columns, Rest am Abend + Dienstplan on the calendar, Samstags-Satz print) and the comparison with the paper sheets (Z15: #126, hq #20). `main` checked after the four parallel merges, no break from the combination (numbers in §0). Task statuses in §0/§6/§7 checked against git and gh: everything from `pilot`, `next` and the hq branches is merged, so B8, B12, Rest am Abend, H3, H5, Z2, Z10 and Z13 are ticked. Owner decision: the recipes screen is pulled forward from M5 (`feat/rezepte`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
