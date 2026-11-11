@@ -576,6 +576,25 @@ export class PreordersService {
   private readonly clock: () => Date
   private writeHook: PreorderWriteHook | null = null
   private pickupPointHook: PickupPointChangeHook | null = null
+  private calendarSource: (() => unknown | null) | null = null
+
+  /**
+   * Z14: Backzettel-Stammdaten mit Kalender (`cfg.calendar`) - Schließtage
+   * und Feiertage sperren den Abholtag. Ohne Quelle (oder ohne gültigen
+   * Kalender) gilt nur der Ruhetag wie bisher.
+   */
+  useCalendar(source: (() => unknown | null) | null): void {
+    this.calendarSource = source
+  }
+
+  private calendarConfig(): unknown | null {
+    if (!this.calendarSource) return null
+    try {
+      return this.calendarSource() ?? null
+    } catch {
+      return null
+    }
+  }
 
   /** Registers the Backzettel delta recorder (app.ts, W4). */
   onWrite(hook: PreorderWriteHook | null): void {
@@ -979,6 +998,7 @@ export class PreordersService {
             pickupRules: {
               today: this.today(),
               closedWeekdays: PREORDER_CLOSED_WEEKDAYS,
+              calendar: this.calendarConfig(),
               maxDaysAhead: PREORDER_MAX_DAYS_AHEAD,
               maxDaysBack: PREORDER_MAX_DAYS_BACK,
             },

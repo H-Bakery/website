@@ -272,6 +272,11 @@ export function createApp(options: CreateAppOptions = {}): Application {
       ...options.rest,
     })
   )
+  // Z14: closed days of the calendar (kalender.yaml) block the pickup date.
+  preorders.service.useCalendar(() => {
+    const loaded = backzettel.source.load()
+    return loaded.ok ? loaded.config : null
+  })
   // W4: deltas of a confirmed Backzettel day are recorded on the preorder
   // write path (same transaction), not by reading the day.
   preorders.service.onWrite((dates, context) =>
