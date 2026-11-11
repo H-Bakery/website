@@ -1304,3 +1304,91 @@ describe('parseQuantity (strict, no silent truncation)', () => {
     expect(core.parseQuantity(value)).toBe(expected)
   })
 })
+
+describe('Abholtag an Schließtagen des Kalenders (Z14)', () => {
+  const kalender = require('../../src/services/kalender.core')
+  // Synthetisch: nur 2026 im Kalender (Fr 25.12. Feiertag), Mi 18./Do 19.11.
+  // Betriebsferien, Sa 21.11. geschlossen, Mo 23.11. Sonderöffnung.
+  const cfg = {
+    days: [2, 3, 4, 5, 6, 7],
+    calendar: kalender.normalizeKalender({
+      version: 1,
+      bundesland: 'saarland',
+      feiertage: {
+        2026: kalender
+          .holidaysSaarland(2026)
+          .map((h) => ({ datum: h.date, name: h.name })),
+      },
+      tage: [
+        {
+          von: '2026-11-18',
+          bis: '2026-11-19',
+          typ: 'geschlossen',
+          notiz: 'Betriebsferien',
+        },
+        { datum: '2026-11-21', typ: 'geschlossen' },
+        { datum: '2026-11-23', typ: 'sonderoeffnung', wie: 6 },
+      ],
+    }),
+  }
+  const rules = (calendar) => ({
+    pickupRules: {
+      today: '2026-11-10',
+      closedWeekdays: [1],
+      maxDaysAhead: 366,
+      maxDaysBack: 30,
+      calendar,
+    },
+  })
+  const at = (pickupDate, calendar = cfg, extra = {}) =>
+    core.normalizeOrderInput(
+      { ...LADEN, pickupDate, ...extra },
+      null,
+      opts(rules(calendar))
+    )
+
+  it('lehnt Feiertag und Schließtag mit deutschem Grund ab', () => {
+    const xmas = at('2026-12-25')
+    expect(xmas.error).toBe('geschlossen')
+    expect(xmas.message).toBe(
+      'Am Freitag, 25.12.2026 (1. Weihnachtstag), ist die Bäckerei geschlossen - bitte einen anderen Abholtag wählen.'
+    )
+    const ferien = at('2026-11-19')
+    expect(ferien.error).toBe('geschlossen')
+    expect(ferien.message).toMatch(/Betriebsferien/)
+  })
+
+  it('sperrt den Schließtag auch für die Sammelstelle', () => {
+    const res = at('2026-11-21', cfg, {
+      channel: 'sammelstelle',
+      pickupPointId: POINT.id,
+      pickupTime: null,
+    })
+    expect(res.error).toBe('geschlossen')
+  })
+
+  it('Sonderöffnung gibt den Ruhetag frei, sonst bleibt Montag Ruhetag', () => {
+    expect(ok(at('2026-11-23')).pickupDate).toBe('2026-11-23')
+    expect(at('2026-11-16').error).toBe('ruhetag')
+  })
+
+  it('ohne Kalender oder für ein fehlendes Jahr gilt nur der Ruhetag', () => {
+    expect(ok(at('2026-12-25', null)).pickupDate).toBe('2026-12-25')
+    expect(ok(at('2026-11-19', { days: [2, 3, 4, 5, 6, 7] })).pickupDate).toBe(
+      '2026-11-19'
+    )
+    expect(at('2026-11-16', null).error).toBe('ruhetag')
+    // 2027 steht nicht im Kalender: Neujahr ist dann kein erfundener Schließtag
+    expect(ok(at('2027-01-01')).pickupDate).toBe('2027-01-01')
+  })
+
+  it('eine bestehende Bestellung bleibt auf ihrem Tag bearbeitbar', () => {
+    const existing = { ...ok(at('2026-11-17')), pickupDate: '2026-11-19' }
+    const res = core.normalizeOrderInput(
+      { customerName: 'Max Muster' },
+      existing,
+      opts(rules(cfg))
+    )
+    expect(ok(res).pickupDate).toBe('2026-11-19')
+  })
+})
