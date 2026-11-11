@@ -1253,6 +1253,7 @@ function stripV2(sheet) {
     'bread',
     'rolls',
     'openMasterData',
+    'addable', // Posten ohne Menge, per Korrektur aufnehmbar
   ])
     delete s[k]
   const strip = (l) => LINE_FIELDS.forEach((f) => delete l[f])

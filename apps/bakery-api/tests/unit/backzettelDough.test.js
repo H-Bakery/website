@@ -1026,3 +1026,109 @@ describe('Teig offen, Hilfsfunktionen', () => {
     expect(paths).not.toContain('doughs[1].liter_rounding')
   })
 })
+
+describe('Posten ohne Menge: nicht auf dem Zettel, aber aufnehmbar (addable)', () => {
+  const addableLines = (s) => s.addable.flatMap((sec) => sec.lines)
+  const find = (s, itemId, variant = null, bakeDate) =>
+    addableLines(s).find(
+      (l) =>
+        l.itemId === itemId &&
+        l.variant === variant &&
+        (bakeDate === undefined || l.bakeDate === bakeDate)
+    )
+
+  it('nennt je Abschnitt die Posten des Zettels mit Grundmenge 0', () => {
+    const s = sheet(TUE)
+    // Testmisch und Testkranz haben nur samstags eine Grundmenge
+    expect(find(s, 'test-misch', 'g1000')).toMatchObject({
+      name: 'Testmisch',
+      section: 'brot',
+      unit: 'Stück',
+      base: 0,
+      total: 0,
+      correction: 0,
+      correctionReason: null,
+      bakeDate: TUE,
+      doughDate: TUE,
+      variantLabel: '1 kg',
+    })
+    expect(find(s, 'test-kranz')).toMatchObject({ section: 'hefeteig' })
+    for (const sec of s.addable) {
+      expect(sec.label).toEqual(expect.any(String))
+      expect(sec.lines.length).toBeGreaterThan(0)
+      for (const l of sec.lines) expect(l.section).toBe(sec.id)
+    }
+  })
+
+  it('führt nichts doppelt: was auf dem Zettel steht, ist nicht aufnehmbar', () => {
+    const s = sheet(TUE)
+    const onSheet = new Set(s.lines.map((l) => l.key))
+    expect(s.lines.length).toBeGreaterThan(0)
+    for (const l of addableLines(s)) expect(onSheet.has(l.key)).toBe(false)
+  })
+
+  it('eine offene Grundmenge (null) ist eine Zeile des Zettels, kein aufnehmbarer Posten', () => {
+    const s = sheet(TUE)
+    expect(s.lines.some((l) => l.key.startsWith('test-korn|kasten'))).toBe(true)
+    expect(find(s, 'test-korn', 'kasten')).toBeUndefined()
+  })
+
+  it('Posten mit Sorten: jede Sorte, nicht die Zeile „ohne Sorte“', () => {
+    const s = sheet(TUE)
+    expect(find(s, 'test-zopf', 'nuss')).toBeDefined()
+    expect(find(s, 'test-zopf', 'mohn')).toBeDefined()
+    expect(find(s, 'test-zopf', null)).toBeUndefined()
+  })
+
+  it('Brötchen für den nächsten Backtag tragen ihren Backtag', () => {
+    const s = sheet(TUE)
+    // Testdoppel hat mittwochs keine Grundmenge; der Teig dafür wäre heute
+    expect(find(s, 'test-doppel', null, WED)).toMatchObject({
+      bakeDate: WED,
+      doughDate: TUE,
+      lead: 1,
+    })
+    // … und nichts für einen Backtag, den dieser Zettel nicht trägt
+    for (const l of addableLines(s)) expect([TUE, WED]).toContain(l.bakeDate)
+  })
+
+  it('eine Korrektur nimmt den Posten auf: Zeile, Teig und Liter rechnen mit', () => {
+    const before = sheet(TUE)
+    expect(doughOf(before, 'test-misch-teig')).toBeUndefined()
+    const s = sheet(TUE, {
+      corrections: [
+        { itemId: 'test-misch', variant: 'g1000', qty: 3, reason: 'bestellt' },
+      ],
+    })
+    const line = s.lines.find((l) => l.key.startsWith('test-misch|g1000'))
+    expect(line).toMatchObject({ base: 0, correction: 3, total: 3 })
+    expect(find(s, 'test-misch', 'g1000')).toBeUndefined()
+    // 3 Laibe × 1000 g = 3 kg ÷ 3 kg je Liter = 1,0 L
+    expect(doughOf(s, 'test-misch-teig')).toMatchObject({
+      kg: 3,
+      liters: { exact: 1, rounded: 1 },
+    })
+  })
+
+  it('aufgenommene Brötchen eines späteren Backtags zählen in dessen Bruch', () => {
+    const s = sheet(TUE, {
+      corrections: [
+        { bakeDate: WED, itemId: 'test-doppel', qty: 20, reason: 'Fest' },
+      ],
+    })
+    // 20 Brötchen × 2 Teigstücke ÷ 20 je Bruch = 2 Bruch
+    expect(group(s, WED, 'test-doppel')).toMatchObject({ brueche: 2 })
+    expect(find(s, 'test-doppel', null, WED)).toBeUndefined()
+  })
+
+  it('ein geschlossener Tag hat nichts aufzunehmen; computeDay (v1) kennt das Feld nicht', () => {
+    expect(sheet('2026-11-30').addable).toEqual([])
+    const v1 = core.computeDay({
+      config: configV2(),
+      date: TUE,
+      catalog: PRODUCTS_V2,
+    })
+    expect(v1).not.toHaveProperty('addable')
+    expect(v1).not.toHaveProperty('emptyLines')
+  })
+})

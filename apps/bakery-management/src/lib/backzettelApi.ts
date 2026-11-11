@@ -449,6 +449,12 @@ export interface BackzettelDay {
   rolls?: RollsBlock[]
   /** Stammdaten, die für diesen Zettel noch offen sind (null = unbekannt). */
   openMasterData?: OpenMasterData[]
+  /**
+   * Nur Entwurf (v2): Posten dieses Zettels ohne jede Menge (Grundmenge 0,
+   * nichts bestellt), je Abschnitt. Sie stehen nicht in `sections`; eine
+   * Korrektur nimmt sie auf („Weiteren Posten aufnehmen“).
+   */
+  addable?: BackzettelSection[]
   /** Nur freigegeben (v2): Maschinen-Kästen, die Nachträge verändern. */
   deltaMachine?: DeltaMachineBox[]
   /** Nur freigegeben (v2): Bruch-Gruppen, deren Teigstücke Nachträge ändern. */

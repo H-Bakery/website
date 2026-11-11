@@ -588,6 +588,7 @@ function computeLines(args) {
   const lines = []
   const unset = []
   const clamped = []
+  const emptyLines = []
   const noDoughDay = []
   const doughFar = []
   // U9: dieselben Stammdaten ohne Kalender - liegt der Teig nur wegen
@@ -666,7 +667,10 @@ function computeLines(args) {
         const correction = tidy(b.correction, item.unit)
         const empty =
           base === 0 && preorders === 0 && cap === 0 && correction === 0
-        if (empty && !baseUnset && !a.includeEmpty) continue
+        // Ohne jede Menge steht die Zeile nicht auf dem Zettel - der
+        // Teigtag-Zettel nennt sie aber als „aufnehmbar“ (`emptyLines`),
+        // damit eine Korrektur sie am Tag dazunehmen kann.
+        const hidden = empty && !baseUnset && !a.includeEmpty
         // Eine Korrektur, die die Zeile unter 0 drueckt, wird auf 0 gekappt -
         // aber nie still: die Zeile traegt `correctionClamped`, es gibt eine
         // Warnung, und spaetere Vorbestellungen verschwaenden still in dem
@@ -720,8 +724,15 @@ function computeLines(args) {
           // Grundmenge offen (ohne Korrektur): `total` ist nur das Bekannte -
           // eine Mindestmenge („≥ 4“), keine fertige Zahl (Regel 8).
           line.totalIsMinimum = doughCore.qtyUnknown(line)
-          if (!dough.found && !noDoughDay.includes(item.name))
+          if (!hidden && !dough.found && !noDoughDay.includes(item.name))
             noDoughDay.push(item.name)
+        }
+        if (hidden) {
+          // Die Zeile „ohne Sorte“ eines Postens mit Sorten sammelt nur
+          // nicht zugeordnete Vorbestellungen - sie ist nichts zum Aufnehmen.
+          const unassigned = item.variants.length > 0 && variant === null
+          if (v2 && dough.found && !unassigned) emptyLines.push(line)
+          continue
         }
         lines.push(line)
       }
@@ -845,6 +856,7 @@ function computeLines(args) {
     seasonFactor,
     sections,
     lines: ordered,
+    emptyLines,
     warnings,
   }
 }
@@ -1625,6 +1637,7 @@ function computeDoughDay(args) {
     ? plan.bakeDates
     : [{ date, itemIds: [] }, ...plan.bakeDates]
   const tagged = []
+  const taggedEmpty = []
   const lineCounts = new Map()
   for (const b of runs) {
     const r = computeLines({
@@ -1641,6 +1654,7 @@ function computeDoughDay(args) {
     })
     lineCounts.set(b.date, r.lines.length)
     r.lines.forEach((line, index) => tagged.push({ line, index }))
+    r.emptyLines.forEach((line, index) => taggedEmpty.push({ line, index }))
     for (const w of r.warnings) {
       warnings.push(b.date === date ? w : { ...w, bakeDate: b.date })
     }
@@ -1784,6 +1798,10 @@ function computeDoughDay(args) {
     bread: parts.bread,
     rolls: parts.rolls,
     openMasterData: parts.openMasterData,
+    // Posten dieses Zettels ohne jede Menge (Grundmenge 0, nichts bestellt),
+    // je Abschnitt: sie stehen nicht in `lines`, lassen sich aber per
+    // Korrektur aufnehmen.
+    addable: sectionsOf(cfg, sortSheetLines(cfg, taggedEmpty)),
   }
 }
 

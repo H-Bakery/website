@@ -800,6 +800,12 @@ export function createBackzettelService(
       dayKind: result.dayKind,
       calendarHint: calendarWarning(loaded, date),
       ...sheetFields(result, result.isDoughDay),
+      // Posten ohne jede Menge (Grundmenge 0): nicht auf dem Zettel, aber
+      // per Korrektur aufnehmbar („Weiteren Posten aufnehmen“).
+      addable: (result.addable ?? []).map((s: any) => ({
+        ...s,
+        lines: s.lines.map(lineView),
+      })),
     }
   }
 
