@@ -26,7 +26,10 @@ const PRODUCT = fixture.PRODUCTS_V2[0].id as string
 
 let api: TestApp
 let hqDir: string
-let tokens: Record<'verkauf' | 'fahrer' | 'backstube', Record<string, string>>
+let tokens: Record<
+  'verkauf' | 'fahrer' | 'backstube' | 'inhaber',
+  Record<string, string>
+>
 
 const kalenderFile = () => path.join(hqDir, 'config', 'kalender.yaml')
 const feiertage = (year: number) =>
@@ -107,6 +110,7 @@ beforeAll(async () => {
     verkauf: bearer(await sessionFor(api.app, 'tage.verkauf', 'verkauf')),
     fahrer: bearer(await sessionFor(api.app, 'tage.fahrer', 'fahrer')),
     backstube: bearer(await sessionFor(api.app, 'tage.backstube', 'backstube')),
+    inhaber: bearer(await sessionFor(api.app, 'tage.inhaber', 'inhaber')),
   }
 })
 
@@ -219,6 +223,56 @@ describe('GET /api/preorders/pickup-points → pickupDays (Z14)', () => {
     // the special opening is not listed and can be ordered
     const open = await order('2026-11-23')
     expect(open.status).toBe(201)
+  })
+
+  it('moving an order from a Sammelstelle to the shop checks the kept day again', async () => {
+    // The Sammelstelle is served on Mondays for this test.
+    const point = (body: Record<string, unknown>) =>
+      request(api.app)
+        .put(`/api/preorders/pickup-points/${MOERSBACH}`)
+        .set(tokens.inhaber)
+        .send(body)
+        .expect(200)
+    await point({ weekday: 1, orderDeadline: { weekday: 5, time: '12:00' } })
+    try {
+      const created = await order('2026-11-16', {
+        channel: 'sammelstelle',
+        pickupPointId: MOERSBACH,
+      })
+      expect(created.status).toBe(201)
+      const id = created.body.data.id as number
+      const patch = (body: Record<string, unknown>) =>
+        request(api.app)
+          .patch(`/api/preorders/${id}`)
+          .set(tokens.verkauf)
+          .send(body)
+
+      // same place: the stored Monday stays editable
+      const note = await patch({ note: 'Bitte schneiden' })
+      expect(note.status).toBe(200)
+      // to the shop on the unchanged Monday: rest day, with German message
+      const toShop = await patch({ channel: 'telefon', pickupPointId: null })
+      expect(toShop.status).toBe(400)
+      expect(toShop.body).toMatchObject({
+        success: false,
+        error: 'ruhetag',
+        message:
+          'Am Montag, 16.11.2026, ist Ruhetag - bitte einen anderen Abholtag wählen.',
+      })
+      // with an open day the move works
+      const moved = await patch({
+        channel: 'telefon',
+        pickupPointId: null,
+        pickupDate: '2026-11-17',
+      })
+      expect(moved.status).toBe(200)
+      expect(moved.body.data).toMatchObject({
+        pickupPointId: null,
+        pickupDate: '2026-11-17',
+      })
+    } finally {
+      await point({ weekday: 6, orderDeadline: { weekday: 5, time: '12:00' } })
+    }
   })
 
   it('fahrer reads it, backstube does not', async () => {

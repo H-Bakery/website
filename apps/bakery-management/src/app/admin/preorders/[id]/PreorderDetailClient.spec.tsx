@@ -1,5 +1,5 @@
 import React from 'react'
-import { screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import PreorderDetailClient from './PreorderDetailClient'
@@ -166,6 +166,51 @@ describe('PreorderDetailClient (P3)', () => {
       )
     )
     expect(date).toHaveValue('2026-11-13')
+  })
+
+  it('von der Sammelstelle in den Laden: der Montag ist dort Ruhetag und weicht aus (Z14)', async () => {
+    const user = userEvent.setup()
+    const monday = {
+      ...POINT,
+      id: 'montag-test',
+      name: 'Montagsstelle',
+      weekday: 1,
+    }
+    ;(fetchPickupPointInfo as jest.Mock).mockResolvedValue({
+      points: [monday],
+      pickupDays: pickupDays(),
+    })
+    const stored = preorder({
+      code: 'MO-2026-11-16-01',
+      channel: 'sammelstelle',
+      pickupDate: '2026-11-16',
+      pickupTime: null,
+      pickupPointId: monday.id,
+      pickupPoint: { id: monday.id, name: monday.name, window: monday.window },
+    })
+    mockGet.mockResolvedValue(stored)
+    mockUpdate.mockResolvedValue(stored)
+    renderAs('verkauf')
+    await user.click(await screen.findByRole('button', { name: 'Bearbeiten' }))
+    const date = await screen.findByLabelText('Abholtag')
+    // an der Sammelstelle ist der gespeicherte Montag in Ordnung
+    expect(date).toHaveValue('2026-11-16')
+    await user.click(await screen.findByRole('radio', { name: 'Im Laden' }))
+    // im Laden ist Montag Ruhetag: der nächste offene Tag (Fr 13./Sa 14.11.
+    // sind zu) statt stillem Speichern
+    expect(date).toHaveValue('2026-11-15')
+
+    // von Hand zurück auf den Montag: Fehler, nichts wird gespeichert
+    fireEvent.change(date, { target: { value: '2026-11-16' } })
+    expect(
+      await screen.findByText(
+        'Am Montag, 16.11.2026, ist Ruhetag - bitte einen anderen Abholtag wählen.'
+      )
+    ).toBeInTheDocument()
+    await user.click(
+      screen.getByRole('button', { name: 'Änderungen speichern' })
+    )
+    expect(mockUpdate).not.toHaveBeenCalled()
   })
 
   it('Sitzung endet beim Bearbeiten: nach neuer Anmeldung sind die Änderungen wieder da und werden auf der alten Version gespeichert (W4-verify r6)', async () => {

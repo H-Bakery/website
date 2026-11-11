@@ -3,11 +3,12 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import PreorderListClient from './PreorderListClient'
-import { fetchPickupPoints, listPreorders } from '../../../lib/preordersApi'
+import { fetchPickupPointInfo, listPreorders } from '../../../lib/preordersApi'
 import { filtersFromQuery } from '../../../lib/preordersTypes'
 import {
   ONLY_DATE,
   POINT,
+  pickupDays,
   preorder,
 } from '../../../lib/testing/preorderFixtures'
 import { WithSession, fakeSession } from '../../../lib/testing/fakeSession'
@@ -27,7 +28,7 @@ jest.mock('next/navigation', () => ({
 
 jest.mock('../../../lib/preordersApi', () => ({
   ...jest.requireActual('../../../lib/preordersApi'),
-  fetchPickupPoints: jest.fn(),
+  fetchPickupPointInfo: jest.fn(),
   listPreorders: jest.fn(),
 }))
 
@@ -44,7 +45,10 @@ function renderAs(role: PilotRole, props = {}) {
 beforeEach(() => {
   jest.useFakeTimers({ now: new Date(2026, 10, 12, 10), doNotFake: ONLY_DATE })
   jest.clearAllMocks()
-  ;(fetchPickupPoints as jest.Mock).mockResolvedValue([POINT])
+  ;(fetchPickupPointInfo as jest.Mock).mockResolvedValue({
+    points: [POINT],
+    pickupDays: null,
+  })
   mockList.mockResolvedValue([
     preorder(),
     preorder({
@@ -121,6 +125,25 @@ describe('PreorderListClient (P3)', () => {
     await user.click(screen.getByRole('button', { name: 'Weitere Filter (1)' }))
     expect(screen.getByTestId('filter-summary')).toHaveTextContent(
       'Aktiv: Offen'
+    )
+  })
+
+  it('„Nächster Backtag“ überspringt die Schließtage des Kalenders (Z14)', async () => {
+    const user = userEvent.setup()
+    // Fr 13. und Sa 14.11. Betriebsferien - der nächste Backtag ist So 15.11.
+    ;(fetchPickupPointInfo as jest.Mock).mockResolvedValue({
+      points: [POINT],
+      pickupDays: pickupDays(),
+    })
+    renderAs('verkauf')
+    const chip = await screen.findByRole('button', {
+      name: /Nächster Backtag \(So,\s15\.11\.2026\)/,
+    })
+    await user.click(chip)
+    await waitFor(() =>
+      expect(mockList).toHaveBeenLastCalledWith(
+        expect.objectContaining({ from: '2026-11-15', to: '2026-11-15' })
+      )
     )
   })
 

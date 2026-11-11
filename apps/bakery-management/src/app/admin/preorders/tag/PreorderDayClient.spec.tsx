@@ -4,15 +4,20 @@ import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import PreorderDayClient from './PreorderDayClient'
 import { WithSession, fakeSession } from '../../../../lib/testing/fakeSession'
-import { fetchPreorderDay } from '../../../../lib/preordersApi'
+import {
+  fetchPickupPointInfo,
+  fetchPreorderDay,
+} from '../../../../lib/preordersApi'
 import {
   ONLY_DATE,
   day,
+  pickupDays,
   preorder,
 } from '../../../../lib/testing/preorderFixtures'
 
 jest.mock('../../../../lib/preordersApi', () => ({
   ...jest.requireActual('../../../../lib/preordersApi'),
+  fetchPickupPointInfo: jest.fn(),
   fetchPreorderDay: jest.fn(),
 }))
 
@@ -22,6 +27,10 @@ beforeEach(() => {
   jest.useFakeTimers({ now: new Date(2026, 10, 12, 10), doNotFake: ONLY_DATE })
   jest.clearAllMocks()
   mockDay.mockResolvedValue(day())
+  ;(fetchPickupPointInfo as jest.Mock).mockResolvedValue({
+    points: [],
+    pickupDays: null,
+  })
 })
 
 afterEach(() => jest.useRealTimers())
@@ -63,6 +72,77 @@ describe('PreorderDayClient (P3)', () => {
       await user.click(screen.getByRole('button', { name: 'Nächster Backtag' }))
     }
     await waitFor(() => expect(mockDay).toHaveBeenLastCalledWith('2026-11-17'))
+  })
+
+  describe('Schließtage laut Kalender (Z14)', () => {
+    const emptyDay = (date: string) =>
+      day({
+        date,
+        summary: {
+          count: 0,
+          total: 0,
+          byStatus: { offen: 0, bereit: 0, abgeholt: 0, storniert: 0 },
+          notCollected: 0,
+          paid: 0,
+          unpaidTotal: 0,
+          byChannel: {},
+        },
+        sums: [],
+        pickupPoints: [],
+        preorders: [],
+      })
+
+    beforeEach(() => {
+      // Fr 13. und Sa 14.11. Betriebsferien
+      ;(fetchPickupPointInfo as jest.Mock).mockResolvedValue({
+        points: [],
+        pickupDays: pickupDays(),
+      })
+    })
+
+    it('startet ohne Datum am nächsten offenen Tag, nicht am Schließtag', async () => {
+      renderWithTheme(<PreorderDayClient />)
+      await waitFor(() => expect(mockDay).toHaveBeenCalledWith('2026-11-15'))
+      expect(mockDay).not.toHaveBeenCalledWith('2026-11-13')
+    })
+
+    it('Server antwortet nicht: es gilt nur der Montag', async () => {
+      ;(fetchPickupPointInfo as jest.Mock).mockRejectedValue(new Error('aus'))
+      renderWithTheme(<PreorderDayClient />)
+      await waitFor(() => expect(mockDay).toHaveBeenCalledWith('2026-11-13'))
+    })
+
+    it('ein leerer Schließtag bietet keine Erfassung an und nennt den Grund', async () => {
+      mockDay.mockResolvedValue(emptyDay('2026-11-13'))
+      renderWithTheme(
+        <WithSession value={fakeSession({ role: 'verkauf' })}>
+          <PreorderDayClient initialDate="2026-11-13" />
+        </WithSession>
+      )
+      const empty = await screen.findByTestId('preorder-day-empty')
+      expect(
+        await screen.findByTestId('preorder-day-closed')
+      ).toHaveTextContent(
+        'An diesem Tag ist die Bäckerei geschlossen (Betriebsferien) - neue Vorbestellungen sind für diesen Tag nicht möglich.'
+      )
+      expect(
+        within(empty).queryByRole('link', { name: /Vorbestellung erfassen/ })
+      ).toBeNull()
+    })
+
+    it('ein leerer offener Tag bietet die Erfassung weiter an', async () => {
+      mockDay.mockResolvedValue(emptyDay('2026-11-15'))
+      renderWithTheme(
+        <WithSession value={fakeSession({ role: 'verkauf' })}>
+          <PreorderDayClient initialDate="2026-11-15" />
+        </WithSession>
+      )
+      const empty = await screen.findByTestId('preorder-day-empty')
+      expect(
+        within(empty).getByRole('link', { name: /Vorbestellung erfassen/ })
+      ).toHaveAttribute('href', '/admin/preorders/neu?date=2026-11-15')
+      expect(screen.queryByTestId('preorder-day-closed')).toBeNull()
+    })
   })
 
   it('streicht eine stornierte Bestellung durch, aber nicht die Erstattung (W4-verify r4)', async () => {

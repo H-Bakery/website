@@ -144,7 +144,9 @@ updatedAt, deadline, afterDeadline }`.
   `pickupDayClosed()` for every day, so the list is exactly what `POST`/`PATCH` reject: `code`
   `geschlossen` (calendar; `reason` = note or holiday name) or `ruhetag` (`shopOnly: true` - a
   Sammelstelle may take it). `calendar: false` = no valid `kalender.yaml`, only the Monday rule.
-  The preorder form reads it to not offer those days.
+  The preorder form reads it to not offer those days. On `PATCH` the stored pickup date is only
+  checked again when the order moves between a Sammelstelle and the shop (a Sammelstelle's Monday
+  is a rest day in the shop).
 - **Pickup points.** `PUT /pickup-points/:id` (only `inhaber`) takes the mock's Lieferstelle body
   (`name`, `street`, `zip`, `city`, `weekday`, `window`, `orderDeadline`, `notes`, `active`) via
   `service.updatePickupPoint`, the same function the Mörsbach alias

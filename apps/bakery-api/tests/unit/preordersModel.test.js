@@ -1382,6 +1382,66 @@ describe('Abholtag an Schließtagen des Kalenders (Z14)', () => {
     expect(ok(at('2027-01-01')).pickupDate).toBe('2027-01-01')
   })
 
+  describe('Bearbeiten: gespeicherter Tag', () => {
+    const MONDAY_POINT = { ...POINT, id: 'montag-test', weekday: 1 }
+    const withMonday = (calendar) =>
+      opts({
+        ...rules(calendar),
+        findPickupPoint: (id) =>
+          id === MONDAY_POINT.id ? MONDAY_POINT : findPickupPoint(id),
+      })
+    const edit = (existing, body, calendar = cfg) =>
+      core.normalizeOrderInput(body, existing, withMonday(calendar))
+    const atPoint = ok(
+      core.normalizeOrderInput(
+        {
+          ...LADEN,
+          channel: 'sammelstelle',
+          pickupPointId: MONDAY_POINT.id,
+          pickupTime: null,
+          pickupDate: '2026-11-16',
+        },
+        null,
+        withMonday(cfg)
+      )
+    )
+
+    it('bleibt am selben Ort bearbeitbar, auch wenn er inzwischen gesperrt ist', () => {
+      // Sammelstelle am Montag: eine Notiz ändern geht
+      expect(ok(edit(atPoint, { note: 'Bitte schneiden' })).pickupDate).toBe(
+        '2026-11-16'
+      )
+      // Laden am inzwischen geschlossenen Sa 21.11.
+      const shop = { ...ok(at('2026-11-20')), pickupDate: '2026-11-21' }
+      expect(ok(edit(shop, { note: 'Bitte schneiden' })).pickupDate).toBe(
+        '2026-11-21'
+      )
+    })
+
+    it('Wechsel von der Sammelstelle in den Laden prüft den Tag neu (Ruhetag)', () => {
+      const res = edit(atPoint, {
+        channel: 'telefon',
+        pickupPointId: null,
+        pickupTime: '08:30',
+      })
+      expect(res.error).toBe('ruhetag')
+      expect(res.message).toBe(
+        'Am Montag, 16.11.2026, ist Ruhetag - bitte einen anderen Abholtag wählen.'
+      )
+      // mit einem offenen Tag geht der Wechsel
+      expect(
+        ok(
+          edit(atPoint, {
+            channel: 'telefon',
+            pickupPointId: null,
+            pickupTime: '08:30',
+            pickupDate: '2026-11-17',
+          })
+        ).pickupPointId
+      ).toBeNull()
+    })
+  })
+
   describe('closedPickupDays: die Liste für die Maske', () => {
     const list = (calendar) =>
       core.closedPickupDays(rules(calendar).pickupRules)

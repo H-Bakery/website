@@ -126,12 +126,21 @@ und `/admin/preorders/tag?date=` (Summen je Produkt **und Sorte**, Abholliste, A
   Ruhetag. Das Datumsfeld ist das des Browsers: es kennt das Fenster (`min`/`max`), kann aber
   einzelne Tage nicht ausgrauen - ein von Hand gewählter Schließtag zeigt sofort die Meldung des
   Servers und lässt sich nicht speichern. Ohne `pickupDays` (kein Feld in der Antwort) oder außerhalb
-  des Fensters gilt nur der Montag im Laden. **Bearbeiten:** der schon gespeicherte Abholtag ist nie
-  gesperrt (die API prüft nur einen neuen Tag); ist er inzwischen geschlossen, bleibt er stehen mit
+  des Fensters gilt nur der Montag im Laden. **Bearbeiten:** der schon gespeicherte Abholtag ist am
+  gespeicherten Ort nie gesperrt (die API prüft nur einen neuen Tag); wechselt die Bestellung
+  zwischen Sammelstelle und Laden, ist der Tag dort neu und wird geprüft - in Maske und API (der
+  Montag einer Sammelstelle ist im Laden Ruhetag: die Maske weicht auf den nächsten offenen Tag aus,
+  die API antwortet `ruhetag`). Ist der Tag inzwischen geschlossen, bleibt er stehen mit
   dem Hinweis „An diesem Tag ist die Bäckerei geschlossen (…) - der Abholtag bleibt stehen, bis er
   geändert wird." Vorläufig: ob eine solche Bestellung umgelegt werden muss, entscheidet der
   Inhaber (der Backzettel meldet sie mit `preorders_on_closed_day`). Der Shop-Checkout fragt keinen
-  Abholtag ab und ist unverändert.
+  Abholtag ab und ist unverändert. **Wege in die Maske:** die Tagesübersicht startet ohne Datum am
+  nächsten offenen Tag (`nextProductionDate(today, pickupDays)`; ohne Antwort des Servers gilt nur
+  der Montag), nennt an einem Schließtag den Grund und bietet dort „Vorbestellung erfassen" nicht
+  an; „Nächster Backtag" in der Liste überspringt Schließtage. Ein Tag aus dem Link (`?date=`, auch
+  von der Abholliste) ist für die Maske nur ein Vorschlag: ist er gesperrt, steht der nächste offene
+  Tag danach da (Sammelstelle: ihr nächster Liefertag), nicht vor morgen. Blättern in
+  Tagesübersicht und Abholliste zeigt Schließtage weiter - dort können alte Bestellungen liegen.
 - **Tastatur:** Die Maske ist kein `<form>` - Enter springt weiter (Name → Telefon → Suche → Menge →
   Hinzufügen → Suche), **Strg/Cmd+Enter speichert**. Die Ziffernblock-Tasten haben `tabIndex -1` und
   nehmen dem Mengenfeld den Fokus nicht.

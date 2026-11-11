@@ -425,6 +425,42 @@ describe('PreorderEntryClient (P1)', () => {
       expect(screen.getByLabelText('Abholtag')).toHaveValue('2026-11-21')
     })
 
+    it('ein Schließtag aus dem Link ist nur ein Vorschlag: der nächste offene Tag steht da', async () => {
+      // Tagesübersicht/Abholliste verlinken `?date=` - Fr 13.11. ist zu
+      renderWithTheme(<PreorderEntryClient initialDate="2026-11-13" />)
+      await screen.findByLabelText(/^Name/)
+      await waitFor(() =>
+        expect(screen.getByLabelText('Abholtag')).toHaveValue('2026-11-15')
+      )
+      expect(
+        screen.queryByText(/bitte einen anderen Abholtag wählen/)
+      ).toBeNull()
+    })
+
+    it('ein offener Tag aus dem Link bleibt stehen', async () => {
+      renderWithTheme(<PreorderEntryClient initialDate="2026-11-18" />)
+      await screen.findByLabelText(/^Name/)
+      await waitFor(() =>
+        expect(
+          screen.getByRole('radio', { name: 'Mi 18.11.' })
+        ).toHaveAttribute('aria-checked', 'true')
+      )
+      expect(screen.getByLabelText('Abholtag')).toHaveValue('2026-11-18')
+    })
+
+    it('Sammelstelle aus dem Link am Schließtag: ihr nächster Liefertag', async () => {
+      renderWithTheme(
+        <PreorderEntryClient
+          initialDate="2026-11-14"
+          initialPickupPointId={POINT.id}
+        />
+      )
+      await screen.findByLabelText(/^Name/)
+      await waitFor(() =>
+        expect(screen.getByLabelText('Abholtag')).toHaveValue('2026-11-21')
+      )
+    })
+
     it('ohne Kalenderdaten vom Server gilt nur der Montag - kein Hinweis', async () => {
       ;(fetchPickupPointInfo as jest.Mock).mockResolvedValue({
         points: [POINT],

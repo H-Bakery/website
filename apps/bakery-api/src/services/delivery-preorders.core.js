@@ -1544,8 +1544,12 @@ function normalizeOrderInput(body, existing, options) {
   }
 
   // Abholtag an einem Schließtag des Kalenders (Z14) oder - im Laden - an
-  // einem Ruhetag. Nur fuer einen neuen Tag, wie oben.
-  if (rules && pickupDate !== base.pickupDate) {
+  // einem Ruhetag. Nur fuer einen neuen Tag, wie oben - oder wenn die
+  // Bestellung zwischen Sammelstelle und Laden wechselt: dort ist der Tag
+  // neu (der Montag einer Sammelstelle ist im Laden Ruhetag).
+  const placeKindChanged =
+    Boolean(existing) && Boolean(base.pickupPointId) !== Boolean(pickupPoint)
+  if (rules && (pickupDate !== base.pickupDate || placeKindChanged)) {
     const closed = pickupDayClosed(rules, pickupDate, Boolean(pickupPoint))
     if (closed) return fail(closed.code, closed.message)
   }

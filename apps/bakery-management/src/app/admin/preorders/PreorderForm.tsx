@@ -558,7 +558,9 @@ export default function PreorderForm({
     setCustomerPhone('')
     setPickupPointId(initialPickupPointId ?? '')
     setChannel(initialPickupPointId ? 'sammelstelle' : readChannel())
-    setPickupDate(isBusinessDate(initialDate) ? initialDate : '')
+    setPickupDate(
+      openInitialDate(points.find((p) => p.id === initialPickupPointId) ?? null)
+    )
     setPickupTime('')
     setPaid(false)
     setNote('')
@@ -632,14 +634,47 @@ export default function PreorderForm({
 
   /**
    * Warum der Abholtag am Ort `atPoint` nicht geht (Ruhetag, Schließtag laut
-   * Kalender - Z14). Der schon gespeicherte Tag einer Bestellung ist nie
-   * gesperrt: die API prüft nur einen neuen Tag, und ein inzwischen
-   * geschlossener Tag darf beim Bearbeiten nicht still verschwinden.
+   * Kalender - Z14). Der schon gespeicherte Tag einer Bestellung ist am
+   * gespeicherten Ort nie gesperrt: die API prüft nur einen neuen Tag, und
+   * ein inzwischen geschlossener Tag darf beim Bearbeiten nicht still
+   * verschwinden. Wechselt die Bestellung zwischen Sammelstelle und Laden,
+   * ist der Tag dort neu und wird geprüft (Montag: im Laden Ruhetag).
    */
   const closedFor = (date: string, atPoint: boolean) =>
-    preorder && date === preorder.pickupDate
+    preorder &&
+    date === preorder.pickupDate &&
+    atPoint === Boolean(preorder.pickupPointId)
       ? null
       : closedPickupDay(pickupDays, date, atPoint)
+
+  /**
+   * Der Tag aus dem Link (`?date=`, von Tagesübersicht oder Abholliste) ist
+   * ein Vorschlag: ist er gesperrt, gilt der nächste freie Tag danach (bei
+   * einer Sammelstelle ihr nächster Liefertag) - nicht vor morgen.
+   */
+  const openInitialDate = (atPoint: PickupPoint | null): string => {
+    if (!isBusinessDate(initialDate)) return ''
+    if (!today || !closedPickupDay(pickupDays, initialDate, Boolean(atPoint))) {
+      return initialDate
+    }
+    const base = initialDate > today ? initialDate : today
+    return (
+      (atPoint
+        ? pickupPointDates(atPoint, base, 1, pickupDays)[0]
+        : nextProductionDate(base, pickupDays)) || initialDate
+    )
+  }
+  // Einmal nach dem Laden: ein gesperrter Tag aus dem Link weicht aus. Ein
+  // wiederhergestellter Entwurf mit anderem Tag bleibt, wie er ist.
+  const initialDateCheckedRef = useRef(false)
+  useEffect(() => {
+    if (initialDateCheckedRef.current || preorder || !today || loading) return
+    initialDateCheckedRef.current = true
+    if (!isBusinessDate(initialDate) || pickupDate !== initialDate) return
+    const open = openInitialDate(point)
+    if (open !== pickupDate) setPickupDate(open)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [today, loading, pickupDate, point, pickupDays])
 
   // W4-verify r6: hat die Verkäuferin den Bestellweg schon angetippt
   // (Telefon, WhatsApp, Laden - so die Reihenfolge der Kurzanleitung), bleibt
