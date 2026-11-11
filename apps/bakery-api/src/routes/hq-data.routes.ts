@@ -42,6 +42,7 @@ const PILOT_ROLES: readonly UserRole[] = [
   'inhaber',
   'verkauf',
   'backstube',
+  'backstubenleiter',
   'fahrer',
 ]
 

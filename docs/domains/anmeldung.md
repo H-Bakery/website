@@ -20,7 +20,15 @@ Endpunkte und Fehlercodes: [`docs/api/auth.md`](../api/auth.md).
 - **Das `user`-Objekt weicht vom Mock ab (bewusst).** Echt:
   `{ id, username, displayName, role, active, isActive, createdAt, updatedAt, sessionKind }`. `email`,
   `firstName`, `lastName` und `lastLogin` gibt es nicht - die Tabelle `users` hat sie nicht, und
-  erfunden werden sie nicht. Rollen sind `inhaber | verkauf | backstube | fahrer` statt `admin | staff`.
+  erfunden werden sie nicht. Rollen sind `inhaber | verkauf | backstube | backstubenleiter | fahrer`
+  statt `admin | staff`.
+- **Backstubenleitung (`backstubenleiter`) = Backstube plus Rezepte.** Sie darf alles, was
+  `backstube` darf, und zusätzlich Rezepte anlegen, ändern und löschen
+  ([`rezepte.md`](rezepte.md)). In der API steht das an genau einer Stelle (`ROLE_INCLUDES` in
+  `auth-crypto.core.js`): wo `backstube` erlaubt ist, ist es die Backstubenleitung auch - keine
+  Rollenliste nennt sie doppelt. Was nur `inhaber` darf (Benutzer, Finanzen, Backzettel wieder
+  öffnen, Produkte), bleibt ihr verwehrt. Vergeben wird die Rolle wie jede andere unter
+  `/admin/users` oder mit der CLI (`--role backstubenleiter`).
 - **Es gibt kein Standardkonto.** Konten legt die CLI an (nach `npm run build:api`):
   `npm run api:create-user -- --username anna --display-name "Anna" --role verkauf` (Passwort über
   `CREATE_USER_PASSWORD` oder stdin, PIN optional über `CREATE_USER_PIN`; idempotent, setzt ein

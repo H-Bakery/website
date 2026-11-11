@@ -102,7 +102,7 @@ const USAGE = `Aufruf:
   cli.js create-user --username <name> --display-name <Anzeigename> --role <rolle>
   cli.js import-partners --file <partner-store.json> [--dry-run] [--update-partners]
 
-  Rollen: inhaber, verkauf, backstube, fahrer
+  Rollen: inhaber, verkauf, backstube, backstubenleiter, fahrer
   Passwort: Umgebungsvariable CREATE_USER_PASSWORD, sonst von stdin
             (am Terminal zweimal verdeckt abgefragt)
   PIN (optional, 4-6 Ziffern): Umgebungsvariable CREATE_USER_PIN

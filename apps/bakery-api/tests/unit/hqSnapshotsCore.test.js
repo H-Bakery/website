@@ -182,6 +182,16 @@ function day(overrides = {}) {
 }
 
 describe('backzettelSnapshot', () => {
+  test('knows the Backstubenleitung as confirming role', () => {
+    const s = core.backzettelSnapshot(day(), { role: 'backstubenleiter' })
+    expect(s.confirmed).toMatchObject({ role: 'backstubenleiter' })
+    expect(core.roleLabel('backstubenleiter')).toBe('Backstubenleitung')
+    // an unknown role is never written into hq
+    expect(
+      core.backzettelSnapshot(day(), { role: 'test.login' }).confirmed.role
+    ).toBeNull()
+  })
+
   test('keeps the quantities, Hefeteig, fillings and prep', () => {
     const s = core.backzettelSnapshot(day(), { role: 'backstube' })
     expect(s).toMatchObject({

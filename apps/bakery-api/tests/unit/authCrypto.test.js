@@ -169,6 +169,39 @@ describe('validation', () => {
     expect(core.roleAllows('fahrer', ['backstube'])).toBe(false)
     expect(core.roleAllows('fahrer', undefined)).toBe(false)
   })
+
+  test('backstubenleiter includes backstube, not the other way round', () => {
+    expect(core.ROLES).toEqual([
+      'inhaber',
+      'verkauf',
+      'backstube',
+      'backstubenleiter',
+      'fahrer',
+    ])
+    expect(core.validateRole('backstubenleiter')).toBeNull()
+    expect(core.validateRole('admin')).toMatch(/backstubenleiter/)
+    // everything backstube may
+    expect(core.roleAllows('backstubenleiter', ['backstube'])).toBe(true)
+    expect(core.roleAllows('backstubenleiter', ['verkauf', 'backstube'])).toBe(
+      true
+    )
+    expect(core.roleAllows('backstubenleiter', ['backstubenleiter'])).toBe(true)
+    // nothing more than that, except by name
+    expect(core.roleAllows('backstubenleiter', ['verkauf', 'fahrer'])).toBe(
+      false
+    )
+    expect(core.roleAllows('backstubenleiter', [])).toBe(false)
+    expect(core.roleAllows('backstubenleiter', ['inhaber'])).toBe(false)
+    expect(core.roleAllows('backstube', ['backstubenleiter'])).toBe(false)
+    expect(core.roleAllows('verkauf', ['backstubenleiter'])).toBe(false)
+
+    expect(core.roleIncludes('backstubenleiter', 'backstube')).toBe(true)
+    expect(core.roleIncludes('backstube', 'backstube')).toBe(true)
+    expect(core.roleIncludes('backstube', 'backstubenleiter')).toBe(false)
+    expect(core.roleIncludes('inhaber', 'backstube')).toBe(false)
+    expect(core.roleIncludes(undefined, 'backstube')).toBe(false)
+    expect(core.roleIncludes('constructor', 'backstube')).toBe(false)
+  })
 })
 
 describe('opaque tokens', () => {

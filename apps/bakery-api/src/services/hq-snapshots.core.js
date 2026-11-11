@@ -42,6 +42,7 @@ const REST_DIR = `${SNAPSHOT_ROOT}/rest`
 const ROLE_LABELS = {
   inhaber: 'Inhaber',
   backstube: 'Backstube',
+  backstubenleiter: 'Backstubenleitung',
   verkauf: 'Verkauf',
   fahrer: 'Fahrer',
 }
