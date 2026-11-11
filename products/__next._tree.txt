@@ -3,4 +3,4 @@
 :HL["/fonts/cinzel-latin.woff2","font",{"crossOrigin":"anonymous","type":"font/woff2"}]
 2:[["children",{"s":"__PAGE__","h":160}]]
 1:[["children",{"s":"products","h":68,"c":"$Q2"}]]
-0:{"b":"WuOhVx_ThwvOvbvO3LHXD","t":{"t":{"s":"","h":24,"c":"$Q1"}}}
+0:{"b":"BCTvnACJd-r1RoqQkv5h7","t":{"t":{"s":"","h":24,"c":"$Q1"}}}
