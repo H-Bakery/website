@@ -13,10 +13,30 @@
 //   - fehlt      = 0 (deshalb wird hier nie ein Schlüssel gelöscht)
 //   - Varianten  = { nuss: 4, mohn: null } je Wochentag; fehlt eine Variante,
 //                  ist sie 0.
+//
+// Z14: neben den Wochentagen die Spalten `vor_feiertag` / `samstag_ersatz`
+// (`SPECIAL_BASE_KEYS`, kalender.core.js) - `weekday` ist dann dieser Name.
+// Dort heißt „fehlt" nicht 0, sondern „nicht gesetzt" (der Zettel nimmt die
+// Wochentags-Menge). Ein leeres Feld löscht die Spalte deshalb (`DELETE`),
+// statt eine 0 oder ein „offen" zu erfinden; neue Sorten-Spalten beginnen mit
+// den übrigen Sorten offen (`null`), nicht 0.
 
 'use strict'
 
 const { coAuthorTrailer } = require('./hq-products.core')
+const { SPECIAL_BASE_KEYS, BEFORE_LABELS } = require('./kalender.core')
+
+/** Marker für „Schlüssel entfernen" (nur Sonderspalten). */
+const DELETE = undefined
+
+function isSpecialColumn(key) {
+  return SPECIAL_BASE_KEYS.includes(key)
+}
+
+/** Anzeigename einer Spalte: Wochentag oder Sonderspalte. */
+function columnName(key) {
+  return WEEKDAY_NAMES[key] || BEFORE_LABELS[key] || null
+}
 
 const WEEKDAY_NAMES = {
   1: 'Montag',
@@ -106,9 +126,11 @@ function parseBaseEdit(body, config) {
       `Den Posten „${itemId}“ gibt es in den Backzettel-Stammdaten nicht.`
     )
   }
-  const wd = Number(body.weekday)
+  const special =
+    typeof body.weekday === 'string' && isSpecialColumn(body.weekday.trim())
+  const wd = special ? body.weekday.trim() : Number(body.weekday)
   if (
-    !Number.isInteger(wd) ||
+    (!special && !Number.isInteger(wd)) ||
     wd < 1 ||
     wd > 7 ||
     String(body.weekday).trim() !== String(wd)
@@ -116,11 +138,13 @@ function parseBaseEdit(body, config) {
     return fail(
       400,
       'invalid_weekday',
-      'weekday muss ein Wochentag 1…7 sein (1 = Montag).'
+      `weekday muss ein Wochentag 1…7 sein (1 = Montag) oder ${SPECIAL_BASE_KEYS.join(
+        ' / '
+      )}.`
     )
   }
   const days = Array.isArray(config.days) ? config.days : []
-  if (!days.includes(wd)) {
+  if (!special && !days.includes(wd)) {
     return fail(
       400,
       'invalid_weekday',
@@ -136,7 +160,7 @@ function parseBaseEdit(body, config) {
       'Bitte entweder value (ganzer Tag) oder variants (je Sorte) angeben.'
     )
   }
-  const label = `${item.name || item.id}, ${WEEKDAY_NAMES[wd]}`
+  const label = `${item.name || item.id}, ${columnName(wd)}`
   if (hasValue) {
     const q = parseQuantity(body.value, label)
     if (!q.ok) return q
@@ -186,13 +210,17 @@ function parseBaseEdit(body, config) {
  * Sortenangabe ersetzt.
  */
 function nextDayValue(current, edit) {
-  if (Object.prototype.hasOwnProperty.call(edit, 'value')) return edit.value
+  const special = isSpecialColumn(edit.weekday)
+  if (Object.prototype.hasOwnProperty.call(edit, 'value')) {
+    // Sonderspalte leer = nicht gesetzt → Schlüssel weg.
+    return special && edit.value === null ? DELETE : edit.value
+  }
   const order = Array.isArray(edit.item && edit.item.variants)
     ? edit.item.variants
     : []
   let base = {}
   if (isPlainObject(current)) base = { ...current }
-  else if (current === null) {
+  else if (current === null || (special && current === undefined)) {
     for (const v of order) base[v] = null
   }
   for (const [variant, value] of Object.entries(edit.variants)) {
@@ -205,6 +233,8 @@ function nextDayValue(current, edit) {
   }
   for (const v of order) if (v in base && !(v in out)) out[v] = base[v]
   for (const key of Object.keys(base)) if (!(key in out)) out[key] = base[key]
+  // Sonderspalte mit lauter leeren Sorten = nicht gesetzt.
+  if (special && Object.values(out).every((v) => v === null)) return DELETE
   return out
 }
 
@@ -256,7 +286,7 @@ function oneLine(value, fallback) {
 function commitMessage(edit, user) {
   const id = oneLine(edit && edit.itemId, 'unbekannt')
   const name = oneLine(edit && edit.item && edit.item.name, id)
-  const day = WEEKDAY_NAMES[edit && edit.weekday] || 'unbekannter Tag'
+  const day = columnName(edit && edit.weekday) || 'unbekannter Tag'
   return `config: Grundmenge ${name} (${id}) ${day} geändert\n\n${coAuthorTrailer(
     user
   )}\n`
@@ -265,6 +295,8 @@ function commitMessage(edit, user) {
 module.exports = {
   MAX_QTY,
   WEEKDAY_NAMES,
+  isSpecialColumn,
+  columnName,
   parseQuantity,
   parseBaseEdit,
   nextDayValue,

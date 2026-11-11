@@ -33,7 +33,8 @@ function fail(error, message) {
 /** Schlüssel als YAML-Text: Wochentag als Zahl, Sorten-Slug ohne Quotes. */
 function renderKey(key) {
   const text = String(key)
-  if (/^\d+$/.test(text) || SLUG.test(text)) return text
+  if (/^\d+$/.test(text) || SLUG.test(text) || baseCore.isSpecialColumn(text))
+    return text
   return JSON.stringify(text)
 }
 
@@ -173,6 +174,33 @@ function sortedIndex(pairs, weekday) {
   return i === -1 ? pairs.length : i
 }
 
+/**
+ * Z14: ein Paar aus einer Map entfernen (Sonderspalte leeren). Eine
+ * Block-Map, die dadurch leer würde, fasst das nicht an (`base:` hieße dann
+ * `null`) - dafür in hq von Hand.
+ */
+function removePair(text, map, pair) {
+  const pairs = map.items
+  const i = pairs.indexOf(pair)
+  const valueEnd = (p) =>
+    p.value && p.value.range ? p.value.range[1] : p.key.range[1]
+  if (map.flow) {
+    if (pairs.length === 1) {
+      return { start: map.range[0], end: map.range[1], text: '{}' }
+    }
+    if (i > 0) {
+      return { start: valueEnd(pairs[i - 1]), end: valueEnd(pair), text: '' }
+    }
+    return { start: pair.key.range[0], end: pairs[1].key.range[0], text: '' }
+  }
+  if (pairs.length === 1) return null
+  return {
+    start: lineStart(text, pair.key.range[0]),
+    end: afterLine(text, contentEnd(text, valueEnd(pair))),
+    text: '',
+  }
+}
+
 /** Splices, absteigend angewendet (Offsets bleiben gültig). */
 function applySplices(text, splices) {
   let out = text
@@ -189,6 +217,22 @@ function applySplices(text, splices) {
 function planBaseSplices(text, itemNode, weekday, next, current, variantOrder) {
   const padded = detectPadding(text, itemNode.get('base', true))
   const basePair = itemNode.items.find((p) => keyMatches(p, 'base'))
+
+  // 0. Z14: Sonderspalte leeren = Schlüssel entfernen.
+  if (next === undefined) {
+    const baseMap = basePair && basePair.value
+    const pair =
+      baseMap && YAML.isMap(baseMap)
+        ? baseMap.items.find((p) => keyMatches(p, weekday))
+        : null
+    const s = pair ? removePair(text, baseMap, pair) : null
+    return s
+      ? { ok: true, splices: [s] }
+      : fail(
+          'config_layout_unsupported',
+          'Die Spalte lässt sich in dieser Datei nicht automatisch leeren. Bitte in hq von Hand entfernen.'
+        )
+  }
 
   // 1. Kein `base:` am Posten → Paar anhängen.
   if (!basePair) {
@@ -428,7 +472,12 @@ function applyBaseEdit(text, edit) {
   }
   const current = baseCore.currentDayValue(rawItem, edit.weekday)
   const next = baseCore.nextDayValue(current, edit)
-  if (current !== undefined && baseCore.sameValue(current, next)) {
+  // Sonderspalten (Z14): fehlt + leer = keine Änderung.
+  if (
+    current === undefined
+      ? next === undefined
+      : baseCore.sameValue(current, next)
+  ) {
     return { ok: true, changed: false, text, before, after: before }
   }
 
@@ -470,8 +519,11 @@ function applyBaseEdit(text, edit) {
   const existingKey = Object.keys(target.base).find(
     (k) => String(k).trim() === String(edit.weekday)
   )
-  target.base[existingKey === undefined ? String(edit.weekday) : existingKey] =
-    next
+  if (next === undefined) delete target.base[existingKey]
+  else
+    target.base[
+      existingKey === undefined ? String(edit.weekday) : existingKey
+    ] = next
   const reread = loader.parseBackzettelYaml(out)
   if (!reread.ok || !deepEqual(reread.data, expected)) {
     return fail(
