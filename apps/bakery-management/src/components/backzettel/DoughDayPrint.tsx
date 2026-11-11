@@ -48,6 +48,7 @@ import {
   boxBakeDaysText,
   dayPrintLayout,
   dayPrintParts,
+  printBreadNote,
   sheetDayTypeText,
   type DayPrintParts,
   type DoughPrintBlock,
@@ -482,7 +483,8 @@ function singleQty(cell: BreadCell & { unit: BackzettelUnit }): string {
 function breadDetails(
   row: BreadRow,
   sizes: { id: string; label: string }[],
-  lineByKey: Map<string, BackzettelLine>
+  lineByKey: Map<string, BackzettelLine>,
+  inDoughBox: boolean
 ): string[] {
   const out: string[] = []
   if (row.single?.baseUnset) out.push('Grundmenge offen')
@@ -490,7 +492,8 @@ function breadDetails(
   if (open.length > 0) {
     out.push(`Grundmenge offen: ${open.map((sz) => sz.label).join(', ')}`)
   }
-  if (row.note) out.push(row.note)
+  const note = printBreadNote(row.note, inDoughBox)
+  if (note) out.push(note)
   // Korrektur mit Grund je Zelle - wie am Bildschirm (BreadTable).
   const cells: { label: string | null; key: string }[] = []
   if (row.single) cells.push({ label: null, key: row.single.key })
@@ -515,10 +518,13 @@ function BreadTable({
   day,
   rows,
   lineByKey,
+  inDoughBox,
 }: {
   day: BackzettelDay
   rows: BreadRow[]
   lineByKey: Map<string, BackzettelLine>
+  /** Im Block eines Maschinen-Kastens: „Gemeinsamer Teig“ steht im Kopf. */
+  inDoughBox: boolean
 }) {
   // Nur die Größen, die in diesem Block vorkommen.
   const sizes = (day.bread?.sizes ?? []).filter((sz) =>
@@ -557,7 +563,7 @@ function BreadTable({
       </thead>
       <tbody>
         {rows.map((row) => {
-          const details = breadDetails(row, sizes, lineByKey)
+          const details = breadDetails(row, sizes, lineByKey, inDoughBox)
           const hintLine = [row.single, ...Object.values(row.cells)]
             .filter((c): c is NonNullable<typeof c> => !!c)
             .map((c) => lineByKey.get(c.key))
@@ -836,7 +842,12 @@ function DoughBlockPrint({
         </p>
       )}
       {block.bread.length > 0 && (
-        <BreadTable day={day} rows={block.bread} lineByKey={lineByKey} />
+        <BreadTable
+          day={day}
+          rows={block.bread}
+          lineByKey={lineByKey}
+          inDoughBox={box !== null}
+        />
       )}
       {block.rolls.map((r) => (
         <RollsTable

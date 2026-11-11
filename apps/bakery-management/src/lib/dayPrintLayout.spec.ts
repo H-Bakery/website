@@ -12,6 +12,7 @@ import {
   firstHeaderMm,
   nextHeaderMm,
   packSheets,
+  printBreadNote,
   sheetBlocks,
   sheetDayTypeText,
   type SheetBlock,
@@ -240,6 +241,16 @@ describe('doughPrintBlocks: je Teig ein Block (U8)', () => {
         dayPrintParts(day).hefeteig.length
       )
     }
+  })
+})
+
+describe('printBreadNote: gemeinsamer Teig im Block nur einmal (U8)', () => {
+  it('im Kasten-Block ohne „Gemeinsamer Teig“, sonst unverändert', () => {
+    const note = 'Kasten zuerst · Gemeinsamer Teig: Korn + Holz'
+    expect(printBreadNote(note, true)).toBe('Kasten zuerst')
+    expect(printBreadNote('Gemeinsamer Teig: Korn + Holz', true)).toBeNull()
+    expect(printBreadNote(note, false)).toBe(note)
+    expect(printBreadNote(null, true)).toBeNull()
   })
 })
 
