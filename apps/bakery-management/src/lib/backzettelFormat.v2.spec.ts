@@ -517,6 +517,55 @@ describe('Backzettel v2 - Anzeige-Helfer', () => {
     ).toContain('Liter unbekannt (kg je Liter offen)')
   })
 
+  it('Nachtrag an der Maschine: jede Seite nach ihrem eigenen Stand, auch über die Rundungsstufe hinweg (Review PR #129)', () => {
+    const base = v2DeltaDough().deltaMachine?.[0]
+    if (!base) throw new Error('Fixture ohne deltaMachine')
+    const at = (m: typeof base) =>
+      deltaDoughLines({ date: SAT, deltaBruch: [], deltaMachine: [m] })[0]
+    const small = {
+      exact: 0.24,
+      rounded: null,
+      reason: 'below_rounding_step',
+      step: 1,
+    }
+    // vorher unter der Stufe, jetzt gerundet: nicht „Liter – → 1 L“
+    const up = at({
+      ...base,
+      litersBefore: small,
+      liters: { exact: 0.72, rounded: 1, reason: null },
+    })
+    expect(up).toContain('Liter 0,24 L (unter 1 L, nicht gerundet) → 1 L')
+    expect(up).not.toContain('Liter –')
+    // umgekehrt: vorher stand 1 L auf dem Zettel, jetzt die genaue kleine Zahl
+    expect(
+      at({
+        ...base,
+        litersBefore: { exact: 0.72, rounded: 1, reason: null },
+        liters: small,
+      })
+    ).toContain('Liter 1 L → 0,24 L (unter 1 L, nicht gerundet)')
+    // beide unter der Stufe: der Grund steht einmal
+    expect(
+      at({
+        ...base,
+        litersBefore: small,
+        liters: { ...small, exact: 0.36 },
+      })
+    ).toContain('Liter 0,24 L → 0,36 L (unter 1 L, nicht gerundet)')
+    // vorher wirklich unbekannt bleibt „–“
+    expect(
+      at({
+        ...base,
+        litersBefore: {
+          exact: null,
+          rounded: null,
+          reason: 'dough_incomplete',
+        },
+        liters: { exact: 5.4, rounded: 5.5, reason: null },
+      })
+    ).toContain('Liter – → 5,5 L')
+  })
+
   it('große Literzahl ohne Zusatz - „Rundung offen“ steht klein darunter', () => {
     expect(
       litersFigure({ exact: 15.09, rounded: null, reason: 'rounding_unknown' })

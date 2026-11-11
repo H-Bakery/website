@@ -301,6 +301,33 @@ describe('Backzettel-Tagesplanung - Teigtag-Zettel (Z10)', () => {
     ])
   })
 
+  it('„Heute keine“ an einer offenen Grundmenge schickt die Tagesentscheidung, nicht eine Korrektur 0', async () => {
+    mocked.setCorrection.mockResolvedValue(saturdayV2Draft())
+    renderDay()
+    const bread = within(await screen.findByTestId('bread-table'))
+    fireEvent.click(
+      bread.getByRole('button', {
+        name: 'Korrektur Testkorn – Kasten bearbeiten',
+      })
+    )
+    const editor = within(
+      screen.getByTestId('bread-correction-editor-test-korn|kasten')
+    )
+    expect(editor.getByLabelText('Menge für heute')).toBeInTheDocument()
+    fireEvent.click(editor.getByRole('button', { name: 'Heute keine' }))
+    await waitFor(() =>
+      expect(mocked.setCorrection).toHaveBeenCalledWith(
+        SAT,
+        'test-korn',
+        'kasten',
+        0,
+        null,
+        { correction: 0, reason: null },
+        { noneToday: true }
+      )
+    )
+  })
+
   it('„+1 Bruch“ öffnet die Korrektur mit einem Bruch mehr', async () => {
     renderDay()
     const sunday = within(await screen.findByTestId(`rolls-${SUN}`))

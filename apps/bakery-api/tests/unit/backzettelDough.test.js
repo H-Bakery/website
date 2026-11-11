@@ -1132,3 +1132,293 @@ describe('Posten ohne Menge: nicht auf dem Zettel, aber aufnehmbar (addable)', (
     expect(v1).not.toHaveProperty('emptyLines')
   })
 })
+
+describe('Tagesentscheidung bei offener Grundmenge („Heute keine“ / Menge für heute)', () => {
+  // Testkäse für Dienstag offen; der Samstagszettel macht den Teig dafür.
+  const openKaese = () => v2((c) => (rawItem(c, 'test-kaese').base[2] = null))
+  const kaeseLine = (s) =>
+    s.lines.find((l) => l.itemId === 'test-kaese' && l.bakeDate === NEXT_TUE)
+  const codes = (s) => s.warnings.map((w) => w.code)
+
+  it('ohne Entscheidung: offen, Teig und Liter unbekannt - eine Korrektur 0 ändert nichts', () => {
+    for (const corrections of [
+      [],
+      [{ bakeDate: NEXT_TUE, itemId: 'test-kaese', qty: 0 }],
+    ]) {
+      const s = sheet(SAT, { config: openKaese(), corrections })
+      expect(kaeseLine(s)).toMatchObject({
+        baseUnset: true,
+        totalIsMinimum: true,
+        total: 0,
+      })
+      expect(kaeseLine(s)).not.toHaveProperty('dayDecision')
+      expect(kaeseLine(s)).not.toHaveProperty('noneToday')
+      expect(group(s, NEXT_TUE, 'test-gemischt').complete).toBe(false)
+      expect(doughOf(s, 'test-weck-teig')).toMatchObject({
+        kg: null,
+        complete: false,
+        liters: { exact: null, rounded: null, reason: 'dough_incomplete' },
+      })
+      expect(codes(s)).not.toContain('day_decisions')
+    }
+  })
+
+  it('„Heute keine“: die Zeile bleibt sichtbar mit Grundmenge offen, der Teig wird vollständig', () => {
+    const s = sheet(SAT, {
+      config: openKaese(),
+      corrections: [
+        { bakeDate: NEXT_TUE, itemId: 'test-kaese', qty: 0, noneToday: true },
+      ],
+    })
+    expect(kaeseLine(s)).toMatchObject({
+      base: 0,
+      baseUnset: true,
+      noneToday: true,
+      dayDecision: 'none',
+      totalIsMinimum: false,
+      correction: 0,
+      total: 0,
+    })
+    // dieselben Zahlen wie mit Teststern allein: 12 Teigstücke, 1 Bruch
+    const g = group(s, NEXT_TUE, 'test-gemischt')
+    expect(g).toMatchObject({ complete: true, brueche: 1, kg: 2, pieces: 12 })
+    expect(g.split.map((m) => m.itemId)).toEqual(['test-stern'])
+    expect(g.missing).toEqual([])
+    const weck = doughOf(s, 'test-weck-teig')
+    expect(weck.complete).toBe(true)
+    expect(weck.kg).toEqual(expect.any(Number))
+    expect(weck.liters.rounded).toEqual(expect.any(Number))
+    expect(weck.liters.reason).toBeNull()
+  })
+
+  it('nennt die Entscheidung als Hinweis und nimmt die Zeile aus „Grundmenge fehlt“', () => {
+    const s = sheet(SAT, {
+      config: openKaese(),
+      corrections: [
+        { bakeDate: NEXT_TUE, itemId: 'test-kaese', qty: 0, noneToday: true },
+      ],
+    })
+    const w = s.warnings.find((x) => x.code === 'day_decisions')
+    expect(w).toMatchObject({
+      bakeDate: NEXT_TUE,
+      items: ['Testkäse – heute keine'],
+      message:
+        'Tagesentscheidung für Dienstag (Grundmenge offen): Testkäse – heute keine.',
+    })
+    for (const u of s.warnings.filter((x) => x.code === 'base_unset')) {
+      expect(u.items).not.toContain('Testkäse')
+    }
+  })
+
+  it('Menge für heute über die Korrektur: Tagesentscheidung „amount“, nie Grundmenge', () => {
+    const s = sheet(SAT, {
+      config: openKaese(),
+      corrections: [
+        {
+          bakeDate: NEXT_TUE,
+          itemId: 'test-kaese',
+          qty: 8,
+          reason: 'Menge für heute',
+        },
+      ],
+    })
+    expect(kaeseLine(s)).toMatchObject({
+      base: 0,
+      baseUnset: true,
+      dayDecision: 'amount',
+      totalIsMinimum: false,
+      total: 8,
+    })
+    expect(kaeseLine(s)).not.toHaveProperty('noneToday')
+    const g = group(s, NEXT_TUE, 'test-gemischt')
+    expect(g).toMatchObject({ complete: true, pieces: 20, brueche: 1 })
+    expect(g.split.find((m) => m.itemId === 'test-kaese')).toMatchObject({
+      total: 8,
+      totalIsMinimum: false,
+      dayDecision: 'amount',
+    })
+    expect(s.warnings.find((x) => x.code === 'day_decisions').items).toEqual([
+      'Testkäse – 8',
+    ])
+  })
+
+  it('„Heute keine“ gilt der Grundmenge: Vorbestelltes wird trotzdem gemacht, als fertige Zahl', () => {
+    const s = sheet(SAT, {
+      config: openKaese(),
+      preorderItems: [pre('test-kaese', 7, NEXT_TUE)],
+      corrections: [
+        { bakeDate: NEXT_TUE, itemId: 'test-kaese', qty: 0, noneToday: true },
+      ],
+    })
+    expect(kaeseLine(s)).toMatchObject({
+      total: 7,
+      dayDecision: 'none',
+      totalIsMinimum: false,
+    })
+    expect(group(s, NEXT_TUE, 'test-gemischt')).toMatchObject({
+      complete: true,
+      pieces: 19,
+    })
+  })
+
+  it('erst wenn jede offene Zeile des Teigs entschieden ist, steht die Literzahl', () => {
+    const config = v2((c) => {
+      rawItem(c, 'test-stern').base[2] = null
+      rawItem(c, 'test-kaese').base[2] = null
+    })
+    const one = sheet(SAT, {
+      config,
+      corrections: [
+        { bakeDate: NEXT_TUE, itemId: 'test-kaese', qty: 0, noneToday: true },
+      ],
+    })
+    expect(doughOf(one, 'test-weck-teig').complete).toBe(false)
+    expect(doughOf(one, 'test-weck-teig').liters.rounded).toBeNull()
+    const both = sheet(SAT, {
+      config,
+      corrections: [
+        { bakeDate: NEXT_TUE, itemId: 'test-kaese', qty: 0, noneToday: true },
+        { bakeDate: NEXT_TUE, itemId: 'test-stern', qty: 0, noneToday: true },
+      ],
+    })
+    expect(doughOf(both, 'test-weck-teig').complete).toBe(true)
+    expect(doughOf(both, 'test-weck-teig').liters.rounded).toEqual(
+      expect.any(Number)
+    )
+  })
+
+  it('Brot je Größe: die Zelle trägt die Entscheidung', () => {
+    // Testkorn Kasten ist dienstags offen (und hat kein Teiggewicht)
+    const s = sheet(TUE, {
+      corrections: [
+        { itemId: 'test-korn', variant: 'kasten', qty: 0, noneToday: true },
+      ],
+    })
+    const row = s.bread.rows.find((r) => r.itemId === 'test-korn')
+    expect(row.cells.kasten).toMatchObject({
+      total: 0,
+      baseUnset: true,
+      totalIsMinimum: false,
+      dayDecision: 'none',
+    })
+    // 0 Kasten brauchen kein Teiggewicht: 4 × 600 g + 2 × 1000 g = 4,4 kg
+    expect(doughOf(s, 'test-korn-teig')).toMatchObject({
+      kg: 4.4,
+      complete: true,
+    })
+  })
+
+  it('steht inzwischen eine Grundmenge da, gilt „Heute keine“ nicht mehr - mit Hinweis, nie still', () => {
+    const s = sheet(SAT, {
+      corrections: [
+        { bakeDate: NEXT_TUE, itemId: 'test-kaese', qty: 0, noneToday: true },
+      ],
+    })
+    expect(kaeseLine(s)).toMatchObject({ base: 8, total: 8, baseUnset: false })
+    expect(kaeseLine(s)).not.toHaveProperty('dayDecision')
+    expect(kaeseLine(s)).not.toHaveProperty('noneToday')
+    const w = s.warnings.find((x) => x.code === 'none_today_obsolete')
+    expect(w.items).toEqual(['Testkäse'])
+    expect(w.message).toContain('Testkäse (jetzt 8)')
+    expect(codes(s)).not.toContain('day_decisions')
+  })
+
+  it('dayDecision / qtyUnknown: eine Regel', () => {
+    expect(dough.dayDecision({ baseUnset: true, correction: 0 })).toBeNull()
+    expect(
+      dough.dayDecision({ baseUnset: true, correction: 0, noneToday: true })
+    ).toBe('none')
+    expect(dough.dayDecision({ baseUnset: true, correction: 5 })).toBe('amount')
+    expect(
+      dough.dayDecision({ baseUnset: false, correction: 5, noneToday: true })
+    ).toBeNull()
+    expect(dough.qtyUnknown({ baseUnset: true, correction: 0 })).toBe(true)
+    expect(
+      dough.qtyUnknown({ baseUnset: true, correction: 0, noneToday: true })
+    ).toBe(false)
+    expect(dough.qtyUnknown({ baseUnset: false })).toBe(false)
+  })
+})
+
+describe('Kleine Menge unter der Rundungsstufe: nie „0 L“', () => {
+  const hefe = { kg_per_liter: 5, liter_rounding: { step: 1, mode: 'nearest' } }
+
+  it('litersFor: 1,2 kg ÷ 5 = 0,24 L wird nicht auf 0 gerundet', () => {
+    expect(dough.litersFor(hefe, 1.2)).toEqual({
+      exact: 0.24,
+      rounded: null,
+      reason: 'below_rounding_step',
+      step: 1,
+    })
+    // ab der halben Stufe rundet es wie immer
+    expect(dough.litersFor(hefe, 2.6)).toEqual({
+      exact: 0.52,
+      rounded: 1,
+      reason: null,
+    })
+    // wirklich nichts ist 0
+    expect(dough.litersFor(hefe, 0)).toEqual({
+      exact: 0,
+      rounded: 0,
+      reason: null,
+    })
+    expect(
+      dough.litersFor(
+        { kg_per_liter: 5, liter_rounding: { step: 1, mode: 'down' } },
+        4
+      )
+    ).toMatchObject({
+      exact: 0.8,
+      rounded: null,
+      reason: 'below_rounding_step',
+    })
+    // aufrunden kennt den Fall nicht
+    expect(
+      dough.litersFor(
+        { kg_per_liter: 5, liter_rounding: { step: 1, mode: 'up' } },
+        1.2
+      )
+    ).toEqual({ exact: 0.24, rounded: 1, reason: null })
+  })
+
+  it('ein unter der Woche aufgenommener Kranz: Hefeteig-Kasten mit kg und genauen Litern', () => {
+    const s = sheet(TUE, {
+      corrections: [{ itemId: 'test-kranz', qty: 1, reason: 'bestellt' }],
+    })
+    // 1 Kranz × 2 Teigstücke × 600 g = 1,2 kg
+    const expected = {
+      kg: 1.2,
+      complete: true,
+      liters: {
+        exact: 0.24,
+        rounded: null,
+        reason: 'below_rounding_step',
+        step: 1,
+      },
+    }
+    expect(doughOf(s, 'test-hefe')).toMatchObject(expected)
+    expect(box(s, 'test-hefe')).toMatchObject(expected)
+  })
+
+  it('Zugabe je Liter: unter der Rundungsstufe die genauen Gramm, nie „0 g“', () => {
+    const d = {
+      id: 'x',
+      addons: [
+        {
+          id: 's',
+          name: 'Sauer',
+          g_per_liter: 10,
+          rounding: { step: 5, mode: 'nearest' },
+        },
+      ],
+    }
+    expect(dough.addonsFor(d, 0.2)[0]).toMatchObject({
+      grams: { exact: 2, rounded: null },
+      reason: 'below_rounding_step',
+    })
+    expect(dough.addonsFor(d, 1.3)[0]).toMatchObject({
+      grams: { exact: 13, rounded: 15 },
+      reason: null,
+    })
+  })
+})

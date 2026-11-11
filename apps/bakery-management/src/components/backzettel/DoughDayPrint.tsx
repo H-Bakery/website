@@ -35,6 +35,8 @@ import {
   linesByKey,
   litersLabel,
   minQtyText,
+  baseOpenText,
+  litersExactWhy,
   previouslyDoneText,
   variantLabel,
   WEEKDAY_NAMES,
@@ -273,7 +275,10 @@ export function printLiters(liters: DoughLiters | null | undefined): {
     }
   }
   if (liters.rounded === null) {
-    return { text: `${formatNumber(liters.exact)} L`, hint: 'Rundung offen' }
+    return {
+      text: `${formatNumber(liters.exact)} L`,
+      hint: litersExactWhy(liters),
+    }
   }
   return { text: `${formatNumber(liters.rounded)} L`, hint: null }
 }
@@ -484,7 +489,7 @@ function DoughsPrint({
  */
 function singleQty(cell: BreadCell & { unit: BackzettelUnit }): string {
   const text = minQtyText(cell, cell.unit)
-  if (text === 'offen') return text
+  if (text === 'offen' || text === 'keine') return text
   return formatQty(cell.total, cell.unit) === formatNumber(cell.total)
     ? `${text} ${cell.unit || 'Stück'}`
     : text
@@ -498,8 +503,16 @@ function breadDetails(
   inDoughBox: boolean
 ): string[] {
   const out: string[] = []
-  if (row.single?.baseUnset) out.push('Grundmenge offen')
-  const open = sizes.filter((sz) => row.cells[sz.id]?.baseUnset)
+  if (row.single?.baseUnset) out.push(baseOpenText(row.single) as string)
+  // Tagesentscheidung je Größe („500 g: Heute keine · Grundmenge offen“)
+  for (const sz of sizes) {
+    const cell = row.cells[sz.id]
+    if (cell?.baseUnset && cell.dayDecision)
+      out.push(`${sz.label}: ${baseOpenText(cell)}`)
+  }
+  const open = sizes.filter(
+    (sz) => row.cells[sz.id]?.baseUnset && !row.cells[sz.id]?.dayDecision
+  )
   if (open.length > 0) {
     out.push(`Grundmenge offen: ${open.map((sz) => sz.label).join(', ')}`)
   }
@@ -711,7 +724,7 @@ function RollsTable({
             const line = lineByKey.get(s.key)
             const detail = [
               s.pieces === null ? 'Teigstücke offen' : null,
-              s.baseUnset ? 'Grundmenge offen' : null,
+              baseOpenText(s),
             ].filter(Boolean)
             return (
               <tr key={s.key} data-testid={`dd-single-${s.key}`}>
@@ -880,7 +893,7 @@ function DoughBlockPrint({
 
 function lineDetail(line: BackzettelLine): string {
   return [
-    line.baseUnset ? 'Grundmenge offen' : null,
+    baseOpenText(line),
     line.preorders > 0
       ? `inkl. ${formatNumber(line.preorders)} vorbestellt`
       : null,

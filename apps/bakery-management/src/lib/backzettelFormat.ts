@@ -210,10 +210,17 @@ export function formatQty(n: number, unit: BackzettelUnit | null): string {
  * ist. Nie eine nackte Zahl, die sich wie die ganze Backmenge liest.
  */
 export function minQtyText(
-  q: { total: number | null; totalIsMinimum?: boolean },
+  q: {
+    total: number | null
+    totalIsMinimum?: boolean
+    dayDecision?: 'none' | 'amount'
+  },
   unit: BackzettelUnit | null = null
 ): string {
   if (q.total === null || q.total === undefined) return 'offen'
+  // „Heute keine“ (Tagesentscheidung bei offener Grundmenge): das Wort,
+  // nicht eine 0, die sich wie eine Grundmenge liest.
+  if (q.dayDecision === 'none' && q.total === 0) return 'keine'
   if (!q.totalIsMinimum) return formatQty(q.total, unit)
   return q.total > 0 ? `≥ ${formatQty(q.total, unit)}` : 'offen'
 }
@@ -225,7 +232,13 @@ export function minQtyText(
 export function lineBreakdown(line: BackzettelLine): string {
   const parts: string[] = []
   parts.push(
-    line.baseUnset ? 'Basis offen' : `Basis ${formatNumber(line.base)}`
+    line.baseUnset
+      ? line.dayDecision === 'none'
+        ? 'Basis offen – heute keine'
+        : line.dayDecision === 'amount'
+        ? 'Basis offen – für heute festgelegt'
+        : 'Basis offen'
+      : `Basis ${formatNumber(line.base)}`
   )
   if (line.seasonal) parts.push(`Saison ${formatSigned(line.seasonal)}`)
   if (line.preorders) parts.push(`Vorb. ${formatNumber(line.preorders)}`)
@@ -238,6 +251,23 @@ export function lineBreakdown(line: BackzettelLine): string {
     )
   }
   return parts.join(' · ')
+}
+
+/**
+ * Was zu einer offenen Grundmenge an der Zeile steht - eine Regel für
+ * Planung, Tablet, Backliste und Druck: „Grundmenge offen“, mit
+ * Tagesentscheidung „Heute keine …“ bzw. „Für heute festgelegt …“ (die
+ * Grundmenge bleibt offen, die Menge gilt nur für diesen Tag), sonst `null`.
+ */
+export function baseOpenText(q: {
+  baseUnset?: boolean
+  dayDecision?: 'none' | 'amount'
+}): string | null {
+  if (!q.baseUnset) return null
+  if (q.dayDecision === 'none') return 'Heute keine · Grundmenge offen'
+  if (q.dayDecision === 'amount')
+    return 'Für heute festgelegt · Grundmenge offen'
+  return 'Grundmenge offen'
 }
 
 /** Hinweis zu `minQtyText`: „Grundmenge offen“ oder `null`. */
@@ -868,9 +898,23 @@ export function formatKnownGrams(value: number | null | undefined): string {
 export function litersText(liters: DoughLiters | null | undefined): string {
   if (!liters || liters.exact === null) return 'unbekannt'
   if (liters.rounded === null) {
-    return `${formatNumber(liters.exact)} L (Rundung offen)`
+    return `${formatNumber(liters.exact)} L (${litersExactWhy(liters)})`
   }
   return `${formatNumber(liters.rounded)} L`
+}
+
+/**
+ * Warum nur die genauen Liter dastehen: „Rundung offen“ (Stammdaten) oder
+ * eine kleine Menge unter der Rundungsstufe („unter 1 L, nicht gerundet“ -
+ * ein einzelner Kranz unter der Woche wäre sonst „0 L“).
+ */
+export function litersExactWhy(
+  liters: Pick<DoughLiters, 'reason' | 'step'>
+): string {
+  if (liters.reason !== 'below_rounding_step') return 'Rundung offen'
+  return liters.step
+    ? `unter ${formatNumber(liters.step)} L, nicht gerundet`
+    : 'kleine Menge, nicht gerundet'
 }
 
 /**
@@ -896,6 +940,10 @@ export function litersHint(
       return 'Liter: unbekannt (Teig unvollständig – ein Gewicht offen)'
     case 'rounding_unknown':
       return 'Rundung offen – angezeigt sind die genauen Liter'
+    case 'below_rounding_step':
+      return `Kleine Menge (${litersExactWhy(
+        liters
+      )}) – angezeigt sind die genauen Liter`
     default:
       return liters.exact === null ? 'Liter: unbekannt' : null
   }
@@ -1034,7 +1082,10 @@ export function addonText(addon: DoughAddon): {
   if (addon.grams.rounded === null) {
     return {
       text: `${addon.name} ${formatNumber(addon.grams.exact)} g`,
-      hint: 'Rundung offen – genaue Gramm',
+      hint:
+        addon.reason === 'below_rounding_step'
+          ? 'kleine Menge, nicht gerundet – genaue Gramm'
+          : 'Rundung offen – genaue Gramm',
     }
   }
   return {
@@ -1212,12 +1263,20 @@ export function deltaDoughLines(
     // Liter: gerundet, sonst die genauen mit „Rundung offen“ (Review Z10
     // Runde 2 - die Maschinenleiste darüber zeigt sie auch); „unbekannt“ nur,
     // wenn kg je Liter offen oder der Teig unvollständig ist.
+    // Liter je Seite nach ihrem eigenen Stand: gerundet, sonst die genauen
+    // mit Grund („Rundung offen“ bzw. kleine Menge unter der Rundungsstufe) -
+    // wie die Maschinenleiste sie vorher und jetzt zeigt. „unbekannt“ nur,
+    // wenn kg je Liter offen oder der Teig unvollständig ist.
     const liters = m.liters
-    const exactOnly = liters?.rounded == null && liters?.exact != null
-    const value = (l: DoughLiters | null | undefined) =>
-      l == null ? null : exactOnly ? l.exact : l.rounded
-    const before = value(m.litersBefore)
-    const after = value(liters)
+    const shown = (l: DoughLiters | null | undefined): string | null => {
+      if (l == null) return null
+      if (l.rounded != null) return `${formatNumber(l.rounded)} L`
+      if (l.exact != null)
+        return `${formatNumber(l.exact)} L (${litersExactWhy(l)})`
+      return null
+    }
+    const before = shown(m.litersBefore)
+    const after = shown(liters)
     if (after === null) {
       parts.push(
         liters?.reason === 'kg_per_liter_unknown'
@@ -1227,11 +1286,20 @@ export function deltaDoughLines(
           : 'Liter unbekannt'
       )
     } else if (before !== after) {
-      parts.push(
-        `Liter ${
-          before === null ? '–' : `${formatNumber(before)} L`
-        } → ${formatNumber(after)} L${exactOnly ? ' (Rundung offen)' : ''}`
-      )
+      // gleiche Angabe auf beiden Seiten: der Grund steht einmal, hinten
+      const why = (l: DoughLiters | null | undefined) =>
+        l && l.rounded == null && l.exact != null
+          ? ` (${litersExactWhy(l)})`
+          : ''
+      const sameWhy =
+        why(m.litersBefore) !== '' && why(m.litersBefore) === why(liters)
+      const left =
+        before === null
+          ? '–'
+          : sameWhy
+          ? before.slice(0, -why(m.litersBefore).length)
+          : before
+      parts.push(`Liter ${left} → ${after}`)
     }
     if (
       m.batches !== null &&

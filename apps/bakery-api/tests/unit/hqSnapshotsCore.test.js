@@ -736,7 +736,7 @@ describe('backzettelSnapshot schema 2 (Backzettel v2)', () => {
       date,
       seasonFactor: 1,
       bakeInputs: opts.bakeInputs || {},
-      corrections: [],
+      corrections: opts.corrections || [],
       recipes: {},
       catalog: fixture.PRODUCTS_V2,
     })
@@ -894,6 +894,76 @@ describe('backzettelSnapshot schema 2 (Backzettel v2)', () => {
     ]) {
       expect(json).not.toContain(`"${key}"`)
     }
+  })
+
+  test('„Heute keine“ / amount of the day: base stays null, the decision is named - JSON and Markdown', () => {
+    const raw = fixture.configV2()
+    raw.items.find((i) => i.id === 'test-kaese').base[2] = null
+    raw.items.find((i) => i.id === 'test-stern').base[2] = null
+    const TUE = '2026-12-01'
+    const s = core.backzettelSnapshot(
+      sheet('2026-11-28', {
+        config: configCore.normalizeConfig(raw),
+        corrections: [
+          { bakeDate: TUE, itemId: 'test-kaese', qty: 0, noneToday: true },
+          {
+            bakeDate: TUE,
+            itemId: 'test-stern',
+            qty: 9,
+            reason: 'Menge für heute',
+          },
+        ],
+      }),
+      {}
+    )
+    const lines = s.sections.flatMap((x) => x.lines)
+    const kaese = lines.find(
+      (l) => l.itemId === 'test-kaese' && l.bakeDate === TUE
+    )
+    expect(kaese).toMatchObject({
+      base: null,
+      baseUnset: true,
+      total: 0,
+      totalIsMinimum: false,
+      dayDecision: 'none',
+    })
+    expect(
+      lines.find((l) => l.itemId === 'test-stern' && l.bakeDate === TUE)
+    ).toMatchObject({ base: null, total: 9, dayDecision: 'amount' })
+    // undecided lines carry no such key
+    expect(
+      lines.find((l) => l.itemId === 'test-doppel' && l.bakeDate === TUE)
+    ).not.toHaveProperty('dayDecision')
+    // the dough is complete: Bruch and litres are numbers
+    const mixed = s.rolls
+      .find((b) => b.bakeDate === TUE)
+      .groups.find((g) => g.group === 'test-gemischt')
+    expect(mixed).toMatchObject({ complete: true, brueche: 1 })
+    const md = core.backzettelMarkdown(s)
+    expect(md).toMatch(/\| Testkäse \| [^\n]*\| offen – heute keine \|/)
+    expect(md).toMatch(
+      /\| Teststern \| [^\n]*\| offen – für heute festgelegt \|/
+    )
+    expect(md).toContain(
+      'Tagesentscheidung für Dienstag (Grundmenge offen): Teststern – 9, Testkäse – heute keine.'
+    )
+  })
+
+  test('litres below the rounding step are written exact with the reason, never „0 L“', () => {
+    const s = core.backzettelSnapshot(
+      sheet('2026-12-01', {
+        corrections: [{ itemId: 'test-kranz', qty: 1, reason: 'bestellt' }],
+      }),
+      {}
+    )
+    expect(s.doughs.find((d) => d.id === 'test-hefe').liters).toEqual({
+      exact: 0.24,
+      rounded: null,
+      reason: 'below_rounding_step',
+    })
+    const md = core.backzettelMarkdown(s)
+    expect(md).toContain('0,24 L (genau, unter der Rundungsstufe)')
+    expect(md).not.toMatch(/Testhefe[^\n]* 0 L/)
   })
 
   test('an open Grundmenge in a Bruch group stays open - JSON and Markdown (review Z10 round 2)', () => {

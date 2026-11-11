@@ -12,6 +12,7 @@ import {
   deltaBadgeText,
   formatDateLong,
   minQtyText,
+  baseOpenText,
   formatSignedQty,
   lineLabel,
 } from '../../lib/backzettelFormat'
@@ -176,7 +177,7 @@ export function BakeListPrint({ list, config }: BakeListPrintProps) {
               const detail = [
                 line.madeOn,
                 line.sheetStatus === 'draft' ? 'Entwurf' : null,
-                line.baseUnset ? 'Grundmenge offen' : null,
+                baseOpenText(line),
                 lineDeltaText(line.delta, line.unit),
               ]
                 .filter(Boolean)

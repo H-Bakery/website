@@ -42,6 +42,11 @@ export class BackzettelLine extends Model<
   declare correction: CreationOptional<number>
   declare correctionReason: CreationOptional<string | null>
   declare correctionBy: CreationOptional<number | null>
+  /**
+   * „Heute keine“: Tagesentscheidung an einer Zeile mit offener Grundmenge
+   * (Korrektur 0). Eine Korrektur 0 allein heißt „keine Korrektur“.
+   */
+  declare noneToday: CreationOptional<boolean>
   declare total: CreationOptional<number>
   declare doneAt: CreationOptional<Date | null>
   declare doneBy: CreationOptional<number | null>
@@ -78,6 +83,11 @@ export class BackzettelLine extends Model<
         correction: qty(),
         correctionReason: { type: DataTypes.TEXT, allowNull: true },
         correctionBy: { type: DataTypes.INTEGER, allowNull: true },
+        noneToday: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: false,
+        },
         total: qty(),
         doneAt: { type: DataTypes.DATE, allowNull: true },
         doneBy: { type: DataTypes.INTEGER, allowNull: true },

@@ -758,8 +758,10 @@ export function createBackzettelService(
       return {
         id: row ? row.id : null,
         ...line,
+        // „Heute keine“ zählt nur, solange es gilt (Grundmenge noch offen) -
+        // ein überholtes Kennzeichen ist keine Korrektur
         correctionBy:
-          row && toNumber(row.correction) !== 0
+          row && (toNumber(row.correction) !== 0 || line.noneToday === true)
             ? userRef(users, row.correctionBy)
             : null,
         doneAt: ticked && row ? (row.doneAt as Date | null) : null,
@@ -1014,7 +1016,7 @@ export function createBackzettelService(
           preordersExact: line.preorders,
           preorderIds: [],
           correctionBy:
-            toNumber(row.correction) !== 0
+            toNumber(row.correction) !== 0 || line.noneToday === true
               ? userRef(users, row.correctionBy)
               : null,
           doneAt: row.doneAt,
@@ -2017,7 +2019,9 @@ export function createBackzettelService(
       bakeDate: string
       correction: number
       reason: string | null
+      noneToday: boolean
     },
+    itemName: string,
     transaction: Transaction
   ) {
     const inputs = await loadSheetInputs(loaded, date, transaction)
@@ -2031,6 +2035,7 @@ export function createBackzettelService(
       bakeDate: next.bakeDate,
       correction: next.correction,
       correctionReason: next.reason,
+      noneToday: next.noneToday,
     })
     const result = computeSheet(
       loaded,
@@ -2042,6 +2047,16 @@ export function createBackzettelService(
     const hit = (result.lines as Array<Record<string, unknown>>).find(
       (l) => l.key === key
     )
+    // „Heute keine“ ist die Entscheidung des Tages für eine OFFENE
+    // Grundmenge. Steht dort eine Zahl (auch 0), ist die Korrektur der Weg -
+    // sonst läse sich ein Posten mit Grundmenge still als „keine“.
+    if (next.noneToday && !(hit && hit.baseUnset === true)) {
+      throw new BackzettelError(
+        400,
+        'base_not_open',
+        `„${itemName}“ hat für diesen Tag eine Grundmenge - „Heute keine“ gibt es nur, solange die Grundmenge offen ist. Bitte die Menge mit einer Korrektur anpassen.`
+      )
+    }
     if (hit && hit.correctionClamped) {
       // Viertel aller Quellen erst summiert, dann aufgerundet (Runde 4).
       const without = core.roundUp(Number(hit.subtotalExact) || 0, hit.unit)
@@ -2061,10 +2076,13 @@ export function createBackzettelService(
     }
   }
 
-  /** `expected: { correction, reason }` - what the editor was opened on. */
+  /**
+   * `expected: { correction, reason, noneToday? }` - what the editor was
+   * opened on.
+   */
   function parseExpectedCorrection(
     body: unknown
-  ): { correction: number; reason: string | null } | null {
+  ): { correction: number; reason: string | null; noneToday: boolean } | null {
     const raw =
       body && typeof body === 'object'
         ? (body as Record<string, unknown>)['expected']
@@ -2074,7 +2092,7 @@ export function createBackzettelService(
       throw new BackzettelError(
         400,
         'validation',
-        'expected muss { correction, reason } sein.'
+        'expected muss { correction, reason, noneToday? } sein.'
       )
     }
     const e = raw as Record<string, unknown>
@@ -2095,7 +2113,18 @@ export function createBackzettelService(
       typeof e['reason'] === 'string' && e['reason'].trim()
         ? e['reason'].trim()
         : null
-    return { correction, reason }
+    if (
+      e['noneToday'] !== undefined &&
+      e['noneToday'] !== null &&
+      typeof e['noneToday'] !== 'boolean'
+    ) {
+      throw new BackzettelError(
+        400,
+        'validation',
+        'expected.noneToday muss true oder false sein.'
+      )
+    }
+    return { correction, reason, noneToday: e['noneToday'] === true }
   }
 
   /**
@@ -2106,24 +2135,34 @@ export function createBackzettelService(
    */
   async function assertCorrectionUnchanged(
     row: BackzettelLine | null,
-    expected: { correction: number; reason: string | null },
-    transaction: Transaction
+    expected: { correction: number; reason: string | null; noneToday: boolean },
+    transaction: Transaction,
+    // false: a stored „Heute keine“ that no longer applies (the line has a
+    // base meanwhile) - the screen shows a line without it, so it is no
+    // conflict (review PR #129: every correction ran into a 409).
+    noneApplies = true
   ) {
     const current = row ? toNumber(row.correction) : 0
+    const currentNone = noneApplies && current === 0 && dayCore.isNoneToday(row)
+    const active = current !== 0 || currentNone
     const currentReason =
-      row && current !== 0 && row.correctionReason ? row.correctionReason : null
+      row && active && row.correctionReason ? row.correctionReason : null
     const same =
       sameQty(current, expected.correction) &&
-      (current === 0 || currentReason === expected.reason)
+      currentNone === expected.noneToday &&
+      (!active || currentReason === expected.reason)
     if (same) return
     const users = await usersById([row?.correctionBy], transaction)
     const by = row ? userRef(users, row.correctionBy) : null
-    const now =
-      current === 0
-        ? 'inzwischen entfernt'
-        : `inzwischen auf ${fmtSigned(current)}${
-            currentReason ? ` („${currentReason}“)` : ''
-          } gesetzt${by ? ` von ${by.displayName}` : ''}`
+    const now = currentNone
+      ? `inzwischen auf „Heute keine“ gesetzt${
+          by ? ` von ${by.displayName}` : ''
+        }`
+      : current === 0
+      ? 'inzwischen entfernt'
+      : `inzwischen auf ${fmtSigned(current)}${
+          currentReason ? ` („${currentReason}“)` : ''
+        } gesetzt${by ? ` von ${by.displayName}` : ''}`
     throw new BackzettelError(
       409,
       'correction_changed',
@@ -2132,6 +2171,7 @@ export function createBackzettelService(
         current: {
           correction: current,
           reason: currentReason,
+          noneToday: currentNone,
           by,
         },
       }
@@ -2219,6 +2259,36 @@ export function createBackzettelService(
     }
   }
 
+  /**
+   * Does the stored „Heute keine“ of this line still apply - is its
+   * Grundmenge still open on the sheet as computed now? When hq got a base
+   * for the day meanwhile, the flag is stale: the line shows its base (and
+   * the warning `none_today_obsolete`), or, with a base of 0, is an item to
+   * add. Only computed for rows that carry the flag.
+   */
+  async function storedNoneApplies(
+    date: string,
+    day: BackzettelDay,
+    loaded: Loaded,
+    row: BackzettelLine | null,
+    transaction: Transaction
+  ): Promise<boolean> {
+    if (!row || !dayCore.isNoneToday(row) || toNumber(row.correction) !== 0)
+      return false
+    const inputs = await loadSheetInputs(loaded, date, transaction)
+    const result = computeSheet(
+      loaded,
+      date,
+      inputs,
+      toNumber(day.seasonFactor) || 1
+    )
+    const key = rowKey(row, date)
+    const hit = (result.lines as Array<Record<string, unknown>>).find(
+      (l) => l.key === key
+    )
+    return !!hit && hit.baseUnset === true
+  }
+
   async function setCorrection(
     date: string,
     itemId: string,
@@ -2245,31 +2315,60 @@ export function createBackzettelService(
       )
       const where = { date, bakeDate, itemId, variant: line.variant }
       const row = await BackzettelLine.findOne({ where, transaction })
-      if (parsed.value.correction < 0) {
+      const noneToday = parsed.value.noneToday === true
+      if (parsed.value.correction < 0 || noneToday) {
         await assertCorrectionFits(
           date,
           day,
           loadedNow,
-          { itemId, variant: line.variant, bakeDate, ...parsed.value },
+          {
+            itemId,
+            variant: line.variant,
+            bakeDate,
+            ...parsed.value,
+            noneToday,
+          },
+          line.item.name,
           transaction
         )
       }
+      // The audit says what was stored; a „Heute keine“ that no longer
+      // applied (base set in hq meanwhile) is marked as such.
+      const storedNone = dayCore.isNoneToday(row)
+      const noneApplies = await storedNoneApplies(
+        date,
+        day,
+        loadedNow,
+        row,
+        transaction
+      )
       const from = row
         ? {
             correction: toNumber(row.correction),
             reason: row.correctionReason,
+            noneToday: storedNone,
+            ...(storedNone && !noneApplies ? { noneTodayObsolete: true } : {}),
           }
-        : { correction: 0, reason: null }
+        : { correction: 0, reason: null, noneToday: false }
       const to = {
         correction: parsed.value.correction,
         reason: parsed.value.reason,
+        noneToday,
       }
-      if (from.correction === to.correction && from.reason === to.reason) return
-      if (expected) await assertCorrectionUnchanged(row, expected, transaction)
+      if (
+        from.correction === to.correction &&
+        from.reason === to.reason &&
+        from.noneToday === to.noneToday
+      )
+        return
+      if (expected)
+        await assertCorrectionUnchanged(row, expected, transaction, noneApplies)
       const values = {
         correction: to.correction,
         correctionReason: to.reason,
-        correctionBy: to.correction === 0 ? null : req.user?.id ?? null,
+        noneToday: to.noneToday,
+        correctionBy:
+          to.correction === 0 && !to.noneToday ? null : req.user?.id ?? null,
       }
       if (row) await row.update(values, { transaction })
       else
@@ -2367,7 +2466,11 @@ export function createBackzettelService(
         return {}
       }
       for (const raw of dayCore.linesForConfirm(result.lines)) {
-        const values = { ...raw, bakeDate: raw.bakeDate || date }
+        const values = {
+          ...raw,
+          bakeDate: raw.bakeDate || date,
+          noneToday: raw.noneToday === true,
+        }
         const key = rowKey(values, date)
         const row = rowsByKey.get(key)
         if (row) {
@@ -2397,7 +2500,10 @@ export function createBackzettelService(
           await row.update(
             {
               ...values,
-              correctionBy: values.correction === 0 ? null : row.correctionBy,
+              correctionBy:
+                values.correction === 0 && !values.noneToday
+                  ? null
+                  : row.correctionBy,
               ...(untick ? { doneAt: null, doneBy: null } : {}),
               ...baked,
             },

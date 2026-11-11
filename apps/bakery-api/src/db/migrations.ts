@@ -83,4 +83,10 @@ export const MIGRATIONS: MigrationEntry[] = [
     name: '20270301000000-dienstplan.js',
     module: require('../../migrations/20270301000000-dienstplan.js'),
   },
+  {
+    // Backzettel-Abgleich: backzettel_lines.none_today („Heute keine“ bei
+    // offener Grundmenge), additive
+    name: '20270310000000-backzettel-none-today.js',
+    module: require('../../migrations/20270310000000-backzettel-none-today.js'),
+  },
 ]

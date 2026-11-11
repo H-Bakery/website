@@ -119,6 +119,11 @@ function pickLine(line, v2) {
     out.baseUnset = line.baseUnset === true
     // Grundmenge offen: `total` ist nur das Bekannte (Mindestmenge, Regel 8)
     out.totalIsMinimum = line.totalIsMinimum === true
+    // Tagesentscheidung bei offener Grundmenge („heute keine“ / Menge für
+    // heute) - nur dann gesetzt, die Grundmenge bleibt `null`.
+    if (line.dayDecision === 'none' || line.dayDecision === 'amount') {
+      out.dayDecision = line.dayDecision
+    }
   }
   return out
 }
@@ -555,7 +560,13 @@ function kgText(d) {
 function litersText(l) {
   if (!l) return 'unbekannt'
   if (l.rounded !== null) return `${deNumber(l.rounded)} L`
-  if (l.exact !== null) return `${deNumber(l.exact)} L (Rundung offen)`
+  if (l.exact !== null) {
+    return `${deNumber(l.exact)} L (${
+      l.reason === 'below_rounding_step'
+        ? 'genau, unter der Rundungsstufe'
+        : 'Rundung offen'
+    })`
+  }
   const why = {
     kg_per_liter_unknown: 'kg je Liter offen',
     dough_incomplete: 'Teig unvollständig',
@@ -570,7 +581,11 @@ function addonsText(list) {
         ? a.grams.rounded !== null
           ? `${deNumber(a.grams.rounded, 1)} g`
           : a.grams.exact !== null
-          ? `${deNumber(a.grams.exact, 1)} g (Rundung offen)`
+          ? `${deNumber(a.grams.exact, 1)} g (${
+              a.reason === 'below_rounding_step'
+                ? 'genau, unter der Rundungsstufe'
+                : 'Rundung offen'
+            })`
           : 'unbekannt'
         : 'unbekannt'
       return `${a.name || a.id} ${g}`
@@ -641,7 +656,14 @@ function linesTable(out, lines, v2) {
     const total =
       `**${v2 ? minimumText(l.total, l.totalIsMinimum) : deNumber(l.total)}**` +
       (l.loavesEstimate ? ` (ca. ${deNumber(l.loavesEstimate, 0)} Laibe)` : '')
-    const base = v2 && l.base === null ? 'offen' : deNumber(l.base)
+    const base =
+      v2 && l.base === null
+        ? l.dayDecision === 'none'
+          ? 'offen – heute keine'
+          : l.dayDecision === 'amount'
+          ? 'offen – für heute festgelegt'
+          : 'offen'
+        : deNumber(l.base)
     out.push(
       `| ${cell(l.name)} | ${cell(
         (v2 ? l.variantLabel : l.variant) || ''
