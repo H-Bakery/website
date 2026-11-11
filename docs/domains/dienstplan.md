@@ -46,6 +46,27 @@ Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). AP
   (`apps/bakery-landing/src/config/openingHours.ts`); `openingHours.spec.ts` daneben fällt um,
   wenn die beiden nicht übereinstimmen, ein Unit-Test, wenn der Ruhetag der Tabelle nicht der
   Standard-Ruhetag ist. Zeiten ändern = beide Dateien.
+- **Ob ein Tag offen ist, sagt der Kalender der Bäckerei (Z14)** - derselbe wie bei Backzettel
+  und Rest am Abend (`kalender.core.js` `dayKind`, hq `config/kalender.yaml`, siehe
+  [backzettel.md](backzettel.md) „Kalender“). `dayInfo` fragt ihn mit den Öffnungstagen des
+  Dienstplans als Wochenplan und liefert je Tag `kind` (`normal`, `ruhetag`, `geschlossen`,
+  `wie-sonntag`, `sonderoeffnung`, `teigtag`), `kindLabel`, `kindDetail` und `calendar`:
+  - **Schließtag** (`geschlossen`, Betriebsferien, „nur Teig“): `closed`, keine Öffnungszeit,
+    keine Besetzung; im Kalender hinterlegt und mit Notiz benannt („Geschlossen ·
+    Betriebsferien“). Eine Schicht an dem Tag bleibt ein Hinweis mit dem Grund.
+  - **Sonderöffnung / „wie Sonntag“**: offen - auch am Ruhetag oder Feiertag -, mit den Zeiten des
+    Wochentags, nach dem geöffnet wird (`offen_bis` kürzt das Ende); die Besetzung des Verkaufs
+    wird über diese Zeit geprüft, der Tag ist benannt („Sonderöffnung (wie Samstag) · Notiz“).
+  - **Ohne Kalender** (Datei fehlt oder ungültig) gilt genau die Regel wie zuvor: Ruhetag oder
+    gesetzlicher Feiertag = geschlossen. Für ein Jahr, das der Kalender nicht führt, bleibt ein
+    gesetzlicher Feiertag ohne eigenen Eintrag geschlossen (der Backzettel behandelt ihn dann als
+    normalen Tag - beim Dienstplan wäre das ein Rückschritt; **vorläufig**).
+  - **Urlaubstage und Soll hängen nicht am Kalender (vorläufig):** das Tagesgewicht bleibt 0 am
+    Ruhetag und am gesetzlichen Feiertag (auch wenn der Laden dann offen hat - ein Feiertag ist
+    nie ein Urlaubstag), 0,5 an 24./31.12., sonst 1 - auch an einem Schließtag des Kalenders:
+    Betriebsferien kosten Urlaub, und wer an einem Schließtag weder Urlaub noch „abwesend“ hat,
+    behält sein Soll. Offene Inhaber-Frage: sollen einzelne Schließtage das Soll mindern, ohne
+    Urlaub zu kosten?
 - **Urlaub zählt in Öffnungstagen**, für alle gleich (6-Tage-Woche, Samstag zählt immer): jeder
   Tag, der kein Ruhetag (`closed_weekdays` aus der Finanz-Config, sonst Montag) und kein Feiertag
   ist, zählt 1. **24.12. und 31.12. zählen 0,5.** Ein Halbtag-Eintrag zählt höchstens 0,5.
@@ -93,7 +114,8 @@ Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). AP
 - **Feiertage Saarland sind geschlossen** (Neujahr, Karfreitag, Ostermontag, 1. Mai, Christi
   Himmelfahrt, Pfingstmontag, Fronleichnam, Mariä Himmelfahrt, 3. Oktober, Allerheiligen, beide
   Weihnachtsfeiertage): sie zählen nie als Urlaubstag und stehen im Kalender wie der Ruhetag als
-  geschlossen. 24.12./31.12. zählen nur dann 0,5, wenn sie Öffnungstag sind.
+  geschlossen - außer der Kalender der Bäckerei öffnet den Tag (Sonderöffnung, „wie Sonntag“).
+  24.12./31.12. zählen nur dann 0,5, wenn sie weder Ruhetag noch Feiertag sind.
 - **Mitarbeiter werden deaktiviert, nie gelöscht.** Der Anzeigename ist maßgeblich; der Login ist
   nur ein optionaler Verweis. Konnten die Logins nicht geladen werden, ist das Feld gesperrt und
   sagt es - die Verknüpfung bleibt dann unverändert.
@@ -112,7 +134,8 @@ Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). AP
   und „Heute“ (zwischen den Pfeilen steht der Zeitraum, kein Datum).
   - **Woche (Standard):** Zeilen = Mitarbeitende nach Bereich (Verkauf zuerst), Spalten Mo-So.
     Schichten mit Uhrzeit, Abwesenheiten als Balken (genehmigt gefüllt, geplant gestrichelt).
-    Ruhetag und Feiertag sind hinterlegt und benannt; offene Tage zeigen im Kopf ihre
+    Ruhetag, Feiertag und Schließtage des Kalenders sind hinterlegt und benannt, eine
+    Sonderöffnung steht mit Namen im Kopf; offene Tage zeigen im Kopf ihre
     **Öffnungszeit** („05:30–13:30“). Darunter steht die Zeile **„Besetzung Verkauf“** (nur bei
     „Alle“ oder „Verkauf“): je Tag ein schmaler Zeitstrahl (besetzt gefüllt, Lücke schraffiert -
     nur Beiwerk) und als Text, wer welchen Teil abdeckt („06:00–12:00 Vera“, Kurzname, bei
@@ -128,8 +151,8 @@ Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). AP
   - **Monat:** dieselbe Zeilenlogik, Tage als schmale Spalten (Gantt-artig). Abwesenheit als
     durchgehender Balken mit Kürzel (U/F/A, geplant gestrichelt), Schicht als Punkt in der Farbe
     der Person, geschlossene Tage hinterlegt und im Kopf mit „×“, halbe Tage (24./31.12.) mit „½“
-    markiert. Die Namen der Feiertage und halben Tage stehen zusätzlich unter der Tabelle - Touch
-    kennt keinen Tooltip. Ein Tag einer Person öffnet
+    markiert. Die Namen der Feiertage, Schließtage („Geschlossen · Notiz (×)“), Sonderöffnungen
+    („… (offen)“) und halben Tage stehen zusätzlich unter der Tabelle - Touch kennt keinen Tooltip. Ein Tag einer Person öffnet
     **dieselben Dialoge wie die Woche**: leerer Tag → Schicht oder Abwesenheit anlegen; Tag mit
     Einträgen → Menü mit jedem Eintrag zum Bearbeiten, dazu „Schicht anlegen“ (aktive Personen,
     alle Bereiche) und „Abwesenheit eintragen“ (nur ohne Abwesenheit an dem Tag). Gibt es nur eine Möglichkeit, öffnet gleich der Dialog. Das Datum im Kopf öffnet

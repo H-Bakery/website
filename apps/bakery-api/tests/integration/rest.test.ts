@@ -614,3 +614,85 @@ describe('a later product in backzettel.yaml (Abschluss-Verifikation next)', () 
     }
   })
 })
+
+describe('calendar (Z14): a closing day is „geschlossen“, not a gap', () => {
+  // Synthetic calendar: the legal holidays (formula) plus an invented
+  // closing day on Sa 2026-12-05.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const kalender = require('../../src/services/kalender.core')
+  const SAT = '2026-12-05'
+  const kalenderFile = () => path.join(hqDir, 'config', 'kalender.yaml')
+
+  beforeAll(() =>
+    fs.writeFileSync(
+      kalenderFile(),
+      JSON.stringify({
+        version: 1,
+        bundesland: 'saarland',
+        feiertage: {
+          2026: kalender
+            .holidaysSaarland(2026)
+            .map((h: any) => ({ datum: h.date, name: h.name })),
+        },
+        tage: [{ datum: SAT, typ: 'geschlossen', notiz: 'Inventur' }],
+      })
+    )
+  )
+  afterAll(() => fs.rmSync(kalenderFile(), { force: true }))
+
+  it('day view: geschlossen with the reason, the Ruhetag stays a Ruhetag', async () => {
+    const sat = await as('verkauf').get(`/api/rest?date=${SAT}`)
+    expect(sat.status).toBe(200)
+    expect(sat.body.data).toMatchObject({
+      status: 'geschlossen',
+      editable: false,
+      editIssue: expect.stringMatching(/geschlossen \(Inventur\)/),
+      dayKind: { kind: 'geschlossen', note: 'Inventur' },
+    })
+    const mon = await as('verkauf').get(`/api/rest?date=${MON}`)
+    expect(mon.body.data).toMatchObject({
+      status: 'ruhetag',
+      dayKind: { kind: 'ruhetag' },
+    })
+  })
+
+  it('PUT on a closing day: 409 geschlossen with a German message, nothing saved', async () => {
+    const before = await RestCount.count()
+    const res = await as('verkauf')
+      .put(`/api/rest/${SAT}`)
+      .send({
+        items: [{ itemId: 'plunder', productId: 'test-plunder', qty: 1 }],
+      })
+    expect(res.status).toBe(409)
+    expect(res.body).toMatchObject({
+      error: 'geschlossen',
+      message: expect.stringMatching(/Samstag 05\.12\.: geschlossen/),
+    })
+    expect(await RestCount.count()).toBe(before)
+  })
+
+  it('summary: the closing day is counted as geschlossen, not as not counted', async () => {
+    const res = await as('inhaber').get(
+      `/api/rest/summary?from=${TUE}&to=${TODAY}`
+    )
+    expect(res.status).toBe(200)
+    const days = Object.fromEntries(
+      res.body.data.days.map((d: any) => [d.date, d.status])
+    )
+    expect(days).toMatchObject({ [SAT]: 'geschlossen', [MON]: 'ruhetag' })
+    expect(res.body.data.counts).toMatchObject({ geschlossen: 1, ruhetag: 1 })
+  })
+
+  it('the Dienstplan reads the same calendar', async () => {
+    const res = await as('inhaber').get(`/api/dienstplan?from=${SAT}&to=${SAT}`)
+    expect(res.status).toBe(200)
+    expect(res.body.data.days[0]).toMatchObject({
+      date: SAT,
+      closed: true,
+      kind: 'geschlossen',
+      kindDetail: 'Inventur',
+      calendar: 'ok',
+      weight: 1,
+    })
+  })
+})

@@ -215,6 +215,24 @@ export interface CalendarDay {
    * ohne hinterlegte Zeit (z. B. Ruhetag laut Finanz-Config geändert).
    */
   openingHours: OpeningHours | null
+  /**
+   * Tagestyp aus dem Kalender der Bäckerei (`kalender.core.js`, Z14 -
+   * derselbe wie Backzettel und Rest am Abend); ohne Kalender Ruhetag,
+   * Feiertag (`geschlossen`) oder `normal`.
+   */
+  kind?:
+    | 'normal'
+    | 'ruhetag'
+    | 'geschlossen'
+    | 'wie-sonntag'
+    | 'sonderoeffnung'
+    | 'teigtag'
+  /** Kurzer Text des Tagestyps („Sonderöffnung (wie Samstag)“), `null` am normalen Tag. */
+  kindLabel?: string | null
+  /** Notiz des Kalenders oder Name des Feiertags. */
+  kindDetail?: string | null
+  /** Ob ein Kalender galt: `ok` | `missing` | `year-missing`. */
+  calendar?: 'ok' | 'missing' | 'year-missing'
   verkaufBesetzt: number
   /** `null`, wenn der Tag keine Öffnungszeit hat. */
   besetzung: Besetzung | null

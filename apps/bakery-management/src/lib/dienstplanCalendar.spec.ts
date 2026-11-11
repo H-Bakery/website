@@ -1,4 +1,5 @@
 import {
+  specialDayLabel,
   closedDayLabel,
   daysInMonth,
   dienstplanHref,
@@ -375,5 +376,83 @@ describe('Öffnungszeit, Besetzung und Stunden (nur Anzeige)', () => {
         status: 'no-target',
       })
     ).toEqual({ plan: '32:30 h', target: 'offen', diff: null, sign: null })
+  })
+})
+
+describe('Tagestyp aus dem Kalender (Z14, nur Anzeige)', () => {
+  it('Schließtag des Kalenders mit Notiz, Feiertag und Ruhetag wie bisher', () => {
+    expect(
+      closedDayLabel(
+        day({
+          closed: true,
+          kind: 'geschlossen',
+          kindLabel: 'Geschlossen',
+          kindDetail: 'Betriebsferien',
+        })
+      )
+    ).toBe('Geschlossen · Betriebsferien')
+    expect(
+      closedDayLabel(
+        day({
+          closed: true,
+          kind: 'teigtag',
+          kindLabel: 'Nur Teig (Laden geschlossen)',
+          kindDetail: null,
+        })
+      )
+    ).toBe('Nur Teig (Laden geschlossen)')
+    expect(
+      closedDayLabel(
+        day({
+          closed: true,
+          holidayName: 'Allerheiligen',
+          kind: 'geschlossen',
+          kindLabel: 'Geschlossen',
+          kindDetail: 'Allerheiligen',
+        })
+      )
+    ).toBe('Allerheiligen')
+    expect(
+      closedDayLabel(
+        day({
+          closed: true,
+          restDay: true,
+          kind: 'ruhetag',
+          kindLabel: 'Ruhetag',
+          kindDetail: null,
+        })
+      )
+    ).toBe('Ruhetag')
+  })
+
+  it('ein Feiertag, an dem der Laden offen hat, ist kein geschlossener Tag', () => {
+    const open = day({
+      holidayName: 'Fronleichnam',
+      kind: 'wie-sonntag',
+      kindLabel: 'Wie Sonntag',
+      kindDetail: 'Fronleichnam offen',
+    })
+    expect(closedDayLabel(open)).toBeNull()
+    expect(specialDayLabel(open)).toBe('Wie Sonntag · Fronleichnam offen')
+  })
+
+  it('Sonderöffnung mit und ohne Notiz; normale und geschlossene Tage nicht', () => {
+    expect(
+      specialDayLabel(
+        day({
+          restDay: true,
+          kind: 'sonderoeffnung',
+          kindLabel: 'Sonderöffnung (wie Samstag)',
+          kindDetail: null,
+        })
+      )
+    ).toBe('Sonderöffnung (wie Samstag)')
+    expect(specialDayLabel(day())).toBeNull()
+    expect(specialDayLabel(day({ kind: 'normal', kindLabel: null }))).toBeNull()
+    expect(
+      specialDayLabel(
+        day({ closed: true, kind: 'geschlossen', kindLabel: 'Geschlossen' })
+      )
+    ).toBeNull()
   })
 })

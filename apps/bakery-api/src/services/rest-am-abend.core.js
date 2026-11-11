@@ -745,6 +745,49 @@ function mergeRows(item, catalog, stored, variant) {
  * @param {Array} a.rows gespeicherte Zählungen des Tages
  *   `{itemId, variant, productId, qty, unit, factor, name, itemName, itemUnit, countedAt, countedBy, revision}`
  */
+/**
+ * Was der Kalender (`kalender.core.js` `dayKind`, Z14) für die Zählung an
+ * `date` heißt - die einzige Stelle, an der Rest am Abend den Tag einordnet:
+ *   `ok`          Backtag (auch Sonderöffnung / „wie Sonntag“) - es wird gezählt
+ *   `ruhetag`     Ruhetag laut Wochenplan
+ *   `geschlossen` Schließtag laut Kalender (Feiertag, Betriebsferien, „nur
+ *                 Teig“): nichts gebacken, nichts zu zählen - keine Lücke
+ *                 und keine 0.
+ * `dayKind` (Typ, Text, Notiz) nur mit Kalender - ohne ihn gilt der
+ * Wochenplan wie zuvor und die Antwort hat das Feld nicht.
+ * @returns {{ status: 'ok'|'ruhetag'|'geschlossen', issue: string|null, dayKind: object|null }}
+ */
+function countDayStatus(config, date) {
+  const info = kalender.dayKind(config, date)
+  const dayKind =
+    info.calendar === 'missing'
+      ? null
+      : {
+          kind: info.kind,
+          label: info.label,
+          detail: info.detail,
+          note: info.note,
+          holidayName: info.holidayName,
+          baseWeekday: info.baseWeekday,
+          openUntil: info.openUntil,
+        }
+  if (info.bakeDay) return { status: 'ok', issue: null, dayKind }
+  const weekdayName = WEEKDAY_NAMES[info.weekday]
+  if (info.kind === 'ruhetag') {
+    return { status: 'ruhetag', issue: `${weekdayName} ist Ruhetag.`, dayKind }
+  }
+  const day = `${weekdayName} ${kalender.shortDate(date).slice(3)}`
+  const why =
+    info.kind === 'teigtag'
+      ? `nur Teig, Laden geschlossen${info.note ? ` (${info.note})` : ''}`
+      : `geschlossen${info.note ? ` (${info.note})` : ''}`
+  return {
+    status: 'geschlossen',
+    issue: `${day}: ${why} - an diesem Tag gibt es keinen Rest zu zählen.`,
+    dayKind,
+  }
+}
+
 function buildDayView(a) {
   const date = a.date
   const weekday = isoWeekday(date)
@@ -752,8 +795,8 @@ function buildDayView(a) {
   const items = itemsById(config)
   const window = { from: addDays(a.today, -COUNT_DAYS_BACK), to: a.today }
   const inWindow = date >= window.from && date <= window.to
-  // U9: Backtag laut Wochenplan und Kalender (Feiertag = kein Backtag)
-  const productionDay = config ? kalender.isBakeDay(config, date) : null
+  // U9/Z14: Backtag, Ruhetag oder Schließtag - aus dem Kalender
+  const countDay = config ? countDayStatus(config, date) : null
   const storedRows = Array.isArray(a.rows) ? a.rows : []
   const bz = backzettelLines(a.backzettel, config)
 
@@ -829,13 +872,14 @@ function buildDayView(a) {
     (s, l) => s + l.rows.filter((r) => r.qty !== null).length,
     0
   )
-  const status = !config ? 'no-config' : productionDay ? 'ok' : 'ruhetag'
+  const status = !config ? 'no-config' : countDay.status
   return {
     date,
     weekday,
     weekdayName: WEEKDAY_NAMES[weekday] || null,
     today: a.today,
     status,
+    ...(countDay && countDay.dayKind ? { dayKind: countDay.dayKind } : {}),
     ...(a.reasons ? { reasons: a.reasons } : {}),
     backzettelStatus: a.backzettel
       ? a.backzettel.status === 'confirmed'
@@ -849,8 +893,8 @@ function buildDayView(a) {
     editIssue:
       status === 'no-config'
         ? 'Die Backzettel-Stammdaten fehlen oder sind ungültig - ohne sie gibt es keine Zählliste.'
-        : status === 'ruhetag'
-        ? `${WEEKDAY_NAMES[weekday]} ist Ruhetag.`
+        : status !== 'ok'
+        ? countDay.issue
         : date > window.to
         ? 'Dieser Tag liegt in der Zukunft - gezählt wird bei Ladenschluss.'
         : date < window.from
@@ -972,6 +1016,8 @@ function summarize(a) {
     notCounted: 0,
     noBackzettel: 0,
     ruhetag: 0,
+    // Z14: Schließtag laut Kalender - weder Lücke noch Ruhetag
+    geschlossen: 0,
     future: 0,
   }
 
@@ -995,9 +1041,13 @@ function summarize(a) {
       counts.future += 1
       continue
     }
-    if (config && !kalender.isBakeDay(config, date) && rows.length === 0) {
-      day.status = 'ruhetag'
-      counts.ruhetag += 1
+    const countDay = config ? countDayStatus(config, date) : null
+    if (countDay && countDay.dayKind && countDay.dayKind.label) {
+      day.dayKind = countDay.dayKind
+    }
+    if (countDay && countDay.status !== 'ok' && rows.length === 0) {
+      day.status = countDay.status
+      counts[countDay.status] += 1
       continue
     }
     const bz = backzettelLines(input.backzettel, config)
@@ -1228,6 +1278,7 @@ const DAY_STATUS_LABELS = {
   counted_without_backzettel: 'gezählt, Backzettel nicht freigegeben',
   nothing_baked: 'nichts gebacken',
   ruhetag: 'Ruhetag',
+  geschlossen: 'geschlossen',
   future: 'noch nicht',
 }
 
@@ -1352,7 +1403,10 @@ function summaryCsv(s) {
  * (`summarize`): jede Zeile, die gezählt wurde oder laut Backzettel gebacken
  * wurde, ist ganz gezählt - eine gebackene, aber nicht gezählte Sorte macht
  * den Tag unbrauchbar, statt den Mittelwert zu drücken. Tage ohne Zählung
- * oder ohne Freigabe werden übersprungen, nie als 0 gezählt.
+ * oder ohne Freigabe werden übersprungen, nie als 0 gezählt. Ein Tag, an
+ * dem laut Kalender nach einem anderen Wochentag gebacken wurde
+ * (Sonderöffnung, „wie Sonntag“ - Z14), gehört nicht in den Mittelwert
+ * seines Wochentags und wird ebenfalls übersprungen.
  *
  * @param {object} a `{ config, catalog, today, weeks, weekdays, rowsByDate, backzettelByDate }`
  *   `backzettelByDate`: je Datum die (freigegebene) Backzettel-Tagesansicht;
@@ -1372,6 +1426,17 @@ function weekdayRestAverages(a) {
     }
     return bzCache.get(date)
   }
+  const otherWeekday = new Map()
+  const bakedLikeOtherWeekday = (date) => {
+    if (!otherWeekday.has(date)) {
+      const info = kalender.dayKind(config, date)
+      otherWeekday.set(
+        date,
+        info.baseWeekday !== null && info.baseWeekday !== info.weekday
+      )
+    }
+    return otherWeekday.get(date)
+  }
   const out = []
   for (const weekday of a.weekdays) {
     const { dates } = refCore.referenceDates({
@@ -1388,6 +1453,7 @@ function weekdayRestAverages(a) {
       const used = []
       for (const date of dates) {
         if (samples.length >= a.weeks) break
+        if (bakedLikeOtherWeekday(date)) continue
         const bz = linesOn(date)
         if (!bz) continue
         const rows = ((a.rowsByDate && a.rowsByDate[date]) || []).filter(
@@ -1468,6 +1534,7 @@ module.exports = {
   backzettelLines,
   lineRest,
   buildDayView,
+  countDayStatus,
   parseRange,
   summarize,
   summaryCsv,

@@ -1685,3 +1685,87 @@ describe('Dienstplan - Kalender (Monat und Jahr)', () => {
     expect(screen.queryByText('Schicht angelegt.')).not.toBeInTheDocument()
   })
 })
+
+describe('Dienstplan - Tagestyp aus dem Kalender (Z14)', () => {
+  it('Woche: Schließtag mit Notiz, Sonderöffnung mit Öffnungszeit', async () => {
+    const base = calendar()
+    api.fetchCalendar.mockResolvedValue({
+      ...base,
+      days: base.days.map((d) =>
+        d.date === '2026-11-11'
+          ? {
+              ...d,
+              closed: true,
+              openingHours: null,
+              besetzung: null,
+              kind: 'geschlossen' as const,
+              kindLabel: 'Geschlossen',
+              kindDetail: 'Inventur',
+              calendar: 'ok' as const,
+            }
+          : d.date === '2026-11-12'
+          ? {
+              ...d,
+              openingHours: { opens: '05:30', closes: '11:00' },
+              kind: 'sonderoeffnung' as const,
+              kindLabel: 'Sonderöffnung (wie Samstag)',
+              kindDetail: 'Testmarkt · offen bis 11:00 Uhr',
+              calendar: 'ok' as const,
+            }
+          : d
+      ),
+    })
+    renderCalendar()
+    await ready()
+    expect(screen.getByTestId('day-2026-11-11')).toHaveTextContent(
+      'Geschlossen · Inventur'
+    )
+    expect(screen.queryByTestId('opening-2026-11-11')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('staffing-2026-11-11')).not.toBeInTheDocument()
+    expect(screen.getByTestId('special-2026-11-12')).toHaveTextContent(
+      'Sonderöffnung (wie Samstag) · Testmarkt · offen bis 11:00 Uhr'
+    )
+    expect(screen.getByTestId('opening-2026-11-12')).toHaveTextContent(
+      '05:30–11:00'
+    )
+    expect(screen.queryByTestId('special-2026-11-13')).not.toBeInTheDocument()
+  })
+
+  it('Monat: Schließtag und Sonderöffnung stehen mit Namen unter der Tabelle', async () => {
+    const base = monthCalendar()
+    api.fetchCalendar.mockResolvedValue({
+      ...base,
+      days: base.days.map((d) =>
+        d.date === '2026-11-18'
+          ? {
+              ...d,
+              closed: true,
+              openingHours: null,
+              kind: 'geschlossen' as const,
+              kindLabel: 'Geschlossen',
+              kindDetail: 'Inventur',
+            }
+          : d.date === '2026-11-23'
+          ? {
+              ...d,
+              closed: false,
+              kind: 'sonderoeffnung' as const,
+              kindLabel: 'Sonderöffnung (wie Samstag)',
+              kindDetail: 'Testmarkt',
+            }
+          : d
+      ),
+    })
+    renderCalendar({ view: 'monat', month: '2026-11' })
+    await ready()
+    expect(screen.getByTestId('day-2026-11-18')).toHaveTextContent('×')
+    expect(screen.getByTestId('day-2026-11-23')).not.toHaveTextContent('×')
+    const notes = screen.getByTestId('month-day-notes')
+    expect(notes).toHaveTextContent('Mi 18.11. Geschlossen · Inventur (×)')
+    expect(notes).toHaveTextContent(
+      'Mo 23.11. Sonderöffnung (wie Samstag) · Testmarkt (offen)'
+    )
+    expect(notes).toHaveTextContent('So 01.11. Allerheiligen (×)')
+    expect(notes).not.toHaveTextContent('09.11.')
+  })
+})

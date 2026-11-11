@@ -36,6 +36,8 @@ const {
   easterSunday,
   holidaysSaarland,
   holidayName,
+  dayKind: kalenderDayKind,
+  dayKindText,
 } = require('./kalender.core')
 
 const AREAS = ['verkauf', 'backstube', 'fahrer', 'buero']
@@ -149,7 +151,8 @@ function round2(value) {
 }
 
 // ============================================================================
-// FEIERTAGE SAARLAND - einzige Fassung in `kalender.core.js` (U9)
+// FEIERTAGE SAARLAND UND SCHLIESSTAGE - einzige Fassung in
+// `kalender.core.js` (U9, Z14)
 // ============================================================================
 
 // ============================================================================
@@ -179,23 +182,89 @@ function closedSet(closedWeekdays) {
 }
 
 /**
+ * Was der Kalender der Bäckerei (`kalender.core.js` `dayKind`, hq
+ * `config/kalender.yaml`) zu `date` sagt - dieselbe Frage wie Backzettel und
+ * Rest am Abend, hier mit den Öffnungstagen des Dienstplans als Wochenplan
+ * (alle Wochentage außer den Ruhetagen). `null` ohne Kalender.
+ */
+function calendarKind(date, closedWeekdays, calendar) {
+  if (!calendar || typeof calendar !== 'object') return null
+  const closed = closedSet(closedWeekdays)
+  const days = [1, 2, 3, 4, 5, 6, 7].filter((wd) => !closed.has(wd))
+  return kalenderDayKind({ days, dough_days: [], calendar }, date)
+}
+
+/**
  * Ein Kalendertag: `{ date, weekday, holidayName, restDay, closed, weight,
- * halfDayName, openingHours }`. `weight` ist, was ein Urlaubstag an diesem
- * Datum kostet: 0 geschlossen (Ruhetag oder Feiertag), 0,5 an 24.12./31.12.,
- * sonst 1. `openingHours` = `{ opens, closes }` aus `opening-hours.core.js`
- * an offenen Tagen; `null` an geschlossenen - und an einem offenen Tag, für
+ * halfDayName, openingHours, kind, kindLabel, kindDetail, calendar }`.
+ *
+ * `closed` (Laden zu) kommt mit Kalender (`calendar` = `config.calendar` der
+ * Backzettel-Stammdaten, Z14) aus `kalender.core.js`: ein Schließtag
+ * (`geschlossen`, Betriebsferien, „nur Teig“) ist geschlossen, eine
+ * Sonderöffnung oder „wie Sonntag“ offen - auch am Feiertag oder Ruhetag -
+ * mit den Zeiten des Wochentags, nach dem geöffnet wird (`offen_bis` kürzt
+ * das Ende). Ohne Kalender gilt genau die alte Regel: Ruhetag oder
+ * gesetzlicher Feiertag = geschlossen. Für ein Jahr, das der Kalender nicht
+ * führt, bleibt ein gesetzlicher Feiertag ohne eigenen Eintrag geschlossen
+ * (wie ohne Kalender).
+ *
+ * `kind` ist der Tagestyp des Kalenders (`normal` | `ruhetag` |
+ * `geschlossen` | `wie-sonntag` | `sonderoeffnung` | `teigtag`), `kindLabel`
+ * / `kindDetail` sein Text (`dayKindText`), `calendar` = `ok` | `missing` |
+ * `year-missing`.
+ *
+ * `weight` ist, was ein Urlaubstag an diesem Datum kostet, und hängt
+ * **nicht** am Kalender (vorläufig, docs/domains/dienstplan.md): 0 am
+ * Ruhetag und am gesetzlichen Feiertag (auch wenn der Laden dann offen
+ * hat), 0,5 an 24.12./31.12., sonst 1 - auch an einem Schließtag des
+ * Kalenders (Betriebsferien kosten Urlaub).
+ *
+ * `openingHours` = `{ opens, closes }` aus `opening-hours.core.js` an
+ * offenen Tagen; `null` an geschlossenen - und an einem offenen Tag, für
  * dessen Wochentag die Tabelle keine Zeiten hat (die Finanz-Config öffnet
  * z. B. den Montag): dann ist die Öffnungszeit nicht hinterlegt.
  */
-function dayInfo(date, closedWeekdays) {
+function dayInfo(date, closedWeekdays, calendar) {
   const weekday = isoWeekday(date)
   const holiday = holidayName(date)
   const restDay = closedSet(closedWeekdays).has(weekday)
-  const closed = restDay || holiday !== null
+  const noVacationDay = restDay || holiday !== null
   const halfDayName = HALF_DAYS[date.slice(5)] || null
   let weight = 1
-  if (closed) weight = 0
+  if (noVacationDay) weight = 0
   else if (halfDayName) weight = 0.5
+
+  // Tagestyp: der Kalender, sonst (kein Kalender; Feiertag in einem Jahr,
+  // das der Kalender nicht führt) die Regel von vor Z14.
+  const k = calendarKind(date, closedWeekdays, calendar)
+  const byCalendar =
+    k !== null &&
+    !(
+      k.calendar === 'year-missing' &&
+      holiday !== null &&
+      (k.kind === 'normal' || k.kind === 'ruhetag')
+    )
+  let kind
+  let closed
+  let openingHours = null
+  let text
+  if (byCalendar) {
+    kind = k.kind
+    closed = !k.open
+    text = { label: k.label, detail: k.detail }
+    if (!closed) {
+      const hours = openingHoursForWeekday(k.baseWeekday)
+      openingHours =
+        hours && k.openUntil && k.openUntil > hours.opens
+          ? { ...hours, closes: k.openUntil }
+          : hours
+    }
+  } else {
+    closed = noVacationDay
+    kind = holiday !== null ? 'geschlossen' : restDay ? 'ruhetag' : 'normal'
+    text = dayKindText({ kind, note: holiday, holidayName: holiday })
+    if (!closed) openingHours = openingHoursForWeekday(weekday)
+  }
   return {
     date,
     weekday,
@@ -203,12 +272,19 @@ function dayInfo(date, closedWeekdays) {
     restDay,
     closed,
     weight,
-    halfDayName: closed ? null : halfDayName,
-    openingHours: closed ? null : openingHoursForWeekday(weekday),
+    halfDayName: noVacationDay ? null : halfDayName,
+    openingHours,
+    kind,
+    kindLabel: text.label,
+    kindDetail: text.detail,
+    calendar: k ? k.calendar : 'missing',
   }
 }
 
-/** Gewicht eines Tages (siehe `dayInfo`). */
+/**
+ * Gewicht eines Tages (siehe `dayInfo`) - ohne Kalender, das Gewicht hängt
+ * nicht an ihm.
+ */
 function dayWeight(date, closedWeekdays) {
   return dayInfo(date, closedWeekdays).weight
 }
@@ -629,12 +705,22 @@ function verkaufCoverage(date, openingHours, employees, shifts, absences) {
 /**
  * Tagesliste des Kalenders `from`…`to`:
  * `[{ date, weekday, holidayName, restDay, closed, weight, halfDayName,
- * openingHours, verkaufBesetzt, besetzung }]` (`besetzung` aus
- * `verkaufCoverage`, `null` ohne Öffnungszeit).
+ * openingHours, kind, kindLabel, kindDetail, calendar, verkaufBesetzt,
+ * besetzung }]` (`besetzung` aus `verkaufCoverage`, `null` ohne
+ * Öffnungszeit). `calendar` (optional) = Kalender der Bäckerei, siehe
+ * `dayInfo`.
  */
-function calendarDays(from, to, closedWeekdays, employees, shifts, absences) {
+function calendarDays(
+  from,
+  to,
+  closedWeekdays,
+  employees,
+  shifts,
+  absences,
+  calendar
+) {
   return listDates(from, to).map((date) => {
-    const info = dayInfo(date, closedWeekdays)
+    const info = dayInfo(date, closedWeekdays, calendar)
     return {
       ...info,
       verkaufBesetzt: verkaufBesetzt(date, employees, shifts, absences),

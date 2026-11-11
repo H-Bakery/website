@@ -36,6 +36,23 @@ API-Details (Endpunkte, Fehlercodes, Tabelle `rest_counts`): [`docs/api/rest.md`
 - **Ein Tag ohne vollständige Zählung ist eine Lücke, keine 0** (`partial` / `not_counted`,
   gestrichelt im Verlauf, `uncountedDates` je Posten) - nicht wegoptimieren, sonst liest sich eine
   vergessene Zählung wie „alles verkauft".
+- **Was der Tag ist, sagt der Kalender (Z14)** - derselbe wie beim Backzettel
+  (`kalender.core.js` `dayKind`, hq `config/kalender.yaml`, siehe
+  [backzettel.md](backzettel.md) „Kalender“), gefragt an genau einer Stelle (`countDayStatus`):
+  - **Schließtag = `geschlossen`** (gesetzlicher Feiertag, `geschlossen`, Betriebsferien,
+    `teigtag` „nur Teig“): nichts gebacken, nichts zu zählen. **Keine Lücke und keine 0** - der
+    Tag steht in der Auswertung als „geschlossen“ (`counts.geschlossen`, im Diagramm ohne
+    gestrichelte Lücke, mit Notiz „geschlossen (Inventur)“), nie unter „nicht gezählt“ und nicht
+    unter den Ruhetagen. Die Zählliste sagt den Grund („Samstag 05.12.: geschlossen (Inventur) -
+    …“), `PUT` antwortet 409 `geschlossen`. Wurde an so einem Tag trotzdem gezählt (Kalender
+    später geändert), bleibt die Zählung sichtbar.
+  - **Sonderöffnung / „wie Sonntag“** sind Backtage - auch am Ruhetag oder Feiertag wird gezählt;
+    die Zählliste zeigt den Tagestyp („Sonderöffnung (wie Samstag) · Notiz“, `dayKind`).
+  - **Rest Ø der Grundmengen** überspringt Tage, an denen nach einem anderen Wochentag gebacken
+    wurde (ein Donnerstag „wie Sonntag“ gehört nicht in den Donnerstags-Mittelwert) -
+    **vorläufig**, bis der Inhaber es anders will.
+  - **Ohne Kalender** (Datei fehlt oder ungültig) gilt genau der Wochenplan wie zuvor: Ruhetag
+    oder Backtag, kein `dayKind` in der Antwort, ein Feiertag ist ein normaler Tag.
 - **Mehr Rest als für den Laden gebacken** (`restExceedsShop`) steht an der Zeile als „bitte
   nachzählen", in der Auswertung je Posten mit den Tagen (`restExceedsDates`), an der
   Einheiten-Kachel als Zahl der Posten (`restExceedsItems`), im CSV als Spalte „Zählung prüfen"; in
@@ -52,7 +69,8 @@ API-Details (Endpunkte, Fehlercodes, Tabelle `rest_counts`): [`docs/api/rest.md`
   Seite den Konflikt wie bei einer 409 und setzt die Grundlage erst dann neu (`rebaseDraft`) - sonst
   überschriebe ein aufgehobener Entwurf still die Zählung eines anderen Tablets.
 - Korrekturen stehen mit altem und neuem Wert im `audit_log` (`rest_count`), `revision` zählt mit.
-  Gezählt und korrigiert wird nur heute bis 7 Tage zurück (Berlin), nie am Ruhetag.
+  Gezählt und korrigiert wird nur heute bis 7 Tage zurück (Berlin), nie am Ruhetag und nie an
+  einem Schließtag des Kalenders.
 - **Im Pilot freigegeben (Entscheidung 2026-11-08).** `/admin/rest` steht in `PILOT_ALLOWED_ROUTES`;
   wer was darf, regelt `ROLE_ACCESS` (Verkauf zählt, Backstube liest, Auswertung
   `/admin/rest/auswertung` und `GET /api/rest/summary` nur Inhaber; `REST_COUNT_ROUTE` in
