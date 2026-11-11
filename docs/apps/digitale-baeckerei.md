@@ -21,6 +21,8 @@ Landingpage auf GitHub Pages). Nicht im Pilot, nicht auf der Box.
 | DB5 | **Start direkt an der Theke**, ohne Fassade: Straße und Nachbarhäuser fehlen im Modell noch. Ein Intro „Blick vom Kreisel“ kommt später (P3).                                                                                                                                                          |
 | DB6 | **Echte, aktuelle Produktdaten aus `hq/products`** (Name, Preis, Einheit, Text) statt des Standes im Modell. Die Texte werden vorher in hq überarbeitet (Gesundheitsversprechen).                                                                                                                      |
 | DB7 | Später bekommt jedes Produkt ein **eigenes, teilrealistisches 3D-Modell**, das auch die Landingpage nutzen kann (P4).                                                                                                                                                                                  |
+| DB8 | **Vorerst keine Preise**, weder auf der Karte noch in der Liste noch im Bild. Produktdaten kommen als Snapshot aus hq, der beim Build entsteht. Der Deploy-Workflow darf hq dafür lesen.                                                                                                               |
+| DB9 | Die 3D-Produkte (P4) kommen in ein **eigenes Daten-Repo**, zuerst **nur lokal**: `../produkte-3d` neben `website` und `hq`, ohne Remote.                                                                                                                                                               |
 
 ## Quelle: der Zwilling im Explorer
 
@@ -69,20 +71,24 @@ Landingpage auf GitHub Pages). Nicht im Pilot, nicht auf der Box.
 
 ## Produktdaten (DB6)
 
-- Karte und Liste lesen `hq/products/*.md` beim Build (`HQ_PRODUCTS_DIR`). Die Landingpage hat
-  dafür schon einen Leser (`apps/bakery-landing/src/lib/products.ts`). Nicht kopieren: Wenn beide
+- **Snapshot (DB8):** Das Skript `sync-products` liest beim Build `hq/products/*.md`
+  (`HQ_PRODUCTS_DIR`) und schreibt die nötigen Felder **ohne Preise** (ID, Name, Kategorie, Einheit,
+  Kurztext, Text) nach `public/data/products.snapshot.json` (git-ignoriert). Die App liest nur diesen
+  Snapshot.
+- Für den Leser gilt: Die Landingpage hat Die Landingpage hat
+  schon einen (`apps/bakery-landing/src/lib/products.ts`). Nicht kopieren: Wenn beide
   Apps ihn brauchen, gehört er in eine gemeinsame Lib.
 - Zuordnung: `extras.product` im Modell = die hq-ID ohne Nummer (`1-kornbrot-500g.md` →
   `kornbrot-500g`). Zeigt das Modell ein Produkt, das es in hq nicht (mehr) gibt, bleibt es
   sichtbar, aber ohne Karte, und der Build meldet es.
 - **Preisschilder im Modell:** Auf den zwei unteren Brotebenen sind Preiskarten mit dem alten
   Preisstand ins Modell gebacken (Materialien `preiskarte` / `preisschrift` in den
-  `produkt/*`-Knoten). Diese Teile ausblenden und, wenn gewünscht, eigene Schilder aus den
-  hq-Daten zeichnen. Sonst stehen zwei verschiedene Preise im Bild.
+  `produkt/*`-Knoten). Diese Teile ausblenden, denn vorerst gibt es keine Preise (DB8).
 - **CI:** Der Deploy-Workflow hat heute keinen Zugriff auf hq, deshalb fällt die Landingpage dort
-  auf Mock-Daten zurück. Für echte Daten braucht der Workflow Lesezugriff auf hq (Deploy-Key oder
-  Token der vorhandenen GitHub App als Secret, nur `products/`). Das entscheidet der Inhaber, und es
-  gilt dann für beide Apps. Ohne hq bricht der Build dieser App ab, statt Mocks zu zeigen.
+  auf Mock-Daten zurück. Der Inhaber hat dem Lesezugriff zugestimmt (2026-11-12). Der Workflow
+  checkt `hq` mit einem Secret aus (Deploy-Key oder Token der vorhandenen GitHub App, nur lesend).
+  Das Secret legt **der Inhaber** an; der Agent bereitet Workflow und Anleitung vor. Die Landingpage
+  kann denselben Checkout nutzen. Ohne hq bricht der Build dieser App ab, statt Mocks zu zeigen.
 - Welches Produkt wo liegt (die Belegung), kommt weiter aus dem Explorer. Neue Produkte erscheinen
   im Regal erst mit einer neuen Belegung dort oder mit P4.
 
@@ -130,12 +136,11 @@ apps/bakery-digitale-baeckerei/
   ersten Geste.
 - **Blickpunkt-Leiste** unten in Daumenreichweite mit den Chips _Theke_ · _Brotregal_ ·
   _Regale_. Zusätzlich Wischen mit zwei Fingern oder Pfeile am Rand. Auf dem Desktop: Pfeiltasten.
-- **Produkt antippen:** kurzes Aufleuchten, dann ein Bottom-Sheet mit Name, Preis + Einheit
-  („2,50 € / Laib“), Kurztext, aufklappbar der lange Text. Dazu „Stand der Preise: <Monat Jahr>“
-  (Datum des Builds). **Keine Allergene**, solange die Liste nicht vollständig
+- **Produkt antippen:** kurzes Aufleuchten, dann ein Bottom-Sheet mit Name, Einheit und Kurztext,
+  aufklappbar der lange Text. Keine Preise (DB8). **Keine Allergene**, solange die Liste nicht vollständig
   bestätigt ist. Ein Link „Mehr auf der Website“ führt zur Produktseite der Landingpage, falls es
   sie gibt.
-- **Liste „Alles hier“** je Blickpunkt: alle Produkte dieses Blickpunkts als Liste (Name, Preis).
+- **Liste „Alles hier“** je Blickpunkt: alle Produkte dieses Blickpunkts als Liste (Name, Einheit).
   Tippen in der Liste hebt das Produkt im Bild hervor. Dieselbe Liste dient als **Ersatz ohne
   WebGL** und für Screenreader.
 - Deutsch in der Du-Form wie die Texte im Modell. Die Farben stammen aus der Markenpalette
@@ -185,13 +190,15 @@ kann (im Produkt-Sheet) und das auch die Produktseiten der Landingpage zeigen.
 - **Zwei Detailstufen:** Im Regal liegen leichte Modelle, in der Nahansicht das Scan-Modell. Ob
   teilrealistische Produkte neben dem stilisierten Laden passen, zuerst mit 3 Produkten testen
   (Brezel, Kornbrot, ein Teilchen).
-- **Ablage offen:** ≈ 100 Modelle zu je 1–3 MB passen nicht gut in ein normales Git-Repo. In Frage
-  kommen hq mit Git LFS oder ein eigenes Daten-Repo wie `saar-lidar-data`. Rohfotos bleiben lokal.
+- **Ablage (DB9):** ≈ 100 Modelle zu je 1–3 MB gehören nicht in `website` oder `hq`, sondern in ein
+  eigenes Daten-Repo `../produkte-3d`, vorerst nur lokal und ohne Remote. Wird veröffentlicht,
+  bekommt es ein Remote (GitHub, ggf. LFS), und die App lädt die Modelle wie das Laden-Modell über
+  einen festen Stand mit Prüfsumme. Rohfotos bleiben außerhalb aller Repos.
   Die Fotos der eigenen Ware gehören der Bäckerei und dürfen veröffentlicht werden.
 
 ## Offen (Inhaber)
 
-- Preise: Sollen sie in der Digitalen Bäckerei erscheinen, mit dem Hinweis „Stand der Preise“?
-- hq-Lesezugriff für den Deploy-Workflow (DB6): ja oder nein? Davon hängt auch ab, ob die
-  Landingpage echte statt Mock-Daten zeigt.
-- Ablage der 3D-Produkte (P4): hq mit Git LFS oder ein eigenes Daten-Repo?
+- Das Secret für den hq-Lesezugriff im Deploy-Workflow anlegen (Anleitung liefert der Agent).
+- Abnahme am Handy vor dem öffentlichen Deploy (P2) und vor dem Link von der Landingpage.
+- P4: die echten Produkte für den 3-Produkte-Test fotografieren bzw. scannen.
+- Preise: später wieder aufnehmen?
