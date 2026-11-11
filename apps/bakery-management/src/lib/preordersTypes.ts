@@ -416,38 +416,136 @@ export function isProductionDay(date: string): boolean {
 }
 
 /**
- * Die nächsten `count` Produktionstage ab dem Tag nach `today` (Montag
- * übersprungen). Vorbestellt wird für morgen oder später.
+ * Gesperrte Abholtage vom Server (`GET /api/preorders/pickup-points` →
+ * `pickupDays`, Z14): Ruhetage und Schließtage des Kalenders im Fenster, das
+ * die API annimmt. Gerechnet wird dort (`closedPickupDays()` im Core) - die
+ * Maske fragt nur nach.
  */
-export function nextProductionDates(today: string, count: number): string[] {
+export interface ClosedPickupDay {
+  date: string
+  code: 'geschlossen' | 'ruhetag'
+  /** Notiz oder Feiertag; `null` am Ruhetag. */
+  reason: string | null
+  /** Deutsche Meldung, wie sie auch das Speichern liefern würde. */
+  message: string
+  /** Nur im Laden gesperrt - eine Sammelstelle darf den Tag nehmen. */
+  shopOnly: boolean
+}
+
+export interface PickupDays {
+  from: string
+  to: string
+  /** `false`: kein gültiger Kalender, es gilt nur der Ruhetag. */
+  calendar: boolean
+  closed: ClosedPickupDay[]
+}
+
+/** Meldung ohne Serverdaten (ältere API, Tag außerhalb des Fensters). */
+export const RUHETAG_MESSAGE =
+  'Montag ist Ruhetag - bitte einen anderen Tag wählen.'
+
+/**
+ * Warum `date` kein Abholtag sein kann (`null` = wählbar). Im Fenster des
+ * Servers gilt allein dessen Liste - eine Sonderöffnung gibt dort auch einen
+ * Montag frei. Ohne Liste oder außerhalb des Fensters bleibt nur der Ruhetag
+ * im Laden, wie die API ohne Kalender.
+ */
+export function closedPickupDay(
+  days: PickupDays | null | undefined,
+  date: string,
+  atPickupPoint: boolean
+): Pick<ClosedPickupDay, 'code' | 'reason' | 'message'> | null {
+  if (!isBusinessDate(date)) return null
+  if (days && date >= days.from && date <= days.to) {
+    const entry = days.closed.find((d) => d.date === date)
+    return entry && !(atPickupPoint && entry.shopOnly) ? entry : null
+  }
+  if (!atPickupPoint && !isProductionDay(date)) {
+    return { code: 'ruhetag', reason: null, message: RUHETAG_MESSAGE }
+  }
+  return null
+}
+
+/** Höchstens so viele Tage voraus wird ein freier Abholtag gesucht. */
+const PICKUP_SEARCH_DAYS = 370
+
+/**
+ * Die nächsten `count` Produktionstage ab dem Tag nach `today` (Montag
+ * übersprungen). Vorbestellt wird für morgen oder später. Mit `days`
+ * (Abholtag-Vorschläge der Maske) fallen auch die Schließtage des Kalenders
+ * weg, und eine Sonderöffnung am Montag zählt mit.
+ */
+export function nextProductionDates(
+  today: string,
+  count: number,
+  days?: PickupDays | null
+): string[] {
   const dates: string[] = []
   let day = today
-  while (dates.length < count) {
+  for (let i = 0; i < PICKUP_SEARCH_DAYS && dates.length < count; i++) {
     day = shiftDate(day, 1)
-    if (isProductionDay(day)) dates.push(day)
+    if (days ? !closedPickupDay(days, day, false) : isProductionDay(day)) {
+      dates.push(day)
+    }
   }
   return dates
 }
 
-/** Vorgabe-Abholtag: der nächste Produktionstag nach `today`. */
-export function nextProductionDate(today: string): string {
-  return nextProductionDates(today, 1)[0]
+/** Vorgabe-Abholtag: der nächste Produktionstag nach `today` (`''`: keiner). */
+export function nextProductionDate(
+  today: string,
+  days?: PickupDays | null
+): string {
+  return nextProductionDates(today, 1, days)[0] ?? ''
 }
 
-/** Die nächsten `count` Liefertage einer Sammelstelle ab morgen. */
+/**
+ * Die nächsten `count` Liefertage einer Sammelstelle ab morgen; mit `days`
+ * ohne die Tage, an denen die Bäckerei geschlossen ist.
+ */
 export function pickupPointDates(
   point: Pick<PickupPoint, 'weekday'>,
   today: string,
-  count: number
+  count: number,
+  days?: PickupDays | null
 ): string[] {
   const dates: string[] = []
   let day = today
   // höchstens ein Jahr suchen - ein kaputter Wochentag darf nicht hängen
-  for (let i = 0; i < 370 && dates.length < count; i++) {
+  for (let i = 0; i < PICKUP_SEARCH_DAYS && dates.length < count; i++) {
     day = shiftDate(day, 1)
-    if (jsWeekdayOf(day) === point.weekday) dates.push(day)
+    if (jsWeekdayOf(day) !== point.weekday) continue
+    if (days && closedPickupDay(days, day, true)) continue
+    dates.push(day)
   }
   return dates
+}
+
+/**
+ * Schließtage, die zwischen morgen und `until` (dem letzten Vorschlag) liegen
+ * und deshalb in den Vorschlägen fehlen - für den Hinweis darunter. Der
+ * wöchentliche Ruhetag steht nicht dabei (den kennt jede), bei einer
+ * Sammelstelle nur ihr Liefertag.
+ */
+export function skippedPickupDays(
+  days: PickupDays | null | undefined,
+  today: string,
+  until: string,
+  point: Pick<PickupPoint, 'weekday'> | null
+): ClosedPickupDay[] {
+  if (!days || !isBusinessDate(today) || !isBusinessDate(until)) return []
+  return days.closed.filter(
+    (d) =>
+      d.code === 'geschlossen' &&
+      d.date > today &&
+      d.date <= until &&
+      (!point || jsWeekdayOf(d.date) === point.weekday)
+  )
+}
+
+/** „Fr 25.12. (1. Weihnachtstag)“ - ein Schließtag im Hinweis der Maske. */
+export function formatClosedDay(day: ClosedPickupDay): string {
+  return `${formatShortDate(day.date)}${day.reason ? ` (${day.reason})` : ''}`
 }
 
 /** Ob sich Positionen und Abholung noch ändern lassen (P3). */

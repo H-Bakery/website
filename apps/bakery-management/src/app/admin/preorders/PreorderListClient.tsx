@@ -46,7 +46,7 @@ import {
 import PreorderStatusChip from '../../../components/preorders/PreorderStatusChip'
 import { useOptionalSession } from '../../../lib/session'
 import {
-  fetchPickupPoints,
+  fetchPickupPointInfo,
   listPreorders,
   preorderErrorMessage,
   preorderListQuery,
@@ -65,6 +65,7 @@ import {
   isBusinessDate,
   nextProductionDate,
   toBusinessDate,
+  type PickupDays,
   type PickupPoint,
   type Preorder,
   type PreorderChannel,
@@ -104,6 +105,8 @@ export default function PreorderListClient({
   const [search, setSearch] = useState(initialFilters?.q ?? '')
   const [today, setToday] = useState('')
   const [points, setPoints] = useState<PickupPoint[]>([])
+  // Gesperrte Abholtage vom Server (Z14); `null` = nur der Ruhetag.
+  const [pickupDays, setPickupDays] = useState<PickupDays | null>(null)
   const [preorders, setPreorders] = useState<Preorder[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -113,8 +116,11 @@ export default function PreorderListClient({
     const now = toBusinessDate(new Date())
     setToday(now)
     setFilters((current) => current ?? { from: now })
-    fetchPickupPoints()
-      .then(setPoints)
+    fetchPickupPointInfo()
+      .then((info) => {
+        setPoints(info.points)
+        setPickupDays(info.pickupDays)
+      })
       .catch(() => undefined)
   }, [])
 
@@ -187,7 +193,8 @@ export default function PreorderListClient({
       to: isBusinessDate(to) ? to : undefined,
     })
 
-  const nextDay = today ? nextProductionDate(today) : ''
+  // Schließtage des Kalenders sind kein Backtag (Z14).
+  const nextDay = today ? nextProductionDate(today, pickupDays) : ''
   const preset =
     range.from === today && !range.to
       ? 'ab-heute'

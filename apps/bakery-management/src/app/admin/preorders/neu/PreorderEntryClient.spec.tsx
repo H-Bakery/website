@@ -9,6 +9,7 @@ import {
   changePreorderStatus,
   createPreorder,
   fetchCatalogue,
+  fetchPickupPointInfo,
   fetchPickupPoints,
   fetchPreorderVariants,
   listPreorders,
@@ -18,6 +19,7 @@ import {
   CATALOGUE,
   ONLY_DATE,
   POINT,
+  pickupDays,
   preorder,
 } from '../../../../lib/testing/preorderFixtures'
 import { WithSession, fakeSession } from '../../../../lib/testing/fakeSession'
@@ -27,6 +29,7 @@ jest.mock('../../../../lib/preordersApi', () => ({
   changePreorderStatus: jest.fn(),
   createPreorder: jest.fn(),
   fetchCatalogue: jest.fn(),
+  fetchPickupPointInfo: jest.fn(),
   fetchPickupPoints: jest.fn(),
   fetchPreorderVariants: jest.fn(),
   listPreorders: jest.fn(),
@@ -43,6 +46,10 @@ beforeEach(() => {
   mockCreate.mockReset()
   ;(fetchCatalogue as jest.Mock).mockResolvedValue(CATALOGUE)
   ;(fetchPickupPoints as jest.Mock).mockResolvedValue([POINT])
+  ;(fetchPickupPointInfo as jest.Mock).mockImplementation(async () => ({
+    points: await fetchPickupPoints(),
+    pickupDays: null,
+  }))
   ;(fetchPreorderVariants as jest.Mock).mockResolvedValue({
     configured: true,
     products: { mustersemmel: ['nuss', 'mohn'] },
@@ -327,6 +334,144 @@ describe('PreorderEntryClient (P1)', () => {
     expect(
       screen.getByText('Bitte mindestens einen Artikel hinzufügen.')
     ).toBeInTheDocument()
+  })
+
+  describe('Schließtage laut Kalender (Z14)', () => {
+    beforeEach(() => {
+      ;(fetchPickupPointInfo as jest.Mock).mockResolvedValue({
+        points: [POINT],
+        pickupDays: pickupDays(),
+      })
+    })
+
+    it('bietet Schließtage nicht an: Vorgabe, Vorschläge und Hinweis', async () => {
+      await ready()
+      // Fr 13. und Sa 14.11. sind zu - Vorgabe ist der Sonntag
+      await waitFor(() =>
+        expect(screen.getByLabelText('Abholtag')).toHaveValue('2026-11-15')
+      )
+      expect(screen.queryByRole('radio', { name: 'Fr 13.11.' })).toBeNull()
+      expect(screen.queryByRole('radio', { name: 'Sa 14.11.' })).toBeNull()
+      expect(screen.queryByRole('radio', { name: 'Mo 16.11.' })).toBeNull()
+      expect(screen.getByRole('radio', { name: 'So 15.11.' })).toHaveAttribute(
+        'aria-checked',
+        'true'
+      )
+      expect(screen.getByTestId('closed-days-hint')).toHaveTextContent(
+        'Geschlossen, deshalb nicht wählbar: Fr 13.11. (Betriebsferien), Sa 14.11. (Betriebsferien)'
+      )
+      // das Datumsfeld kennt das Fenster der API
+      expect(screen.getByLabelText('Abholtag')).toHaveAttribute(
+        'min',
+        '2026-10-13'
+      )
+      expect(screen.getByLabelText('Abholtag')).toHaveAttribute(
+        'max',
+        '2027-11-13'
+      )
+    })
+
+    it('ein von Hand gewählter Schließtag: Grund sofort, nichts wird gespeichert', async () => {
+      const user = userEvent.setup()
+      await ready()
+      await user.type(screen.getByLabelText(/^Name/), 'Erika Beispiel')
+      const quick = screen.getByRole('group', { name: 'Häufig vorbestellt' })
+      await user.click(
+        within(quick).getByRole('button', { name: 'Kornbrot 500g' })
+      )
+      await user.click(screen.getByRole('button', { name: 'Hinzufügen' }))
+      fireEvent.change(screen.getByLabelText('Abholtag'), {
+        target: { value: '2026-11-13' },
+      })
+      expect(
+        screen.getByText(
+          'Am Freitag, 13.11.2026 (Betriebsferien), ist die Bäckerei geschlossen - bitte einen anderen Abholtag wählen.'
+        )
+      ).toBeInTheDocument()
+      await user.click(
+        screen.getByRole('button', { name: 'Vorbestellung speichern' })
+      )
+      expect(mockCreate).not.toHaveBeenCalled()
+    })
+
+    it('Sonderöffnung am Montag ist wählbar, der normale Montag nicht', async () => {
+      await ready()
+      const date = screen.getByLabelText('Abholtag')
+      fireEvent.change(date, { target: { value: '2026-11-23' } })
+      expect(screen.queryByText(/Ruhetag/)).toBeNull()
+      fireEvent.change(date, { target: { value: '2026-11-30' } })
+      expect(
+        screen.getByText(
+          'Am Montag, 30.11.2026, ist Ruhetag - bitte einen anderen Abholtag wählen.'
+        )
+      ).toBeInTheDocument()
+    })
+
+    it('Sammelstelle: der geschlossene Liefertag fällt weg, der nächste ist Vorgabe', async () => {
+      const user = userEvent.setup()
+      await ready()
+      await user.click(screen.getByRole('radio', { name: POINT.name }))
+      expect(screen.queryByRole('radio', { name: 'Sa 14.11.' })).toBeNull()
+      expect(screen.getByRole('radio', { name: 'Sa 21.11.' })).toHaveAttribute(
+        'aria-checked',
+        'true'
+      )
+      expect(screen.getByLabelText('Abholtag')).toHaveValue('2026-11-21')
+      expect(screen.getByTestId('closed-days-hint')).toHaveTextContent(
+        'Geschlossen, deshalb nicht wählbar: Sa 14.11. (Betriebsferien)'
+      )
+      // zurück in den Laden: der Samstag ist offen und bleibt
+      await user.click(screen.getByRole('radio', { name: 'Im Laden' }))
+      expect(screen.getByLabelText('Abholtag')).toHaveValue('2026-11-21')
+    })
+
+    it('ein Schließtag aus dem Link ist nur ein Vorschlag: der nächste offene Tag steht da', async () => {
+      // Tagesübersicht/Abholliste verlinken `?date=` - Fr 13.11. ist zu
+      renderWithTheme(<PreorderEntryClient initialDate="2026-11-13" />)
+      await screen.findByLabelText(/^Name/)
+      await waitFor(() =>
+        expect(screen.getByLabelText('Abholtag')).toHaveValue('2026-11-15')
+      )
+      expect(
+        screen.queryByText(/bitte einen anderen Abholtag wählen/)
+      ).toBeNull()
+    })
+
+    it('ein offener Tag aus dem Link bleibt stehen', async () => {
+      renderWithTheme(<PreorderEntryClient initialDate="2026-11-18" />)
+      await screen.findByLabelText(/^Name/)
+      await waitFor(() =>
+        expect(
+          screen.getByRole('radio', { name: 'Mi 18.11.' })
+        ).toHaveAttribute('aria-checked', 'true')
+      )
+      expect(screen.getByLabelText('Abholtag')).toHaveValue('2026-11-18')
+    })
+
+    it('Sammelstelle aus dem Link am Schließtag: ihr nächster Liefertag', async () => {
+      renderWithTheme(
+        <PreorderEntryClient
+          initialDate="2026-11-14"
+          initialPickupPointId={POINT.id}
+        />
+      )
+      await screen.findByLabelText(/^Name/)
+      await waitFor(() =>
+        expect(screen.getByLabelText('Abholtag')).toHaveValue('2026-11-21')
+      )
+    })
+
+    it('ohne Kalenderdaten vom Server gilt nur der Montag - kein Hinweis', async () => {
+      ;(fetchPickupPointInfo as jest.Mock).mockResolvedValue({
+        points: [POINT],
+        pickupDays: null,
+      })
+      await ready()
+      await waitFor(() =>
+        expect(screen.getByLabelText('Abholtag')).toHaveValue('2026-11-13')
+      )
+      expect(screen.queryByTestId('closed-days-hint')).toBeNull()
+    })
   })
 
   it('zeigt die deutsche Meldung des Servers', async () => {
