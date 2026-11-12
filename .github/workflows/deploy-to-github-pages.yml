@@ -123,7 +123,8 @@ jobs:
 
       # Bricht ab, wenn der Export nicht genau das ist, was raus darf: das Modell
       # aus dem Lock (ausgeliefert.sha256, ohne Preisschilder), der Snapshot nur
-      # mit den erlaubten Feldern, nirgends ein Euro-Zeichen, kein Fixture.
+      # mit den erlaubten Feldern, nirgends ein Euro-Zeichen, kein Fixture, keine
+      # 3D-Modelle einzelner Produkte (nur lokal, DB9 - leerer Index erwartet).
       # Meldet nur Dateinamen und Zahlen.
       - name: Wächter - Export der Digitalen Bäckerei
         run: node apps/bakery-digitale-baeckerei/scripts/pruefe-export.mjs --base-path /digitale-baeckerei

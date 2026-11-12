@@ -49,5 +49,5 @@ const served = lock.files['twin.glb']?.ausgeliefert
 console.log(
   `pruefe-export: in Ordnung - Modell ${
     served ? `sha256 ${served.sha256.slice(0, 12)}…, ${served.bytes} Bytes` : ''
-  }, ohne Preisschilder; Snapshot im Vertrag; kein „€“ im Export.`
+  }, ohne Preisschilder; Snapshot im Vertrag; keine 3D-Modelle einzelner Produkte; kein „€“ im Export.`
 )

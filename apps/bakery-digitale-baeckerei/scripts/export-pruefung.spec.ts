@@ -9,6 +9,7 @@ import {
   ladeFixture,
 } from '../src/test/fixtures/fixture-info'
 import { belegungAusGlb } from './belegung'
+import { leererIndex } from './produkte-3d-lock'
 
 // Ein synthetischer Export aus den Fixtures - das echte Modell und echte
 // Produkttexte liegen nie im Repo. Das „Lock“ hier beschreibt das Mini-Modell.
@@ -55,6 +56,8 @@ beforeEach(() => {
     JSON.stringify(belegungAusGlb(MODELL, 'fixture').belegung)
   )
   schreibe('data/products.snapshot.json', fs.readFileSync(SNAPSHOT_PATH))
+  // So schreibt sync-produkte-3d den Index, wenn es das Daten-Repo nicht gibt.
+  schreibe('data/produkte-3d.json', `${JSON.stringify(leererIndex())}\n`)
 })
 afterEach(() => {
   fs.rmSync(outDir, { recursive: true, force: true })
@@ -168,6 +171,50 @@ describe('pruefeExport', () => {
     fs.rmSync(path.join(outDir, 'data', 'products.snapshot.json'))
     expect(pruefe()).toEqual([
       expect.stringMatching(/products\.snapshot\.json fehlt/),
+    ])
+  })
+
+  it('lässt den leeren Index der Nahansicht und einen leeren Ordner durch', () => {
+    fs.mkdirSync(path.join(outDir, 'produkte-3d'))
+    expect(pruefe()).toEqual([])
+  })
+
+  it('lehnt 3D-Modelle einzelner Produkte ab - ohne ihre Namen zu nennen', () => {
+    schreibe('produkte-3d/testbrot-500g.glb', ladeFixture().glb)
+    schreibe(
+      'data/produkte-3d.json',
+      JSON.stringify({
+        version: 1,
+        modelle: {
+          'testbrot-500g': {
+            datei: 'produkte-3d/testbrot-500g.glb',
+            bytes: 14580,
+            bbox_m: { min: [-0.1, 0, -0.05], max: [0.1, 0.075, 0.05] },
+          },
+        },
+      })
+    )
+    const fehler = pruefe()
+    expect(fehler).toEqual([
+      expect.stringMatching(/^data\/produkte-3d\.json nennt 1 3D-Modell\(e\)/),
+      expect.stringMatching(/^produkte-3d\/ enthält 1 Datei\(en\)/),
+    ])
+    expect(fehler.join(' ')).not.toContain('testbrot')
+  })
+
+  it('lehnt eine Modell-Datei ab, auch wenn der Index leer ist', () => {
+    schreibe('produkte-3d/testbrot-500g.glb', ladeFixture().glb)
+    expect(pruefe()).toEqual([
+      expect.stringMatching(/^produkte-3d\/ enthält 1 Datei\(en\)/),
+    ])
+  })
+
+  it('lehnt einen fehlenden oder unlesbaren Index der Nahansicht ab', () => {
+    fs.rmSync(path.join(outDir, 'data', 'produkte-3d.json'))
+    expect(pruefe()).toEqual([expect.stringMatching(/produkte-3d\.json fehlt/)])
+    schreibe('data/produkte-3d.json', JSON.stringify({ version: 2 }))
+    expect(pruefe()).toEqual([
+      'data/produkte-3d.json hat nicht die erwartete Form',
     ])
   })
 

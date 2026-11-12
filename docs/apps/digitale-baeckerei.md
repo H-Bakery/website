@@ -253,7 +253,10 @@ Befehle in derselben Reihenfolge gelaufen (ohne Secret und ohne den hq-Checkout)
    wenn noch ein Preisschild darin steckt, wenn in `model/` oder `data/` etwas Fremdes liegt, wenn der
    Snapshot ein Feld außerhalb des Vertrags hat oder ein Produkt nennt, das nicht im Modell liegt,
    wenn irgendwo im Export ein „€“ steht, wenn der Export nicht für den Unterpfad gebaut ist oder der
-   Fixture-Schalter gesetzt ist. Gemeldet werden nur Dateinamen und Zahlen.
+   Fixture-Schalter gesetzt ist. Ebenso, wenn 3D-Modelle einzelner Produkte im Export liegen: Die
+   sind vorerst nur lokal (DB9), der Runner hat das Daten-Repo `produkte-3d` nicht - erwartet wird
+   genau der leere Index `data/produkte-3d.json` und kein `produkte-3d/*.glb`; live gibt es also
+   keinen Knopf „In 3D ansehen“. Gemeldet werden nur Dateinamen und Zahlen.
 6. `hq/` löschen, `out/` nach `apps/bakery-landing/out/digitale-baeckerei/` kopieren, dann der Upload
    wie bisher (CNAME, `.nojekyll`). Kein Artefakt mit `hq/` oder `public/data`.
 

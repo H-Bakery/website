@@ -100,7 +100,9 @@ Regeln, die am meisten beißen:
   `deploy-to-github-pages.yml` baut die App mit hq (Deploy-Key nur lesend, nur `products/`) und hängt
   sie unter `/digitale-baeckerei/` in den Export der Landingpage. Davor läuft der Wächter
   `scripts/pruefe-export.mjs` (`export-pruefung.js`): nur das bereinigte Modell aus dem Lock, Snapshot
-  im Vertrag, kein „€“, kein Fixture - sonst kein Deploy. Wer etwas Neues nach `public/` oder in den
+  im Vertrag, kein „€“, kein Fixture, **keine 3D-Modelle einzelner Produkte** (leerer
+  `data/produkte-3d.json`, nichts in `produkte-3d/` - DB9, der Runner hat das Daten-Repo nicht) -
+  sonst kein Deploy. Wer etwas Neues nach `public/` oder in den
   Snapshot legt, muss es dort erlauben. Logs sind öffentlich: nie Inhalte aus hq ausgeben.
   Der Link von der Landingpage kommt erst nach der Abnahme durch den Inhaber.
 
