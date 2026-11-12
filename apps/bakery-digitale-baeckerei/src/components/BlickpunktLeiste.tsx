@@ -9,9 +9,9 @@ import Button from '@mui/material/Button'
 import ButtonBase from '@mui/material/ButtonBase'
 import IconButton from '@mui/material/IconButton'
 import Paper from '@mui/material/Paper'
+import type { BlickpunktKurz } from '../config/raeume'
 import Quellen from './Quellen'
 import { EBENE, LEISTE_EINZEILIG, TOUCH_TARGET, rand } from './theme'
-import type { BlickpunktKurz } from './typen'
 
 export const ALLES_HIER_TEXT = 'Alles hier'
 

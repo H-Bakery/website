@@ -650,6 +650,100 @@ describe('RigKern: zoomTo (Doppeltipp)', () => {
   })
 })
 
+describe('RigKern: zurückzoomen und schwenken', () => {
+  it('istGezoomt: erst unter der Startweite, auch schon auf dem Weg dorthin', () => {
+    const kern = kernAm(regal)
+    expect(createRigKern({ reducedMotion: false }).istGezoomt()).toBe(false)
+    expect(kern.istGezoomt()).toBe(false)
+    kern.zoomTo([0, 2, 4])
+    expect(kern.istGezoomt()).toBe(true)
+    auslaufen(kern)
+    expect(kern.istGezoomt()).toBe(true)
+    kern.setzeFov(59.8)
+    expect(kern.istGezoomt()).toBe(false)
+  })
+
+  it('zoomZurueck fährt zur Startweite und holt den Blick in deren Grenzen', () => {
+    const kern = kernAm(regal)
+    kern.zoomTo(blickziel([0, 2, 0], 120 * GRAD, 60 * GRAD, 3))
+    auslaufen(kern)
+    const weit = grenzen(rahmenFuer(regal, QUER), 60, QUER)
+    expect(pose(kern).yaw).toBeGreaterThan(weit.yaw)
+
+    kern.zoomZurueck()
+    expect(kern.bewegt()).toBe(true)
+    expect(kern.istGezoomt()).toBe(false)
+    const ms = auslaufen(kern)
+    expect(ms).toBeLessThanOrEqual(ZOOM_MS + 16)
+    const p = pose(kern)
+    expect(p.fov).toBe(60)
+    expect(p.yaw).toBeCloseTo(weit.yaw, 9)
+    expect(p.pitch).toBeCloseTo(weit.pitch, 9)
+    expect(p.eye).toEqual([0, 2, 0])
+    expect(kern.bewegt()).toBe(false)
+  })
+
+  it('zoomZurueck im Hochformat endet in dessen Startweite', () => {
+    const kern = kernAm(regal, HOCH)
+    kern.setzeFov(30)
+    kern.zoomZurueck()
+    auslaufen(kern)
+    expect(pose(kern).fov).toBe(rahmenFuer(regal, HOCH).fov)
+  })
+
+  it('schwenken dreht weich, lässt Standort und Öffnungswinkel und hält die Grenzen', () => {
+    const kern = kernAm(regal)
+    kern.schwenken(8 * GRAD, -4 * GRAD)
+    expect(kern.bewegt()).toBe(true)
+    expect(pose(kern).yaw).toBeCloseTo(0, 9)
+    auslaufen(kern)
+    expect(pose(kern).yaw).toBeCloseTo(8 * GRAD, 9)
+    expect(pose(kern).pitch).toBeCloseTo(-4 * GRAD, 9)
+    expect(pose(kern).fov).toBe(60)
+    expect(pose(kern).eye).toEqual([0, 2, 0])
+
+    kern.schwenken(90 * GRAD, -90 * GRAD)
+    auslaufen(kern)
+    const g = grenzen(rahmenFuer(regal, QUER), 60, QUER)
+    expect(pose(kern).yaw).toBeCloseTo(g.yaw, 9)
+    expect(pose(kern).pitch).toBeCloseTo(-g.pitch, 9)
+    expect(kern.bewegt()).toBe(false)
+  })
+
+  it('schwenken während einer Zoom-Fahrt setzt an deren Ziel an', () => {
+    const kern = kernAm(regal)
+    kern.zoomTo(blickziel([0, 2, 0], 5 * GRAD, 0, 4))
+    kern.schritt(ZOOM_MS / 2)
+    kern.schwenken(3 * GRAD, 0)
+    auslaufen(kern)
+    expect(pose(kern).yaw).toBeCloseTo(8 * GRAD, 9)
+    expect(pose(kern).fov).toBe(30)
+  })
+
+  it('prefers-reduced-motion: beides schneidet', () => {
+    const kern = kernAm(regal, QUER, true)
+    kern.setzeFov(30)
+    kern.schwenken(5 * GRAD, 0)
+    expect(kern.bewegt()).toBe(false)
+    expect(pose(kern).yaw).toBeCloseTo(5 * GRAD, 9)
+    kern.zoomZurueck()
+    expect(kern.bewegt()).toBe(false)
+    expect(pose(kern).fov).toBe(60)
+  })
+
+  it('ruht während eines Blickpunkt-Wechsels und bei unbrauchbaren Werten', () => {
+    const kern = kernAm(regal)
+    kern.schwenken(Number.NaN, 0)
+    expect(kern.bewegt()).toBe(false)
+    kern.setBlickpunkt(theke)
+    kern.schwenken(0.2, 0)
+    kern.zoomZurueck()
+    expect(kern.wechselt()).toBe(true)
+    auslaufen(kern)
+    expect(pose(kern).yaw).toBeCloseTo(rahmenFuer(theke, QUER).yaw0, 9)
+  })
+})
+
 describe('RigKern: resize', () => {
   it('wechselt bei aspect < 1 auf die Hochformat-Werte und zurück', () => {
     const kern = kernAm(regal, QUER)

@@ -69,10 +69,12 @@ jobs:
               - 'tools/e2e/**'
               - '.github/workflows/ci.yml'
               - 'package-lock.json'
-            # Die Digitale Baeckerei hat keine Workspace-Libs und keine API.
+            # Die Digitale Baeckerei hat keine API; von den Libs nutzt nur ihr
+            # Build-Skript sync-products den hq-Produktleser.
             digitale-baeckerei:
               - 'apps/bakery-digitale-baeckerei/**'
               - 'apps/bakery-digitale-baeckerei-e2e/**'
+              - 'libs/shared/hq-products/**'
               - 'tools/e2e/**'
               - '.github/workflows/ci.yml'
               - 'package-lock.json'
@@ -328,7 +330,7 @@ jobs:
         run: npx nx build bakery-digitale-baeckerei
 
       # Playwright startet apps/bakery-digitale-baeckerei-e2e/serve-fixture.js
-      # (CI=true: nimmt den Export von eben). Der Server weigert sich, wenn im
+      # (tools/e2e/servers.js; CI=true: nimmt den Export von eben). Der Server weigert sich, wenn im
       # Export nicht das Fixture-Modell liegt - die Artefakte unten sind
       # oeffentlich. WebGL laeuft ueber SwiftShader (playwright.config.ts).
       - name: Run E2E tests
@@ -354,9 +356,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # bakery-digitale-baeckerei laedt vor dem Build sein 3D-Modell
-        # (Target sync-model: oeffentlicher Download am festen Commit, sha256
-        # aus model.lock.json) - das Modell liegt nicht im Repo.
+        # bakery-digitale-baeckerei baut hier mit DIGITALE_BAECKEREI_FIXTURE=1
+        # (siehe env unten): synthetisches Mini-Modell und synthetischer
+        # Produkt-Snapshot aus dem Repo. Das echte Modell (oeffentlicher
+        # Download am festen Commit aus model.lock.json) und das private hq
+        # kommen in CI nie ins Spiel - der Export wird als Artefakt hochgeladen.
         app:
           [
             bakery-shop,
@@ -392,6 +396,10 @@ jobs:
           # dies in prerender with "Cannot read properties of null (reading
           # 'useState')". Pin the production value so the leak cannot reach it.
           NODE_ENV: production
+          # Digitale Baeckerei: CI hat kein hq und braucht das echte Modell nicht -
+          # synthetisches GLB + Snapshot aus src/test/fixtures (kein Download).
+          # Nur diese App liest die Variable.
+          DIGITALE_BAECKEREI_FIXTURE: '1'
         run: npx nx build ${{ matrix.app }} --configuration=production
 
       # Boot smoke of the pilot API (roadmap B1): the bundle from the step

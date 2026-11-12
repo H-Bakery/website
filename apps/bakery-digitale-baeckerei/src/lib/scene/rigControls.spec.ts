@@ -397,6 +397,42 @@ describe('createRig: Zoom', () => {
     expect(kamera.yaw()).toBeCloseTo(10 * GRAD, 9)
     expect(frames.size).toBe(0)
   })
+
+  it('zoomZurueck gleitet zur Startweite zurück und hält dann an', () => {
+    const { rig, kamera } = aufbau()
+    expect(rig.istGezoomt()).toBe(false)
+    rig.zoomTo([0, 2, 4])
+    laufen(600)
+    expect(rig.istGezoomt()).toBe(true)
+    rig.zoomZurueck()
+    expect(frames.size).toBe(1)
+    laufen(600)
+    expect(kamera.fov).toBe(60)
+    expect(rig.istGezoomt()).toBe(false)
+    expect(frames.size).toBe(0)
+  })
+
+  it('schwenken dreht den Blick, ohne den Öffnungswinkel zu ändern', () => {
+    const { rig, kamera } = aufbau()
+    rig.schwenken(6 * GRAD, 3 * GRAD)
+    laufen(600)
+    expect(kamera.yaw()).toBeCloseTo(6 * GRAD, 9)
+    expect(kamera.pitch()).toBeCloseTo(3 * GRAD, 9)
+    expect(kamera.fov).toBe(60)
+    expect(frames.size).toBe(0)
+  })
+
+  it('Tipp und Doppeltipp nennen die Art des Zeigers', () => {
+    const { rig, element } = aufbau()
+    const arten: string[] = []
+    rig.onTap((_x, _y, zeiger) => arten.push(`tipp ${zeiger}`))
+    rig.onDoubleTap((_x, _y, zeiger) => arten.push(`doppelt ${zeiger}`))
+    zeiger(element, 'pointerdown', 100, 200, { zeit: 0, pointerType: 'mouse' })
+    zeiger(element, 'pointerup', 100, 200, { zeit: 60, pointerType: 'mouse' })
+    zeiger(element, 'pointerdown', 100, 200, { zeit: 200 })
+    zeiger(element, 'pointerup', 100, 200, { zeit: 260 })
+    expect(arten).toEqual(['tipp mouse', 'doppelt touch'])
+  })
 })
 
 describe('createRig: Blickpunkt wechseln', () => {

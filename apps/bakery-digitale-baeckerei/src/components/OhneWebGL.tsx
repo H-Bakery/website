@@ -3,14 +3,15 @@ import React from 'react'
 import Box from '@mui/material/Box'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
-import { gruppiereEintraege } from './produktliste'
+import type { BlickpunktKurz } from '../config/raeume'
+import type { ListenEintrag } from '../lib/produkte/zuordnung'
+import { KEINE_PRODUKTINFOS_TEXT, gruppiereEintraege } from './produktliste'
 import { rand } from './theme'
-import type { BlickpunktKurz, ListenEintrag } from './typen'
 
 export const OHNE_WEBGL_TEXT =
   'Die 3D-Ansicht ist auf diesem Gerät nicht verfügbar.'
 export const OHNE_WEBGL_TITEL = 'Die Bäckerei als Liste'
-export const BEREICH_LEER_TEXT = 'Hier liegt gerade nichts.'
+export const BEREICH_LEER_TEXT = KEINE_PRODUKTINFOS_TEXT
 
 export interface OhneWebGLProps {
   blickpunkte: BlickpunktKurz[]

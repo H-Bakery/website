@@ -16,11 +16,6 @@ import {
 } from './support/app'
 
 test.describe('Ohne WebGL: Produktlisten statt 3D', () => {
-  // FIXME(P1-Integration): braucht die Komponente OhneWebGL (data-testid
-  // „ohne-webgl“) mit den Listen je Blickpunkt. P0 zeigt nur einen Hinweis.
-  // Nach der Integration diese Zeile löschen.
-  test.fixme(true, 'P1-Integration: OhneWebGL fehlt noch')
-
   test('zeigt je Blickpunkt die Produkte aus dem Snapshot', async ({
     page,
   }) => {

@@ -2,7 +2,9 @@
 
 Gemeinsame Teile der Playwright-Suiten `apps/bakery-shop-e2e`,
 `apps/bakery-management-e2e`, `apps/bakery-landing-e2e` (alle drei in CI) und
-`apps/bakery-delivery-e2e` (nur lokal).
+`apps/bakery-delivery-e2e` (nur lokal). Die Suite `apps/bakery-digitale-baeckerei-e2e` (in CI) nutzt
+von hier nur ihren `webServer`-Eintrag (`digitaleBaeckereiApp()`) und `serve-static.js`; sie hat keine
+API und ein eigenes Fixture in der App (`apps/bakery-digitale-baeckerei/src/test/fixtures/`).
 
 | Datei             | Zweck                                                                                              |
 | ----------------- | -------------------------------------------------------------------------------------------------- |

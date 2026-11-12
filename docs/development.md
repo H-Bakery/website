@@ -33,12 +33,17 @@ Prerequisites: Node ≥ 20.9 locally (the box runs Node 22 LTS). `.npmrc` sets
 | Partybrezel-Prototyp    | `npm run dev:partybrezel`        | 4221 |
 | Digitale Bäckerei (3D)  | `npm run dev:digitale-baeckerei` | 4222 |
 
-The Digitale Bäckerei needs its 3D model, which is **not** in this repo: `dev:` /
-`build:digitale-baeckerei` first run the Nx target `sync-model` (public download at the commit pinned in
-`apps/bakery-digitale-baeckerei/model.lock.json`, sha256-checked, into the git-ignored
-`public/model/`). `npm run serve:digitale-baeckerei` serves the static export on 4232,
-`npm run test:unit:digitale-baeckerei` runs its jest specs (no network, synthetic data). Subpath
-build: `DIGITALE_BAECKEREI_BASE_PATH=/digitale-baeckerei`. See
+The Digitale Bäckerei needs its 3D model and product data, neither of which is in this repo: `dev:` /
+`build:digitale-baeckerei` first run two Nx targets. `sync-model` downloads `twin.glb` (public, at the
+commit pinned in `apps/bakery-digitale-baeckerei/model.lock.json`, sha256-checked) into the git-ignored
+`public/model/` and derives `public/data/belegung.json` (which product sits on which slot) from it.
+`sync-products` reads `hq/products/*.md` (`HQ_PRODUCTS_DIR`, else `../hq/products`) through
+`libs/shared/hq-products` and writes `public/data/products.snapshot.json` **without prices**; it aborts
+when there is no hq - there are no mock products. Without hq (or offline), set
+`DIGITALE_BAECKEREI_FIXTURE=1`: both targets then use the synthetic mini model and snapshot from
+`src/test/fixtures/` and download nothing. `npm run serve:digitale-baeckerei` serves the static export
+on 4232, `npm run test:unit:digitale-baeckerei` runs its jest specs (no network, synthetic data).
+Subpath build: `DIGITALE_BAECKEREI_BASE_PATH=/digitale-baeckerei`. See
 [apps/digitale-baeckerei.md](./apps/digitale-baeckerei.md) and the app's `CLAUDE.md`.
 
 `npm run test:e2e:digitale-baeckerei` runs its Playwright suite (`apps/bakery-digitale-baeckerei-e2e`,
@@ -167,9 +172,9 @@ build checks - `tsc -p` on it reports a spurious error.
 `.github/workflows/ci.yml` filters by changed paths, then runs `format:check`, `lint:affected`,
 `type-check` and tests (`test-unit` in three shards, four `test-e2e-*` jobs, aggregate
 `ci-status`). E2E runs against the built apps plus an API on a synthetic catalogue
-(`tools/e2e/`), so no private `hq` is needed. `test-e2e-digitale-baeckerei` builds the 3D app with
-`DIGITALE_BAECKEREI_FIXTURE=1` for the sub-path `/digitale-baeckerei` - synthetic mini model, no
-download of the real one.
+(`tools/e2e/`), so no private `hq` is needed. The 3D app is built with `DIGITALE_BAECKEREI_FIXTURE=1`
+in both the `build` matrix and `test-e2e-digitale-baeckerei` (there for the sub-path
+`/digitale-baeckerei`) - synthetic mini model and snapshot, no download of the real model, no hq.
 
 - **Coverage thresholds and `--shard` don't mix**: a shard runs a third of the tests but measures
   all sources. The configs with thresholds drop them when `JEST_SHARDED=true` (set by the shard

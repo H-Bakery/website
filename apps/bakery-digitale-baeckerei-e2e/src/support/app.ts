@@ -5,8 +5,8 @@
  * ## Was die Suite von der App erwartet
  *
  * **Messhaken** `window.__digitaleBaeckerei` (nur mit `?debug`, siehe
- * `src/lib/scene/createViewer.ts`). P0 liefert `ready`, `frames`, `info()`,
- * `pixelStats()`, `nodes(prefix)`. Für P1 kommen dazu:
+ * `src/lib/scene/createViewer.ts`): `ready`, `frames`, `info()`,
+ * `pixelStats()`, `nodes(prefix)` und
  *
  * - `screenPos(slot)`: `{ x, y }` in CSS-Pixeln des Viewports (wie
  *   `clientX`/`clientY`) für die Mitte des sichtbaren Knotens `produkt/<slot>`,
@@ -27,7 +27,13 @@
  * - `ohne-webgl`: der Ersatz ohne 3D mit den Listen aller Blickpunkte.
  */
 import { expect, type Locator, type Page } from '@playwright/test'
-// Die Fixtures gehören zur App (dort prüft sie jest); die Suite liest sie nur.
+// Blickpunkte und Fixtures gehören zur App (dort prüft sie jest); die Suite
+// liest sie nur.
+// eslint-disable-next-line @nx/enforce-module-boundaries
+import {
+  START_RAUM_ID,
+  findeRaum,
+} from '../../../bakery-digitale-baeckerei/src/config/raeume'
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import {
   VARIANTE,
@@ -44,24 +50,20 @@ export const PFAD = '/digitale-baeckerei/'
 export const PREIS = /€|EUR|\bEuro\b/
 
 /**
- * Welche Slot-Präfixe zu welchem Blickpunkt gehören (`Blickpunkt.moebel` in
- * `src/config/raeume.ts`). Die Suite rechnet damit aus dem Fixture aus, was
- * die Listen zeigen müssen.
+ * Die Blickpunkte des Ladens mit ihren Slot-Präfixen - direkt aus
+ * `src/config/raeume.ts` der App, damit die Suite aus dem Fixture ausrechnet,
+ * was die Listen zeigen müssen, ohne die Zuordnung ein zweites Mal zu führen.
  */
-export const BLICKPUNKTE = [
-  { id: 'theke', name: 'Theke', moebel: ['theke/'] },
-  { id: 'brotregal', name: 'Brotregal', moebel: ['brotregal/'] },
-  {
-    id: 'regale',
-    name: 'Regale',
-    moebel: [
-      'dosenregal/',
-      'getraenkekuehlschrank/',
-      'gitterregal/',
-      'wuerfelregal/',
-    ],
-  },
-] as const
+export const BLICKPUNKTE = (findeRaum(START_RAUM_ID)?.blickpunkte ?? []).map(
+  ({ id, name, moebel }) => ({ id, name, moebel: [...moebel] })
+)
+
+/** Die Slot-Präfixe eines Blickpunkts (`theke` → `theke/`, `gitterregal/`). */
+export function moebelVon(id: string): string[] {
+  const blickpunkt = BLICKPUNKTE.find((b) => b.id === id)
+  if (!blickpunkt) throw new Error(`Blickpunkt ${id} gibt es nicht`)
+  return blickpunkt.moebel
+}
 
 export interface DebugKnoten {
   name: string
@@ -77,6 +79,12 @@ export interface DebugHaken {
   frames: number
   info: () => {
     fill: { shown: number; hidden: number; doubled: string[] } | null
+    fov: number
+    blickpunkt: string
+    eye: number[]
+    richtung: number[]
+    preisschilder: number
+    aussenSichtbar: boolean
   }
   pixelStats: () => {
     samples: number
@@ -84,10 +92,10 @@ export interface DebugHaken {
     backgroundShare: number
   }
   nodes: (prefix?: string) => DebugKnoten[]
-  /** P1 - siehe Kopf der Datei. */
-  screenPos?: (slot: string) => { x: number; y: number } | null
-  /** P1 - siehe Kopf der Datei. */
-  hervorgehoben?: string | null
+  /** Siehe Kopf der Datei. */
+  screenPos: (slot: string) => { x: number; y: number } | null
+  /** Siehe Kopf der Datei. */
+  hervorgehoben: string | null
 }
 
 declare global {

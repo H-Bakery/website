@@ -16,7 +16,7 @@ import {
   TOUCH_TARGET,
   rand,
 } from './theme'
-import type { ProduktInfo } from './typen'
+import type { ProduktInfo } from '../lib/produkte/types'
 
 export const MEHR_LESEN_TEXT = 'Mehr lesen'
 export const WENIGER_TEXT = 'Weniger'

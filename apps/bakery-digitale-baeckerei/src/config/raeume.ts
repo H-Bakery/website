@@ -57,6 +57,9 @@ export interface Blickpunkt {
   aussenSichtbar?: boolean
 }
 
+/** Der Teil eines Blickpunkts, den die Bedienelemente brauchen. */
+export type BlickpunktKurz = Pick<Blickpunkt, 'id' | 'name'>
+
 export interface Raum {
   id: string
   name: string

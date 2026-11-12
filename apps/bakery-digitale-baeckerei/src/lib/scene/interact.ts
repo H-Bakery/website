@@ -16,6 +16,9 @@
  * Explorer (github.com/Open-Kirrberg/saar-lidar-explorer, MIT, gleicher
  * Urheber), `app/src/zones/runtime/twinPick.ts`; Ablauf nach
  * `twinInteract.ts`. Ohne Anheben und ohne Bilderrahmen für flache Ziele.
+ * Das Randleuchten ist schwächer als im Explorer (dort 0,16 + 0,7 f²): Hier
+ * bleibt die Auswahl stehen, solange die Produktkarte offen ist, und helle
+ * Krusten und Kuchen bleichten sonst aus.
  *
  * Importiert three - nur aus der nachgeladenen Viewer-Komponente verwenden.
  */
@@ -93,7 +96,7 @@ varying vec3 vN;
 varying vec3 vV;
 void main() {
   float f = 1.0 - abs( dot( normalize( vN ), normalize( vV ) ) );
-  gl_FragColor = vec4( uColor * ( 0.16 + 0.7 * f * f ) * uAmt, 1.0 );
+  gl_FragColor = vec4( uColor * ( 0.06 + 0.42 * f * f ) * uAmt, 1.0 );
 }`
 
 export interface HervorhebungsZiel {

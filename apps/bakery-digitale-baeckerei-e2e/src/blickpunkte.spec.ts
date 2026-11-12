@@ -16,11 +16,6 @@ import {
 } from './support/app'
 
 test.describe('Blickpunkte', () => {
-  // FIXME(P1-Integration): braucht die BlickpunktLeiste (data-testid
-  // „blickpunkt-leiste“), drei Blickpunkte in raeume.ts und das Kamera-Rig.
-  // P0 kennt nur „Theke“ ohne Leiste. Nach der Integration diese Zeile löschen.
-  test.fixme(true, 'P1-Integration: BlickpunktLeiste + Rig fehlen noch')
-
   test('startet an der Theke und bietet alle drei Blickpunkte an', async ({
     page,
   }) => {

@@ -29,9 +29,15 @@ export interface Rig {
   zoomTo(world: Vec3): void
   /** Wählt die Hochformat-Werte, wenn aspect < 1. */
   resize(aspect: number): void
-  /** Ein Tipp, der kein Ziehen war. */
-  onTap(cb: (clientX: number, clientY: number) => void): void
-  onDoubleTap(cb: (clientX: number, clientY: number) => void): void
+  /** Näher als in der Startweite? */
+  istGezoomt(): boolean
+  /** Zurück zur Startweite (zweiter Doppeltipp). */
+  zoomZurueck(): void
+  /** Den Blick weich drehen (Bogenmaß; + = Bild nach rechts / unten), in den Grenzen. */
+  schwenken(dYaw: number, dPitch: number): void
+  /** Ein Tipp, der kein Ziehen war. `zeiger` = `PointerEvent.pointerType`. */
+  onTap(cb: TippCallback): void
+  onDoubleTap(cb: TippCallback): void
   /** Einmal, bei der ersten Bedienung (Hinweis ausblenden). */
   onFirstGesture(cb: () => void): void
   /** Zwei Finger gewischt oder Pfeiltaste: −1 = voriger, +1 = nächster Blickpunkt. */
@@ -40,6 +46,12 @@ export interface Rig {
   onAnkunft(cb: (bp: Blickpunkt) => void): void
   dispose(): void
 }
+
+export type TippCallback = (
+  clientX: number,
+  clientY: number,
+  zeiger: string
+) => void
 
 /** Mausrad: Öffnungswinkel je Pixel Raddrehung (Exponent). */
 const RAD_JE_PX = 0.0015
@@ -70,8 +82,8 @@ export function createRig(o: {
   let disposed = false
   let raf = 0
   let zuletzt = 0
-  let tap: ((x: number, y: number) => void) | null = null
-  let doubleTap: ((x: number, y: number) => void) | null = null
+  let tap: TippCallback | null = null
+  let doubleTap: TippCallback | null = null
   let firstGesture: (() => void) | null = null
   let wechselGeste: ((richtung: -1 | 1) => void) | null = null
   let ankunftCb: ((bp: Blickpunkt) => void) | null = null
@@ -273,10 +285,10 @@ export function createRig(o: {
     const jetzt = { x: e.clientX, y: e.clientY, zeit: e.timeStamp }
     if (istDoppeltipp(letzterTipp, jetzt)) {
       letzterTipp = null
-      doubleTap?.(e.clientX, e.clientY)
+      doubleTap?.(e.clientX, e.clientY, e.pointerType)
     } else {
       letzterTipp = jetzt
-      tap?.(e.clientX, e.clientY)
+      tap?.(e.clientX, e.clientY, e.pointerType)
     }
   }
   const onPointerUp = (e: PointerEvent) => beenden(e, false)
@@ -340,6 +352,19 @@ export function createRig(o: {
     zoomTo(world) {
       if (disposed) return
       kern.zoomTo(world)
+      aktualisieren()
+    },
+    istGezoomt() {
+      return !disposed && kern.istGezoomt()
+    },
+    zoomZurueck() {
+      if (disposed) return
+      kern.zoomZurueck()
+      aktualisieren()
+    },
+    schwenken(dYaw, dPitch) {
+      if (disposed) return
+      kern.schwenken(dYaw, dPitch)
       aktualisieren()
     },
     resize(aspect) {

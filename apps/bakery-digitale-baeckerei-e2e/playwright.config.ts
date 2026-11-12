@@ -1,6 +1,9 @@
 import { defineConfig, devices } from '@playwright/test'
 import { nxE2EPreset } from '@nx/playwright/preset'
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { digitaleBaeckereiApp } = require('../../tools/e2e/servers')
+
 /**
  * Playwright-Suite der Digitalen Bäckerei (3D-Laden).
  *
@@ -19,7 +22,6 @@ import { nxE2EPreset } from '@nx/playwright/preset'
  * App zeigte nur den Ersatz ohne 3D.
  */
 const baseURL = process.env['BASE_URL'] || 'http://localhost:4236'
-const port = new URL(baseURL).port || '80'
 
 const launchOptions = {
   args: [
@@ -61,13 +63,6 @@ export default defineConfig({
     },
   ],
 
-  webServer: {
-    command: `node apps/bakery-digitale-baeckerei-e2e/serve-fixture.js --port ${port}`,
-    url: `${baseURL}/digitale-baeckerei/`,
-    // In CI ist alles frisch; lokal darf ein laufender Server weiterlaufen.
-    reuseExistingServer: !process.env['CI'],
-    cwd: `${__dirname}/../..`,
-    // Lokal baut der Server erst (next build), das dauert.
-    timeout: 300_000,
-  },
+  // Bauen mit dem Fixture, prüfen, ausliefern: tools/e2e/servers.js.
+  webServer: digitaleBaeckereiApp(baseURL),
 })

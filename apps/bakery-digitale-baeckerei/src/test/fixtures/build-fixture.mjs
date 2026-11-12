@@ -296,7 +296,7 @@ produkt(
   'theke/vitrine/ebene-3/platz-02',
   { product: 'phantomgebaeck' },
   1,
-  oben(2.1, 'ware-blau')
+  oben(0.9, 'ware-blau')
 )
 produkt('theke/brezelstaender/platz-01', { product: 'musterbrezel' }, 1, [
   theke(0.42, -0.25, 245.68, [0.14, 0.12, 0.14], 'lauge'),

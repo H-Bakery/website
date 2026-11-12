@@ -1,9 +1,9 @@
 # Test-Fixtures
 
 Synthetische Daten für Unit- und Playwright-Tests. **Alles hier ist erfunden** - Möbel als Kisten,
-Produkte wie „Testbrot“, keine Preise. Das echte Modell (`twin.glb`, `catalogue.json`) und der echte
-Produkt-Snapshot gehören nicht ins Repo; die Sync-Skripte schreiben sie nach `public/`
-(git-ignoriert).
+Produkte wie „Testbrot“, keine Preise. Das echte Modell (`twin.glb`), die daraus abgeleitete Belegung
+und der echte Produkt-Snapshot gehören nicht ins Repo; die Sync-Skripte schreiben sie nach `public/`
+(git-ignoriert). Den Katalog des Explorers (`catalogue.json`, mit Preisen) lädt die App gar nicht.
 
 | Datei                            | Inhalt                                                                         |
 | -------------------------------- | ------------------------------------------------------------------------------ |
@@ -15,7 +15,8 @@ Produkt-Snapshot gehören nicht ins Repo; die Sync-Skripte schreiben sie nach `p
 
 Mit `DIGITALE_BAECKEREI_FIXTURE=1` nehmen `sync-model` und `sync-products` diese Dateien statt der
 echten (`public/model/twin.glb`, `public/data/products.snapshot.json`, `public/data/belegung.json`).
-So baut die Playwright-Suite `apps/bakery-digitale-baeckerei-e2e`.
+So bauen die Playwright-Suite `apps/bakery-digitale-baeckerei-e2e` und CI (`ci.yml`, auch der
+`build`-Job) - dort gibt es weder das echte Modell noch hq.
 
 ## Was das Mini-Modell nachahmt
 
@@ -47,7 +48,12 @@ Den Aufbau des echten Modells, damit dieselben Code-Pfade laufen:
 - **Variante:** `produkt/theke/vitrine/ebene-1/platz-03@feierabend` (`fills: ['feierabend']`,
   anderes Produkt, grell und groß). Der Morgens-Filter blendet sie aus.
 - **Produkt ohne Eintrag:** `theke/vitrine/ebene-3/platz-02` zeigt auf `phantomgebaeck` - diese ID
-  fehlt im Snapshot absichtlich. Zu sehen, aber ohne Karte und nicht in der Liste.
+  fehlt im Snapshot absichtlich. Zu sehen, aber ohne Karte und nicht in der Liste. Der Platz steht
+  auf der Vitrine links neben den „Testkeksen“, damit er am Blickpunkt „Theke“ auch im Hochformat
+  (390 px) im Bild liegt.
+- **Anders als das echte Modell** haben hier auch Dosenregal, Kühlschrank, Gitter- und Würfelregal
+  je ein Produkt (im echten Modell tragen sie nur neutrale Ware) - so prüft die Suite Karten und
+  Listen an allen drei Blickpunkten. Den leeren Bereich prüfen die jest-Specs der Komponenten.
 - **Preiskarten:** `brotregal/ebene-1/platz-01…03` und `ebene-2/platz-01` sind Meshes aus vier
   Primitiven, zwei davon mit den Materialien `preiskarte` und `preisschrift` (die App blendet sie
   aus). Die übrigen Brote haben ein Primitiv.
@@ -71,4 +77,8 @@ node src/test/fixtures/build-fixture.mjs --check   # Exit 1, wenn die Datei vom 
 Szene ändern = `build-fixture.mjs` ändern, neu erzeugen, `twin.fixture.glb` mit einchecken.
 `fixture.spec.ts` schlägt fehl, wenn Datei und Generator auseinanderlaufen, wenn ein Produkt des
 Modells im Snapshot fehlt (oder umgekehrt) oder wenn irgendwo etwas nach Preis aussieht. Wer Plätze
-verschiebt, schaut danach ins Bild: die Playwright-Suite tippt Plätze an.
+verschiebt oder die Blickpunkte in `src/config/raeume.ts` ändert, schaut danach ins Bild: Die
+Playwright-Suite tippt Plätze an und bricht mit „Platz … ist an diesem Blickpunkt nicht im Bild“ ab,
+wenn einer aus dem Bild gerutscht ist. Angetippt werden an der Theke `theke/vitrine/ebene-3/platz-01`
+und `-02`, `ebene-1/platz-03` und `-04` (hinter Glas) und am Desktop `brotregal/ebene-3/platz-01`,
+an den Regalen `dosenregal/platz-01` und `-03`.

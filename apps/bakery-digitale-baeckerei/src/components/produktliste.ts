@@ -1,4 +1,12 @@
-import type { ListenEintrag } from './typen'
+import type { ListenEintrag } from '../lib/produkte/zuordnung'
+
+/**
+ * Leerer Abschnitt in „Alles hier“ und im Ersatz ohne WebGL. Bewusst nicht
+ * „hier liegt nichts“: An den Regalen steht Ware, zu der es (noch) keine
+ * Produktinfos gibt - der Text behauptet nur, was die Daten hergeben.
+ */
+export const KEINE_PRODUKTINFOS_TEXT =
+  'Für diesen Bereich gibt es noch keine Produktinfos.'
 
 /**
  * Macht aus den belegten Plätzen eine Produktliste: Dasselbe Produkt auf

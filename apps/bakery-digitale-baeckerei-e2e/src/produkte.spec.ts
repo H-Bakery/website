@@ -15,6 +15,7 @@ import {
   allesHierListe,
   erwarteKeinePreise,
   erwarteteEintraege,
+  moebelVon,
   oeffne,
   produktSheet,
   tippeAufPlatz,
@@ -37,14 +38,6 @@ const HOERNCHEN = {
 }
 
 test.describe('Produkt antippen', () => {
-  // FIXME(P1-Integration): braucht Picking (pick.ts), das ProduktSheet
-  // (data-testid „produkt-sheet“), die Produktdaten aus public/data/ und
-  // `screenPos(slot)` im Messhaken. Nach der Integration diese Zeile löschen.
-  test.fixme(
-    true,
-    'P1-Integration: Picking, ProduktSheet, screenPos fehlen noch'
-  )
-
   test('öffnet das Sheet mit Name, Einheit und Kurztext - ohne Preis', async ({
     page,
     hasTouch,
@@ -144,11 +137,6 @@ test.describe('Produkt antippen', () => {
 })
 
 test.describe('Liste „Alles hier“', () => {
-  // FIXME(P1-Integration): braucht die AllesHierListe (data-testid
-  // „alles-hier-liste“, Knopf „Alles hier“), `eintraegeFuer` und
-  // `hervorgehoben` im Messhaken. Nach der Integration diese Zeile löschen.
-  test.fixme(true, 'P1-Integration: AllesHierListe fehlt noch')
-
   test('zeigt die Produkte des Blickpunkts mit Name und Einheit', async ({
     page,
   }) => {
@@ -157,7 +145,7 @@ test.describe('Liste „Alles hier“', () => {
 
     const liste = allesHierListe(page)
     await expect(liste).toBeVisible()
-    const theke = erwarteteEintraege(['theke/'])
+    const theke = erwarteteEintraege(moebelVon('theke'))
     for (const eintrag of theke) {
       await expect(
         liste.getByText(eintrag.name, { exact: true }).first()
@@ -178,7 +166,7 @@ test.describe('Liste „Alles hier“', () => {
     await page.getByRole('button', { name: 'Alles hier' }).click()
 
     const liste = allesHierListe(page)
-    for (const eintrag of erwarteteEintraege(['brotregal/'])) {
+    for (const eintrag of erwarteteEintraege(moebelVon('brotregal'))) {
       await expect(
         liste.getByText(eintrag.name, { exact: true }).first()
       ).toBeVisible()

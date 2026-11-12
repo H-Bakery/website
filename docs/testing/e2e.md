@@ -1,10 +1,10 @@
 # E2E-Suiten (Playwright)
 
-Vier Suiten, `apps/bakery-{shop,management,landing,delivery}-e2e`, nur Chromium (Desktop Chrome +
-Pixel 5). Shop, Verwaltung und Landing laufen in CI (`test-e2e-*` in `.github/workflows/ci.yml`) ohne
-das private `hq` und ohne vorhandene Datenbank.
+Fünf Suiten, `apps/bakery-{shop,management,landing,delivery,digitale-baeckerei}-e2e`, nur Chromium
+(Desktop Chrome + Pixel 5). Shop, Verwaltung, Landing und Digitale Bäckerei laufen in CI
+(`test-e2e-*` in `.github/workflows/ci.yml`) ohne das private `hq` und ohne vorhandene Datenbank.
 
-Seit B12 läuft jede Suite gegen die **echte API** (Bundle über `tools/e2e/real-api.js`, frische
+Seit B12 läuft jede Suite mit API gegen die **echte API** (Bundle über `tools/e2e/real-api.js`, frische
 SQLite-Datenbank im Temp-Verzeichnis, Inhaber aus `BOOTSTRAP_ADMIN_*`, erfundene Kassenberichte und
 Finanzen aus `prepareE2eHq()`) - die Verwaltung schon seit F4, Shop und Fahrer-App seit B12. Der Shop
 bekommt sie mit `PUBLIC_CATALOGUE=1` und seinem Origin in `CORS_ORIGIN`; einen öffentlichen
@@ -37,9 +37,19 @@ API welche Suite bekommt und was der Katalog erfüllen muss: [`tools/e2e/README.
   App selbst mit `nx serve` und läuft nur lokal, nicht in CI - die Fahrer-App ist nicht im Pilot
   (roadmap D11).
 
+- **Die Suite der Digitalen Bäckerei** (`apps/bakery-digitale-baeckerei-e2e`,
+  `npm run test:e2e:digitale-baeckerei`) hat keine API. Sie läuft immer gegen den statischen Export
+  unter `/digitale-baeckerei`, gebaut mit dem synthetischen Mini-Modell
+  (`DIGITALE_BAECKEREI_FIXTURE=1`); `digitaleBaeckereiApp()` in `servers.js` startet dafür
+  `serve-fixture.js`, das lokal selbst baut und sich weigert, etwas anderes als das Fixture
+  auszuliefern - das echte Modell darf in keiner Spur und keinem Screenshot landen. Zwei Projekte:
+  `phone` (390×844, Touch) und `desktop`. WebGL läuft headless über SwiftShader. Selektoren und der
+  Messhaken (`?debug`) stehen nur in `src/support/app.ts`; welche Plätze im Bild liegen, hängt an
+  `src/config/raeume.ts` und am Fixture (`src/test/fixtures/README.md` der App).
+
 ## Aufrufe
 
 ```bash
-npm run test:e2e:shop          # bzw. :management, :landing, :delivery
+npm run test:e2e:shop          # bzw. :management, :landing, :delivery, :digitale-baeckerei
 CI=true BASE_URL=… API_URL=… npx nx e2e bakery-shop-e2e   # wie in CI, auf eigenen Ports (siehe README)
 ```

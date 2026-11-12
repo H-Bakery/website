@@ -1,6 +1,6 @@
 /**
- * Die `webServer`-Einträge der drei Playwright-Suiten (Shop, Management,
- * Landing) - an einer Stelle, damit CI und lokaler Lauf dieselben Server
+ * Die `webServer`-Einträge der Playwright-Suiten (Shop, Management, Landing,
+ * Fahrer-App, Digitale Bäckerei) - an einer Stelle, damit CI und lokaler Lauf dieselben Server
  * bekommen.
  *
  * Welche API: immer die **echte API** (`realApiServer()`, das esbuild-Bundle
@@ -19,6 +19,9 @@
  *   nachgestellten Bestell-Endpunkt (`apps/bakery-shop-e2e/src/support/shop.ts`).
  * - **Fahrer-App** (`apps/bakery-delivery-e2e`, nicht in CI): wie der Shop mit
  *   dem Origin der App in `CORS_ORIGIN` (`deliveryApiServer()`).
+ * - **Digitale Bäckerei** (`apps/bakery-digitale-baeckerei-e2e`): keine API,
+ *   nur der statische Export mit dem synthetischen Mini-Modell
+ *   (`digitaleBaeckereiApp()`).
  *
  * Zwei Betriebsarten:
  *
@@ -238,11 +241,33 @@ function landingApp(baseURL) {
   }
 }
 
+/**
+ * Digitale Bäckerei (3D-Laden): der statische Export unter dem Unterpfad
+ * `/digitale-baeckerei`, gebaut mit dem synthetischen Mini-Modell
+ * (`DIGITALE_BAECKEREI_FIXTURE=1`). Keine API. Bauen (nur lokal), prüfen, dass
+ * wirklich das Fixture im Export liegt, und ausliefern macht
+ * `apps/bakery-digitale-baeckerei-e2e/serve-fixture.js` - auch in der
+ * Entwicklung der Export, nie `nx serve`: Der Dev-Server läse das echte
+ * Modell, und das darf in keiner Spur und keinem Screenshot der Suite landen.
+ */
+function digitaleBaeckereiApp(baseURL) {
+  const port = portOf(baseURL)
+  return {
+    command: `node apps/bakery-digitale-baeckerei-e2e/serve-fixture.js --port ${port}`,
+    url: `${baseURL}/digitale-baeckerei/`,
+    reuseExistingServer: reuseExistingServer(),
+    cwd: ROOT,
+    // Lokal baut der Server erst (next build), das dauert.
+    timeout: 300_000,
+  }
+}
+
 module.exports = {
   E2E_ADMIN,
   FIXTURE_PRODUCTS_DIR,
   ROOT,
   deliveryApiServer,
+  digitaleBaeckereiApp,
   landingApp,
   nextApp,
   prepareE2eHq,

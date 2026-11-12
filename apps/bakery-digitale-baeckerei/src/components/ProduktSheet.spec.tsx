@@ -9,7 +9,7 @@ import ProduktSheet, {
 } from './ProduktSheet'
 import ThemeRegistry from './ThemeRegistry'
 import { AEPFELTASCHE, PROBEWECK, TESTBROT, VERBOTEN, zeige } from './testdaten'
-import type { ProduktInfo } from './typen'
+import type { ProduktInfo } from '../lib/produkte/types'
 
 function setup(
   produkt: ProduktInfo | null = TESTBROT,

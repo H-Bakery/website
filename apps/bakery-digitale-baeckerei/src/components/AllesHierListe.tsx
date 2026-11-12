@@ -10,11 +10,11 @@ import ListItemButton from '@mui/material/ListItemButton'
 import ListItemText from '@mui/material/ListItemText'
 import Typography from '@mui/material/Typography'
 import useMediaQuery from '@mui/material/useMediaQuery'
-import { gruppiereEintraege } from './produktliste'
+import type { ListenEintrag } from '../lib/produkte/zuordnung'
+import { KEINE_PRODUKTINFOS_TEXT, gruppiereEintraege } from './produktliste'
 import { SEITLICH, TOUCH_TARGET, WENIGER_BEWEGUNG } from './theme'
-import type { ListenEintrag } from './typen'
 
-export const LISTE_LEER_TEXT = 'Hier liegt gerade nichts.'
+export const LISTE_LEER_TEXT = KEINE_PRODUKTINFOS_TEXT
 
 export interface AllesHierListeProps {
   offen: boolean
@@ -24,6 +24,11 @@ export interface AllesHierListeProps {
   /** bekommt den (ersten) Platz des gewählten Produkts */
   onSelect: (slot: string) => void
   onClose: () => void
+  /**
+   * Ersetzt den Text der leeren Liste, z. B. solange die Produktdaten noch
+   * laden oder wenn sie nicht geladen werden konnten.
+   */
+  leerText?: string
 }
 
 /**
@@ -37,6 +42,7 @@ export default function AllesHierListe({
   blickpunktName,
   onSelect,
   onClose,
+  leerText = LISTE_LEER_TEXT,
 }: AllesHierListeProps) {
   const titelId = useId()
   const wenigerBewegung = useMediaQuery(WENIGER_BEWEGUNG)
@@ -48,6 +54,7 @@ export default function AllesHierListe({
       onClose={onClose}
       aria-labelledby={titelId}
       transitionDuration={wenigerBewegung ? 0 : undefined}
+      PaperProps={{ 'data-testid': 'alles-hier-liste' } as object}
       sx={{
         '& .MuiDialog-container': {
           alignItems: 'flex-end',
@@ -104,7 +111,7 @@ export default function AllesHierListe({
       <Box sx={{ overflowY: 'auto', overscrollBehavior: 'contain', pb: 1 }}>
         {zeilen.length === 0 ? (
           <Typography color="text.secondary" sx={{ px: 2.5, py: 2 }}>
-            {LISTE_LEER_TEXT}
+            {leerText}
           </Typography>
         ) : (
           <List disablePadding aria-labelledby={titelId}>

@@ -1,7 +1,9 @@
 import React from 'react'
 import { render } from '@testing-library/react'
 import ThemeRegistry from './ThemeRegistry'
-import type { BlickpunktKurz, ListenEintrag, ProduktInfo } from './typen'
+import type { BlickpunktKurz } from '../config/raeume'
+import type { ProduktInfo } from '../lib/produkte/types'
+import type { ListenEintrag } from '../lib/produkte/zuordnung'
 
 /** Nur für Specs: erfundene Produkte, kein echter Name, Text oder Betrag. */
 

@@ -4,7 +4,8 @@ Status: **P0 gemergt** (PR #132, 2026-11-12), **P1 in Arbeit**. Dieses Dokument 
 Umsetzung.
 
 Besucher schauen sich die Bäckerei Heusser in 3D an: die Theke mit Vitrine, das Brotregal und die
-Regale, voll mit den echten Produkten. Tippen auf ein Produkt zeigt Name, Preis und Kurztext.
+Regale, voll mit den echten Produkten. Tippen auf ein Produkt zeigt Name und Kurztext (vorerst
+ohne Preis, DB8).
 **Man läuft nicht herum**: Es gibt feste Blickpunkte, an denen man sich nur leicht umschauen und
 zoomen kann. Das Handy ist das Hauptgerät. Später kommen weitere Räume dazu, z. B. die Backstube.
 
@@ -44,15 +45,25 @@ Landingpage auf GitHub Pages). Nicht im Pilot, nicht auf der Box.
 - **Produkte:** Jeder belegte Platz ist ein Knoten `produkt/<slot>` mit `extras.product` (die
   hq-Produkt-ID ohne Nummer, z. B. `kornbrot-500g`) und `extras.fills`. Ein Knoten
   `produkt/<slot>@<fill>` ist die Variante für einen anderen Zustand. Knoten mit `extras.ware`
-  sind neutrale Waren (Gläser, Dosen) ohne eigene Karte; ein Tipp darauf zeigt die Karte des
-  Regals. `catalogue.json` → `products[<id>]` liefert `name_de`, `short_de`, `info_de`,
-  `category`, `price_eur`, `sale_unit` mit dem Stand des letzten Imports im Explorer. Die App
-  nutzt davon nur die Zuordnung; Texte und Preise kommen aus hq (DB6, Abschnitt Produktdaten).
+  sind neutrale Waren (Gläser, Dosen) ohne eigene Karte. Im MVP öffnet ein Tipp darauf **keine**
+  Karte (auch keine „Regal-Karte“ - ob es die geben soll, ist eine offene Frage an den Inhaber).
+  `catalogue.json` → `products[<id>]` liefert `name_de`, `short_de`, `info_de`, `category`,
+  `price_eur`, `sale_unit` mit dem Stand des letzten Imports im Explorer. **Die App lädt
+  `catalogue.json` nicht** (er trägt Preise): Die Zuordnung Platz → Produkt (die Belegung) liest
+  `sync-model` direkt aus den `extras` des GLB, die Texte kommen aus hq (DB6, Abschnitt
+  Produktdaten).
+- **Stand des Modells am gesperrten Commit:** hq-Produkte liegen nur auf der Theke (Vitrine,
+  Brezelständer) und im Brotregal. Dosenregal, Getränkekühlschrank, Gitterregal und Würfelregal
+  tragen ausschließlich neutrale Ware (`extras.ware`) - der Blickpunkt „Regale“ hat darum keine
+  Produktkarten, und seine Liste „Alles hier“ sagt das ehrlich („Für diesen Bereich gibt es noch
+  keine Produktinfos.“).
 - Zustände: `fills.default = "morgens"` (volle Auslage) und `feierabend` (leer). Die App zeigt
   nur **Morgens**: Knoten ausblenden, deren `extras.fills` `morgens` nicht enthält.
-- Startwerte für die Kamera aus der Führung des Explorers (`catalogue/tour.json`, `eye` → `look`):
-  `theke` [6.0, 245.9, −0.6] → [3.9, 245.0, −1.8] und `brotregal` [5.6, 245.9, −1.0] →
-  [2.3, 245.7, −1.1]. Den Blickpunkt für die Regale neu bestimmen.
+- Die Führung des Explorers (`catalogue/tour.json`) lieferte nur Startwerte für die Kamera; ihr
+  Theke-Standort liegt hinter der Schaufensterscheibe. Die gültigen Werte aller drei Blickpunkte
+  sind am echten Modell bestimmt und stehen in `src/config/raeume.ts` (Standorte im Kundenbereich
+  vor der Theke). Gitterregal und Würfelregal stehen nicht bei den anderen Regalen: Das Gitterregal
+  gehört zum Blickpunkt „Theke“, das Würfelregal zu „Brotregal“.
 - Übernehmbarer Code (MIT, gleicher Urheber, Herkunft im Dateikopf nennen):
   `app/src/zones/runtime/twinPick.ts` (Picking, ≈ 44-px-Proxies für kleine Produkte auf Touch),
   `twinInteract.ts` (Hover/Tap-Highlight), `twinUi.ts` (Infokarte).
@@ -64,10 +75,11 @@ Landingpage auf GitHub Pages). Nicht im Pilot, nicht auf der Box.
   Gebäude außen: © GeoBasis-DE/LVGL-SL (2026), dl-de/by-2-0. Straßen: © OpenStreetMap-Mitwirkende,
   ODbL. Diese Quellen nennt die App unter „Quellen“, solange durch die Fenster etwas vom Außenraum
   zu sehen ist.
-- **Das Modell und `catalogue.json` werden nicht in dieses öffentliche Repo eingecheckt.** Echte
-  Preise gehören nicht in `website`. Ein Sync-Skript lädt beides beim Bauen (Ordner ist
-  git-ignoriert). Tests und e2e nutzen ein **synthetisches** Mini-GLB und einen synthetischen
-  Katalog mit erfundenen Produkten.
+- **Das Modell wird nicht in dieses öffentliche Repo eingecheckt**, `catalogue.json` gar nicht
+  erst geladen. Echte Preise gehören nicht in `website`. `sync-model` lädt das GLB beim Bauen
+  (Ordner ist git-ignoriert) und löscht dort alles, was nicht im Lock steht. Tests, e2e und CI
+  nutzen ein **synthetisches** Mini-GLB und einen synthetischen Produkt-Snapshot mit erfundenen
+  Produkten (`DIGITALE_BAECKEREI_FIXTURE=1`).
 - Kein Tracking, keine Cookies, keine Fremd-Fonts. Keine Personen, keine Fotos von Dritten.
 
 ## Produktdaten (DB6)
@@ -76,21 +88,27 @@ Landingpage auf GitHub Pages). Nicht im Pilot, nicht auf der Box.
   (`HQ_PRODUCTS_DIR`) und schreibt die nötigen Felder **ohne Preise** (ID, Name, Kategorie, Einheit,
   Kurztext, Text) nach `public/data/products.snapshot.json` (git-ignoriert). Die App liest nur diesen
   Snapshot.
-- Für den Leser gilt: Die Landingpage hat Die Landingpage hat
-  schon einen (`apps/bakery-landing/src/lib/products.ts`). Nicht kopieren: Wenn beide
-  Apps ihn brauchen, gehört er in eine gemeinsame Lib.
+- Der Leser für `hq/products/*.md` steht einmal in der Lib `libs/shared/hq-products`
+  (`@bakery/shared/hq-products`); Landingpage (`src/lib/products.ts`, `scripts/generate-sitemap.js`)
+  und `sync-products` nutzen ihn.
+- **Einheit** = das hq-Feld `weight` (`750g` → „750 g“). Heute hat kein hq-Produkt dieses Feld,
+  die Karten zeigen also keine Einheit - sie wird nicht erfunden.
 - Zuordnung: `extras.product` im Modell = die hq-ID ohne Nummer (`1-kornbrot-500g.md` →
   `kornbrot-500g`). Zeigt das Modell ein Produkt, das es in hq nicht (mehr) gibt, bleibt es
   sichtbar, aber ohne Karte, und der Build meldet es.
 - **Preisschilder im Modell:** Auf den zwei unteren Brotebenen sind Preiskarten mit dem alten
   Preisstand ins Modell gebacken (Materialien `preiskarte` / `preisschrift` in den
   `produkt/*`-Knoten). Diese Teile ausblenden, denn vorerst gibt es keine Preise (DB8).
-- **CI:** Der Deploy-Workflow hat heute keinen Zugriff auf hq, deshalb fällt die Landingpage dort
+- **CI (`ci.yml`)** baut und testet diese App nur mit dem synthetischen Fixture
+  (`DIGITALE_BAECKEREI_FIXTURE=1`): kein Download, kein hq, das echte Modell landet in keinem
+  Artefakt.
+- **Deploy:** Der Deploy-Workflow hat heute keinen Zugriff auf hq, deshalb fällt die Landingpage dort
   auf Mock-Daten zurück. Der Inhaber hat dem Lesezugriff zugestimmt (2026-11-12). Der Workflow
   checkt `hq` mit einem Secret aus (Deploy-Key oder Token der vorhandenen GitHub App, nur lesend).
   Das Secret legt **der Inhaber** an; der Agent bereitet Workflow und Anleitung vor. Die Landingpage
   kann denselben Checkout nutzen. Ohne hq bricht der Build dieser App ab, statt Mocks zu zeigen.
-- Welches Produkt wo liegt (die Belegung), kommt weiter aus dem Explorer. Neue Produkte erscheinen
+- Welches Produkt wo liegt (die Belegung), kommt weiter aus dem Explorer: `sync-model` leitet
+  `public/data/belegung.json` (git-ignoriert) aus dem geprüften GLB ab. Neue Produkte erscheinen
   im Regal erst mit einer neuen Belegung dort oder mit P4.
 
 ## Aufbau
@@ -104,27 +122,32 @@ react-three-fiber (das bräuchte React 19). Sie läuft in einer Client-Komponent
 
 ```
 apps/bakery-digitale-baeckerei/
-  scripts/sync-model.mjs     Paket laden, Prüfsumme prüfen, nach public/model/ (git-ignoriert)
+  scripts/sync-model.mjs     GLB laden, Prüfsumme prüfen, nach public/model/; Belegung nach public/data/
+  scripts/sync-products.mjs  hq lesen, Snapshot ohne Preise nach public/data/ (beides git-ignoriert)
   model.lock.json            Quelle (Commit des Daten-Repos), sha256 je Datei, Abrufdatum
-  src/config/raeume.ts       Räume → Blickpunkte (eye, look, Grenzen, Hoch-/Querformat)
-  src/lib/scene/             Laden, Morgens-Filter, Kamera-Rig, Picking (aus dem Explorer)
-  src/components/            Viewer, Blickpunkt-Leiste, Produkt-Sheet, Liste, Ladebild
-  src/test/fixtures/         synthetisches Mini-GLB + Katalog
+  src/config/raeume.ts       Räume → Blickpunkte (eye, look, Grenzen, Hoch-/Querformat, Möbel)
+  src/lib/scene/             Laden, Morgens-Filter, Kamera-Rig, Picking, Hervorhebung (aus dem Explorer)
+  src/lib/produkte/          Typen, Zuordnung Platz → Produkt, Laden von Snapshot und Belegung
+  src/components/            Viewer, Blickpunkt-Leiste, Produkt-Sheet, Liste, Ladebild, Ersatz ohne WebGL
+  src/test/fixtures/         synthetisches Mini-GLB + Produkt-Snapshot, Generator
+apps/bakery-digitale-baeckerei-e2e/   Playwright (390×844 und Desktop), nur mit dem Fixture
 ```
 
-- **Sync:** `sync-model.mjs` lädt `twin.glb` und `catalogue.json` an einem **festen Commit** von
+- **Sync:** `sync-model.mjs` lädt `twin.glb` an einem **festen Commit** von
   `raw.githubusercontent.com/Open-Kirrberg/saar-lidar-data/<sha>/zones/baeckerei-heusser/built/`,
   prüft die sha256 aus `model.lock.json` und bricht bei einer Abweichung ab. Ein neues Modell
   übernimmt man bewusst: Commit und Prüfsummen in `model.lock.json` ändern, dann PR.
-  Das Nx-Target `build` hängt von `sync-model` ab. CI darf den öffentlichen Download machen.
+  Die Nx-Targets `build` und `serve` hängen von `sync-model` und `sync-products` ab. CI lädt
+  nichts herunter, sondern baut mit dem Fixture.
 - **Räume als Datenmodell:** `raeume.ts` = `[{ id: 'laden', name, blickpunkte: [...] }]`. Die
   Backstube ist später nur ein weiterer Eintrag mit eigenem Modell, Blickpunkte und UI bleiben.
 - **Blickpunkt:** `{ id, name, eye, look, yawDeg: 20, pitchDeg: 12, fovMin, fovMax, portrait?:
 { eye, look, fov } }`. Hochformat bekommt eigene Werte, damit das ganze Regal ins Bild passt.
 - **Kamera-Rig:** Die Position bleibt fest. Ziehen dreht innerhalb der Grenzen und federt an den
   Rändern weich zurück. Pinch/Mausrad verändert die Brennweite (FOV) statt der Position, sonst
-  fliegt man in die Regale. Doppeltipp auf ein Produkt zoomt dorthin. Ein Wechsel des Blickpunkts
-  gleitet ≈ 0,8 s; bei `prefers-reduced-motion` wird geschnitten.
+  fliegt man in die Regale. Doppeltipp auf ein Produkt zoomt dorthin, der nächste Doppeltipp
+  zoomt zurück zur Startweite. Ein Wechsel des Blickpunkts gleitet ≈ 0,8 s; bei
+  `prefers-reduced-motion` wird geschnitten.
 - **Leistung:** Pixel-Ratio höchstens 2, Rendern nur bei Bewegung oder Änderung (kein
   Dauer-Loop), Außenraum (`fassade/*`, `umgebung/*`) ausblenden, wo man ihn nicht sieht. Erst
   messen; wenn die Ladezeit über 4G zu lang ist, schneidet das Sync-Skript den Außenraum aus dem
@@ -132,18 +155,22 @@ apps/bakery-digitale-baeckerei/
 
 ## Bedienung (Handy zuerst)
 
-- **Start:** Ein Ladebild (statisches Standbild der Theke) mit Fortschritt, danach Blickpunkt
-  „Theke“. Ein kurzer Hinweis „Ziehen zum Umschauen · Tippen für Infos“ verschwindet nach der
+- **Start:** Ein Ladebild (eine gezeichnete Theke als SVG in den Markenfarben - kein Standbild
+  des echten Modells, das gehört nicht ins Repo) mit Fortschritt, danach Blickpunkt „Theke“. Ein kurzer Hinweis „Ziehen zum Umschauen · Tippen für Infos“ verschwindet nach der
   ersten Geste.
 - **Blickpunkt-Leiste** unten in Daumenreichweite mit den Chips _Theke_ · _Brotregal_ ·
   _Regale_. Zusätzlich Wischen mit zwei Fingern oder Pfeile am Rand. Auf dem Desktop: Pfeiltasten.
-- **Produkt antippen:** kurzes Aufleuchten, dann ein Bottom-Sheet mit Name, Einheit und Kurztext,
-  aufklappbar der lange Text. Keine Preise (DB8). **Keine Allergene**, solange die Liste nicht vollständig
+- **Produkt antippen:** Das Produkt wird hervorgehoben, dazu ein Bottom-Sheet (Querformat und
+  Desktop: Karte rechts oben) mit Name, Einheit und Kurztext, aufklappbar der lange Text. Die Szene
+  bleibt dabei bedienbar: Ein Tipp auf ein anderes Produkt wechselt die Karte, ein Tipp daneben
+  (auch auf neutrale Ware oder Möbel) schließt sie. Läge das Produkt unter der Karte, dreht der
+  Blick es in den freien Teil des Bildes - in den Grenzen des Umschauens. Keine Preise (DB8). **Keine Allergene**, solange die Liste nicht vollständig
   bestätigt ist. Ein Link „Mehr auf der Website“ führt zur Produktseite der Landingpage, falls es
   sie gibt.
 - **Liste „Alles hier“** je Blickpunkt: alle Produkte dieses Blickpunkts als Liste (Name, Einheit).
-  Tippen in der Liste hebt das Produkt im Bild hervor. Dieselbe Liste dient als **Ersatz ohne
-  WebGL** und für Screenreader.
+  Tippen in der Liste hebt das Produkt im Bild hervor und öffnet seine Karte. Dieselbe Liste dient
+  als **Ersatz ohne WebGL** (alle Blickpunkte untereinander) und steht für Screenreader unsichtbar
+  neben der laufenden 3D-Ansicht.
 - Deutsch in der Du-Form wie die Texte im Modell. Die Farben stammen aus der Markenpalette
   (`docs/brand-identity.md`). Dark Mode gilt nur für die Bedienelemente, die Szene bleibt hell.
 

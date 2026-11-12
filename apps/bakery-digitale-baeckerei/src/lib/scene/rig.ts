@@ -19,6 +19,8 @@ export const WECHSEL_MS = 800
 export const ZOOM_MS = 350
 /** Doppeltipp zoomt auf diesen Anteil des weitesten Öffnungswinkels. */
 export const ZOOM_ANTEIL = 0.5
+/** Ab so viel Grad unter der Startweite gilt das Bild als herangezoomt. */
+export const ZOOM_EPS = 0.5
 /** So weit lässt sich über die Grenze hinausziehen (Gummiband), höchstens. */
 export const GUMMI_WEICH = 6 * GRAD
 /** Zeitkonstante des Zurückfederns. */
@@ -277,6 +279,15 @@ export interface RigKern {
   setzeFov(fov: number): void
   /** Heranzoomen und zum Punkt drehen, in den Grenzen. */
   zoomTo(world: Vec3): void
+  /** Näher als in der Startweite (auch: gerade auf dem Weg dorthin)? */
+  istGezoomt(): boolean
+  /** Zurück zur Startweite; die Blickrichtung bleibt, soweit die Grenzen es zulassen. */
+  zoomZurueck(): void
+  /**
+   * Den Blick weich um so viel drehen (Bogenmaß, wie `ziehen`), in den
+   * Grenzen - z. B. damit ein gewähltes Produkt nicht unter der Karte liegt.
+   */
+  schwenken(dYaw: number, dPitch: number): void
   /** Zeit läuft: Gleiten und Zurückfedern. `true`, solange sich noch etwas bewegt. */
   schritt(dtMs: number): boolean
   bewegt(): boolean
@@ -351,6 +362,43 @@ export function createRigKern(o: { reducedMotion: boolean }): RigKern {
     if (!rahmen) return false
     const g = grenzen(rahmen, fov, aspect)
     return Math.abs(abYaw) > g.yaw || Math.abs(abPitch) > g.pitch
+  }
+
+  /**
+   * Am Standort weich zu einer Blickrichtung und einem Öffnungswinkel fahren
+   * (beides in die Grenzen geklemmt); ohne Bewegung: schneiden.
+   */
+  const fahreZu = (zielYaw: number, zielPitch: number, zielFov: number) => {
+    if (!rahmen || fahrt?.art === 'wechsel') return
+    if (zieht) {
+      const g0 = grenzen(rahmen, fov, aspect)
+      abYaw = gummiband(abYaw, g0.yaw, weich)
+      abPitch = gummiband(abPitch, g0.pitch, weich)
+      zieht = false
+    }
+    const von = aktuellePose()
+    if (!von) return
+    const f = klemmen(zielFov, rahmen.fovMin, rahmen.fovMax)
+    const g = grenzen(rahmen, f, aspect)
+    abYaw = klemmen(zielYaw, -g.yaw, g.yaw)
+    abPitch = klemmen(zielPitch, -g.pitch, g.pitch)
+    fov = f
+    if (o.reducedMotion) {
+      fahrt = null
+      return
+    }
+    fahrt = {
+      art: 'zoom',
+      von,
+      nach: {
+        eye: rahmen.eye,
+        yaw: rahmen.yaw0 + abYaw,
+        pitch: rahmen.pitch0 + abPitch,
+        fov: f,
+      },
+      ms: 0,
+      dauer: ZOOM_MS,
+    }
   }
 
   const kern: RigKern = {
@@ -482,6 +530,27 @@ export function createRigKern(o: { reducedMotion: boolean }): RigKern {
         ms: 0,
         dauer: ZOOM_MS,
       }
+    },
+
+    istGezoomt() {
+      if (!rahmen) return false
+      const ziel = fahrt?.art === 'zoom' ? fahrt.nach.fov : fov
+      return ziel < rahmen.fov - ZOOM_EPS
+    },
+
+    zoomZurueck() {
+      if (!rahmen) return
+      fahreZu(abYaw, abPitch, rahmen.fov)
+    },
+
+    schwenken(dYaw, dPitch) {
+      if (!rahmen || !Number.isFinite(dYaw) || !Number.isFinite(dPitch)) return
+      if (fahrt?.art === 'wechsel') return
+      // Ziel einer laufenden Fahrt als Ausgangspunkt, sonst der Stand jetzt.
+      const g = grenzen(rahmen, fov, aspect)
+      const yaw = zieht ? gummiband(abYaw, g.yaw, weich) : abYaw
+      const pitch = zieht ? gummiband(abPitch, g.pitch, weich) : abPitch
+      fahreZu(yaw + dYaw, pitch + dPitch, fov)
     },
 
     schritt(dtMs) {
