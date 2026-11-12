@@ -165,9 +165,11 @@ build checks - `tsc -p` on it reports a spurious error.
 ## CI
 
 `.github/workflows/ci.yml` filters by changed paths, then runs `format:check`, `lint:affected`,
-`type-check` and tests (`test-unit` in three shards, three `test-e2e-*` jobs, aggregate
+`type-check` and tests (`test-unit` in three shards, four `test-e2e-*` jobs, aggregate
 `ci-status`). E2E runs against the built apps plus an API on a synthetic catalogue
-(`tools/e2e/`), so no private `hq` is needed.
+(`tools/e2e/`), so no private `hq` is needed. `test-e2e-digitale-baeckerei` builds the 3D app with
+`DIGITALE_BAECKEREI_FIXTURE=1` for the sub-path `/digitale-baeckerei` - synthetic mini model, no
+download of the real one.
 
 - **Coverage thresholds and `--shard` don't mix**: a shard runs a third of the tests but measures
   all sources. The configs with thresholds drop them when `JEST_SHARDED=true` (set by the shard
