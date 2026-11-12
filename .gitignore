@@ -17,6 +17,13 @@ dist/
 # versionieren, sonst bleibt nach jedem Build eine Änderung liegen. tsc
 # (type-check) braucht die Datei nicht.
 /apps/bakery-partybrezel/next-env.d.ts
+/apps/bakery-digitale-baeckerei/next-env.d.ts
+# Digitale Bäckerei: Modell + Katalog (scripts/sync-model.mjs) und der
+# Produkt-Snapshot aus hq entstehen beim Bauen und gehören NICHT in dieses
+# öffentliche Repo (echte Texte/Preise). Screenshots bleiben lokal.
+/apps/bakery-digitale-baeckerei/public/model/
+/apps/bakery-digitale-baeckerei/public/data/
+/apps/bakery-digitale-baeckerei/screenshots/
 /out/
 
 # production

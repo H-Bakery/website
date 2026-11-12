@@ -297,12 +297,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # bakery-digitale-baeckerei laedt vor dem Build sein 3D-Modell
+        # (Target sync-model: oeffentlicher Download am festen Commit, sha256
+        # aus model.lock.json) - das Modell liegt nicht im Repo.
         app:
           [
             bakery-shop,
             bakery-management,
             bakery-landing,
             bakery-partybrezel,
+            bakery-digitale-baeckerei,
             bakery-api,
           ]
     steps:

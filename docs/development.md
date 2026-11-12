@@ -23,14 +23,23 @@ Prerequisites: Node ≥ 20.9 locally (the box runs Node 22 LTS). `.npmrc` sets
 
 ## Run
 
-| What                    | Command                    | Port |
-| ----------------------- | -------------------------- | ---- |
-| Landing page            | `npm run dev:landing`      | 3000 |
-| Shop                    | `npm run serve:shop`       | 4200 |
-| Management (Verwaltung) | `npm run serve:management` | 4201 |
-| Fahrer-App (delivery)   | `npm run serve:delivery`   | 4300 |
-| TypeScript API          | `npm run serve:api`        | 5000 |
-| Partybrezel-Prototyp    | `npm run dev:partybrezel`  | 4221 |
+| What                    | Command                          | Port |
+| ----------------------- | -------------------------------- | ---- |
+| Landing page            | `npm run dev:landing`            | 3000 |
+| Shop                    | `npm run serve:shop`             | 4200 |
+| Management (Verwaltung) | `npm run serve:management`       | 4201 |
+| Fahrer-App (delivery)   | `npm run serve:delivery`         | 4300 |
+| TypeScript API          | `npm run serve:api`              | 5000 |
+| Partybrezel-Prototyp    | `npm run dev:partybrezel`        | 4221 |
+| Digitale Bäckerei (3D)  | `npm run dev:digitale-baeckerei` | 4222 |
+
+The Digitale Bäckerei needs its 3D model, which is **not** in this repo: `dev:` /
+`build:digitale-baeckerei` first run the Nx target `sync-model` (public download at the commit pinned in
+`apps/bakery-digitale-baeckerei/model.lock.json`, sha256-checked, into the git-ignored
+`public/model/`). `npm run serve:digitale-baeckerei` serves the static export on 4232,
+`npm run test:unit:digitale-baeckerei` runs its jest specs (no network, synthetic data). Subpath
+build: `DIGITALE_BAECKEREI_BASE_PATH=/digitale-baeckerei`. See
+[apps/digitale-baeckerei.md](./apps/digitale-baeckerei.md) and the app's `CLAUDE.md`.
 
 Ports come from each app's `project.json`. There is one API: since B12 the mock server
 (`serve:api:simple`) is deleted, and management, shop and Fahrer-App all talk to the TypeScript
