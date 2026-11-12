@@ -724,6 +724,10 @@ describe('DigitaleBaeckerei: nichts auf dem Gerät', () => {
 })
 
 describe('DigitaleBaeckerei: Nahansicht „In 3D ansehen“', () => {
+  // Laden, Karte und Dialog (MUI-Modal) in einem Test: auf den CI-Maschinen
+  // reichen die üblichen 5 s dafür nicht immer.
+  jest.setTimeout(30_000)
+
   const knopf = () => screen.queryByRole('button', { name: NAHANSICHT_TEXT })
 
   it('bietet den Knopf nur bei einem Produkt mit 3D-Modell an', async () => {
