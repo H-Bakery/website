@@ -194,6 +194,11 @@ export interface ViewerDebug {
   hervorgehoben: string | null
   /** Der gewählte Platz, wie ihn die App verlangt hat. */
   gewaehlt: string | null
+  /**
+   * Öffnet die Nahansicht für ein Modell aus dem Index, auch ohne Karte
+   * (von `DigitaleBaeckerei` eingehängt). `false`: Für die ID gibt es keines.
+   */
+  nahansicht?: (id: string) => boolean
 }
 
 declare global {

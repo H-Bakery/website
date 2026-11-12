@@ -10,7 +10,8 @@
  *    synthetischen Produkt-Snapshot aus `src/test/fixtures/`) und
  *    `DIGITALE_BAECKEREI_BASE_PATH=/digitale-baeckerei`.
  * 2. Prüfen: Im Export müssen genau das Fixture-Modell (so, wie `sync-model`
- *    es ausliefert: ohne Preisschilder) und der Fixture-Snapshot liegen
+ *    es ausliefert: ohne Preisschilder), der Fixture-Snapshot und das eine
+ *    synthetische Produkt-Modell der Nahansicht samt Index liegen
  *    (Byte für Byte, `exportFehler` in `fixture-info.js`). Die Suite lädt
  *    Spuren und Screenshots als CI-Artefakt hoch - das echte Modell darf dort
  *    nie auftauchen, also startet der Server sonst nicht.

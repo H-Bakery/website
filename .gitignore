@@ -24,11 +24,15 @@ dist/
 # Screenshots bleiben lokal.
 /apps/bakery-digitale-baeckerei/public/model/
 /apps/bakery-digitale-baeckerei/public/data/
+# 3D-Modelle einzelner Produkte (scripts/sync-produkte-3d.mjs) aus dem nur
+# lokalen Daten-Repo ../produkte-3d - gehören der Bäckerei, nicht hierher.
+/apps/bakery-digitale-baeckerei/public/produkte-3d/
 /apps/bakery-digitale-baeckerei/screenshots/
-# Kein 3D-Modell im Repo, egal wo es abgelegt wird - außer dem synthetischen
-# Test-Modell.
+# Kein 3D-Modell im Repo, egal wo es abgelegt wird - außer den synthetischen
+# Test-Modellen.
 *.glb
 !/apps/bakery-digitale-baeckerei/src/test/fixtures/twin.fixture.glb
+!/apps/bakery-digitale-baeckerei/src/test/fixtures/produkt.fixture.glb
 # Playwright-Berichte (HTML mit Screenshots und Spuren)
 playwright-report/
 /out/
