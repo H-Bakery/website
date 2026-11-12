@@ -117,11 +117,9 @@ Landingpage auf GitHub Pages). Nicht im Pilot, nicht auf der Box.
 - **CI (`ci.yml`)** baut und testet diese App nur mit dem synthetischen Fixture
   (`DIGITALE_BAECKEREI_FIXTURE=1`): kein Download, kein hq, das echte Modell landet in keinem
   Artefakt.
-- **Deploy:** Der Deploy-Workflow hat heute keinen Zugriff auf hq, deshalb fällt die Landingpage dort
-  auf Mock-Daten zurück. Der Inhaber hat dem Lesezugriff zugestimmt (2026-11-12). Der Workflow
-  checkt `hq` mit einem Secret aus (Deploy-Key oder Token der vorhandenen GitHub App, nur lesend).
-  Das Secret legt **der Inhaber** an; der Agent bereitet Workflow und Anleitung vor. Die Landingpage
-  kann denselben Checkout nutzen. Ohne hq bricht der Build dieser App ab, statt Mocks zu zeigen.
+- **Deploy:** Der Deploy-Workflow liest `hq/products` mit einem Deploy-Key, der nur lesen darf
+  (Zustimmung des Inhabers 2026-11-12; Abschnitt „Deploy“). Ohne hq bricht der Build dieser App ab,
+  statt Mocks zu zeigen. Die Landingpage baut dort weiter aus ihren Mock-Produkten.
 - Welches Produkt wo liegt (die Belegung), kommt weiter aus dem Explorer: `sync-model` leitet
   `public/data/belegung.json` (git-ignoriert) aus dem geprüften GLB ab. Neue Produkte erscheinen
   im Regal erst mit einer neuen Belegung dort oder mit P4.
@@ -237,11 +235,83 @@ Modell“).
 
 ## Deploy
 
-`deploy-to-github-pages.yml` baut nach der Landingpage zusätzlich diese App mit
-`basePath: '/digitale-baeckerei'` und kopiert deren `out/` nach
-`apps/bakery-landing/out/digitale-baeckerei/`. Danach läuft der Upload wie bisher (CNAME,
-`.nojekyll`). Ein Link von der Landingpage kommt erst **nach der Abnahme** durch den Inhaber am
-Handy.
+`deploy-to-github-pages.yml` (Push auf `main` oder von Hand) veröffentlicht Landingpage und diese App
+zusammen. **Im Workflow selbst ungetestet**, bis das Secret angelegt ist - lokal sind dieselben
+Befehle in derselben Reihenfolge gelaufen (ohne Secret und ohne den hq-Checkout).
+
+1. **Secret da?** Fehlt `HQ_DEPLOY_KEY` oder ist es leer, bricht der Lauf als Erstes mit einer
+   deutschen Meldung ab. Es gibt keinen Rückfall auf Mocks und keinen Deploy ohne den Unterpfad.
+2. **Landingpage bauen** wie bisher - hq ist in diesem Schritt noch nicht ausgecheckt, sie baut also
+   aus `src/mocks/products` (siehe unten).
+3. **hq auschecken:** `H-Bakery/hq` nach `hq/`, nur der Ordner `products/` (Sparse-Checkout ohne
+   Cone-Modus, also auch keine Dateien aus der Wurzel), `fetch-depth: 1`,
+   `persist-credentials: false`, mit dem Deploy-Key aus dem Environment `pages-deploy` (nur Branch
+   `main`). Ein Schritt danach bricht ab, wenn in `hq/` mehr als `products/` liegt. Ins Log kommt nur
+   die Anzahl der Dateien.
+4. **App bauen:** `HQ_PRODUCTS_DIR=$GITHUB_WORKSPACE/hq/products`,
+   `DIGITALE_BAECKEREI_BASE_PATH=/digitale-baeckerei`, ohne Nx-Cache, nie mit
+   `DIGITALE_BAECKEREI_FIXTURE` (eigener Schritt, der sonst abbricht).
+5. **Wächter** `scripts/pruefe-export.mjs` (Logik und Specs: `export-pruefung.js`): bricht ab, wenn
+   `out/model/twin.glb` nicht genau die bereinigte Datei aus dem Lock ist (`ausgeliefert.sha256`),
+   wenn noch ein Preisschild darin steckt, wenn in `model/` oder `data/` etwas Fremdes liegt, wenn der
+   Snapshot ein Feld außerhalb des Vertrags hat oder ein Produkt nennt, das nicht im Modell liegt,
+   wenn irgendwo im Export ein „€“ steht, wenn der Export nicht für den Unterpfad gebaut ist oder der
+   Fixture-Schalter gesetzt ist. Ebenso, wenn 3D-Modelle einzelner Produkte im Export liegen: Die
+   sind vorerst nur lokal (DB9), der Runner hat das Daten-Repo `produkte-3d` nicht - erwartet wird
+   genau der leere Index `data/produkte-3d.json` und kein `produkte-3d/*.glb`; live gibt es also
+   keinen Knopf „In 3D ansehen“. Gemeldet werden nur Dateinamen und Zahlen.
+6. `hq/` löschen, `out/` nach `apps/bakery-landing/out/digitale-baeckerei/` kopieren, dann der Upload
+   wie bisher (CNAME, `.nojekyll`). Kein Artefakt mit `hq/` oder `public/data`.
+
+Die Actions dieses Jobs sind auf Commit-SHAs festgelegt (`actions/checkout`, `actions/setup-node`,
+`peaceiris/actions-gh-pages`).
+
+- **Die Landingpage bleibt auf den Mock-Produkten.** Mit hq gebaut änderte sich dort Sichtbares
+  (lokal verglichen, 117 Seiten): Alle 103 Produktseiten zeigten den echten Produkttext aus hq statt
+  des heutigen Standardsatzes (auch als Meta-Beschreibung), die Produktliste bekäme je Karte den
+  Kurztext, die Startseite zeigte bei den ausgewählten Produkten den Kurztext statt der Kategorie
+  und ein achtes Produkt, und acht Tortenseiten wechselten ein Platzhalterbild. Gleich blieben
+  Seiten, Titel, Namen und **Preise** (die stehen heute schon dort, mit denselben Werten).
+  Das wären 55 Texte mehr, als die Digitale Bäckerei zeigt, darunter solche, die noch auf
+  Gesundheitsversprechen durchgesehen werden - also eine eigene Entscheidung des Inhabers.
+- **Links „Mehr auf der Website“:** Im lokalen Gesamt-Export führen alle 48 auf eine vorhandene
+  Produktseite mit demselben Produktnamen. Das hält, solange Mock-Produkte und hq dieselben Nummern
+  tragen.
+- **Statischer Host:** Die App hat nur die eine Seite `/digitale-baeckerei/`; neu laden geht.
+  `/digitale-baeckerei` ohne Schrägstrich leitet GitHub Pages um. Ein unbekannter Pfad darunter
+  zeigt die 404-Seite der Landingpage.
+- **`noindex, nofollow` bleibt**, kein Link von der Landingpage, kein Eintrag in der Sitemap - bis
+  zur Abnahme durch den Inhaber am Handy.
+- **Service Worker der Landingpage:** `apps/bakery-landing/public/service-worker.js` wird heute
+  nirgends registriert. Wer ihn je einschaltet, muss `/digitale-baeckerei/` ausnehmen - sonst legt er
+  Modell und Produktdaten auf dem Gerät ab und zeigt alte Texte.
+
+## Anleitung: hq-Lesezugriff für den Deploy
+
+Der Deploy baut die Digitale Bäckerei aus `hq/products`. Dafür braucht er einen Schlüssel, der in hq **nur lesen** darf. Das dauert etwa zehn Minuten. **Erst einrichten, dann den Deploy-PR mergen** - sonst bricht jeder Deploy ab.
+
+1. **Schlüsselpaar erzeugen** - im Terminal, in einem leeren Ordner außerhalb der Repos:
+
+   ```bash
+   ssh-keygen -t ed25519 -C "website-deploy-hq-readonly" -f hq_deploy_key -N ""
+   ```
+
+   Es entstehen zwei Dateien: `hq_deploy_key` (privat) und `hq_deploy_key.pub` (öffentlich).
+
+2. **Öffentlichen Schlüssel in hq hinterlegen:** GitHub → `H-Bakery/hq` → Settings → Deploy keys → „Add deploy key“. Titel `website-deploy-hq-readonly`, als Key den Inhalt von `hq_deploy_key.pub`. **„Allow write access“ nicht ankreuzen.**
+3. **Environment anlegen:** GitHub → `H-Bakery/website` → Settings → Environments → „New environment“ → Name `pages-deploy`. Bei „Deployment branches and tags“ auf „Selected branches and tags“ stellen und nur `main` eintragen.
+4. **Privaten Schlüssel als Secret speichern:** in diesem Environment → „Add environment secret“ → Name `HQ_DEPLOY_KEY`, Wert: der ganze Inhalt von `hq_deploy_key`, mit der ersten und der letzten Zeile (`-----BEGIN …` / `-----END …`). Nicht unter „Repository secrets“ ablegen.
+5. **Beide Dateien löschen** (`rm hq_deploy_key hq_deploy_key.pub`). Der private Schlüssel liegt dann nur noch bei GitHub. Er gehört in kein Repo, keinen Chat und keine Mail.
+6. **Testen** (nach dem Merge des Deploy-PRs): GitHub → `H-Bakery/website` → Actions → „Deploy to GitHub Pages“ → „Run workflow“ auf `main`. Ein paar Minuten später am Handy öffnen: `https://bäckerei-heusser.de/digitale-baeckerei/`.
+
+Gut zu wissen:
+
+- **Warum nur lesend?** Das Secret liegt beim öffentlichen Repo `website`. Ein Deploy-Key ohne Schreibrecht kann in hq nichts ändern und gilt nur für hq, für kein anderes Repo. Der private Schlüssel der vorhandenen GitHub App gehört deshalb **nicht** hierher: Mit ihm ließe sich alles tun, was die App darf.
+- **Warum nur `products/`?** Der Deploy holt nur diesen Ordner. Finanzen, Kassenberichte, Rezepte und HACCP kommen nie auf die Build-Maschine. Der Schlüssel selbst könnte ganz hq lesen - darum gilt das Environment nur für `main`.
+- **Was ist danach öffentlich?** Aus hq nur Name, Kategorie, Kurztext und Text der 48 Produkte, die im Modell liegen - ohne Preise, ohne Allergene. Dazu das 3D-Modell ohne Preisschilder. Sonst nichts aus hq. Die Landingpage bleibt, wie sie ist.
+- **Noch nicht verlinkt:** Die Seite steht auf `noindex` und ist von der Landingpage aus nicht verlinkt. Wer die Adresse kennt, kann sie aber öffnen.
+- **Schlüssel tauschen** (bei Verdacht, sonst etwa einmal im Jahr): Schritte 1, 2, 4 und 5 mit einem neuen Paar, dann den alten Deploy-Key in hq löschen und Schritt 6.
+- **Wenn das Secret fehlt** (oder der Deploy-Key in hq gelöscht ist): Der Deploy bricht mit einer deutschen Meldung ab und veröffentlicht nichts. Die Seite bleibt auf dem letzten Stand - auch Änderungen an der Landingpage gehen dann erst wieder live, wenn der Schlüssel da ist.
 
 ## Phasen
 
@@ -373,7 +443,8 @@ kann (im Produkt-Sheet) und das auch die Produktseiten der Landingpage zeigen.
 ## Offen (Inhaber)
 
 - **Deploy (#137):** Environment `pages-deploy` (nur Branch `main`) und darin das Secret
-  `HQ_DEPLOY_KEY` anlegen (Anleitung im PR), dann das OK zum Merge.
+  `HQ_DEPLOY_KEY` anlegen (Abschnitt „Anleitung: hq-Lesezugriff für den Deploy“), dann das OK zum
+  Merge.
 - **Produkttexte in hq:** Texte mit Formulierungen, die wie Gesundheitsversprechen klingen, vor dem
   Go-live überarbeiten.
 - **Landingpage aus hq oder aus Mocks bauen?** Heute Mocks; mit hq erschienen die echten Texte

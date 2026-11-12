@@ -1,13 +1,18 @@
 # Landing page (`apps/bakery-landing`)
 
 Public website, static export to GitHub Pages (xn--bckerei-heusser-0kb.de) on every push to
-`main` (`deploy-to-github-pages.yml`). Not part of the pilot box.
+`main` (`deploy-to-github-pages.yml`). Not part of the pilot box. The same workflow builds the
+Digitale Bäckerei and copies it into this export as `out/digitale-baeckerei/`
+([digitale-baeckerei.md](./digitale-baeckerei.md#deploy)); the landing app itself must not get a
+route of that name.
 
 - **Build:** `build-static-standalone` → `apps/bakery-landing/out/` (not `dist/`); delete
   `apps/bakery-landing/.next` first - a stale dev cache breaks the export. Details in
   [development.md](../development.md#landing-page-static-export--github-pages).
 - **Products** come from `hq/products` (`src/lib/products.ts`, `HQ_PRODUCTS_DIR`) at build time.
-  Without `hq` (CI) it falls back to the bundled JSON in `src/mocks/products/` and logs
+  Without `hq` (CI, and the deploy: it builds the landing page before it checks out `hq`, on
+  purpose - see the Deploy section of digitale-baeckerei.md) it falls back to the bundled JSON in
+  `src/mocks/products/` and logs
   `HQ products directory not found` - check for that log before suspecting a cache when a product
   edit doesn't show up.
   Reading and parsing the files lives once in the lib `@bakery/shared/hq-products`
