@@ -8,6 +8,9 @@ bei Produkten und Grundmengen (Schreib-Worktree `app/edits`, rollende PR, Freiga
 Parser - auch der Backzettel liest seine Füllungen darüber, `backzettel-recipes.core.js`) ·
 Datei-I/O + git `recipes.service.ts` · Routen `src/routes/recipes.routes.ts`.
 API-Vertrag (Endpunkte, Formen, Fehlercodes): [`docs/api/recipes.md`](../api/recipes.md).
+Verwaltung (`apps/bakery-management/src`): Seiten `app/admin/rezepte/**` · Client
+`lib/recipesApi.ts` · Formular-Modell `lib/recipeForm.ts` · Bausteine `components/rezepte/`
+(`RecipeForm`, `RecipeText`, `RecipeStatusChips`).
 
 ## Wer darf was
 
@@ -109,3 +112,77 @@ Neue Rezepte heißen `<kategorie>/<slug>.md` (Slug aus dem Namen, Umlaute umgesc
 `a-z0-9-`); in `teige/` legt die Verwaltung nichts an. Vorhandene Dateien behalten ihren Namen,
 auch wenn der Titel sich ändert - die Kennung `<kategorie>/<slug>` bleibt stabil. Die Kennung wird
 nie zu einem Pfad zusammengesetzt, sondern im Verzeichnis nachgeschlagen.
+
+## Oberfläche (`/admin/rezepte`)
+
+Im Pilotbetrieb freigegeben (`PILOT_ALLOWED_ROUTES`), Menüeintrag „Rezepte" unter „Backstube",
+Schnellzugriff auf dem Dashboard. Die Verwaltung deutet das Dateiformat **nie selbst** - sie zeigt
+und schickt das Modell der API.
+
+| Seite                                             | Wer (`ROLE_ACCESS`)                   | Was                                             |
+| ------------------------------------------------- | ------------------------------------- | ----------------------------------------------- |
+| `/admin/rezepte`                                  | Inhaber, Backstubenleitung, Backstube | Liste nach Kategorie, Suche, Kategorie-Filter   |
+| `/admin/rezepte/<kategorie>/<kennung>`            | dieselben                             | Rezeptansicht, Drucken; für Schreibende Löschen |
+| `/admin/rezepte/neu`                              | Inhaber, Backstubenleitung            | Formular „Neues Rezept"                         |
+| `/admin/rezepte/bearbeiten/<kategorie>/<kennung>` | Inhaber, Backstubenleitung            | Formular „Bearbeiten"                           |
+
+Die Formulare liegen unter festen Präfixen (`RECIPE_WRITE_PATHS` in `roles.ts`), damit `ROLE_ACCESS`
+sie der Backstube mit einer `except`-Regel nehmen kann; der Proxy rendert sie für die Backstube gar
+nicht erst. Die Backstube sieht dieselbe Liste und Ansicht ohne „Neues Rezept", „Bearbeiten",
+„Löschen" und ohne den Abschnitt „Datei in hq".
+
+- **Liste.** Gruppiert nach Kategorie; je Zeile Name, „Ergibt" (fehlt es: „Ergibt: offen") und
+  Zutatenzahl. Die Suche geht an die API (`?q=`, 250 ms nach dem letzten Tastendruck) - nur sie
+  kennt die Zutaten; der Kategorie-Filter läuft im Browser über das Suchergebnis, die Chips zählen
+  die Treffer. Filter stehen in der Adresse (`?kategorie=&q=`), damit „Zurück" aus einem Rezept in
+  derselben Auswahl landet.
+- **Marker** (`RecipeStatusChips`, in Liste, Ansicht und Formular gleich): „wartet auf Freigabe"
+  (auch „neu · …" und „gelöscht · …"), „Backzettel" (der Backzettel verwendet das Rezept) und - nur
+  für Schreibende - „nur lesen". Die Liste nennt dazu die Zahl wartender Änderungen. Nicht
+  wegkürzen.
+- **Ansicht.** Für das Tablet in der Backstube: Zutaten und Schritte in großer Schrift (17/19 px),
+  Menge rechtsbündig **vor** dem Namen wie auf dem Rezeptblatt, ab `md` Zutaten links und Zubereitung
+  rechts. Eine Zutat ohne Menge zeigt „offen" (bei Tabellen-Dateien den Text der Datei, z. B.
+  „3–6 g (nach Geschmack)"), nie 0. Notizen, Beschreibung, Schritte mit Unterpunkten und die wörtlich
+  übernommenen Abschnitte rendert `RecipeText` (Absätze, Listen, `**fett**`, Tabellen; HTML wird
+  nicht ausgeführt, Unbekanntes bleibt Text). „Drucken" = `window.print()`: ohne Knöpfe und
+  Hinweise, hell, Zutaten vor Zubereitung.
+- **Formular** (`RecipeForm`, für Neu und Bearbeiten): Name, Kategorie, „Ergibt", Beschreibung;
+  Zutaten in Gruppen (Zeile hinzufügen/entfernen, mit Pfeilen umsortieren, Enter in der letzten Zeile
+  legt die nächste an); Arbeitsschritte in Abschnitten (nummeriert oder Stichpunkte); Notizen. Leere
+  Menge = offen. Einheiten und Kategorien kommen aus `GET /api/recipes` (`units`,
+  `categories[].writable`) - keine eigene Liste. Das Feld „Hinweis" je Zutat gibt es nur bei
+  Tabellen-Dateien (in Listen-Dateien gehört er in den Namen). Kein `<form>`-Submit: Enter in einem
+  Mengenfeld speichert nicht.
+- **Null-Diff auch von der Oberfläche.** `changedInput()` schickt nur die Felder, die vom geladenen
+  Rezept abweichen; eine unberührte Zutatenzeile geht als dasselbe Objekt zurück, das die API
+  geliefert hat. Ohne Änderung wird gar nicht gespeichert („Nichts geändert"). `meta`, `sections` und
+  die Summenzeile einer Tabelle bearbeitet das Formular nicht - es nennt sie unter „Bleibt
+  unverändert".
+- **Vor dem Senden** prüft das Formular nur, was die Eingabe unklar macht (Name fehlt, Menge keine
+  Zahl oder ≤ 0, Tausenderpunkt, Einheit ohne Menge, Zutat ohne Namen); alles andere prüft die API,
+  ihre deutsche `message` steht über der Speichern-Leiste.
+- **Veralteter Stand.** 409 `stale_recipe`: die Meldung der API plus „Aktuellen Stand laden" - die
+  eigene Eingabe bleibt stehen, bis man lädt; überschrieben wird nichts.
+- **Backzettel.** Verwendet der Backzettel das Rezept: Hinweis in Ansicht und Formular, kein
+  „Löschen", Kategorie fest, und die Gruppe, die er liest (`usedByBackzettel[].section`), behält
+  ihren Namen und lässt sich nicht entfernen.
+- **Löschen** nur mit Rückfrage und nur, wenn die API `deletable` meldet; sonst steht der Grund
+  (`deleteBlockedReason`) im Abschnitt „Datei in hq". Verschieben (Kategorie ändern) nur mit
+  `canDelete`.
+- **Nach dem Speichern** führt die App zur Rezeptansicht und sagt dort „Gespeichert" bzw.
+  „… wartet jetzt auf die Freigabe in hq" (`?gespeichert=`, wird sofort aus der Adresse genommen).
+- **Ungespeichertes** geht nicht still verloren (`useConfirmLeave`).
+- **Hilfe:** eigene Kurzanleitung „Backstubenleitung", je ein Abschnitt „Rezepte" bei Backstube und
+  Inhaber (`src/content/hilfe/spickzettel.ts`).
+
+**Tests:** `lib/recipeForm.spec.ts` (Mengenfeld, Null-Diff, nur Geändertes, Prüfung),
+`lib/recipeForm.files.spec.ts` (jede erfundene Datei und - lokal, wo `hq` neben dem Repo liegt -
+jede echte: laden und unverändert zurückgeben ergibt keine Änderung; im CI für die echten
+übersprungen),
+`lib/recipesApi.spec.ts`, `components/rezepte/RecipeText.spec.tsx`,
+`app/admin/rezepte/rezepte.spec.tsx` (Liste, Ansicht, Neu, Bearbeiten je Rolle; veralteter Stand;
+Backzettel; Löschen), `lib/roles.spec.ts` und `lib/serverSession.spec.ts` (wer welche Seite öffnet),
+Playwright `apps/bakery-management-e2e/src/management-rezepte.spec.ts` (echte API: lesen, anlegen,
+ändern, löschen in der Wegwerf-Kopie; 403 für die Backstube; Rolle in der Benutzerverwaltung).
+Erfundene Rezepte für Specs: `lib/recipeFixtures.ts`.

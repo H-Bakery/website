@@ -361,7 +361,8 @@ sudo -u bakery bash -c 'set -a; . /etc/bakery/bakery.env; set +a; cd /opt/bakery
 # mit Stations-PIN:  ... set +a; export CREATE_USER_PIN=1234; cd ...
 ```
 
-- Rollen: `inhaber`, `verkauf`, `backstube`, `fahrer`. Zuerst das Inhaber-Konto.
+- Rollen: `inhaber`, `verkauf`, `backstube`, `backstubenleiter` (Backstubenleitung: wie
+  `backstube`, dazu Rezepte anlegen und ändern), `fahrer`. Zuerst das Inhaber-Konto.
 - Derselbe Befehl für ein vorhandenes Konto setzt Name, Rolle und Passwort neu, aktiviert es
   wieder und beendet alle seine Sitzungen (vergessenes Passwort, gesperrtes Konto). Es gibt kein
   Standardkonto; `BOOTSTRAP_ADMIN_*` wird in Produktion ignoriert.

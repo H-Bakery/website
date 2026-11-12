@@ -459,6 +459,9 @@ zu den Namenskacheln). Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhabe
   in `localStorage` (`bakery-management-unattended`, Wert = `startedAt` der Sitzung;
   `clearSession()`/neue Anmeldung löschen sie) - sonst setzte ein Wischen zum Aktualisieren alles
   zurück. Ob der Inhaber am Tablet die lange Grenze bekommt, bleibt Owner-Entscheidung.
+  Die **Backstubenleitung** (`backstubenleiter`) zählt hier bewusst nicht zur Backstube: sie darf
+  Rezepte ändern, also gilt für ihr liegen gelassenes Tablet dasselbe wie für das des Inhabers
+  (vorläufig; die Prüfung fragt genau `role !== 'backstube'`).
 - **Abhaken** nur an freigegebenen Tagen und nur `inhaber`/`backstube`: ein 72-px-Haken je Zeile,
   sofort gesetzt, bei einem Fehler zurückgenommen mit „Nicht gespeichert: …"; 409
   `not_confirmed`/`confirmed`/`no_config`/`ruhetag`/`line_changed` lädt den Tag neu. Ein Neuladen, das

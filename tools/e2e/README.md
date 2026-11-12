@@ -29,8 +29,8 @@ nicht mehr.
   API beim Speichern direkt in diese Kopie), im Temp-Verzeichnis je
   API-Port. Die App läuft im Pilotbetrieb und reicht `/api/*` über ihren
   `src/proxy.ts` an `API_URL` weiter - der Browser spricht nur die eigene Origin.
-  `src/global-setup.ts` meldet einmal vor allen Tests drei Sitzungen an
-  (Inhaber, Verkauf, Inhaber an einer PIN-Station) und gibt sie über
+  `src/global-setup.ts` meldet einmal vor allen Tests fünf Sitzungen an
+  (Inhaber, Verkauf, Backstube, Backstubenleitung, Inhaber an einer PIN-Station) und gibt sie über
   `E2E_SESSIONS` an die Worker; je Worker eine eigene PIN zu setzen, meldete
   die Stations-Sitzungen der anderen ab. (Das Login-Limit zählt seit W4 nur
   Fehlversuche, gleichzeitige erfolgreiche Anmeldungen sind kein Problem
@@ -132,6 +132,11 @@ liest ohnehin nur eine Kopie (`prepareE2eHq()`), sodass ein Speichern das
 Fixture im Repo nicht ändern würde - geprüft wird das Speichern in den
 Unit-Specs und in der Vertrags-Suite der API
 (`apps/bakery-api/tests/contract/hqProducts.contract.test.ts`).
+
+**Ausnahme Rezepte:** `management-rezepte.spec.ts` legt als Backstubenleitung ein Rezept an,
+ändert und löscht es - in der Wegwerf-Kopie `HQ_RECIPES_DIR` aus `prepareE2eHq()` (kein
+Schreib-Worktree, kein git). Der Name trägt das Playwright-Projekt (Desktop und Handy laufen
+gegen dieselbe API); ein Rest aus einem abgebrochenen Lauf wird vorher gelöscht.
 
 **Ausnahme seit W4:** `management-preorders.spec.ts` schreibt
 **Vorbestellungen** - aber nur in die Wegwerf-SQLite der Test-API

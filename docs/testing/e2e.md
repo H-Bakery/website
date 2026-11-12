@@ -31,7 +31,8 @@ API welche Suite bekommt und was der Katalog erfüllen muss: [`tools/e2e/README.
   `landing-smoke.spec.ts` und `management-smoke.spec.ts`. Wer eine dieser Funktionen baut, zieht den
   Test um und gibt ihm echte Selektoren - nicht die Skip-Markierung entfernen und hoffen.
 - **Die Management-Suite speichert nie in hq**; Vorbestellungen (`management-preorders.spec.ts`)
-  schreibt sie nur in die Wegwerf-SQLite der Test-API (Details im README).
+  schreibt sie nur in die Wegwerf-SQLite der Test-API, Rezepte (`management-rezepte.spec.ts`) nur in
+  die Wegwerf-Kopie der erfundenen Rezepte (Details im README).
 - **Die Delivery-Suite** (`apps/bakery-delivery-e2e`, `npm run test:e2e:delivery`) holt ihre API
   aus `deliveryApiServer()` in `servers.js` (echte API, Origin der App in `CORS_ORIGIN`), startet die
   App selbst mit `nx serve` und läuft nur lokal, nicht in CI - die Fahrer-App ist nicht im Pilot

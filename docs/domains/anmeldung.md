@@ -29,6 +29,19 @@ Endpunkte und Fehlercodes: [`docs/api/auth.md`](../api/auth.md).
   Rollenliste nennt sie doppelt. Was nur `inhaber` darf (Benutzer, Finanzen, Backzettel wieder
   öffnen, Produkte), bleibt ihr verwehrt. Vergeben wird die Rolle wie jede andere unter
   `/admin/users` oder mit der CLI (`--role backstubenleiter`).
+  **In der Verwaltung** steht dasselbe in `src/lib/roles.ts`: `PILOT_ROLES`/`ROLE_LABELS` kennen die
+  Rolle („Backstubenleitung"), `ROLE_INCLUDES` sagt wie in der API `backstubenleiter → backstube`
+  (`roles.spec.ts` vergleicht beide Tabellen und die Rollenlisten). Seiten fragen nicht mehr
+  `role === 'backstube'`, sondern `hasBackstubeRights(role)` (Backzettel planen/freigeben, Backliste
+  quittieren, Grundmengen, Backstube-Tablet abhaken) bzw. `canWriteRecipes(role)` (Rezepte). In
+  `ROLE_ACCESS` teilen sich beide Rollen `BACKSTUBE_ROUTES`; der einzige Unterschied sind die
+  Rezept-Formulare (`RECIPE_WRITE_PATHS`). **Wer eine neue Rolle einführt, sucht nicht nach einer
+  Schreibweise:** `Record<PilotRole, …>` (Hilfe, Etiketten, `ROLE_ACCESS`) erzwingt der Compiler,
+  dazu kommen die Fahrer-App (`DeliveryRole`, `ROLE_MAP`), die E2E-Anmeldung
+  (`apps/bakery-management-e2e/src/login.ts`), `setup-dev` (`seed.mjs`) und das Runbook.
+  **Vorläufig:** am liegen gelassenen Backstube-Tablet wird die Backstubenleitung wie der Inhaber
+  behandelt, nicht wie die Backstube (siehe [`backzettel.md`](backzettel.md), `unattendedAtBackstube`)
+  - sie darf Rezepte ändern, die Backstube nicht.
 - **Es gibt kein Standardkonto.** Konten legt die CLI an (nach `npm run build:api`):
   `npm run api:create-user -- --username anna --display-name "Anna" --role verkauf` (Passwort über
   `CREATE_USER_PASSWORD` oder stdin, PIN optional über `CREATE_USER_PIN`; idempotent, setzt ein
@@ -121,12 +134,13 @@ im Browser noch im Server-HTML/RSC-Payload.
 - **Eine Tabelle Rolle → Routen + Startseite: `ROLE_ACCESS` in `src/lib/roles.ts`.** Inhaber alles;
   Verkauf Dashboard, `/admin/preorders`, Sammelstelle Mörsbach, Produkte **nur die Liste** (ohne
   Neu/Bearbeiten), Backschrank, Backzettel nur lesen (ohne Grundmengen); Backstube Dashboard,
-  `/admin/backzettel`, `/backstube`; Fahrer `/admin/delivery/preorders` (ohne `/new` und
+  `/admin/backzettel`, `/backstube`, Rest am Abend lesen und Rezepte **lesen** (`/admin/rezepte` ohne
+  `/neu` und `/bearbeiten`); Backstubenleitung dasselbe plus die Rezept-Formulare; Fahrer `/admin/delivery/preorders` (ohne `/new` und
   `/lieferstelle`) und `/admin/preorders` lesend (ohne `/neu`), dort die Abholliste mit Übergeben; alle
   `/admin/settings` und `/admin/hilfe`. Eine Regel ist ein Pfad (mit Unterseiten), `{ path, exact: true }`
   oder `{ path, except: [...] }`. Startseite = erste _gebaute_ aus `start` (`ready` aus
   `PILOT_UPCOMING_NAVIGATION`): Inhaber `/admin`, Verkauf `/admin/preorders`, Fahrer
-  `/admin/preorders/abholliste`, Backstube `/backstube`. `getNavigationForRole()` filtert
+  `/admin/preorders/abholliste`, Backstube und Backstubenleitung `/backstube`. `getNavigationForRole()` filtert
   `getNavigation()`; Pilotbetrieb und Rolle überlagern sich. Das Dashboard zeigt Kasse, Tagesziel und
   Schnellzugriffe nur, wenn die Rolle die Seite dahinter darf. **Wer eine Seite für eine Rolle
   freigibt, ändert nur `ROLE_ACCESS`** (Tests: `roles.spec.ts`). `PERSONAL_ONLY_ROUTES`
