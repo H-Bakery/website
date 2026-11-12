@@ -16,6 +16,7 @@ import {
   lineBreakdown,
   lineLabel,
   minQtyText,
+  baseOpenText,
   previouslyDoneText,
   type DeltaAfterDone,
 } from '../../lib/backzettelFormat'
@@ -65,7 +66,9 @@ export function BackstubeLine({
   // Grundmenge offen: es stehen nur Vorbestellungen/CAP im Gesamt - aus
   // Armlänge sichtbar wie ein Nachtrag (UI-Runde 1), nicht nur grau klein.
   const baseUnset = line.baseUnset
-  const warn = openDelta || reopened || baseUnset
+  // Am Tag entschieden („Heute keine“ / Menge für heute): kein Warnrand
+  // mehr, die Angabe bleibt als Abzeichen stehen.
+  const warn = openDelta || reopened || (baseUnset && !line.dayDecision)
   const tickable = !draft && canTick && line.id !== null
   const previously = draft ? null : previouslyDoneText(line)
   const badgeSx = {
@@ -167,9 +170,20 @@ export function BackstubeLine({
               <Box
                 component="span"
                 data-testid={`bs-base-unset-${line.key}`}
-                sx={badgeSx}
+                data-decision={line.dayDecision ?? undefined}
+                sx={
+                  line.dayDecision
+                    ? {
+                        ...badgeSx,
+                        bgcolor: 'transparent',
+                        color: 'text.primary',
+                        border: '2px solid',
+                        borderColor: 'text.secondary',
+                      }
+                    : badgeSx
+                }
               >
-                Grundmenge offen
+                {baseOpenText(line)}
               </Box>
             )}
             {line.delta && line.delta.count > 0 && (

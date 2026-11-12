@@ -10,6 +10,7 @@
  *   GET    /day?date=[&pickupPointId=<id>|laden]
  *                             { success, data: { date, pickupPointId, summary, sums, pickupPoints, preorders } }
  *   GET    /pickup-points     { success, data: (PickupPoint + updatedAt)[] }
+ *                             + `pickupDays` (Z14: gesperrte Abholtage im Fenster)
  *   PUT    /pickup-points/:id { success, data: PickupPoint + updatedAt }  inhaber (P2);
  *                             optional `expectedUpdatedAt` → 409 stale_pickup_point (W4)
  *   POST   /bulk-status       { ids, status?, notCollected?, paid?, expectedUpdatedAt?: { [id]: ISO } }
@@ -160,8 +161,15 @@ function createPreordersRouter(service: PreordersService): Router {
     asyncHandler(async (_req, res) => {
       // Mit `updatedAt` (W4) - das Formular schickt es als
       // `expectedUpdatedAt` zurück.
+      // `pickupDays` (Z14): die gesperrten Abholtage im erlaubten Fenster,
+      // damit die Maske sie nicht anbietet - dieselbe Regel wie beim Speichern.
       const data = await service.listPickupPointsVersioned()
-      res.json({ success: true, data, count: data.length })
+      res.json({
+        success: true,
+        data,
+        count: data.length,
+        pickupDays: service.pickupDays(),
+      })
     })
   )
 

@@ -1,6 +1,9 @@
 import {
+  closedPickupDay,
   filtersFromQuery,
+  formatClosedDay,
   formatShortDate,
+  skippedPickupDays,
   isProductionDay,
   jsWeekdayOf,
   nextProductionDate,
@@ -15,7 +18,7 @@ import {
   type PreorderInput,
 } from './preordersTypes'
 import { preorderListQuery, preorderPageQuery } from './preordersApi'
-import { preorder } from './testing/preorderFixtures'
+import { pickupDays, preorder } from './testing/preorderFixtures'
 import {
   frequentProducts,
   matchRank,
@@ -55,6 +58,94 @@ describe('Produktionstage', () => {
     expect(pickupPointDates({ weekday: 9 }, '2026-11-14', 1)).toEqual([])
     expect(jsWeekdayOf('2026-11-15')).toBe(0)
     expect(formatShortDate('2026-11-14')).toBe('Sa 14.11.')
+  })
+})
+
+describe('Gesperrte Abholtage vom Server (Z14)', () => {
+  const days = pickupDays()
+
+  it('im Fenster gilt die Liste des Servers - auch die Sonderöffnung am Montag', () => {
+    expect(closedPickupDay(days, '2026-11-13', false)).toMatchObject({
+      code: 'geschlossen',
+      reason: 'Betriebsferien',
+    })
+    expect(closedPickupDay(days, '2026-11-16', false)?.code).toBe('ruhetag')
+    // Mo 23.11. steht nicht in der Liste: Sonderöffnung
+    expect(closedPickupDay(days, '2026-11-23', false)).toBeNull()
+    expect(closedPickupDay(days, '2026-11-15', false)).toBeNull()
+  })
+
+  it('Sammelstelle: der Ruhetag des Ladens sperrt nicht, der Schließtag schon', () => {
+    expect(closedPickupDay(days, '2026-11-16', true)).toBeNull()
+    expect(closedPickupDay(days, '2026-11-14', true)?.code).toBe('geschlossen')
+  })
+
+  it('ohne Liste oder außerhalb des Fensters bleibt nur der Montag im Laden', () => {
+    expect(closedPickupDay(null, '2026-11-13', false)).toBeNull()
+    expect(closedPickupDay(null, '2026-11-16', false)).toMatchObject({
+      code: 'ruhetag',
+      message: 'Montag ist Ruhetag - bitte einen anderen Tag wählen.',
+    })
+    expect(closedPickupDay(null, '2026-11-16', true)).toBeNull()
+    expect(closedPickupDay(days, '2028-01-03', false)?.code).toBe('ruhetag')
+    expect(closedPickupDay(days, 'kein-datum', false)).toBeNull()
+  })
+
+  it('Vorschläge überspringen Schließtage und nehmen die Sonderöffnung mit', () => {
+    expect(nextProductionDate('2026-11-12', days)).toBe('2026-11-15')
+    expect(nextProductionDates('2026-11-12', 6, days)).toEqual([
+      '2026-11-15',
+      '2026-11-17',
+      '2026-11-18',
+      '2026-11-19',
+      '2026-11-20',
+      '2026-11-21',
+    ])
+    expect(nextProductionDates('2026-11-21', 2, days)).toEqual([
+      '2026-11-22',
+      '2026-11-23',
+    ])
+    expect(pickupPointDates({ weekday: 6 }, '2026-11-12', 2, days)).toEqual([
+      '2026-11-21',
+      '2026-11-28',
+    ])
+    // ohne Liste wie bisher
+    expect(nextProductionDate('2026-11-12', null)).toBe('2026-11-13')
+  })
+
+  it('ist alles gesperrt, gibt es keinen Vorschlag statt einer Endlosschleife', () => {
+    const allClosed = pickupDays({
+      from: '2026-11-01',
+      to: '2028-12-31',
+      closed: Array.from({ length: 500 }, (_, i) => ({
+        date: new Date(Date.UTC(2026, 10, 12 + i)).toISOString().slice(0, 10),
+        code: 'geschlossen' as const,
+        reason: null,
+        message: 'geschlossen',
+        shopOnly: false,
+      })),
+    })
+    expect(nextProductionDate('2026-11-12', allClosed)).toBe('')
+    expect(nextProductionDates('2026-11-12', 3, allClosed)).toEqual([])
+  })
+
+  it('Hinweis: nur Schließtage bis zum letzten Vorschlag, an der Sammelstelle nur ihr Liefertag', () => {
+    expect(
+      skippedPickupDays(days, '2026-11-12', '2026-11-21', null).map(
+        formatClosedDay
+      )
+    ).toEqual(['Fr 13.11. (Betriebsferien)', 'Sa 14.11. (Betriebsferien)'])
+    expect(
+      skippedPickupDays(days, '2026-11-12', '2026-12-05', { weekday: 6 }).map(
+        (d) => d.date
+      )
+    ).toEqual(['2026-11-14'])
+    expect(skippedPickupDays(days, '2026-11-14', '2026-11-21', null)).toEqual(
+      []
+    )
+    expect(skippedPickupDays(null, '2026-11-12', '2026-11-21', null)).toEqual(
+      []
+    )
   })
 })
 

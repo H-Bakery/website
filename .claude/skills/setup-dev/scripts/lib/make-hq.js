@@ -14,11 +14,18 @@
  *   data/finance/finance-summary.json + config/targets.json (last 3 full months)
  * Nothing here is real data.
  *
- *   node make-hq.js <dir> [today=YYYY-MM-DD] [--busy-saturday]
+ *   node make-hq.js <dir> [today=YYYY-MM-DD] [--busy-saturday] [--samstag-ersatz]
  *
  * --busy-saturday adds 24 more Saturday lines (bread sizes, rolls for Sunday and
  * Tuesday, Laugen, Kaffeestückchen, Kuchen, Hefeteig) so the Saturday sheet has
  * about 60 lines - for the one-page print check (docs/domains/backzettel.md, „Druck“).
+ *
+ * --samstag-ersatz (implies --busy-saturday) adds what a Samstags-Satz day needs
+ * (Z14): the column `base.samstag_ersatz` with the Saturday quantity at every
+ * item that has one, and `config/kalender.yaml` with the holidays of this and
+ * the next year plus one closed Saturday at least two weeks ahead (after the
+ * days the seed uses). The Friday before it is a Samstags-Satz day; its date is
+ * printed as `samstagErsatz`. start.sh passes MAKE_HQ_FLAGS through.
  */
 'use strict'
 const fs = require('fs')
@@ -26,7 +33,8 @@ const path = require('path')
 
 const ROOT = process.env.TREE || process.cwd() // start.sh runs this from the worktree
 const args = process.argv.slice(2).filter((a) => !a.startsWith('--'))
-const BUSY_SATURDAY = process.argv.includes('--busy-saturday')
+const SAMSTAG_ERSATZ = process.argv.includes('--samstag-ersatz')
+const BUSY_SATURDAY = SAMSTAG_ERSATZ || process.argv.includes('--busy-saturday')
 const dir = path.resolve(args[0])
 const today =
   args[1] ||
@@ -194,9 +202,7 @@ const BUSY_SATURDAY_ITEMS = `  # --- voller Samstag (--busy-saturday)
 `
 
 // ---------------------------------------------------------------- backzettel
-w(
-  'config/backzettel.yaml',
-  `# Synthetische Backzettel-Stammdaten (bakery-dev) auf dem E2E-Katalog.
+const BACKZETTEL_YAML = `# Synthetische Backzettel-Stammdaten (bakery-dev) auf dem E2E-Katalog.
 # Kein Wert stammt aus dem echten hq. Montag (1) ist Ruhetag.
 # Backzettel v2 (Z10): Teig wird Di-Sa gemacht, Sonntag wird nur gebacken; die
 # Brötchen in Bruch entstehen am Teigtag davor (Samstag für So + Di).
@@ -457,7 +463,74 @@ prep:
   - { id: wagen, name: Kaffeestückchen-Wagen, days: [2, 3, 4, 5] }
   - { id: hefeteig-ansetzen, name: Hefeteig ansetzen, by_weekday: { 6: gross }, variant_labels: { gross: groß } }
 `
+
+/**
+ * Samstags-Satz (Z14): jede Grundmenge mit einem Samstag (6) bekommt dieselbe
+ * Menge als Spalte `samstag_ersatz` - einzeilig (`base: { …, 6: 3 }`) oder als
+ * eigene Zeile (`      6: { g500: 10 }`).
+ */
+function withSamstagErsatz(yaml) {
+  return yaml
+    .split('\n')
+    .map((line) => {
+      const inline = line.match(
+        /^(\s*base: \{.*\b6: )(\{[^}]*\}|[^,}]+?)((?:, .*)? \})$/
+      )
+      if (inline) {
+        return `${inline[1]}${inline[2]}${inline[3].slice(
+          0,
+          -2
+        )}, samstag_ersatz: ${inline[2].trim()} }`
+      }
+      const block = line.match(/^(\s+)6: (\{.*\})$/)
+      return block ? `${line}\n${block[1]}samstag_ersatz: ${block[2]}` : line
+    })
+    .join('\n')
+}
+w(
+  'config/backzettel.yaml',
+  SAMSTAG_ERSATZ ? withSamstagErsatz(BACKZETTEL_YAML) : BACKZETTEL_YAML
 )
+
+// ---------------------------------------------------------------- kalender
+let samstagErsatz = null
+if (SAMSTAG_ERSATZ) {
+  const kalender = require(path.join(
+    ROOT,
+    'apps/bakery-api/src/services/kalender.core.js'
+  ))
+  const year = Number(today.slice(0, 4))
+  const feiertage = (y) =>
+    kalender
+      .holidaysSaarland(y)
+      .map((h) => `    - { datum: '${h.date}', name: '${h.name}' }`)
+      .join('\n')
+  // Erster Samstag ab heute + 14 Tage (die Seed-Tage liegen davor), der weder
+  // selbst Feiertag ist noch einen Feiertag am Freitag davor hat.
+  let closedSaturday = addDays(today, 14)
+  while (
+    isoWd(closedSaturday) !== 6 ||
+    kalender.holidayName(closedSaturday) ||
+    kalender.holidayName(addDays(closedSaturday, -1))
+  ) {
+    closedSaturday = addDays(closedSaturday, 1)
+  }
+  samstagErsatz = addDays(closedSaturday, -1)
+  w(
+    'config/kalender.yaml',
+    `# Synthetischer Kalender (bakery-dev, --samstag-ersatz). Nichts davon ist echt.
+version: 1
+bundesland: saarland
+feiertage:
+  ${year}:
+${feiertage(year)}
+  ${year + 1}:
+${feiertage(year + 1)}
+tage:
+  - { datum: '${closedSaturday}', typ: geschlossen, notiz: Testschließtag }
+`
+  )
+}
 
 w(
   'data/recipes/fillings/test.md',
@@ -705,6 +778,7 @@ w(
 console.log(
   JSON.stringify({
     today,
+    ...(samstagErsatz ? { samstagErsatz } : {}),
     reports: {
       from: reportDates[0],
       to: reportDates[reportDates.length - 1],

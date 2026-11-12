@@ -133,6 +133,14 @@ export interface BackzettelLine {
    * bei 0 „offen“. Anzeige über `minQtyText`, nie als fertige Zahl.
    */
   totalIsMinimum?: boolean
+  /** `true`: „Heute keine“ ist gesetzt (nur bei offener Grundmenge). */
+  noneToday?: boolean
+  /**
+   * Tagesentscheidung bei offener Grundmenge: `'none'` = „Heute keine“,
+   * `'amount'` = Menge für heute (über die Korrektur). Die Grundmenge bleibt
+   * offen; Anzeige über `baseOpenText`. Fehlt ohne Entscheidung.
+   */
+  dayDecision?: 'none' | 'amount'
   /**
    * `true`: die Korrektur drückt die Zeile unter 0, `total` ist auf 0 gekappt
    * (nur Entwurf; dazu Warnung `correction_exceeds_line`).
@@ -449,6 +457,12 @@ export interface BackzettelDay {
   rolls?: RollsBlock[]
   /** Stammdaten, die für diesen Zettel noch offen sind (null = unbekannt). */
   openMasterData?: OpenMasterData[]
+  /**
+   * Nur Entwurf (v2): Posten dieses Zettels ohne jede Menge (Grundmenge 0,
+   * nichts bestellt), je Abschnitt. Sie stehen nicht in `sections`; eine
+   * Korrektur nimmt sie auf („Weiteren Posten aufnehmen“).
+   */
+  addable?: BackzettelSection[]
   /** Nur freigegeben (v2): Maschinen-Kästen, die Nachträge verändern. */
   deltaMachine?: DeltaMachineBox[]
   /** Nur freigegeben (v2): Bruch-Gruppen, deren Teigstücke Nachträge ändern. */
@@ -508,8 +522,14 @@ export interface DeltaBruchAddon {
 export interface DoughLiters {
   exact: number | null
   rounded: number | null
-  /** `kg_per_liter_unknown` | `dough_incomplete` | `rounding_unknown` | null */
+  /**
+   * `kg_per_liter_unknown` | `dough_incomplete` | `rounding_unknown` |
+   * `below_rounding_step` (kleine Menge unter der Rundungsstufe: nur die
+   * genauen Liter, nie „0 L“) | null
+   */
   reason: string | null
+  /** Rundungsstufe in Litern, nur bei `below_rounding_step`. */
+  step?: number
 }
 
 /** Ein Teil eines Teigs ohne bekanntes Gewicht. */
@@ -580,6 +600,12 @@ export interface BreadCell {
   baseUnset: boolean
   /** Grundmenge offen: `total` ist eine Mindestmenge (siehe Zeile). */
   totalIsMinimum?: boolean
+  /**
+   * Tagesentscheidung bei offener Grundmenge: `'none'` = „Heute keine“,
+   * `'amount'` = Menge für heute (über die Korrektur). Die Grundmenge bleibt
+   * offen; Anzeige über `baseOpenText`. Fehlt ohne Entscheidung.
+   */
+  dayDecision?: 'none' | 'amount'
 }
 
 export interface BreadRow {
@@ -614,6 +640,12 @@ export interface BruchSplit {
   perProduct: number
   doughPieces: number | null
   totalIsMinimum?: boolean
+  /**
+   * Tagesentscheidung bei offener Grundmenge: `'none'` = „Heute keine“,
+   * `'amount'` = Menge für heute (über die Korrektur). Die Grundmenge bleibt
+   * offen; Anzeige über `baseOpenText`. Fehlt ohne Entscheidung.
+   */
+  dayDecision?: 'none' | 'amount'
 }
 
 export interface BruchGroup {
@@ -664,6 +696,12 @@ export interface SingleRow {
   total: number
   baseUnset: boolean
   totalIsMinimum?: boolean
+  /**
+   * Tagesentscheidung bei offener Grundmenge: `'none'` = „Heute keine“,
+   * `'amount'` = Menge für heute (über die Korrektur). Die Grundmenge bleibt
+   * offen; Anzeige über `baseOpenText`. Fehlt ohne Entscheidung.
+   */
+  dayDecision?: 'none' | 'amount'
   piece_g: number | null
   pieces: number | null
   kg: number | null
@@ -927,6 +965,8 @@ export async function setSeasonFactor(
  * `options.bakeDate` (Z10): Backtag der Zeile, wenn er nicht der Tag des
  * Zettels ist (Brötchen für Dienstag auf dem Samstags-Zettel); sonst 400
  * `invalid_bake_date` bzw. 409 `owned_elsewhere` mit deutscher Meldung.
+ * `options.noneToday`: „Heute keine“ an einer Zeile mit offener Grundmenge
+ * (Korrektur 0, Grund freiwillig); sonst 400 `base_not_open`.
  */
 export async function setCorrection(
   date: string,
@@ -934,13 +974,19 @@ export async function setCorrection(
   variant: string | null,
   correction: number,
   reason: string | null,
-  expected?: { correction: number; reason: string | null },
-  options?: { bakeDate?: string | null }
+  expected?: {
+    correction: number
+    reason: string | null
+    noneToday?: boolean
+  },
+  options?: { bakeDate?: string | null; noneToday?: boolean }
 ): Promise<BackzettelDay> {
+  const noneToday = options?.noneToday === true
   return unwrap(
     await apiClient.put<BackzettelDay>(correctionPath(date, itemId, variant), {
-      correction,
-      reason: correction === 0 ? null : reason,
+      correction: noneToday ? 0 : correction,
+      reason: correction === 0 && !noneToday ? null : reason,
+      ...(noneToday ? { noneToday: true } : {}),
       ...(expected ? { expected } : {}),
       ...(options?.bakeDate ? { bakeDate: options.bakeDate } : {}),
     })

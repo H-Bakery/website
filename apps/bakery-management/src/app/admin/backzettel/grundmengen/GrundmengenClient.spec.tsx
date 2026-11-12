@@ -437,6 +437,8 @@ describe('GrundmengenClient', () => {
       'Fr',
       'Sa',
       'So',
+      'Vor FT',
+      'Sa-Satz',
     ])
     expect(print).toHaveTextContent('45 * (40)')
     expect(print).toHaveTextContent('wartet auf Freigabe')

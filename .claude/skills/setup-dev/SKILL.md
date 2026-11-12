@@ -117,6 +117,10 @@ node ~/.cache/bakery-dev/tree/dist/apps/bakery-api/bundle/cli.js <command>)`.
   by verification agents): `build.sh`, `start.sh <name> <mgmt> <second> <api> [--mode
 pilot|full] [--second delivery|shop|landing|none] [--public-catalogue]`, `extra.sh`,
   `second.sh`, `stop.sh <name>`, `lib/check.cjs` (quick Playwright check of an instance).
+- `MAKE_HQ_FLAGS=--samstag-ersatz start.sh …` (or `lib/make-hq.js <dir> [today] --samstag-ersatz`)
+  adds the busy Saturday, the column `base.samstag_ersatz` and a `config/kalender.yaml` with one
+  closed Saturday at least two weeks ahead: the Friday before it (`samstagErsatz` in
+  `hq-info.json`) is a Samstags-Satz day - for the 3-sheet print check (Z14).
 - `lib/make-hq.js <dir> [today] --busy-saturday` writes the synthetic hq with about 60 lines on
   the Saturday sheet - for the one-page print check of a full Saturday (`up.sh` does not pass it).
 

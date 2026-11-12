@@ -14,6 +14,7 @@ import { apiClient } from '@bakery/shared/data-access'
 import { ALL_DAYS_PARAM, ALL_DAYS_VALUE } from './preordersTypes'
 import type {
   CatalogueProduct,
+  PickupDays,
   PickupPoint,
   PickupPointInput,
   Preorder,
@@ -284,6 +285,32 @@ export async function fetchPreorderDay(
 export async function fetchPickupPoints(): Promise<PickupPoint[]> {
   const res = await apiClient.get<PickupPoint[]>(`${BASE}/pickup-points`)
   return unwrap(res, [])
+}
+
+/**
+ * Sammelstellen und die gesperrten Abholtage in einem Abruf (Z14) - für die
+ * Erfassungsmaske. `pickupDays: null`, wenn die API sie (noch) nicht liefert;
+ * dann gilt in der Maske nur der Ruhetag.
+ */
+export async function fetchPickupPointInfo(): Promise<{
+  points: PickupPoint[]
+  pickupDays: PickupDays | null
+}> {
+  const res = (await apiClient.get<PickupPoint[]>(`${BASE}/pickup-points`)) as {
+    data?: PickupPoint[]
+    pickupDays?: PickupDays | null
+  }
+  const days = res?.pickupDays
+  return {
+    points: unwrap(res, []),
+    pickupDays:
+      days &&
+      typeof days.from === 'string' &&
+      typeof days.to === 'string' &&
+      Array.isArray(days.closed)
+        ? days
+        : null,
+  }
 }
 
 /**

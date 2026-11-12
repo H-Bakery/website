@@ -569,6 +569,25 @@ export function caseInsensitiveGlob(text: string): string {
   return `*${out}*`
 }
 
+/** Ein gesperrter Abholtag (`GET /api/preorders/pickup-points` → `pickupDays`). */
+export interface ClosedPickupDayDto {
+  date: string
+  code: 'geschlossen' | 'ruhetag'
+  /** Notiz oder Feiertag aus dem Kalender; `null` am Ruhetag. */
+  reason: string | null
+  message: string
+  /** Nur im Laden gesperrt (Ruhetag) - eine Sammelstelle darf den Tag nehmen. */
+  shopOnly: boolean
+}
+
+export interface PickupDaysDto {
+  from: string
+  to: string
+  /** `false`: kein gültiger Kalender, es gilt nur der Ruhetag. */
+  calendar: boolean
+  closed: ClosedPickupDayDto[]
+}
+
 export class PreordersService {
   private readonly productsDir: string
   private readonly variants: VariantsForProduct
@@ -995,17 +1014,31 @@ export class PreordersService {
       // Mörsbach-Alias hält den Mock-Vertrag und lässt das weg.
       ...(strictPickup
         ? {
-            pickupRules: {
-              today: this.today(),
-              closedWeekdays: PREORDER_CLOSED_WEEKDAYS,
-              calendar: this.calendarConfig(),
-              maxDaysAhead: PREORDER_MAX_DAYS_AHEAD,
-              maxDaysBack: PREORDER_MAX_DAYS_BACK,
-            },
+            pickupRules: this.pickupRules(),
             notCollectedFrom: this.today(),
           }
         : {}),
     }
+  }
+
+  /** Die Abholtag-Regeln von `/api/preorders` - einmal, für Prüfen und Anzeigen. */
+  private pickupRules() {
+    return {
+      today: this.today(),
+      closedWeekdays: PREORDER_CLOSED_WEEKDAYS,
+      calendar: this.calendarConfig(),
+      maxDaysAhead: PREORDER_MAX_DAYS_AHEAD,
+      maxDaysBack: PREORDER_MAX_DAYS_BACK,
+    }
+  }
+
+  /**
+   * Z14: die gesperrten Abholtage im erlaubten Fenster, mit denselben Regeln
+   * wie das Speichern (`core.closedPickupDays`) - die Maske bietet sie nicht
+   * an. Ohne gültigen Kalender nur die Ruhetage.
+   */
+  pickupDays(): PickupDaysDto {
+    return core.closedPickupDays(this.pickupRules())
   }
 
   private async writeItems(

@@ -327,11 +327,39 @@ export function entriesByCell(
   return map
 }
 
-/** Name des geschlossenen Tags: Feiertag oder „Ruhetag“; offen → `null`. */
+/**
+ * Name des geschlossenen Tags: Feiertag, „Ruhetag“ oder der Schließtag des
+ * Kalenders mit seiner Notiz („Geschlossen · Betriebsferien“, „Nur Teig
+ * (Laden geschlossen) · …“); offen → `null` - auch ein Feiertag, an dem der
+ * Laden laut Kalender offen hat (Z14).
+ */
 export function closedDayLabel(day: CalendarDay): string | null {
+  if (!day.closed) return null
+  const byCalendar =
+    day.kind === 'teigtag' ||
+    (day.kind === 'geschlossen' &&
+      !!day.kindDetail &&
+      day.kindDetail !== day.holidayName)
+  if (byCalendar && day.kindLabel) {
+    return day.kindDetail
+      ? `${day.kindLabel} · ${day.kindDetail}`
+      : day.kindLabel
+  }
   if (day.holidayName) return day.holidayName
   if (day.restDay) return 'Ruhetag'
-  return day.closed ? 'geschlossen' : null
+  return 'geschlossen'
+}
+
+/**
+ * Besonderer offener Tag laut Kalender (Z14): Sonderöffnung oder „wie
+ * Sonntag“ mit Notiz, z. B. „Sonderöffnung (wie Samstag) · Testmarkt“.
+ * Sonst `null`. Reine Anzeige - was der Tag ist, entscheidet die API.
+ */
+export function specialDayLabel(day: CalendarDay): string | null {
+  if (day.closed) return null
+  if (day.kind !== 'sonderoeffnung' && day.kind !== 'wie-sonntag') return null
+  if (!day.kindLabel) return null
+  return day.kindDetail ? `${day.kindLabel} · ${day.kindDetail}` : day.kindLabel
 }
 
 /** Öffnungszeit eines Tags als „05:30–13:30“; ohne Öffnungszeit `null`. */

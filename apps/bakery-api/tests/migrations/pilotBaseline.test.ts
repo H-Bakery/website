@@ -22,6 +22,8 @@ const restMigration = require('../../migrations/20261201000000-rest-am-abend.js'
 const doughDayMigration = require('../../migrations/20270201000000-backzettel-dough-day.js')
 const bakedMigration = require('../../migrations/20270210000000-backzettel-baked.js')
 const dienstplanMigration = require('../../migrations/20270301000000-dienstplan.js')
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const noneTodayMigration = require('../../migrations/20270310000000-backzettel-none-today.js')
 
 /** The 17 migrations the server ran before B2, now in migrations/archive/. */
 const LEGACY_NAMES = [
@@ -97,6 +99,7 @@ describe('pilot baseline on a fresh database', () => {
       '20270201000000-backzettel-dough-day.js',
       '20270210000000-backzettel-baked.js',
       '20270301000000-dienstplan.js',
+      '20270310000000-backzettel-none-today.js',
     ])
   })
 
@@ -173,6 +176,7 @@ describe('pilot baseline on a fresh database', () => {
         'done_by',
         'baked_at',
         'baked_by',
+        'none_today',
       ])
     )
   })
@@ -1286,6 +1290,79 @@ describe('Z10 O5 migration (baked_at/_by)', () => {
     await bakedMigration.up(qi, Sequelize)
     expect(await schema(sequelize)).toEqual(after)
     await bakedMigration.down(qi, Sequelize)
+    expect(await schema(sequelize)).toEqual(before)
+    expect(await foreignKeyViolations(sequelize)).toEqual([])
+    await sequelize.close()
+  })
+})
+
+describe('„Heute keine“ migration (backzettel_lines.none_today)', () => {
+  const NONE_TODAY = '20270310000000-backzettel-none-today.js'
+
+  async function schema(sequelize: Sequelize) {
+    return {
+      fk: await sequelize.query('PRAGMA foreign_key_list(backzettel_lines)', {
+        type: QueryTypes.SELECT,
+      }),
+      indexes: await sequelize
+        .getQueryInterface()
+        .showIndex('backzettel_lines'),
+      columns: await columns(sequelize, 'backzettel_lines'),
+    }
+  }
+
+  it('adds none_today NOT NULL DEFAULT 0; stored days keep their meaning; idempotent; down() restores the schema', async () => {
+    const sequelize = await freshDb()
+    await runMigrations(sequelize, {
+      ...quiet,
+      migrations: MIGRATIONS.filter((m) => m.name !== NONE_TODAY),
+    })
+    const before = await schema(sequelize)
+    expect(before.columns).not.toContain('none_today')
+    // Rows from before the migration: a draft correction, a frozen line
+    // without a correction (an open base reads „offen“) and one with.
+    await sequelize.query(
+      `INSERT INTO backzettel_days (date, status, season_factor, created_at, updated_at)
+       VALUES ('2026-11-28', 'draft', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+    )
+    await sequelize.query(
+      `INSERT INTO backzettel_lines (date, bake_date, item_id, correction, correction_reason, total, created_at, updated_at)
+       VALUES ('2026-11-28', '2026-11-28', 'weck', 0, NULL, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+              ('2026-11-28', '2026-11-29', 'weck', 5, 'Testgrund', 17, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+    )
+    const result = await runMigrations(sequelize, quiet)
+    expect(result.executed).toEqual([NONE_TODAY])
+    const described = await sequelize
+      .getQueryInterface()
+      .describeTable('backzettel_lines')
+    expect(described['none_today']).toMatchObject({ allowNull: false })
+    // nothing was decided before: no row turns into „Heute keine“
+    expect(
+      await sequelize.query(
+        'SELECT bake_date, correction, correction_reason, total, none_today FROM backzettel_lines ORDER BY bake_date',
+        { type: QueryTypes.SELECT }
+      )
+    ).toEqual([
+      {
+        bake_date: '2026-11-28',
+        correction: 0,
+        correction_reason: null,
+        total: 0,
+        none_today: 0,
+      },
+      {
+        bake_date: '2026-11-29',
+        correction: 5,
+        correction_reason: 'Testgrund',
+        total: 17,
+        none_today: 0,
+      },
+    ])
+    const qi = sequelize.getQueryInterface()
+    const after = await schema(sequelize)
+    await noneTodayMigration.up(qi, Sequelize)
+    expect(await schema(sequelize)).toEqual(after)
+    await noneTodayMigration.down(qi, Sequelize)
     expect(await schema(sequelize)).toEqual(before)
     expect(await foreignKeyViolations(sequelize)).toEqual([])
     await sequelize.close()

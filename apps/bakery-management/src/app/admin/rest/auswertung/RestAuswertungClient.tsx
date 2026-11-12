@@ -163,6 +163,11 @@ export function DailyRateChart({
             rate !== null && !gap
               ? `${formatRate(rate)} Rest`
               : DAY_STATUS_LABELS[d.status]
+          }${
+            // Z14: Schließtag mit Grund („geschlossen (Inventur)“)
+            d.status === 'geschlossen' && d.dayKind?.note
+              ? ` (${d.dayKind.note})`
+              : ''
           }`
           const showDate =
             shown.length <= 14 || i % Math.ceil(shown.length / 14) === 0
@@ -487,6 +492,9 @@ export default function RestAuswertungClient() {
                 {data.counts.noBackzettel} ohne freigegebenen Backzettel
                 {data.counts.ruhetag > 0
                   ? ` · ${data.counts.ruhetag} Ruhetage`
+                  : ''}
+                {(data.counts.geschlossen ?? 0) > 0
+                  ? ` · ${data.counts.geschlossen} geschlossen`
                   : ''}
               </Typography>
               <DailyRateChart days={data.days} unit={chartUnit} />

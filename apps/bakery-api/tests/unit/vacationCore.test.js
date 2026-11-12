@@ -887,3 +887,232 @@ describe('withinEmployment', () => {
     expect(core.withinEmployment('2026-05-03', null, '2026-05-02')).toBe(false)
   })
 })
+
+describe('dayInfo with the bakery calendar (Z14, kalender.core.js)', () => {
+  const kalender = require('../../src/services/kalender.core')
+  const feiertage = (year) =>
+    kalender
+      .holidaysSaarland(year)
+      .map((h) => ({ datum: h.date, name: h.name }))
+  // Erfundener Kalender: nur 2026 geführt.
+  const calendar = kalender.normalizeKalender({
+    version: 1,
+    bundesland: 'saarland',
+    feiertage: { 2026: feiertage(2026) },
+    tage: [
+      {
+        von: '2026-11-17',
+        bis: '2026-11-18',
+        typ: 'geschlossen',
+        notiz: 'Betriebsferien',
+      },
+      { datum: '2026-06-04', typ: 'wie-sonntag', notiz: 'Fronleichnam offen' },
+      {
+        datum: '2026-11-23',
+        typ: 'sonderoeffnung',
+        wie: 6,
+        offen_bis: '11:00',
+        notiz: 'Testmarkt',
+      },
+      { datum: '2026-11-24', typ: 'teigtag', notiz: 'Teig für Mittwoch' },
+      { datum: '2027-02-02', typ: 'geschlossen', notiz: 'Inventur' },
+    ],
+  })
+
+  it('without a calendar the answer is exactly the old one, plus the day kind', () => {
+    for (const date of [
+      '2026-11-09',
+      '2026-06-04',
+      '2026-11-14',
+      '2026-12-24',
+    ]) {
+      const before = core.dayInfo(date, MONDAY)
+      expect(core.dayInfo(date, MONDAY, null)).toEqual(before)
+      expect(before.calendar).toBe('missing')
+    }
+    expect(core.dayInfo('2026-11-09', MONDAY)).toMatchObject({
+      kind: 'ruhetag',
+      kindLabel: 'Ruhetag',
+    })
+    expect(core.dayInfo('2026-06-04', MONDAY)).toMatchObject({
+      kind: 'geschlossen',
+      kindLabel: 'Geschlossen',
+      kindDetail: 'Fronleichnam',
+    })
+    expect(core.dayInfo('2026-11-14', MONDAY)).toMatchObject({
+      kind: 'normal',
+      kindLabel: null,
+      kindDetail: null,
+    })
+  })
+
+  it('a normal day, a Ruhetag and a holiday stay what they were', () => {
+    for (const date of [
+      '2026-11-09',
+      '2026-11-14',
+      '2026-12-25',
+      '2026-12-24',
+    ]) {
+      const { calendar: state, ...rest } = core.dayInfo(date, MONDAY, calendar)
+      const { calendar: _old, ...before } = core.dayInfo(date, MONDAY)
+      expect(rest).toEqual(before)
+      expect(state).toBe('ok')
+    }
+  })
+
+  it('a closing day of the calendar is closed, but still costs a vacation day', () => {
+    expect(core.dayInfo('2026-11-17', MONDAY, calendar)).toMatchObject({
+      closed: true,
+      restDay: false,
+      holidayName: null,
+      kind: 'geschlossen',
+      kindLabel: 'Geschlossen',
+      kindDetail: 'Betriebsferien',
+      openingHours: null,
+      weight: 1,
+    })
+    expect(
+      core.absenceDays(
+        { startDate: '2026-11-17', endDate: '2026-11-18' },
+        MONDAY
+      )
+    ).toBe(2)
+  })
+
+  it('a holiday opened "wie Sonntag" is open with Sunday hours and never a vacation day', () => {
+    expect(core.dayInfo('2026-06-04', MONDAY, calendar)).toMatchObject({
+      closed: false,
+      holidayName: 'Fronleichnam',
+      kind: 'wie-sonntag',
+      kindLabel: 'Wie Sonntag',
+      openingHours: { opens: '08:00', closes: '11:00' },
+      weight: 0,
+    })
+  })
+
+  it('a Sonderöffnung on the Ruhetag opens with the hours of its weekday, cut by offen_bis', () => {
+    expect(core.dayInfo('2026-11-23', MONDAY, calendar)).toMatchObject({
+      weekday: 1,
+      restDay: true,
+      closed: false,
+      kind: 'sonderoeffnung',
+      kindLabel: 'Sonderöffnung (wie Samstag)',
+      kindDetail: 'Testmarkt · offen bis 11:00 Uhr',
+      openingHours: { opens: '05:30', closes: '11:00' },
+      weight: 0,
+    })
+  })
+
+  it('offen_bis only shortens: later than the regular end it does not extend the day', () => {
+    const late = kalender.normalizeKalender({
+      version: 1,
+      bundesland: 'saarland',
+      feiertage: { 2026: feiertage(2026) },
+      tage: [
+        {
+          datum: '2026-11-23',
+          typ: 'sonderoeffnung',
+          wie: 6,
+          offen_bis: '20:00',
+          notiz: 'Testmarkt',
+        },
+      ],
+    })
+    const regular = core.dayInfo('2026-11-21', MONDAY, late).openingHours
+    expect(core.dayInfo('2026-11-23', MONDAY, late)).toMatchObject({
+      closed: false,
+      kind: 'sonderoeffnung',
+      openingHours: regular,
+    })
+    // Besetzung: eine Schicht über die reguläre Zeit deckt den Tag
+    const [day] = core.calendarDays(
+      '2026-11-23',
+      '2026-11-23',
+      MONDAY,
+      [{ id: 1, area: 'verkauf' }],
+      [
+        {
+          employeeId: 1,
+          date: '2026-11-23',
+          startTime: regular.opens,
+          endTime: regular.closes,
+          breakMinutes: 0,
+        },
+      ],
+      [],
+      late
+    )
+    expect(day.besetzung).toMatchObject({ covered: true })
+  })
+
+  it('a dough-only day keeps the shop closed', () => {
+    expect(core.dayInfo('2026-11-24', MONDAY, calendar)).toMatchObject({
+      closed: true,
+      kind: 'teigtag',
+      kindLabel: 'Nur Teig (Laden geschlossen)',
+      openingHours: null,
+      weight: 1,
+    })
+  })
+
+  it('a year the calendar does not list: holidays stay closed, entries still apply', () => {
+    expect(core.dayInfo('2027-01-01', MONDAY, calendar)).toMatchObject({
+      closed: true,
+      holidayName: 'Neujahr',
+      kind: 'geschlossen',
+      kindDetail: 'Neujahr',
+      weight: 0,
+      calendar: 'year-missing',
+    })
+    expect(core.dayInfo('2027-02-02', MONDAY, calendar)).toMatchObject({
+      closed: true,
+      kind: 'geschlossen',
+      kindDetail: 'Inventur',
+      calendar: 'year-missing',
+    })
+    expect(core.dayInfo('2027-02-03', MONDAY, calendar)).toMatchObject({
+      closed: false,
+      kind: 'normal',
+    })
+  })
+
+  it('calendarDays: no Besetzung on a closing day, Besetzung over the special hours', () => {
+    const employees = [{ id: 1, area: 'verkauf' }]
+    const shifts = [
+      {
+        employeeId: 1,
+        date: '2026-11-23',
+        startTime: '05:30',
+        endTime: '11:00',
+        breakMinutes: 0,
+      },
+    ]
+    const days = core.calendarDays(
+      '2026-11-17',
+      '2026-11-23',
+      MONDAY,
+      employees,
+      shifts,
+      [],
+      calendar
+    )
+    expect(days[0]).toMatchObject({ closed: true, besetzung: null })
+    expect(days[6]).toMatchObject({
+      closed: false,
+      kind: 'sonderoeffnung',
+      besetzung: expect.objectContaining({ covered: true }),
+    })
+    // Soll: das Gewicht hängt nicht am Kalender
+    const withoutCalendar = core.calendarDays(
+      '2026-11-17',
+      '2026-11-23',
+      MONDAY,
+      employees,
+      shifts,
+      []
+    )
+    expect(days.map((d) => d.weight)).toEqual(
+      withoutCalendar.map((d) => d.weight)
+    )
+  })
+})

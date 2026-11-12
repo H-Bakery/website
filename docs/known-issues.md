@@ -12,8 +12,8 @@ deleted the six pre-pilot libraries whose specs used to fail (`feature-inventory
 
 | Project                                    | Suites | Tests                   |
 | ------------------------------------------ | ------ | ----------------------- |
-| `bakery-api` (js, ts, contract-later)      | 61     | 1897                    |
-| `bakery-management`                        | 83     | 979                     |
+| `bakery-api` (js, ts, contract-later)      | 75     | 2467 (2026-11-11)       |
+| `bakery-management`                        | 122    | 1573 (2026-11-11)       |
 | `ui`                                       | 9      | 232                     |
 | `feature-cart`                             | 7      | 158                     |
 | `bakery-landing`                           | 18     | 126                     |
@@ -33,10 +33,20 @@ deleted the six pre-pilot libraries whose specs used to fail (`feature-inventory
   `POST /api/preorders` of the test returned no `data`; alone and in a full rerun it passed. Not
   investigated further - if it recurs, look at that test first.
 - `bakery-management` has been seen failing under `run-many` parallel load and passing alone.
-- **`bakery-api` locally under parallel jest workers:** occasionally one random test fails (e.g. in
-  `auth`, `preorders`, `deliveries.contract` or `hqData`), sometimes with
-  `connect ETIMEDOUT 127.0.0.1:<port>` or an unexpected 401. The same test is green alone and with
-  `--runInBand`; CI is green. Not a regression - rerun with `--runInBand` before investigating.
+- **`bakery-api` locally (macOS), whenever several jest workers or jest processes run at the
+  same time:** one or two random tests fail per full run, each time different ones, with an answer
+  that does not fit the request (an unexpected 401/403/501, `data` undefined) or
+  `connect ETIMEDOUT 127.0.0.1:<port>`. Seen on 2026-11-11 in `preorders`, `partners.contract` and
+  `backzettelV2` („missing or invalid calendar“ in another run). Cause: supertest starts a server
+  per request with `app.listen(0)` (Node binds `::`) and calls `http://127.0.0.1:<port>`; with
+  several processes doing this at once, a request now and then reaches the server of another
+  process. Measured without jest, a bare `http` server per request: 4 processes × 3000
+  requests gave 1-5 foreign answers per run with `listen(0)`, none with the server bound to
+  `127.0.0.1`. It is not a fault of the single test: the same suite is green alone, and CI
+  (Linux) is green. `--runInBand` only helps while no other jest process runs on the machine
+  (other worktrees). Not fixed: supertest reads the port right after `listen(0)`, and a `listen`
+  with a host binds asynchronously, so it needs a small own request helper or one listening
+  server per test app.
 
 ## Not wired / stale
 

@@ -396,6 +396,75 @@ describe('corrections with bakeDate', () => {
   })
 })
 
+describe('items without any quantity can be added by a correction (addable)', () => {
+  // Thursday: Testmisch has a base only on Saturdays - not on the sheet.
+  const THU = '2026-12-03'
+  const addable = (day: any): any[] =>
+    (day.addable ?? []).flatMap((s: any) => s.lines)
+
+  it('the draft lists them per section, outside the sheet lines', async () => {
+    const res = await as('backstube').get(`/api/backzettel/${THU}`)
+    expect(res.status).toBe(200)
+    const day = res.body.data
+    expect(line(day, 'test-misch|g1000')).toBeUndefined()
+    const brot = day.addable.find((s: any) => s.id === 'brot')
+    expect(brot).toMatchObject({ label: 'Brot' })
+    expect(
+      addable(day).find((l) => l.key === 'test-misch|g1000')
+    ).toMatchObject({
+      id: null,
+      itemId: 'test-misch',
+      variant: 'g1000',
+      variantLabel: '1 kg',
+      base: 0,
+      correction: 0,
+      correctionReason: null,
+      total: 0,
+      bakeDate: THU,
+    })
+    // a filled item offers its fillings, never the line "without filling"
+    expect(addable(day).some((l) => l.key === 'test-zopf|nuss')).toBe(true)
+    expect(addable(day).some((l) => l.key === 'test-zopf|')).toBe(false)
+  })
+
+  it('a correction puts the line on the sheet and into the dough; 0 takes it off again', async () => {
+    const put = await as('backstube')
+      .put(`/api/backzettel/${THU}/lines/test-misch/g1000/correction`)
+      .send({ correction: 3, reason: 'Testgrund' })
+    expect(put.status).toBe(200)
+    const day = put.body.data
+    expect(line(day, 'test-misch|g1000')).toMatchObject({
+      base: 0,
+      correction: 3,
+      correctionReason: 'Testgrund',
+      total: 3,
+      id: expect.any(Number),
+    })
+    expect(addable(day).some((l) => l.key === 'test-misch|g1000')).toBe(false)
+    // 3 loaves x 1000 g = 3 kg of Testmisch dough
+    expect(
+      day.doughs.find((d: any) => d.id === 'test-misch-teig')
+    ).toMatchObject({ kg: 3 })
+
+    const clear = await as('backstube')
+      .put(`/api/backzettel/${THU}/lines/test-misch/g1000/correction`)
+      .send({ correction: 0 })
+    expect(clear.status).toBe(200)
+    expect(line(clear.body.data, 'test-misch|g1000')).toBeUndefined()
+    expect(
+      addable(clear.body.data).some((l) => l.key === 'test-misch|g1000')
+    ).toBe(true)
+  })
+
+  it('a confirmed sheet offers nothing to add', async () => {
+    const FRI = '2026-12-04'
+    const res = await as('inhaber').post(`/api/backzettel/${FRI}/confirm`)
+    expect(res.status).toBe(200)
+    expect(res.body.data.status).toBe('confirmed')
+    expect(res.body.data.addable).toBeUndefined()
+  })
+})
+
 describe('confirm, deltas by dough day, bake list', () => {
   it('confirming Saturday freezes rows per bake day and the plan', async () => {
     const res = await as('backstube').post(`/api/backzettel/${SAT}/confirm`)
@@ -1179,6 +1248,38 @@ describe('calendar (U9): holidays and closing days from kalender.yaml', () => {
     expect(sun.body.data.sources.map((s: any) => s.doughDate)).toContain(
       '2026-12-24'
     )
+  })
+
+  it('Samstags-Satz: an item with base.samstag_ersatz is planned, not asked about again (Z14)', async () => {
+    const cfg = fixture.configV2()
+    const kranz = cfg.items.find((i: any) => i.id === 'test-kranz')
+    kranz.base = { ...kranz.base, samstag_ersatz: 3 }
+    fs.writeFileSync(
+      path.join(hqDir, 'config', 'backzettel.yaml'),
+      JSON.stringify(cfg, null, 2)
+    )
+    try {
+      const res = await as('backstube').get('/api/backzettel/2026-12-24')
+      expect(res.status).toBe(200)
+      const day = res.body.data
+      expect(day.dayKind).toMatchObject({ label: 'Samstags-Satz' })
+      const codes = day.warnings.map((w: any) => w.code)
+      expect(codes).not.toContain('special_base_missing')
+      const specials = day.warnings.find(
+        (w: any) => w.code === 'closed_day_specials' && w.date === '2026-12-26'
+      )
+      // Saturday-only items without the column are still asked about …
+      expect(specials.items).toContain('test-party')
+      // … the one with the column is on the sheet with that quantity.
+      expect(specials.items).not.toContain('test-kranz')
+      expect(specials.message).not.toMatch(/Testkranz/)
+      const line = day.sections
+        .flatMap((s: any) => s.lines)
+        .find((l: any) => l.itemId === 'test-kranz')
+      expect(line).toMatchObject({ base: 3 })
+    } finally {
+      writeHq(hqDir)
+    }
   })
 
   it('a dough-only day has a sheet (dough for Tuesday) but no bake list', async () => {

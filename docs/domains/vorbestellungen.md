@@ -35,8 +35,10 @@ Verwaltung `apps/bakery-management/src/lib/preordersApi.ts`, `preordersTypes.ts`
   `geschlossen`, Meldung nennt Notiz bzw. Feiertag); eine Sonderöffnung oder „wie Sonntag" gibt den
   Montag frei. Ohne Kalender oder für ein Jahr ohne Feiertagsliste gilt nur der Montag
   (`pickupDayClosed()` in `delivery-preorders.core.js`). Vorläufig, bis der Inhaber entscheidet;
-  Sonderproduktion an Schließtagen (R2-23) gibt es noch nicht - die Maske bietet Schließtage noch an
-  und zeigt erst beim Speichern die Meldung. Steuerzeichen im
+  Sonderproduktion an Schließtagen (R2-23) gibt es noch nicht. Dieselbe Regel liefert die Liste für
+  die Maske: `GET /api/preorders/pickup-points` trägt neben `data` das Feld `pickupDays`
+  (`closedPickupDays()`: `from`/`to` = das Fenster oben, `calendar`, `closed[]` mit `date`, `code`,
+  `reason`, `message`, `shopOnly` - `shopOnly` heißt „nur im Laden gesperrt", also Ruhetag). Steuerzeichen im
   Namen und eine Telefonnummer mit weniger als 5 Ziffern sind 400, statt still gespeichert oder
   verworfen zu werden.
 - **Doppeltes Anlegen:** `POST` nimmt eine optionale `requestId`; eine Wiederholung mit derselben
@@ -115,6 +117,30 @@ und `/admin/preorders/tag?date=` (Summen je Produkt **und Sorte**, Abholliste, A
 - **Abholtag:** Vorschlag ist der nächste Produktionstag ab morgen; Montag ist Ruhetag und wird
   abgelehnt. Eine Sammelstelle erzwingt ihren Wochentag (`weekday` wie `Date.getDay()`, 6 = Sa) und hat
   keine Uhrzeit; der Kanal springt dann auf „Sammelstelle".
+- **Schließtage werden nicht angeboten (Z14):** die Maske (Erfassen, Bearbeiten, Sammelstelle) lädt
+  mit den Sammelstellen `pickupDays` (`fetchPickupPointInfo()`) und fragt nur `closedPickupDay()` in
+  `preordersTypes.ts` - gerechnet wird auf dem Server. Vorgabe und Schnellwahl überspringen Ruhe-
+  und Schließtage (eine Sonderöffnung am Montag steht dabei), an der Sammelstelle fällt ein
+  geschlossener Liefertag weg. Darunter steht, was fehlt: „Geschlossen, deshalb nicht wählbar: Fr
+  25.12. (1. Weihnachtstag)" - nur Schließtage bis zum letzten Vorschlag, nicht der wöchentliche
+  Ruhetag. Das Datumsfeld ist das des Browsers: es kennt das Fenster (`min`/`max`), kann aber
+  einzelne Tage nicht ausgrauen - ein von Hand gewählter Schließtag zeigt sofort die Meldung des
+  Servers und lässt sich nicht speichern. Ohne `pickupDays` (kein Feld in der Antwort) oder außerhalb
+  des Fensters gilt nur der Montag im Laden. **Bearbeiten:** der schon gespeicherte Abholtag ist am
+  gespeicherten Ort nie gesperrt (die API prüft nur einen neuen Tag); wechselt die Bestellung
+  zwischen Sammelstelle und Laden, ist der Tag dort neu und wird geprüft - in Maske und API (der
+  Montag einer Sammelstelle ist im Laden Ruhetag: die Maske weicht auf den nächsten offenen Tag aus,
+  die API antwortet `ruhetag`). Ist der Tag inzwischen geschlossen, bleibt er stehen mit
+  dem Hinweis „An diesem Tag ist die Bäckerei geschlossen (…) - der Abholtag bleibt stehen, bis er
+  geändert wird." Vorläufig: ob eine solche Bestellung umgelegt werden muss, entscheidet der
+  Inhaber (der Backzettel meldet sie mit `preorders_on_closed_day`). Der Shop-Checkout fragt keinen
+  Abholtag ab und ist unverändert. **Wege in die Maske:** die Tagesübersicht startet ohne Datum am
+  nächsten offenen Tag (`nextProductionDate(today, pickupDays)`; ohne Antwort des Servers gilt nur
+  der Montag), nennt an einem Schließtag den Grund und bietet dort „Vorbestellung erfassen" nicht
+  an; „Nächster Backtag" in der Liste überspringt Schließtage. Ein Tag aus dem Link (`?date=`, auch
+  von der Abholliste) ist für die Maske nur ein Vorschlag: ist er gesperrt, steht der nächste offene
+  Tag danach da (Sammelstelle: ihr nächster Liefertag), nicht vor morgen. Blättern in
+  Tagesübersicht und Abholliste zeigt Schließtage weiter - dort können alte Bestellungen liegen.
 - **Tastatur:** Die Maske ist kein `<form>` - Enter springt weiter (Name → Telefon → Suche → Menge →
   Hinzufügen → Suche), **Strg/Cmd+Enter speichert**. Die Ziffernblock-Tasten haben `tabIndex -1` und
   nehmen dem Mengenfeld den Fokus nicht.
@@ -229,7 +255,8 @@ Navigationspunkt „Sammelstelle Mörsbach" (eigene Liste mit Bestellschluss, Ba
 
 ## Tests
 
-- API: `tests/integration/preorders.test.ts` (u. a. `GET /variants`, veraltete Schreibzugriffe,
+- API: `tests/integration/preordersPickupDays.test.ts` (`pickupDays` gegen das, was Speichern
+  ablehnt), `tests/integration/preorders.test.ts` (u. a. `GET /variants`, veraltete Schreibzugriffe,
   Storno-Sperre, „narrows the day to one place", `PUT /api/preorders/pickup-points/:id`),
   `tests/integration/preordersMaintenance.test.ts` (Anonymisierung, Import),
   `tests/unit/preordersModel.test.js` (`lockCancelled`), `tests/unit/deliveryPreorders.test.js`,

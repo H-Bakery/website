@@ -572,6 +572,9 @@ function computeLines(args) {
       }
       const b = bucket(item, variant)
       b.correction += qty
+      // „Heute keine“ an einer offenen Grundmenge: ausdrücklich gesetzt,
+      // nie aus einer Korrektur 0 abgeleitet
+      if (c.noneToday === true) b.noneToday = true
       if (typeof c.reason === 'string' && c.reason.trim())
         b.reasons.push(c.reason.trim())
     }
@@ -587,7 +590,10 @@ function computeLines(args) {
   // auch ohne Menge, und es gibt eine Warnung `base_unset`.
   const lines = []
   const unset = []
+  const decided = []
+  const noneObsolete = []
   const clamped = []
+  const emptyLines = []
   const noDoughDay = []
   const doughFar = []
   // U9: dieselben Stammdaten ohne Kalender - liegt der Teig nur wegen
@@ -635,10 +641,6 @@ function computeLines(args) {
             base = Number(baseDay) || 0
           }
         }
-        if (baseUnset)
-          unset.push(
-            variant ? `${item.name} – ${displayName(item, variant)}` : item.name
-          )
         const b = acc.get(lineKey(item.id, variant)) || {
           preorders: 0,
           cap: 0,
@@ -664,9 +666,28 @@ function computeLines(args) {
         const preorders = pooled ? round2(b.preorders) : preordersUp
         const cap = pooled ? round2(b.cap) : capUp
         const correction = tidy(b.correction, item.unit)
+        // Tagesentscheidung bei offener Grundmenge: Menge für heute (über die
+        // Korrektur) oder „Heute keine“. Die Grundmenge bleibt offen.
+        const noneToday = b.noneToday === true && correction === 0
+        const decision = doughCore.dayDecision({
+          baseUnset,
+          correction,
+          noneToday,
+        })
+        const fullName = variant
+          ? `${item.name} – ${displayName(item, variant)}`
+          : item.name
+        if (baseUnset && !decision) unset.push(fullName)
+        // „Heute keine“ wurde gesetzt, als die Grundmenge offen war - jetzt
+        // steht dort eine Zahl: nie still weiterrechnen.
+        if (noneToday && !baseUnset && base > 0)
+          noneObsolete.push({ name: fullName, base })
         const empty =
           base === 0 && preorders === 0 && cap === 0 && correction === 0
-        if (empty && !baseUnset && !a.includeEmpty) continue
+        // Ohne jede Menge steht die Zeile nicht auf dem Zettel - der
+        // Teigtag-Zettel nennt sie aber als „aufnehmbar“ (`emptyLines`),
+        // damit eine Korrektur sie am Tag dazunehmen kann.
+        const hidden = empty && !baseUnset && !a.includeEmpty
         // Eine Korrektur, die die Zeile unter 0 drueckt, wird auf 0 gekappt -
         // aber nie still: die Zeile traegt `correctionClamped`, es gibt eine
         // Warnung, und spaetere Vorbestellungen verschwaenden still in dem
@@ -708,6 +729,8 @@ function computeLines(args) {
           correctionReason: b.reasons.length ? b.reasons.join('; ') : null,
           total,
           ...(raw < 0 ? { correctionClamped: true } : {}),
+          ...(decision === 'none' ? { noneToday: true } : {}),
+          ...(decision ? { dayDecision: decision } : {}),
           tray: trayText(item.tray, total, item.unit),
           plu: item.plu,
           ...itemHintFields(item),
@@ -720,8 +743,24 @@ function computeLines(args) {
           // Grundmenge offen (ohne Korrektur): `total` ist nur das Bekannte -
           // eine Mindestmenge („≥ 4“), keine fertige Zahl (Regel 8).
           line.totalIsMinimum = doughCore.qtyUnknown(line)
-          if (!dough.found && !noDoughDay.includes(item.name))
+          if (!hidden && !dough.found && !noDoughDay.includes(item.name))
             noDoughDay.push(item.name)
+        }
+        if (decision && !hidden) {
+          decided.push(
+            decision === 'none'
+              ? `${fullName} – heute keine`
+              : `${fullName} – ${String(total).replace('.', ',')}${
+                  item.unit === 'Stück' ? '' : ` ${item.unit}`
+                }`
+          )
+        }
+        if (hidden) {
+          // Die Zeile „ohne Sorte“ eines Postens mit Sorten sammelt nur
+          // nicht zugeordnete Vorbestellungen - sie ist nichts zum Aufnehmen.
+          const unassigned = item.variants.length > 0 && variant === null
+          if (v2 && dough.found && !unassigned) emptyLines.push(line)
+          continue
         }
         lines.push(line)
       }
@@ -758,6 +797,29 @@ function computeLines(args) {
     })
   }
 
+  // Sichtbar auf Planung, Tablet und Druck: diese Mengen sind eine
+  // Entscheidung des Tages, keine Grundmenge (die bleibt offen).
+  if (decided.length > 0) {
+    warnings.push({
+      code: 'day_decisions',
+      items: decided,
+      message: `Tagesentscheidung für ${
+        WEEKDAY_NAMES[weekday]
+      } (Grundmenge offen): ${decided.join(', ')}.`,
+    })
+  }
+  if (noneObsolete.length > 0) {
+    warnings.push({
+      code: 'none_today_obsolete',
+      items: noneObsolete.map((x) => x.name),
+      message: `„Heute keine“ gilt nicht mehr, weil inzwischen eine Grundmenge eingetragen ist: ${noneObsolete
+        .map((x) => `${x.name} (jetzt ${String(x.base).replace('.', ',')})`)
+        .join(
+          ', '
+        )}. Bitte prüfen und, wenn heute nichts gemacht wird, mit einer Korrektur auf 0 bringen.`,
+    })
+  }
+
   // U9: Tag vor Schließtagen - Spalte gepflegt? Spezialbrot des Ausfalltags?
   if (open && ownDay && dayInfo.before) {
     const type = dayInfo.before.type
@@ -776,7 +838,13 @@ function computeLines(args) {
     }
     for (const c of dayInfo.before.closedDays) {
       if (!cfg.days.includes(c.weekday)) continue
-      const specials = cfg.items.filter((i) => onlyOnWeekday(i, c.weekday))
+      // Steht der Posten über die Spalte des Tages (z. B. `samstag_ersatz`)
+      // schon auf dem Zettel - mit Menge > 0 oder offen (`null`, Zeile
+      // „Grundmenge fehlt“) -, braucht es kein „heute oder später?“. Eine 0
+      // in der Spalte plant ihn nicht ein: der Hinweis bleibt.
+      const specials = cfg.items.filter(
+        (i) => onlyOnWeekday(i, c.weekday) && !plannedBySpecial(i, type)
+      )
       if (specials.length === 0) continue
       warnings.push({
         code: 'closed_day_specials',
@@ -845,6 +913,7 @@ function computeLines(args) {
     seasonFactor,
     sections,
     lines: ordered,
+    emptyLines,
     warnings,
   }
 }
@@ -854,13 +923,32 @@ function computeLines(args) {
  * nur an diesem Wochentag.
  */
 function onlyOnWeekday(item, weekday) {
-  const qty = (v) =>
-    v !== null && typeof v === 'object'
-      ? Object.values(v).reduce((n, x) => n + (Number(x) || 0), 0)
-      : Number(v) || 0
   const entries = Object.entries(item.base || {})
-  if (!(qty(item.base[weekday]) > 0)) return false
-  return entries.every(([wd, v]) => Number(wd) === weekday || !(qty(v) > 0))
+  if (!(baseQty(item.base[weekday]) > 0)) return false
+  return entries.every(([wd, v]) => Number(wd) === weekday || !(baseQty(v) > 0))
+}
+
+/** Summe eines Grundmengen-Eintrags (Zahl oder je Sorte); offen zählt 0. */
+function baseQty(v) {
+  return v !== null && typeof v === 'object'
+    ? Object.values(v).reduce((n, x) => n + (Number(x) || 0), 0)
+    : Number(v) || 0
+}
+
+/**
+ * Steht der Posten über die Spalte des Tagestyps auf dem Zettel? Ja bei
+ * Menge > 0 und bei „offen“ (`null`, auch je Sorte: die Zeile erscheint mit
+ * `baseUnset`); nein ohne Spalte und bei 0 (keine Zeile).
+ */
+function plannedBySpecial(item, type) {
+  const special = item.baseSpecial
+  if (!special || !Object.prototype.hasOwnProperty.call(special, type))
+    return false
+  const v = special[type]
+  if (v === null) return true
+  if (typeof v === 'object' && Object.values(v).some((x) => x === null))
+    return true
+  return baseQty(v) > 0
 }
 
 /** `2026-11-28` → „Samstag, 28.11.“ (Hinweise). */
@@ -1625,6 +1713,7 @@ function computeDoughDay(args) {
     ? plan.bakeDates
     : [{ date, itemIds: [] }, ...plan.bakeDates]
   const tagged = []
+  const taggedEmpty = []
   const lineCounts = new Map()
   for (const b of runs) {
     const r = computeLines({
@@ -1641,6 +1730,7 @@ function computeDoughDay(args) {
     })
     lineCounts.set(b.date, r.lines.length)
     r.lines.forEach((line, index) => tagged.push({ line, index }))
+    r.emptyLines.forEach((line, index) => taggedEmpty.push({ line, index }))
     for (const w of r.warnings) {
       warnings.push(b.date === date ? w : { ...w, bakeDate: b.date })
     }
@@ -1784,6 +1874,10 @@ function computeDoughDay(args) {
     bread: parts.bread,
     rolls: parts.rolls,
     openMasterData: parts.openMasterData,
+    // Posten dieses Zettels ohne jede Menge (Grundmenge 0, nichts bestellt),
+    // je Abschnitt: sie stehen nicht in `lines`, lassen sich aber per
+    // Korrektur aufnehmen.
+    addable: sectionsOf(cfg, sortSheetLines(cfg, taggedEmpty)),
   }
 }
 

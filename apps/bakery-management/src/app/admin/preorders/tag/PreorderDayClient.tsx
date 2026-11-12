@@ -42,6 +42,7 @@ import {
 import PaymentNote from '../../../../components/preorders/PaymentNote'
 import PreorderStatusChip from '../../../../components/preorders/PreorderStatusChip'
 import {
+  fetchPickupPointInfo,
   fetchPreorderDay,
   preorderErrorMessage,
 } from '../../../../lib/preordersApi'
@@ -54,6 +55,7 @@ import {
   formatItems,
   formatPickupPlace,
   isBusinessDate,
+  closedPickupDay,
   isProductionDay,
   nextProductionDate,
   paymentState,
@@ -61,6 +63,7 @@ import {
   toBusinessDate,
   variantLabel,
   type PreorderChannel,
+  type PickupDays,
   type PreorderDay,
 } from '../../../../lib/preordersTypes'
 import { TOUCH_LINK_STYLE } from '../../../../lib/muiTheme'
@@ -235,14 +238,29 @@ export default function PreorderDayClient({
   const [day, setDay] = useState<PreorderDay | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Gesperrte Abholtage vom Server (Z14); `null` = nur der Ruhetag.
+  const [pickupDays, setPickupDays] = useState<PickupDays | null>(null)
 
+  // Vorgabetag: der nächste Tag, an dem abgeholt werden kann - Schließtage
+  // des Kalenders übersprungen. Ohne Antwort des Servers gilt nur der Montag.
   useEffect(() => {
-    setDate((current) =>
-      isBusinessDate(current)
-        ? current
-        : nextProductionDate(toBusinessDate(new Date()))
-    )
+    let active = true
+    const today = toBusinessDate(new Date())
+    const applyDays = (days: PickupDays | null) => {
+      if (!active) return
+      setPickupDays(days)
+      setDate((current) =>
+        isBusinessDate(current) ? current : nextProductionDate(today, days)
+      )
+    }
+    fetchPickupPointInfo()
+      .then((info) => applyDays(info.pickupDays))
+      .catch(() => applyDays(null))
+    return () => {
+      active = false
+    }
   }, [])
+  const closedDay = closedPickupDay(pickupDays, date, false)
 
   const load = useCallback(async () => {
     if (!isBusinessDate(date)) return
@@ -429,10 +447,22 @@ export default function PreorderDayClient({
           </>
         }
       >
-        {isBusinessDate(date) && !isProductionDay(date) && (
+        {isBusinessDate(date) && !isProductionDay(date) ? (
           <Alert severity="info" className="preorder-day-noprint">
             Montag ist Ruhetag - an diesem Tag wird nicht gebacken.
           </Alert>
+        ) : (
+          closedDay?.code === 'geschlossen' && (
+            <Alert
+              severity="info"
+              className="preorder-day-noprint"
+              data-testid="preorder-day-closed"
+            >
+              An diesem Tag ist die Bäckerei geschlossen
+              {closedDay.reason ? ` (${closedDay.reason})` : ''} - neue
+              Vorbestellungen sind für diesen Tag nicht möglich.
+            </Alert>
+          )
         )}
 
         {error && (
@@ -448,7 +478,7 @@ export default function PreorderDayClient({
             data-testid="preorder-day-empty"
             title="Für diesen Tag ist nichts vorbestellt."
             action={
-              canWrite && isProductionDay(date) ? (
+              canWrite && !closedDay ? (
                 <Button
                   component={NextLink}
                   href={`/admin/preorders/neu?date=${date}`}

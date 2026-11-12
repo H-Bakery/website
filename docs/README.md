@@ -35,7 +35,8 @@
 [dienstplan](./api/dienstplan.md) · [recipes](./api/recipes.md)
 
 **Apps:** [landing](./apps/landing.md) · [shop](./apps/shop.md) · [delivery](./apps/delivery.md) ·
-[partybrezel](./apps/partybrezel.md) (Klick-Prototyp, nicht im Pilot)
+[partybrezel](./apps/partybrezel.md) (Klick-Prototyp, nicht im Pilot) ·
+[digitale-baeckerei](./apps/digitale-baeckerei.md) (3D-Laden, Plan)
 
 ## Historical (pre-pilot, not maintained)
 

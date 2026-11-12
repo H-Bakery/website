@@ -270,3 +270,59 @@ describe('Rest-Auswertung', () => {
     }
   })
 })
+
+describe('Rest-Auswertung - Schließtage aus dem Kalender (Z14)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    mocked.downloadRestCsv.mockResolvedValue(undefined)
+  })
+
+  it('ein Schließtag ist „geschlossen“ - keine Lücke, mit Grund am Tag', async () => {
+    const base = summary()
+    mocked.fetchRestSummary.mockResolvedValue({
+      ...base,
+      counts: { ...base.counts, geschlossen: 1 },
+      days: [
+        ...base.days,
+        {
+          date: '2026-12-08',
+          weekday: 2,
+          weekdayName: 'Dienstag',
+          status: 'geschlossen',
+          byUnit: {},
+          dayKind: {
+            kind: 'geschlossen',
+            label: 'Geschlossen',
+            detail: 'Inventur',
+            note: 'Inventur',
+            holidayName: null,
+            baseWeekday: null,
+            openUntil: null,
+          },
+        },
+      ],
+    })
+    render(<RestAuswertungClient />)
+    await screen.findByTestId('item-weck')
+    expect(screen.getByTestId('day-counts').textContent).toContain(
+      '4 Ruhetage · 1 geschlossen'
+    )
+    const closed = screen
+      .getByTestId('daily-chart')
+      .querySelector('[data-status="geschlossen"]')
+    expect(closed?.getAttribute('aria-label')).toBe(
+      'Di, 08.12.: geschlossen (Inventur)'
+    )
+    // keine gestrichelte Lücke
+    expect(closed?.querySelector('[stroke-dasharray]')).toBeNull()
+  })
+
+  it('ohne Schließtag steht nichts davon da', async () => {
+    mocked.fetchRestSummary.mockResolvedValue(summary())
+    render(<RestAuswertungClient />)
+    await screen.findByTestId('item-weck')
+    expect(screen.getByTestId('day-counts').textContent).not.toContain(
+      'geschlossen'
+    )
+  })
+})

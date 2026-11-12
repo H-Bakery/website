@@ -52,6 +52,29 @@ die Überarbeitung „Backzettel v2" (Z10) ist dort geplant - dieses Dokument be
   `null`-Zeile erscheint mit `baseUnset: true` (Warnung `base_unset`); nicht zu 0 zusammenlegen.
   Gefüllte Posten (`filling_g`) brauchen die Grundmenge je Variante, sonst fehlt sie im
   Füllungsbedarf (der Validator lehnt eine bloße Zahl ab).
+- **Tagesentscheidung bei offener Grundmenge („Heute keine“ / Menge für heute).** Eine offene
+  Zeile lässt sich am Tag entscheiden, ohne die Grundmenge anzufassen: eine **Menge** über die
+  Korrektur (Korrektur ≠ 0 auf `baseUnset`), **„Heute keine“** über das eigene Kennzeichen
+  `noneToday` - eine Korrektur 0 heißt weiter nur „keine Korrektur“, daraus wird nie eine 0. Eine
+  Regel im Teig-Kern: `dayDecision(line)` → `'none'` | `'amount'` | `null`; `qtyUnknown` (und damit
+  `totalIsMinimum`, Teig-kg, Liter, Chargen, Bruch, Füllungsbedarf) ist nur noch `true`, solange
+  nichts entschieden ist. **Ein Teig hat seine Literzahl, sobald jede offene Zeile dieses Teigs
+  entschieden ist.** „Heute keine“ gilt der Grundmenge: Vorbestelltes und CAP werden trotzdem
+  gemacht (Gesamt = das Bekannte, als fertige Zahl). Die Zeile behält `baseUnset: true`, trägt
+  `dayDecision` (und `noneToday`), steht nicht mehr in der Warnung `base_unset`, dafür im Hinweis
+  `day_decisions` („Tagesentscheidung für Dienstag (Grundmenge offen): Testkäse – heute keine,
+  Testvital – 30.“). Bildschirm, Tablet, Backliste und Druck zeigen es über `baseOpenText` /
+  `minQtyText` (`backzettelFormat.ts`): Menge „keine“ bzw. die Zahl, dazu „Heute keine ·
+  Grundmenge offen“ / „Für heute festgelegt · Grundmenge offen“ - nie eine Basis 0. Eine
+  „Heute keine“-Zeile zählt in keinem Bruch und keinem Teig; sie steht deshalb nicht im
+  Brötchen-Block, sondern als Zeile ihres Abschnitts darunter (Planung, Druck) bzw. in der
+  Zeilenliste (Tablet). Freigeben friert die Entscheidung ein (`backzettel_lines.none_today`,
+  `unsetKeys`), der hq-Schnappschuss trägt `dayDecision` an der Zeile (`base` bleibt `null`).
+  Wird die Grundmenge später in hq gesetzt (> 0), gilt ein gespeichertes „Heute keine“ nicht
+  mehr - mit Warnung `none_today_obsolete`, nie still. Im Editor (`CorrectionEditor`) heißt das
+  Feld bei offener Grundmenge „Menge für heute“ (kein ±, Grund vorbelegt „Menge für heute“);
+  Knopf „Heute keine“ oder eine eingetippte 0 = keine, leeres Feld bzw. „Wieder offen“ = wieder
+  offen. Die API lehnt „Heute keine“ an einer Zeile mit Grundmenge ab (400 `base_not_open`).
 - **Variante = Füllungs-ID.** Gefüllte Ware ohne Variante zählt im Teig, aber nicht in der Füllung
   (`filling_unassigned`); unbekannte Produkte/Varianten werden als Warnung gemeldet, nie verschluckt.
 - **Vorbereitungen mit Variante** (`by_weekday: { 6: gross }`) zeigen die ID nur als Notbehelf
@@ -65,6 +88,15 @@ die Überarbeitung „Backzettel v2" (Z10) ist dort geplant - dieses Dokument be
 - **Eine Korrektur darf die Zeile nicht unter 0 drücken** (400 `correction_exceeds_line`). Wird eine
   Zeile später kleiner (Grundmenge, Storno), steht sie mit `correctionClamped` und der Warnung
   `correction_exceeds_line` da - nie still auf 0.
+- **Posten ohne Menge stehen nicht auf dem Zettel, lassen sich aber aufnehmen (`addable`).** Eine
+  Zeile mit Grundmenge 0 (oder ohne Eintrag für den Wochentag) und ohne Vorbestellung, CAP und
+  Korrektur fehlt in `lines`/`sections` - so sind Posten gepflegt, die nur an manchen Tagen laufen
+  („0, Korrektur am Tag“). `computeDoughDay` nennt sie je Abschnitt in `addable` (dieselbe
+  Zeilenform, alles 0, mit `bakeDate`/`doughDate`), die API gibt sie am **Entwurf** weiter. Eine
+  Korrektur ≠ 0 nimmt die Zeile auf: sie steht dann im Zettel und zählt in Teig, Liter und Bruch;
+  Korrektur 0 nimmt sie wieder herunter. Nie dabei: Zeilen mit offener Grundmenge (`null` - die
+  stehen als „offen“ auf dem Zettel), die Zeile „ohne Sorte“ eines Postens mit Sorten, Posten
+  eines Backtags, den der Zettel nicht trägt. `computeDay` (v1) kennt das Feld nicht.
 - **Bleche zählen nach der Menge der Zeile** (`trayText(tray, total, unit)`): `per_tray` ist Stück je
   Blech, bei 40 Croissants à 12 heißt es „4 Bleche à 12 (Bleche 1, 2 + 2 weitere)", nicht „2 Bleche
   à 12". Ohne `per_tray`, ohne Menge oder bei Litern bleibt die reine Blechliste aus der YAML.
@@ -104,7 +136,11 @@ Kerne behalten ihre Signaturen. Plan-Kern, Tagesrechnung, API und Druck fragen `
   (normalisiert als `item.baseSpecial`, nie unter den Wochentagen), sonst die eigene; hat kein
   Posten die Spalte, Warnung `special_base_missing`. Spezialbrot des Ausfalltags (Grundmenge > 0
   nur an dessen Wochentag) steht als Hinweis `closed_day_specials` da - verteilt wird nicht
-  automatisch.
+  automatisch. Ein Posten, den die Spalte des Tages einplant (`base.samstag_ersatz` am
+  Samstags-Satz-Tag mit Menge > 0 oder offen/`null`), steht schon auf dem Zettel und fehlt im
+  Hinweis (vorläufig, Z14: sonst fragte ein gepflegter Samstags-Satz bei jedem Posten „heute oder
+  später backen?“). Eine **0** in der Spalte plant ihn nicht ein - er steht nicht auf dem Zettel,
+  also bleibt der Hinweis (gilt für jeden Ausfalltag, nicht nur den Samstag).
 - **Vorbestellungen an einem geschlossenen Tag** fallen nie still weg: der Zettel des Teigtags davor
   meldet sie (`preorders_on_closed_day` mit Datum und Feiertag). Sonderproduktion (der Tag wird
   Backtag nur mit den Aufträgen) ist geplant, aber noch nicht gebaut (offene Inhaber-Frage).
@@ -112,8 +148,16 @@ Kerne behalten ihre Signaturen. Plan-Kern, Tagesrechnung, API und Druck fragen `
   hat zu), auch wenn die Bäckerei offen ist (vorläufig).
 - **Anzeige:** `dayKind` an jedem Teigtag-Zettel (`label` „Samstags-Satz“, „Vor Feiertag“, „Wie
   Sonntag“, „Nur Teig (Laden geschlossen)“, `detail` mit Notiz und den geschlossenen Tagen);
-  Planungsseite und Tablet als Hinweis über dem Zettel, der Druck fett unter dem Datum.
+  Planungsseite und Tablet als Hinweis über dem Zettel, der Druck im Tagestyp-Rahmen unter dem
+  Datum: `label` so groß wie der Rahmen, `detail` dahinter in der Grundschrift (siehe „Druck eines
+  Teigtag-Zettels“).
   `computeDay` (v1) trägt `dayKind` nur mit Kalender, damit die v1-Aufnahmen gleich bleiben.
+- **Derselbe Kalender für alle (Z14):** Vorbestellungen (Abholtag), **Rest am Abend**
+  (`countDayStatus` in `rest-am-abend.core.js`: Schließtag = `geschlossen`, keine Lücke) und der
+  **Dienstplan** (`dayInfo` in `vacation.core.js`: `closed`, Tagestyp, Öffnungszeit) fragen
+  `dayKind` - keine zweite Feiertags- oder Schließtag-Regel. Der Dienstplan nimmt als Wochenplan
+  seine Öffnungstage (alle außer den Ruhetagen der Finanz-Config). Details:
+  [rest-am-abend.md](rest-am-abend.md), [dienstplan.md](dienstplan.md).
 - **Prüfung:** `node apps/bakery-api/scripts/validate-kalender.js <kalender.yaml> [backzettel.yaml]`,
   im hq-CI vendored (`sync-from-website.sh`). Fehlt die Datei, die es auf `main` gab, ist das im
   hq-CI ein Fehler.
@@ -262,6 +306,14 @@ Körnermischung, g: 600 }] }`). Der Kern (`bruchGroups`) rechnet `addons[].g` = 
   Doppelweck die Hälfte), `spare` in Teigstücken. Liter werden vom ungerundeten Quotienten
   gerundet (6,01 kg ÷ 3 = 2,003 L → auf 0,5 L aufgerundet 2,5). Die Hefeteig-Karte nimmt kg, Liter
   und Chargen aus der Teigsumme des Zettels - dieselbe Zahl wie die Maschinenleiste.
+- **Kleine Menge unter der Rundungsstufe: nie „0 L“.** Rundet die Regel des Teigs eine Menge > 0
+  auf 0 (Hefeteig „auf ganze Liter“: ein unter der Woche aufgenommener Kranz, 1,2 kg ÷ kg je Liter
+  = 0,3 L → 0), liefert `litersFromRaw` `rounded: null`, `reason: 'below_rounding_step'` und
+  `step`; überall stehen dann die kg und die **genauen Liter** mit Grund („0,3 L · unter 1 L,
+  nicht gerundet“, `litersExactWhy`). Die Rundung selbst ändert sich nicht - sie gilt den großen
+  Ansätzen. Gleiches für Zugaben je Liter (Gramm, nie „0 g“). Ob ein Kranz unter der Woche
+  überhaupt frischen Hefeteig braucht (oder aus dem Froster kommt), ist eine offene
+  Inhaber-Frage - bis dahin zeigt der Kasten, was die Stammdaten ergeben.
 
 ## Grundmengen (Z4, `/admin/backzettel/grundmengen`)
 
@@ -291,7 +343,15 @@ erweitertes `GET /api/backzettel/config`.
   gesetzt“** (Feld leer, Platzhalter „–“; der Zettel nimmt die Wochentags-Menge), nicht 0. Leeren
   entfernt den Schlüssel in hq (`PUT /config/base` mit `weekday: 'vor_feiertag'`, `value: null`); eine
   neue Sorten-Spalte beginnt mit den übrigen Sorten offen (`null`), nie 0, und sind alle Sorten leer,
-  verschwindet die Spalte. Keine Referenz, kein Bruch-Hinweis; das Druckbild zeigt sie (noch) nicht.
+  verschwindet die Spalte. Keine Referenz, kein Bruch-Hinweis. Im Druckbild stehen beide Spalten
+  nach So (immer, auch leer - zum Eintragen von Hand): gesetzt = Zahl, **nicht gesetzt = leeres
+  Feld, nie 0**, offene Sorte „offen“, Postenzeile mit Sorten „je Sorte“. Leer heißt dort nur
+  „Spalte fehlt am Posten“: ist sie gesetzt, druckt jede Zelle, was der Zettel rechnet - eine im
+  Sorten-Eintrag fehlende Sorte und die Sorten unter einer Gesamtzahl „0“, die Postenzeile eine
+  Gesamtzahl auch als „0“ und eine ganz offene Spalte „offen“; eine wartende Änderung
+  „7 \* (–)“ (vorher nicht gesetzt) bzw. „\* (6)“ (Eintrag entfernt). Die Kopfzeile erklärt die
+  Kürzel („Vor FT = Vor Feiertag, Sa-Satz = Samstags-Satz: leer = nicht gesetzt, es gilt die Menge
+  des Wochentags“).
 - **Referenzwert grau neben jeder Zelle:** Median der verkauften Stück an den letzten 6 gleichen
   Wochentagen **mit Kassenbericht**, über die `plu`-Liste des Postens. Tage ohne Bericht sind Lücken,
   nicht 0. Er wird **nie** übernommen - nur Information. Umgerechnet mit **demselben Faktor wie der
@@ -304,7 +364,8 @@ erweitertes `GET /api/backzettel/config`.
   Kassennummer der Größe (fehlt oder `null` = offen) steht „unbekannt“ - nie 0, nie ein Anteil;
   hat der Posten selbst keine `plu`, bleiben auch die Größen-Zeilen leer. Im Hinweis steht zusätzlich „Rest am Abend Ø"
   (`GET /api/rest/averages`, nur Information, siehe [rest-am-abend.md](rest-am-abend.md)).
-- **Drucken:** eigenes Druckbild (`GrundmengenPrint.tsx`, A4 quer, schwarz auf weiß, alle Tage Di–So,
+- **Drucken:** eigenes Druckbild (`GrundmengenPrint.tsx`, A4 quer, schwarz auf weiß, alle Tage Di–So
+  und die Sonderspalten „Vor FT“ / „Sa-Satz“,
   geänderte Werte mit `*` und dem freigegebenen in Klammern, Referenz „≈ n“ klein unter dem Wert,
   bei einer Größe ohne eigene Kassennummer „≈ unbekannt“ wie am Bildschirm, nie leer); das Bildschirm-Raster
   (`grundmengen-screen-only`) und die App-Hülle fallen im Druck weg. Mit `page.pdf()` prüfen, nicht mit
@@ -342,6 +403,12 @@ erweitertes `GET /api/backzettel/config`.
   erste nach heute** (heute wird schon gebacken). Je Tag ein `GET /api/backzettel/:datum` (ohne
   Nebenwirkung) und „Vorbestellungen in N Zeilen" statt einer Stücksumme (Zeilen stehen in
   Produktionseinheiten, Viertel aufgerundet).
+- **„Weiteren Posten aufnehmen“** (`components/backzettel/AddLineCard.tsx`, nur Entwurf und nur
+  wer planen darf): unter den Abschnitten ein Knopf mit der Zahl der Posten ohne Menge; Auswahl je
+  Abschnitt (`day.addable`, Brötchen eines späteren Backtags mit „· für Mi 02.12.“), dann der
+  gewöhnliche Korrektur-Editor (Menge, Grund Pflicht). Gespeichert wird über denselben
+  `PUT …/correction` wie an einer Zeile, mit `bakeDate`. Ohne das ließ sich ein Posten mit
+  Grundmenge 0 am Tag gar nicht eintragen (zwei Marmorkuchen, ein Kranz unter der Woche).
 - **Bildschirm:** ab `md` eine Tabelle je Abschnitt (feste Spaltenbreiten), darunter Karten; beide
   stehen im DOM und werden per CSS umgeschaltet (Specs greifen über `table-<abschnitt>` /
   `line-card-<key>`). Offene Nachträge: Zeile mit Warnrand + Chip, Karte „Nachträge seit der Freigabe"
@@ -354,9 +421,13 @@ erweitertes `GET /api/backzettel/config`.
   „für So“ / „für Di“ darunter, ein voller Samstag auf mehreren Blättern. Aufbau:
   1. **Kopf:** Wochentag groß (30 pt), Datum, Stempel „FREIGEGEBEN“ bzw. „ENTWURF – noch nicht
      freigegeben“; darunter gerahmt der **Tagestyp** (`sheetDayTypeText`: „Heute backen + Teig
-     für So 29.11. und Di 01.12.“, „Nur Teig für …“, „Backtag ohne Teig“). Hier stellt der
-     Kalender (U9) später „vor Feiertag“ o. Ä. davor. Darunter Freigabe, Saisonfaktor,
-     „Blatt 1 von n“.
+     für So 29.11. und Di 01.12.“, „Nur Teig für …“, „Backtag ohne Teig“). Der Kalender (U9)
+     stellt seinen Tagestyp als eigene Zeile davor (`.dd-daykind`): der Name („Samstags-Satz“,
+     „Vor Feiertag“ …) fett in der Größe des Rahmens, dahinter in der Grundschrift die Angaben
+     („– danach geschlossen: Fr 25.12. …, Sa 26.12. …“) - nicht mehr in der kleinen Schrift, die
+     in der dichtesten Stufe unter 9 pt läge (Z14, vorläufig bis die Bäcker es benutzt haben).
+     `firstHeaderMm(s, day)` zählt diese Zeile(n) mit (`dayKindHeadLines`, eine lange Liste von
+     Schließtagen bricht um). Darunter Freigabe, Saisonfaktor, „Blatt 1 von n“.
   2. **„Teige heute“ – Liter zuerst:** eine Zeile je Maschinen-Kasten, die Liter groß (24 pt),
      kg, Chargen, Zugaben, für welche Backtage („heute + So + Di“, `boxBakeDaysText`) und ein
      Kästchen „angesetzt“. Hefeteig: „Wasser … L“.
@@ -419,6 +490,14 @@ erweitertes `GET /api/backzettel/config`.
   `data-print-sheets` sein. Stand U8 (Z13), synthetische Instanz aus `make-hq.js --busy-saturday`:
   voller Samstag (47 Zeilen) 3 Seiten in Stufe 0, Mittwoch bis Freitag und Sonntag je 2 Seiten in
   Stufe 0; überall Seiten = geschätzte Blätter, die Schätzung liegt 5-10 % über der gemessenen Höhe.
+  **Samstags-Satz (Z14, Tagestyp `before` / `samstag_ersatz`):** druckt wie ein voller Samstag -
+  drei Blätter, Tagestyp gerahmt auf Blatt 1, kein Block geteilt. Nachgemessen mit
+  `MAKE_HQ_FLAGS=--samstag-ersatz` (`start.sh`; `make-hq.js` schreibt dann die Spalte
+  `samstag_ersatz` an jeden Samstags-Posten und einen Kalender mit einem geschlossenen Samstag,
+  das Datum des Samstags-Satz-Tags steht als `samstagErsatz` in `hq-info.json`): Fr vor dem
+  geschlossenen Sa und Do 24.12.2026 (Fr + Sa Feiertag) je 3 Seiten in Stufe 0 (11 pt), Seiten =
+  geschätzte Blätter, Kopf mit Tagestyp 6,5 mm höher als ohne (geschätzt 6,5 mm). Spec-Fixture:
+  `samstagsSatzV2Draft` (der volle Samstag am Freitag davor).
   In den Specs: `busySaturdayV2Draft/Confirmed` (`backzettelFixtures.ts`) ist der größte
   Teigtag-Zettel; `dayPrintLayout.spec.ts` prüft Blöcke, Blattaufteilung, „(Forts.)"-Teilung und
   dass kein Blatt über die Seitenhöhe geschätzt wird.
@@ -513,7 +592,7 @@ zu den Namenskacheln). Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhabe
   `admin/backzettel/[datum]/BackzettelDayClient.spec.tsx`,
   `admin/backzettel/grundmengen/GrundmengenClient.spec.tsx`,
   `components/backzettel/BackzettelPrint.spec.tsx`, Z10-Druck: `src/lib/dayPrintLayout.spec.ts`,
-  `components/backzettel/{DoughDayPrint,BakeListPrint}.spec.tsx`, Druck-Auswahl in
+  `components/backzettel/{DoughDayPrint,BakeListPrint,AddLineCard}.spec.tsx`, Druck-Auswahl in
   `admin/backzettel/[datum]/BackzettelDayClient.v2.spec.tsx`; `app/backstube/BackstubeClient.spec.tsx`,
   `components/backstube/backstubeColors.spec.ts`. Fixtures erfunden: `src/lib/backzettelFixtures.ts`
   (eindeutige Zeilen-IDs je Zeile), `src/lib/grundmengenFixtures.ts`.

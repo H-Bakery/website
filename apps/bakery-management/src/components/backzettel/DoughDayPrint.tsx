@@ -23,7 +23,6 @@ import {
   deltaDoughLines,
   formatDate,
   formatDateLong,
-  dayKindLine,
   formatFactor,
   formatKnownGrams,
   formatNumber,
@@ -36,6 +35,8 @@ import {
   linesByKey,
   litersLabel,
   minQtyText,
+  baseOpenText,
+  litersExactWhy,
   previouslyDoneText,
   variantLabel,
   WEEKDAY_NAMES,
@@ -109,14 +110,19 @@ const doughDayPrintStyles = (
           lineHeight: 1.2,
         },
         '.dd-print .dd-stamp.draft': { borderStyle: 'dashed' },
-        // Tagestyp: gerahmt, groß - hier setzt der Kalender (U9) später
-        // „vor Feiertag“ o. Ä. davor.
+        // Tagestyp: gerahmt, groß - der Kalender (U9) setzt „Samstags-Satz“,
+        // „Vor Feiertag“ o. Ä. in derselben Größe davor (`.dd-daykind`).
         '.dd-print .dd-daytype': {
           border: '1.5pt solid #000',
           padding: '0.8mm 2.5mm',
           margin: '2mm 0 1mm',
           fontSize: 'calc(var(--dd-font) * 1.35)',
           fontWeight: 700,
+        },
+        '.dd-print .dd-daykind strong': { fontWeight: 800 },
+        '.dd-print .dd-daykind-detail': {
+          fontSize: 'var(--dd-font)',
+          fontWeight: 400,
         },
         '.dd-print .dd-meta': { margin: '0 0 1mm' },
         // Kopf ab Blatt 2.
@@ -269,7 +275,10 @@ export function printLiters(liters: DoughLiters | null | undefined): {
     }
   }
   if (liters.rounded === null) {
-    return { text: `${formatNumber(liters.exact)} L`, hint: 'Rundung offen' }
+    return {
+      text: `${formatNumber(liters.exact)} L`,
+      hint: litersExactWhy(liters),
+    }
   }
   return { text: `${formatNumber(liters.rounded)} L`, hint: null }
 }
@@ -341,11 +350,18 @@ function FirstHeader({
         </div>
       </div>
       <div className="dd-daytype" data-testid="dd-daytype">
-        {/* U9: Tagestyp aus dem Kalender, fett vor dem Teig-Hinweis */}
-        {dayKindLine(day.dayKind) && (
-          <strong className="dd-sub" data-testid="dd-day-kind">
-            {dayKindLine(day.dayKind)}
-          </strong>
+        {/* U9/Z14: Tagestyp aus dem Kalender - der Name („Samstags-Satz“)
+            so groß wie der Rahmen, die Schließtage dahinter in Grundschrift */}
+        {day.dayKind?.label && (
+          <div className="dd-daykind" data-testid="dd-day-kind">
+            <strong data-testid="dd-day-kind-label">{day.dayKind.label}</strong>
+            {day.dayKind.detail && (
+              <span className="dd-daykind-detail">
+                {' – '}
+                {day.dayKind.detail}
+              </span>
+            )}
+          </div>
         )}
         {sheetDayTypeText(day)}
       </div>
@@ -473,7 +489,7 @@ function DoughsPrint({
  */
 function singleQty(cell: BreadCell & { unit: BackzettelUnit }): string {
   const text = minQtyText(cell, cell.unit)
-  if (text === 'offen') return text
+  if (text === 'offen' || text === 'keine') return text
   return formatQty(cell.total, cell.unit) === formatNumber(cell.total)
     ? `${text} ${cell.unit || 'Stück'}`
     : text
@@ -487,8 +503,16 @@ function breadDetails(
   inDoughBox: boolean
 ): string[] {
   const out: string[] = []
-  if (row.single?.baseUnset) out.push('Grundmenge offen')
-  const open = sizes.filter((sz) => row.cells[sz.id]?.baseUnset)
+  if (row.single?.baseUnset) out.push(baseOpenText(row.single) as string)
+  // Tagesentscheidung je Größe („500 g: Heute keine · Grundmenge offen“)
+  for (const sz of sizes) {
+    const cell = row.cells[sz.id]
+    if (cell?.baseUnset && cell.dayDecision)
+      out.push(`${sz.label}: ${baseOpenText(cell)}`)
+  }
+  const open = sizes.filter(
+    (sz) => row.cells[sz.id]?.baseUnset && !row.cells[sz.id]?.dayDecision
+  )
   if (open.length > 0) {
     out.push(`Grundmenge offen: ${open.map((sz) => sz.label).join(', ')}`)
   }
@@ -700,7 +724,7 @@ function RollsTable({
             const line = lineByKey.get(s.key)
             const detail = [
               s.pieces === null ? 'Teigstücke offen' : null,
-              s.baseUnset ? 'Grundmenge offen' : null,
+              baseOpenText(s),
             ].filter(Boolean)
             return (
               <tr key={s.key} data-testid={`dd-single-${s.key}`}>
@@ -869,7 +893,7 @@ function DoughBlockPrint({
 
 function lineDetail(line: BackzettelLine): string {
   return [
-    line.baseUnset ? 'Grundmenge offen' : null,
+    baseOpenText(line),
     line.preorders > 0
       ? `inkl. ${formatNumber(line.preorders)} vorbestellt`
       : null,

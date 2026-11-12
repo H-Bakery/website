@@ -1382,6 +1382,128 @@ describe('Abholtag an Schließtagen des Kalenders (Z14)', () => {
     expect(ok(at('2027-01-01')).pickupDate).toBe('2027-01-01')
   })
 
+  describe('Bearbeiten: gespeicherter Tag', () => {
+    const MONDAY_POINT = { ...POINT, id: 'montag-test', weekday: 1 }
+    const withMonday = (calendar) =>
+      opts({
+        ...rules(calendar),
+        findPickupPoint: (id) =>
+          id === MONDAY_POINT.id ? MONDAY_POINT : findPickupPoint(id),
+      })
+    const edit = (existing, body, calendar = cfg) =>
+      core.normalizeOrderInput(body, existing, withMonday(calendar))
+    const atPoint = ok(
+      core.normalizeOrderInput(
+        {
+          ...LADEN,
+          channel: 'sammelstelle',
+          pickupPointId: MONDAY_POINT.id,
+          pickupTime: null,
+          pickupDate: '2026-11-16',
+        },
+        null,
+        withMonday(cfg)
+      )
+    )
+
+    it('bleibt am selben Ort bearbeitbar, auch wenn er inzwischen gesperrt ist', () => {
+      // Sammelstelle am Montag: eine Notiz ändern geht
+      expect(ok(edit(atPoint, { note: 'Bitte schneiden' })).pickupDate).toBe(
+        '2026-11-16'
+      )
+      // Laden am inzwischen geschlossenen Sa 21.11.
+      const shop = { ...ok(at('2026-11-20')), pickupDate: '2026-11-21' }
+      expect(ok(edit(shop, { note: 'Bitte schneiden' })).pickupDate).toBe(
+        '2026-11-21'
+      )
+    })
+
+    it('Wechsel von der Sammelstelle in den Laden prüft den Tag neu (Ruhetag)', () => {
+      const res = edit(atPoint, {
+        channel: 'telefon',
+        pickupPointId: null,
+        pickupTime: '08:30',
+      })
+      expect(res.error).toBe('ruhetag')
+      expect(res.message).toBe(
+        'Am Montag, 16.11.2026, ist Ruhetag - bitte einen anderen Abholtag wählen.'
+      )
+      // mit einem offenen Tag geht der Wechsel
+      expect(
+        ok(
+          edit(atPoint, {
+            channel: 'telefon',
+            pickupPointId: null,
+            pickupTime: '08:30',
+            pickupDate: '2026-11-17',
+          })
+        ).pickupPointId
+      ).toBeNull()
+    })
+  })
+
+  describe('closedPickupDays: die Liste für die Maske', () => {
+    const list = (calendar) =>
+      core.closedPickupDays(rules(calendar).pickupRules)
+
+    it('nennt Fenster, Schließtage mit Grund und Ruhetage - mit derselben Regel', () => {
+      const days = list(cfg)
+      expect(days).toMatchObject({
+        from: '2026-10-11',
+        to: '2027-11-11',
+        calendar: true,
+      })
+      const byDate = Object.fromEntries(days.closed.map((d) => [d.date, d]))
+      expect(byDate['2026-11-19']).toEqual({
+        date: '2026-11-19',
+        code: 'geschlossen',
+        reason: 'Betriebsferien',
+        message:
+          'Am Donnerstag, 19.11.2026 (Betriebsferien), ist die Bäckerei geschlossen - bitte einen anderen Abholtag wählen.',
+        shopOnly: false,
+      })
+      expect(byDate['2026-12-25']).toMatchObject({
+        code: 'geschlossen',
+        reason: '1. Weihnachtstag',
+        shopOnly: false,
+      })
+      // Ruhetag: nur im Laden gesperrt; die Sonderöffnung fehlt
+      expect(byDate['2026-11-16']).toMatchObject({
+        code: 'ruhetag',
+        reason: null,
+        shopOnly: true,
+      })
+      expect(byDate['2026-11-23']).toBeUndefined()
+      expect(byDate['2026-11-17']).toBeUndefined()
+      // 2027 steht nicht im Kalender: Neujahr ist kein erfundener Schließtag
+      expect(byDate['2027-01-01']).toBeUndefined()
+      // jeder Eintrag ist genau das, was das Speichern ablehnt
+      for (const d of days.closed) {
+        expect(at(d.date).error).toBe(d.code)
+      }
+      expect(days.closed.map((d) => d.date)).toEqual(
+        days.closed.map((d) => d.date).sort()
+      )
+    })
+
+    it('ohne Kalender nur die Montage', () => {
+      const days = list(null)
+      expect(days.calendar).toBe(false)
+      expect(days.closed.length).toBeGreaterThan(50)
+      expect(
+        days.closed.every(
+          (d) =>
+            d.code === 'ruhetag' && d.shopOnly && core.weekdayOf(d.date) === 1
+        )
+      ).toBe(true)
+    })
+
+    it('ohne Regeln keine Liste', () => {
+      expect(core.closedPickupDays(null)).toBeNull()
+      expect(core.closedPickupDays({ today: 'heute' })).toBeNull()
+    })
+  })
+
   it('eine bestehende Bestellung bleibt auf ihrem Tag bearbeitbar', () => {
     const existing = { ...ok(at('2026-11-17')), pickupDate: '2026-11-19' }
     const res = core.normalizeOrderInput(

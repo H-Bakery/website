@@ -66,6 +66,7 @@ import {
   hasVerkaufShifts,
   mondayOf,
   openingHoursText,
+  specialDayLabel,
   parseAreaFilter,
   parsePeriod,
   parseView,
@@ -1005,6 +1006,7 @@ function DayHeader({
   today: boolean
 }) {
   const closedName = day ? closedDayLabel(day) : null
+  const specialName = day ? specialDayLabel(day) : null
   const hours = day ? openingHoursText(day) : null
   return (
     <TableCell
@@ -1027,6 +1029,15 @@ function DayHeader({
       {closedName && (
         <Typography variant="caption" sx={{ display: 'block' }}>
           {closedName}
+        </Typography>
+      )}
+      {specialName && (
+        <Typography
+          variant="caption"
+          sx={{ display: 'block' }}
+          data-testid={`special-${date}`}
+        >
+          {specialName}
         </Typography>
       )}
       {day?.halfDayName && !day.closed && (

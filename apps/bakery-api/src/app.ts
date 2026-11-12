@@ -306,6 +306,11 @@ export function createApp(options: CreateAppOptions = {}): Application {
     createDienstplanRouter({
       financeDir: options.hq?.financeDir,
       log: options.hq?.log?.warn,
+      // Z14: same calendar (kalender.yaml) as Backzettel and Rest am Abend
+      calendar: () => {
+        const loaded = backzettel.source.load()
+        return loaded.ok ? loaded.config.calendar : null
+      },
       ...options.dienstplan,
     })
   )

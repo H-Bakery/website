@@ -103,6 +103,26 @@ describe('backzettelApi', () => {
       '/api/backzettel/2026-11-28/lines/weck/correction',
       { correction: 0, reason: null }
     )
+    // „Heute keine“ (Grundmenge offen): eigenes Kennzeichen, Grund freiwillig
+    await setCorrection(
+      '2026-11-28',
+      'weck',
+      null,
+      0,
+      'Froster voll',
+      { correction: 0, reason: null },
+      { bakeDate: '2026-12-01', noneToday: true }
+    )
+    expect(client.put).toHaveBeenLastCalledWith(
+      '/api/backzettel/2026-11-28/lines/weck/correction',
+      {
+        correction: 0,
+        reason: 'Froster voll',
+        noneToday: true,
+        expected: { correction: 0, reason: null },
+        bakeDate: '2026-12-01',
+      }
+    )
   })
 
   it('Saison, Freigeben, Wieder öffnen, Abhaken, Quittieren', async () => {

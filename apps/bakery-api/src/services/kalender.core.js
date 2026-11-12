@@ -2,8 +2,9 @@
 // wie Sonntag, Sonderöffnung, nur Teig - genau einmal.
 //
 // Dependency-freies CommonJS wie `backzettel-plan.core.js`. Stammdaten in hq
-// `config/kalender.yaml` (privat); Backzettel, Backliste und später
-// Vorbestellung, Rest am Abend und Dienstplan fragen hier, nicht selbst.
+// `config/kalender.yaml` (privat); Backzettel, Backliste, Vorbestellung,
+// Rest am Abend (`rest-am-abend.core.js` `countDayStatus`) und Dienstplan
+// (`vacation.core.js` `dayInfo`, Z14) fragen hier, nicht selbst.
 //
 //   Grundregel: gesetzlicher Feiertag (Saarland) = geschlossen - aber nur für
 //   die Jahre, die die Datei unter `feiertage` aufführt (und die Liste muss
@@ -873,4 +874,5 @@ module.exports = {
   baseFor,
   leadDays,
   shortDate,
+  addDays,
 }

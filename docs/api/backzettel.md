@@ -9,18 +9,18 @@ delta reconciliation, frozen lines, `deltaBakeExtras`. Master data: `backzettel-
 
 ## Day endpoints (Z3)
 
-| Endpoint                                         | Who                | Body / answer                                                                                                    |
-| ------------------------------------------------ | ------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `GET /config`                                    | any session        | `{ status: ok \| no-config, source, config, errors, warnings, recipesMissing, catalogSize }` (+ Z4 fields below) |
-| `GET /:date`                                     | any session        | day (below); `{ date, status: 'no-config', reasons }` without master data                                        |
-| `GET /:date/prep`                                | any session        | `{ date, weekday, weekdayName, status, prepDate (d−1), prepDateProvisional, prep[] }`                            |
-| `PUT /:date/season`                              | inhaber, backstube | `{ factor, expectedFactor? }` (0 < f ≤ 5, 2 decimals, `"1,2"` ok) → day; draft only                              |
-| `PUT /:date/lines/:itemId[/:variant]/correction` | inhaber, backstube | `{ correction, reason, expected? }`, reason required ≠ 0, 0 clears → day; draft only                             |
-| `POST /:date/confirm`                            | inhaber, backstube | → confirmed day                                                                                                  |
-| `POST /:date/reopen`                             | inhaber            | `{ reason? }` → draft day                                                                                        |
-| `POST /:date/lines/:lineId/done` / `/undone`     | inhaber, backstube | `{ expectedTotal? }` → `{ id, date, itemId, variant, doneAt, doneBy }`; confirmed only                           |
-| `POST /:date/deltas/:id/ack`                     | inhaber, backstube | → `{ id, …, acknowledgedAt, acknowledgedBy }`, idempotent                                                        |
-| `POST /:date/deltas/ack`                         | inhaber, backstube | `{ ids: [...] }` (1-500), all or nothing                                                                         |
+| Endpoint                                         | Who                | Body / answer                                                                                                          |
+| ------------------------------------------------ | ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `GET /config`                                    | any session        | `{ status: ok \| no-config, source, config, errors, warnings, recipesMissing, catalogSize }` (+ Z4 fields below)       |
+| `GET /:date`                                     | any session        | day (below); `{ date, status: 'no-config', reasons }` without master data                                              |
+| `GET /:date/prep`                                | any session        | `{ date, weekday, weekdayName, status, prepDate (d−1), prepDateProvisional, prep[] }`                                  |
+| `PUT /:date/season`                              | inhaber, backstube | `{ factor, expectedFactor? }` (0 < f ≤ 5, 2 decimals, `"1,2"` ok) → day; draft only                                    |
+| `PUT /:date/lines/:itemId[/:variant]/correction` | inhaber, backstube | `{ correction, reason, expected?, noneToday? }`, reason required ≠ 0, 0 clears → day; draft only („Heute keine“ below) |
+| `POST /:date/confirm`                            | inhaber, backstube | → confirmed day                                                                                                        |
+| `POST /:date/reopen`                             | inhaber            | `{ reason? }` → draft day                                                                                              |
+| `POST /:date/lines/:lineId/done` / `/undone`     | inhaber, backstube | `{ expectedTotal? }` → `{ id, date, itemId, variant, doneAt, doneBy }`; confirmed only                                 |
+| `POST /:date/deltas/:id/ack`                     | inhaber, backstube | → `{ id, …, acknowledgedAt, acknowledgedBy }`, idempotent                                                              |
+| `POST /:date/deltas/ack`                         | inhaber, backstube | `{ ids: [...] }` (1-500), all or nothing                                                                               |
 
 A correction `reason` or reopen `reason` with control characters is 400 `INVALID_TEXT`.
 
@@ -34,7 +34,39 @@ line plus `id` (row id, or null in a draft without a stored row), `correctionBy`
 `doneBy`, `previouslyDone`, `bakedAt`, `bakedBy`, `previouslyBaked` (O5, Z10 section), `delta { qty, open, count } | null`. `variant` is `null` for "none" in
 JSON, `''` in the tables and in the URL (omit the segment).
 
-**Errors:** 400 `invalid_date` / `validation` / `reason_required` / `date_out_of_range`, 404
+**„Heute keine“ / amount of the day for an open Grundmenge.** A line whose base is `null` in hq
+(`baseUnset`) can be decided for the day without touching the base:
+
+- a **concrete amount** is a correction ≠ 0 as before (reason required);
+- **none today** is `PUT …/correction { noneToday: true }` (`correction` omitted or 0, `reason`
+  optional). A correction of 0 **without** the flag still only clears - nothing ever turns „offen“
+  into 0 by itself. `noneToday` with an amount is 400 `validation`; on a line whose base is not
+  open (a number, also 0) it is 400 `base_not_open` (German `message`: use a correction).
+- Stored in `backzettel_lines.none_today` (migration below); `expected` may carry `noneToday`
+  (default `false`), `correction_changed` answers `current.noneToday`. Audit `correction` rows
+  carry `from.noneToday` / `to.noneToday`.
+- Lines (draft and confirmed), bread cells, Bruch `split` members and `rolls` singles carry
+  `dayDecision: 'none' | 'amount'` when decided (absent otherwise), a none line also
+  `noneToday: true`; `baseUnset` stays `true`, `totalIsMinimum` becomes `false`. The dough of the
+  line is complete once every open line of that dough is decided (`dayDecision` /
+  `qtyUnknown` in `backzettel-dough.core.js`). Warnings: `day_decisions` (per bake day, names the
+  decided lines - frozen with the sheet), `none_today_obsolete` (a stored „Heute keine“ on a line
+  that has a base > 0 meanwhile: it no longer applies, the line counts its base). `base_unset`
+  lists only undecided lines. A none line is in no Bruch group and no dough part.
+- A stored flag only counts while the line is still open. Once hq has a base for the day (stale
+  flag), the line view carries no `noneToday`/`correctionBy`, `expected` without `noneToday` is
+  no conflict, and the next correction write (also a plain clear, also from „Weiteren Posten
+  aufnehmen“ when the base became 0) resets the flag; its audit row says
+  `from.noneToday: true, noneTodayObsolete: true`.
+- Confirm stores the flag with the row, reopen keeps it, a re-confirm without the decision resets
+  it. The hq snapshot (schema 2) adds `dayDecision` to such a line, `base` stays `null`.
+
+**Litres below the rounding step.** `liters` (doughs, machine boxes, delta notes) is
+`{ exact, rounded: null, reason: 'below_rounding_step', step }` when the dough's rounding would
+turn an amount > 0 into 0 (one Kranz on a weekday: 1.2 kg of Hefeteig, whole litres) - never
+`rounded: 0`. Same for add-on grams (`grams.rounded: null`, `reason: 'below_rounding_step'`).
+
+**Errors:** 400 `invalid_date` / `validation` / `reason_required` / `base_not_open` / `date_out_of_range`, 404
 `unknown_item` / `unknown_variant` / `not_found` / `not_on_bake_list` (O5, bake ticks), 409 `ruhetag` (weekday not in `config.days`), `geschlossen` (U9: holiday or closing day of the calendar, `message` names it, `note`),
 `no_config` (with `reasons`), `confirmed`, `not_confirmed`, `season_changed`,
 `correction_changed`, `line_changed`.
@@ -161,15 +193,15 @@ Design: [../backzettel-v2.md](../backzettel-v2.md) §5. A day is now the **sheet
 later bake day (Saturday: Sunday's and Tuesday's rolls). With today's hq file (no `lead`, no
 `dough_days`) every line has `bakeDate === date` and the answer is the v1 day plus additive fields.
 
-| Endpoint                                           | Who                | Change                                                                                                                                                                                                                                                                                                                                        |
-| -------------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /config`                                      | any session        | + `open` and `working.open`: open master data `[{ path, code, message }]` (explicit `null`s, §3)                                                                                                                                                                                                                                              |
-| `GET /:date`                                       | any session        | + `sheetVersion` (2; 1 = confirmed before Z10), `isDoughDay`, `bakeDates[{ date, weekday, weekdayName, label, lineCount }]`, `plan`, `doughs`, `machine`, `bread`, `rolls`, `openMasterData`; lines + `bakeDate`, `doughDate`, `lead`, `variantKind`, `variantLabel`, `bruch?`; deltas + `bakeDate`; confirmed + `deltaMachine`, `deltaBruch` |
-| `GET /:date/bake-list`                             | any session        | **new**: `{ date, weekday, weekdayName, status: ok \| no-config \| ruhetag \| geschlossen, sources[{ doughDate, status: draft \| confirmed, confirmedAt, lineCount }], sections, rolls, deltas, deltasPending, warnings }` - no dough figures                                                                                                 |
-| `PUT /:date/lines/:itemId[/:variant]/correction`   | inhaber, backstube | + optional `bakeDate` (default `date`): must be a bake day of the sheet on which the item is made from this sheet's dough → else 400 `invalid_bake_date`; a pair another confirmed sheet holds → 409 `owned_elsewhere` (`sheetDate`)                                                                                                          |
-| `POST /:date/lines/:lineId/done`, `…/deltas/…/ack` | inhaber, backstube | answers + `bakeDate`; on a lead > 0 line "done" means **made** - baked is its own tick on the bake list (next rows, O5)                                                                                                                                                                                                                       |
-| `POST /:date/bake/:lineId/baked` / `/unbaked`      | inhaber, backstube | **new (O5, 2026-11-08)**: „gebacken“ for one row of the bake list of `:date` (row id as for done); `{ expectedTotal? }` → `{ id, date, bakeDate, itemId, variant, bakedAt, bakedBy }`                                                                                                                                                         |
-| `POST /:date/bake/deltas/baked` / `/unbaked`       | inhaber, backstube | **new (O5)**: „gebacken“ for Nachträge `{ ids: [...] }` (1-500, all or nothing) → the deltas with `bakedAt`, `bakedBy`, `acknowledgedAt`, `acknowledgedBy`; baked also acknowledges                                                                                                                                                           |
+| Endpoint                                           | Who                | Change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /config`                                      | any session        | + `open` and `working.open`: open master data `[{ path, code, message }]` (explicit `null`s, §3)                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `GET /:date`                                       | any session        | + `sheetVersion` (2; 1 = confirmed before Z10), `isDoughDay`, `bakeDates[{ date, weekday, weekdayName, label, lineCount }]`, `plan`, `doughs`, `machine`, `bread`, `rolls`, `openMasterData`; lines + `bakeDate`, `doughDate`, `lead`, `variantKind`, `variantLabel`, `bruch?`; deltas + `bakeDate`; confirmed + `deltaMachine`, `deltaBruch`; draft + `addable[{ id, label, lines }]` (items of the sheet without any quantity - not in `sections`; a correction ≠ 0 puts the line on the sheet) |
+| `GET /:date/bake-list`                             | any session        | **new**: `{ date, weekday, weekdayName, status: ok \| no-config \| ruhetag \| geschlossen, sources[{ doughDate, status: draft \| confirmed, confirmedAt, lineCount }], sections, rolls, deltas, deltasPending, warnings }` - no dough figures                                                                                                                                                                                                                                                     |
+| `PUT /:date/lines/:itemId[/:variant]/correction`   | inhaber, backstube | + optional `bakeDate` (default `date`): must be a bake day of the sheet on which the item is made from this sheet's dough → else 400 `invalid_bake_date`; a pair another confirmed sheet holds → 409 `owned_elsewhere` (`sheetDate`)                                                                                                                                                                                                                                                              |
+| `POST /:date/lines/:lineId/done`, `…/deltas/…/ack` | inhaber, backstube | answers + `bakeDate`; on a lead > 0 line "done" means **made** - baked is its own tick on the bake list (next rows, O5)                                                                                                                                                                                                                                                                                                                                                                           |
+| `POST /:date/bake/:lineId/baked` / `/unbaked`      | inhaber, backstube | **new (O5, 2026-11-08)**: „gebacken“ for one row of the bake list of `:date` (row id as for done); `{ expectedTotal? }` → `{ id, date, bakeDate, itemId, variant, bakedAt, bakedBy }`                                                                                                                                                                                                                                                                                                             |
+| `POST /:date/bake/deltas/baked` / `/unbaked`       | inhaber, backstube | **new (O5)**: „gebacken“ for Nachträge `{ ids: [...] }` (1-500, all or nothing) → the deltas with `bakedAt`, `bakedBy`, `acknowledgedAt`, `acknowledgedBy`; baked also acknowledges                                                                                                                                                                                                                                                                                                               |
 
 - **Line keys:** `itemId|variant` when `bakeDate === date` (all v1 keys stay valid), else
   `itemId|variant@bakeDate`. Rows are looked up by (sheet date, bake date, item, variant).
@@ -286,9 +318,18 @@ later bake day (Saturday: Sunday's and Tuesday's rolls). With today's hq file (n
 - **Migration** `20270210000000-backzettel-baked.js` (O5): `baked_at` DATE and `baked_by` (FK
   `users`, ON DELETE SET NULL) on `backzettel_lines` and `backzettel_deltas`, nullable, nothing
   backfilled; `down()` drops them in place. Models: `bakedAt`, `bakedBy`.
+- **Migration** `20270310000000-backzettel-none-today.js`: `backzettel_lines.none_today` BOOLEAN
+  NOT NULL DEFAULT 0, nothing backfilled - every stored row reads „not decided“, so drafts and
+  confirmed sheets from before keep their meaning (an open line without a correction stays
+  „offen“). `down()` drops the column in place. Model: `BackzettelLine.noneToday`.
 - **Preorders:** `preorder-variants.ts` passes the size of a size product (`variants: []` +
   `size`); the entry form asks for no Sorte, the preorder stores `variant: ''`, the core puts it on
   its size.
+
+Tests for „Heute keine“ and the small litre figure: `tests/unit/backzettelDough.test.js`
+(„Tagesentscheidung bei offener Grundmenge“, „Kleine Menge unter der Rundungsstufe“),
+`tests/unit/backzettelDay.test.js` (`parseCorrection`, `correctionsFromRows`, `frozenLine`),
+`tests/integration/backzettelNoneToday.test.ts`, `tests/migrations/pilotBaseline.test.ts`.
 
 Tests: `tests/integration/backzettelV2.test.ts` (synthetic hq from `configV2()`: Saturday sheet with
 Sunday/Tuesday rolls, Sunday without dough, Monday 409, bake lists, corrections with `bakeDate`,

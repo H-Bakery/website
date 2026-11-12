@@ -68,12 +68,37 @@ export interface RestLine {
   restExceedsShop?: boolean
 }
 
+/**
+ * Tagestyp aus dem Kalender der Bäckerei (`kalender.core.js`, Z14) - nur
+ * wenn ein Kalender geladen ist. `label` ist `null` am normalen Tag.
+ */
+export interface RestDayKind {
+  kind:
+    | 'normal'
+    | 'ruhetag'
+    | 'geschlossen'
+    | 'wie-sonntag'
+    | 'sonderoeffnung'
+    | 'teigtag'
+  label: string | null
+  detail: string | null
+  note: string | null
+  holidayName: string | null
+  baseWeekday: number | null
+  openUntil: string | null
+}
+
 export interface RestDay {
   date: string
   weekday: number
   weekdayName: string | null
   today: string
-  status: 'ok' | 'no-config' | 'ruhetag'
+  /**
+   * `geschlossen` = Schließtag laut Kalender (Feiertag, Betriebsferien, nur
+   * Teig): nichts zu zählen - keine Lücke und keine 0.
+   */
+  status: 'ok' | 'no-config' | 'ruhetag' | 'geschlossen'
+  dayKind?: RestDayKind
   reasons?: { path?: string; message: string }[]
   backzettelStatus: 'confirmed' | 'draft' | null
   window: { from: string; to: string }
@@ -120,6 +145,7 @@ export type RestDayStatus =
   | 'counted_without_backzettel'
   | 'nothing_baked'
   | 'ruhetag'
+  | 'geschlossen'
   | 'future'
 
 export interface RestTotal {
@@ -176,6 +202,8 @@ export interface RestSummaryDay {
   weekday: number
   weekdayName: string | null
   status: RestDayStatus
+  /** Nur an Tagen, zu denen der Kalender etwas sagt (Z14). */
+  dayKind?: RestDayKind
   byUnit: Record<
     string,
     { shopBaked: number; rest: number; rate: number | null }
@@ -196,6 +224,8 @@ export interface RestSummary {
     notCounted: number
     noBackzettel: number
     ruhetag: number
+    /** Schließtage laut Kalender (Z14) - weder Lücke noch Ruhetag. */
+    geschlossen?: number
     future: number
   }
   totals: RestTotal[]
@@ -490,7 +520,18 @@ export const DAY_STATUS_LABELS: Record<RestDayStatus, string> = {
   counted_without_backzettel: 'gezählt, Backzettel nicht freigegeben',
   nothing_baked: 'nichts gebacken',
   ruhetag: 'Ruhetag',
+  geschlossen: 'geschlossen',
   future: 'noch nicht',
+}
+
+/**
+ * Text zum Tagestyp des Kalenders, z. B. „Sonderöffnung (wie Samstag) ·
+ * Testmarkt“; `null` am normalen Tag oder ohne Kalender. Reine Anzeige -
+ * was der Tag ist, entscheidet die API.
+ */
+export function dayKindText(kind: RestDayKind | undefined): string | null {
+  if (!kind || !kind.label) return null
+  return kind.detail ? `${kind.label} · ${kind.detail}` : kind.label
 }
 
 /** „Di, 01.12.“ */

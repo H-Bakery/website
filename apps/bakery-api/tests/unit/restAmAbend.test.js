@@ -1273,3 +1273,187 @@ describe('Backzettel v2: Laibgrößen und Backliste (R30)', () => {
     })
   })
 })
+
+describe('Kalender (Z14): Schließtag ist „geschlossen“, keine Lücke und keine 0', () => {
+  const kalender = require('../../src/services/kalender.core')
+  const feiertage = (year) =>
+    kalender
+      .holidaysSaarland(year)
+      .map((h) => ({ datum: h.date, name: h.name }))
+  // Erfundener Kalender: Mi 02.12. Inventur, Do 03.12. nur Teig, Mo 07.12.
+  // Sonderöffnung wie Samstag; Mo 30.11. bleibt Ruhetag.
+  const withCalendar = {
+    ...config,
+    calendar: kalender.normalizeKalender({
+      version: 1,
+      bundesland: 'saarland',
+      feiertage: { 2026: feiertage(2026) },
+      tage: [
+        { datum: '2026-12-02', typ: 'geschlossen', notiz: 'Inventur' },
+        { datum: '2026-12-03', typ: 'teigtag', notiz: 'Teig für Freitag' },
+        {
+          datum: '2026-12-07',
+          typ: 'sonderoeffnung',
+          wie: 6,
+          notiz: 'Testmarkt',
+        },
+      ],
+    }),
+  }
+  const view = (cfg, date) =>
+    core.buildDayView({
+      date,
+      today: TODAY,
+      config: cfg,
+      catalog,
+      backzettel: null,
+      rows: [],
+    })
+
+  it('ohne Kalender bleibt alles wie zuvor - kein dayKind, Feiertag ein normaler Tag', () => {
+    expect(core.countDayStatus(config, '2026-12-02')).toEqual({
+      status: 'ok',
+      issue: null,
+      dayKind: null,
+    })
+    expect(core.countDayStatus(config, '2026-12-07')).toMatchObject({
+      status: 'ruhetag',
+      issue: 'Montag ist Ruhetag.',
+      dayKind: null,
+    })
+    expect(view(config, '2026-12-02')).not.toHaveProperty('dayKind')
+    expect(view(config, '2026-12-02')).toMatchObject({
+      status: 'ok',
+      editable: true,
+    })
+  })
+
+  it('Tagesansicht: Schließtag und Nur-Teig-Tag sind geschlossen, mit Grund', () => {
+    expect(view(withCalendar, '2026-12-02')).toMatchObject({
+      status: 'geschlossen',
+      editable: false,
+      editIssue:
+        'Mittwoch 02.12.: geschlossen (Inventur) - an diesem Tag gibt es keinen Rest zu zählen.',
+      dayKind: { kind: 'geschlossen', label: 'Geschlossen', note: 'Inventur' },
+    })
+    expect(view(withCalendar, '2026-12-03')).toMatchObject({
+      status: 'geschlossen',
+      editable: false,
+      editIssue: expect.stringMatching(/nur Teig, Laden geschlossen/),
+      dayKind: { kind: 'teigtag' },
+    })
+    // der Ruhetag bleibt Ruhetag
+    expect(
+      core.buildDayView({
+        date: '2026-11-30',
+        today: '2026-12-01',
+        config: withCalendar,
+        catalog,
+        backzettel: null,
+        rows: [],
+      })
+    ).toMatchObject({
+      status: 'ruhetag',
+      editIssue: 'Montag ist Ruhetag.',
+      dayKind: { kind: 'ruhetag' },
+    })
+  })
+
+  it('Tagesansicht: an einer Sonderöffnung am Ruhetag wird gezählt', () => {
+    expect(view(withCalendar, '2026-12-07')).toMatchObject({
+      status: 'ok',
+      editable: true,
+      editIssue: null,
+      dayKind: {
+        kind: 'sonderoeffnung',
+        label: 'Sonderöffnung (wie Samstag)',
+        baseWeekday: 6,
+      },
+    })
+  })
+
+  it('Auswertung: geschlossen zählt eigens - weder nicht gezählt noch Ruhetag', () => {
+    const s = core.summarize({
+      from: '2026-11-30',
+      to: '2026-12-07',
+      today: TODAY,
+      config: withCalendar,
+      catalog,
+      days: {
+        '2026-12-01': {
+          backzettel: bzDay('confirmed', [{ itemId: 'plunder', total: 10 }]),
+          rows: [row('plunder', 2)],
+          report: null,
+        },
+        '2026-12-07': {
+          backzettel: bzDay('confirmed', [{ itemId: 'plunder', total: 10 }]),
+          rows: [],
+          report: null,
+        },
+      },
+    })
+    const status = Object.fromEntries(s.days.map((d) => [d.date, d.status]))
+    expect(status).toMatchObject({
+      '2026-11-30': 'ruhetag',
+      '2026-12-01': 'counted',
+      '2026-12-02': 'geschlossen',
+      '2026-12-03': 'geschlossen',
+      // offen, Backzettel freigegeben, nichts gezählt: eine echte Lücke
+      '2026-12-07': 'not_counted',
+    })
+    expect(s.counts).toMatchObject({
+      ruhetag: 1,
+      geschlossen: 2,
+      notCounted: 1,
+      counted: 1,
+    })
+    expect(s.days.find((d) => d.date === '2026-12-02').dayKind).toMatchObject({
+      label: 'Geschlossen',
+      note: 'Inventur',
+    })
+    // der Tag davor trägt den Hinweis des Kalenders, ein normaler Tag nichts
+    expect(s.days.find((d) => d.date === '2026-12-01').dayKind).toMatchObject({
+      kind: 'normal',
+      label: 'Vor Schließtag',
+    })
+    expect(s.days.find((d) => d.date === '2026-12-05')).not.toHaveProperty(
+      'dayKind'
+    )
+    const plunder = s.items.find((i) => i.itemId === 'plunder')
+    expect(plunder.uncountedDates).toEqual(['2026-12-07'])
+    expect(core.summaryCsv(s)).toContain('geschlossen')
+  })
+
+  it('Auswertung: eine Zählung an einem Schließtag geht nicht verloren', () => {
+    const s = core.summarize({
+      from: '2026-12-02',
+      to: '2026-12-02',
+      today: TODAY,
+      config: withCalendar,
+      catalog,
+      days: {
+        '2026-12-02': { backzettel: null, rows: [row('plunder', 2)] },
+      },
+    })
+    expect(s.days[0].status).toBe('counted_without_backzettel')
+    expect(s.counts.geschlossen).toBe(0)
+  })
+
+  it('Rest Ø: ein Tag, der nach einem anderen Wochentag gebacken wurde, zählt nicht für seinen Wochentag', () => {
+    const confirmed = bzDay('confirmed', [{ itemId: 'plunder', total: 10 }])
+    const args = {
+      catalog,
+      today: TODAY,
+      weeks: 6,
+      weekdays: [1],
+      rowsByDate: { '2026-12-07': [row('plunder', 2)] },
+      backzettelByDate: { '2026-12-07': confirmed },
+    }
+    expect(
+      core.weekdayRestAverages({ ...args, config: withCalendar })[0].items
+    ).toEqual([])
+    expect(
+      core.weekdayRestAverages({ ...args, config })[0].items
+    ).toMatchObject([{ itemId: 'plunder', dates: ['2026-12-07'] }])
+  })
+})

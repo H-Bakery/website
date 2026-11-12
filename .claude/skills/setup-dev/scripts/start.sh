@@ -75,7 +75,9 @@ echo "[$NAME] hq ..."
 git_ init -q --bare -b main "$I/origin.git"
 git_ clone -q "$I/origin.git" "$I/seed" 2>/dev/null
 git_ -C "$I/seed" checkout -q -B main
-HQ_INFO="$(cd "$T" && node "$W/lib/make-hq.js" "$I/seed")"
+# MAKE_HQ_FLAGS: e.g. --busy-saturday or --samstag-ersatz (print checks, see lib/make-hq.js)
+# shellcheck disable=SC2086
+HQ_INFO="$(cd "$T" && node "$W/lib/make-hq.js" "$I/seed" ${MAKE_HQ_FLAGS:-})"
 echo "$HQ_INFO" > "$I/hq-info.json"
 git_ -C "$I/seed" add -A
 git_ -C "$I/seed" commit -q -m "synthetic hq (bakery-dev)"
