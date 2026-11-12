@@ -53,6 +53,11 @@ export interface Rig {
   onRuhe(cb: () => void): void
   /** Läuft gerade eine Fahrt oder federt der Blick zurück? */
   bewegt(): boolean
+  /**
+   * Bedienung sperren (Flug zum Start): Zeiger, Rad und Tasten bewirken
+   * nichts und zählen nicht als erste Geste, bis wieder entsperrt wird.
+   */
+  sperren(gesperrt: boolean): void
   dispose(): void
 }
 
@@ -98,6 +103,7 @@ export function createRig(o: {
   let ankunftCb: ((bp: Blickpunkt) => void) | null = null
   let ruheCb: (() => void) | null = null
   let ersteGesteGemeldet = false
+  let gesperrt = false
 
   const finger = new Map<number, Finger>()
   /** Ein Finger: Start, letzter Stand, ob schon gezogen wird. */
@@ -173,6 +179,7 @@ export function createRig(o: {
   }
 
   const onPointerDown = (e: PointerEvent) => {
+    if (gesperrt) return
     if (e.pointerType === 'mouse' && e.button !== 0) return
     meldeErsteGeste()
     finger.set(e.pointerId, { x: e.clientX, y: e.clientY })
@@ -308,6 +315,7 @@ export function createRig(o: {
   const onWheel = (e: WheelEvent) => {
     // Nur über dem Canvas: dort zoomt das Rad, die Seite scrollt nicht mit.
     e.preventDefault()
+    if (gesperrt) return
     meldeErsteGeste()
     const pixel =
       e.deltaMode === 1
@@ -323,6 +331,7 @@ export function createRig(o: {
   }
 
   const onKeyDown = (e: KeyboardEvent) => {
+    if (gesperrt) return
     if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return
     const ziel = e.target
     if (ziel instanceof Element && ziel.closest(TASTEN_FREMD)) return
@@ -407,6 +416,29 @@ export function createRig(o: {
     },
     bewegt() {
       return !disposed && kern.bewegt()
+    },
+    sperren(neu) {
+      if (disposed || gesperrt === neu) return
+      gesperrt = neu
+      if (!neu) return
+      // Eine laufende Berührung gilt nicht weiter: Ihr Loslassen findet
+      // keinen Finger mehr und ist damit weder Tipp noch Ziehen.
+      for (const id of finger.keys()) {
+        try {
+          element.releasePointerCapture?.(id)
+        } catch {
+          /* Zeiger schon weg */
+        }
+      }
+      finger.clear()
+      start = null
+      letzter = null
+      zwei = null
+      letzterTipp = null
+      if (ziehtGerade) {
+        ziehtGerade = false
+        kern.loslassen()
+      }
     },
     dispose() {
       if (disposed) return

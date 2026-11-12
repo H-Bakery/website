@@ -22,6 +22,8 @@ export interface BlickpunktLeisteProps {
   onWechsel: (id: string) => void
   /** Öffnet die Liste „Alles hier“. Ohne diese Funktion fehlt der Knopf. */
   onAllesHier?: () => void
+  /** Den Flug zum Start noch einmal zeigen (Knopf unter „Quellen“). */
+  onIntroNochmal?: () => void
 }
 
 /**
@@ -34,6 +36,7 @@ export default function BlickpunktLeiste({
   aktiv,
   onWechsel,
   onAllesHier,
+  onIntroNochmal,
 }: BlickpunktLeisteProps) {
   const index = blickpunkte.findIndex((b) => b.id === aktiv)
   const n = blickpunkte.length
@@ -154,7 +157,7 @@ export default function BlickpunktLeiste({
             </Button>
           )}
           <Box sx={{ ml: 'auto' }}>
-            <Quellen />
+            <Quellen onIntroNochmal={onIntroNochmal} />
           </Box>
         </Box>
       </Paper>

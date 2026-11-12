@@ -18,6 +18,13 @@ const {
 const GLB_PATH = path.join(__dirname, 'twin.fixture.glb')
 const SNAPSHOT_PATH = path.join(__dirname, 'products.snapshot.fixture.json')
 const GENERATOR_PATH = path.join(__dirname, 'build-fixture.mjs')
+/** Synthetisches Produkt-Modell für die Nahansicht und sein Index. */
+const PRODUKT_GLB_PATH = path.join(__dirname, 'produkt.fixture.glb')
+const PRODUKT_INDEX_PATH = path.join(__dirname, 'produkte-3d.fixture.json')
+const PRODUKT_GENERATOR_PATH = path.join(__dirname, 'build-produkt-fixture.mjs')
+/** Das eine Fixture-Produkt mit Nahansicht - und eines ohne. */
+const MIT_MODELL = { produkt: 'testbrot-500g', name: 'Testbrot' }
+const OHNE_MODELL = { produkt: 'testkekse', name: 'Testkekse' }
 
 /** Produkt-ID im Modell, die im Snapshot absichtlich fehlt. */
 const WAISE = {
@@ -77,7 +84,8 @@ function ausgeliefertesModell() {
 
 /**
  * Enthält ein Export (`out/`) genau die synthetischen Fixtures - das bereinigte
- * Mini-Modell und den Fixture-Snapshot, Byte für Byte? Liefert sonst die
+ * Mini-Modell, den Fixture-Snapshot und das eine Produkt-Modell der Nahansicht
+ * samt Index, Byte für Byte? Liefert sonst die
  * Meldung, was nicht stimmt. Dieselbe Prüfung für den e2e-Server
  * (`serve-fixture.js`) und den `build`-Job in CI: Das echte Modell und echte
  * Produkttexte dürfen in keinem öffentlichen Artefakt landen.
@@ -98,6 +106,27 @@ function exportFehler(outDir) {
     !fs.readFileSync(snapshot).equals(fs.readFileSync(SNAPSHOT_PATH))
   ) {
     return `${snapshot} ist nicht der synthetische Snapshot. Nur mit DIGITALE_BAECKEREI_FIXTURE=1 gebaut - nie mit echten Produkttexten.`
+  }
+  // Nahansicht: genau das eine synthetische Produkt-Modell und sein Index -
+  // nie ein echtes Modell aus dem Daten-Repo produkte-3d.
+  const produktDir = path.join(outDir, 'produkte-3d')
+  const dateien = fs.existsSync(produktDir)
+    ? fs.readdirSync(produktDir).sort()
+    : []
+  const erwartet = `${MIT_MODELL.produkt}.glb`
+  const index = path.join(outDir, 'data', 'produkte-3d.json')
+  if (
+    dateien.length !== 1 ||
+    dateien[0] !== erwartet ||
+    !fs
+      .readFileSync(path.join(produktDir, erwartet))
+      .equals(fs.readFileSync(PRODUKT_GLB_PATH)) ||
+    !fs.existsSync(index) ||
+    !fs.readFileSync(index).equals(fs.readFileSync(PRODUKT_INDEX_PATH))
+  ) {
+    return `${produktDir} enthält nicht genau das synthetische Produkt-Modell samt Index (gefunden: ${
+      dateien.join(', ') || 'nichts'
+    }). Nur mit DIGITALE_BAECKEREI_FIXTURE=1 gebaut - nie mit echten Produkt-Modellen.`
   }
   return null
 }
@@ -136,6 +165,11 @@ function erwarteteEintraege(moebel) {
 module.exports = {
   GENERATOR_PATH,
   GLB_PATH,
+  MIT_MODELL,
+  OHNE_MODELL,
+  PRODUKT_GENERATOR_PATH,
+  PRODUKT_GLB_PATH,
+  PRODUKT_INDEX_PATH,
   SNAPSHOT_PATH,
   VARIANTE,
   WAISE,

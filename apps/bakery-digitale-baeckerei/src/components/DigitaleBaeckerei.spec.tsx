@@ -2,9 +2,11 @@ import React from 'react'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Belegung, ProduktSnapshot } from '../lib/produkte/types'
-import { LISTE_LEER_TEXT } from './AllesHierListe'
+import { ENTDECKT_ZEILE_TEXT, LISTE_LEER_TEXT } from './AllesHierListe'
 import DigitaleBaeckerei, {
   BEREIT_TEXT,
+  INTRO_ANSAGE,
+  INTRO_LABEL,
   DATEN_FEHLER_TEXT,
   FEHLER_TEXT,
   KEINE_INFOS_HINWEIS,
@@ -16,9 +18,14 @@ import DigitaleBaeckerei, {
   kartenAnsage,
 } from './DigitaleBaeckerei'
 import { HINWEIS_TEXT } from './Hinweis'
+import { UEBERSPRINGEN_TEXT } from './IntroKnopf'
+import { INTRO_NOCHMAL_TEXT } from './Quellen'
+import { ladeNahansicht } from './ladeNahansicht'
 import { ladeViewer } from './ladeViewer'
 import { LADE_TEXT } from './Ladebild'
+import { ZURUECK_TEXT, nahansichtLabel } from './Nahansicht'
 import { OHNE_WEBGL_TEXT } from './OhneWebGL'
+import { NAHANSICHT_TEXT } from './ProduktSheet'
 import { AEPFELTASCHE, PROBEWECK, TESTBROT, VERBOTEN } from './testdaten'
 import ThemeRegistry from './ThemeRegistry'
 
@@ -27,6 +34,8 @@ import ThemeRegistry from './ThemeRegistry'
 // echten Szene auslösen - oder scheitert, wie ein Chunk im wackligen Netz.
 const mounts: Record<string, unknown>[] = []
 jest.mock('./ladeViewer', () => ({ ladeViewer: jest.fn() }))
+// Ebenso die Nahansicht: Ihr 3D-Code wird nie geladen.
+jest.mock('./ladeNahansicht', () => ({ ladeNahansicht: jest.fn() }))
 
 function FakeViewer(props: {
   modelUrl: string
@@ -44,7 +53,21 @@ function FakeViewer(props: {
   onErsteGeste?: () => void
   onWechselGeste?: (r: -1 | 1) => void
   onAuswahlImBild?: (slot: string, imBild: boolean) => void
+  intros?: readonly { id: string }[]
+  introNochmal?: number
+  introSchluss?: number
+  onIntro?: (laeuft: boolean) => void
 }) {
+  // Wie die echte Szene: Ein neuer Zähler ist ein Auftrag.
+  const { introNochmal = 0, introSchluss = 0, onIntro } = props
+  React.useEffect(() => {
+    if (introNochmal > 0) onIntro?.(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [introNochmal])
+  React.useEffect(() => {
+    if (introSchluss > 0) onIntro?.(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [introSchluss])
   React.useEffect(() => {
     mounts.push({
       modelUrl: props.modelUrl,
@@ -69,7 +92,40 @@ function FakeViewer(props: {
       aria-label={props.label}
       data-blickpunkt={props.blickpunkt.id}
       data-auswahl={props.auswahl ?? ''}
+      data-intros={(props.intros ?? []).map((i) => i.id).join(',')}
     >
+      <button
+        type="button"
+        onClick={() => {
+          props.onProgress(1)
+          props.onIntro?.(true)
+          props.onReady({
+            firstFrameMs: 1,
+            triangles: 12,
+            fill: null,
+            intro: { id: 'kurz', laeuft: true },
+          })
+        }}
+      >
+        fertig mit Flug
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          props.onProgress(1)
+          props.onReady({
+            firstFrameMs: 1,
+            triangles: 12,
+            fill: null,
+            intro: { id: 'kurz', laeuft: false },
+          })
+        }}
+      >
+        fertig, Flug abgestellt
+      </button>
+      <button type="button" onClick={() => props.onIntro?.(false)}>
+        Flug zu Ende
+      </button>
       <button type="button" onClick={() => props.onProgress(0.5)}>
         halb geladen
       </button>
@@ -162,15 +218,36 @@ const BELEGUNG: Belegung = {
   ],
 }
 
+/** Nur das Testbrot hat ein (erfundenes) 3D-Modell für die Nahansicht. */
+const MODELLE = {
+  version: 1,
+  modelle: {
+    [TESTBROT.id]: {
+      datei: `produkte-3d/${TESTBROT.id}.glb`,
+      bytes: 1234,
+      bbox_m: { min: [-0.1, 0, -0.05], max: [0.1, 0.08, 0.05] },
+    },
+  },
+}
+
 const fetchMock = jest.fn()
 
-function antworteMitDaten() {
-  fetchMock.mockImplementation(async (url: string) => ({
-    ok: true,
-    status: 200,
-    json: async () =>
-      url.endsWith('/data/belegung.json') ? BELEGUNG : SNAPSHOT,
-  }))
+function antworteMitDaten(modelle: unknown = MODELLE) {
+  fetchMock.mockImplementation(async (url: string) => {
+    if (url.endsWith('/data/produkte-3d.json') && modelle === null) {
+      return { ok: false, status: 404 }
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () =>
+        url.endsWith('/data/belegung.json')
+          ? BELEGUNG
+          : url.endsWith('/data/produkte-3d.json')
+          ? modelle
+          : SNAPSHOT,
+    }
+  })
 }
 
 function setup(strict = false) {
@@ -189,7 +266,7 @@ async function bereit(strict = false) {
   const { user } = setup(strict)
   await screen.findByTestId('fake-viewer')
   await user.click(screen.getByRole('button', { name: 'fertig' }))
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(strict ? 4 : 2))
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(strict ? 6 : 3))
   // Die Liste für Screenreader erscheint, sobald die Daten geladen sind.
   await screen.findByTestId('ohne-webgl')
   return { user }
@@ -200,6 +277,11 @@ const viewer = () => screen.getByTestId('fake-viewer')
 const sheet = () => screen.queryByTestId('produkt-sheet')
 
 const ladeViewerMock = ladeViewer as jest.MockedFunction<typeof ladeViewer>
+const ladeNahansichtMock = ladeNahansicht as jest.MockedFunction<
+  typeof ladeNahansicht
+>
+/** Was die (gemockte) Nahansicht gebaut und wieder abgebaut hat. */
+const nahansichten: { url: string; bytes?: number; dispose: jest.Mock }[] = []
 
 beforeEach(() => {
   mounts.length = 0
@@ -210,6 +292,17 @@ beforeEach(() => {
   ladeViewerMock.mockResolvedValue(
     FakeViewer as unknown as Awaited<ReturnType<typeof ladeViewer>>
   )
+  nahansichten.length = 0
+  ladeNahansichtMock.mockReset()
+  ladeNahansichtMock.mockResolvedValue((container, options) => {
+    const canvas = document.createElement('canvas')
+    canvas.setAttribute('role', 'img')
+    canvas.setAttribute('aria-label', options.label)
+    container.prepend(canvas)
+    const dispose = jest.fn(() => canvas.remove())
+    nahansichten.push({ url: options.url, bytes: options.bytes, dispose })
+    return { dispose }
+  })
   window.localStorage.clear()
 })
 
@@ -246,6 +339,7 @@ describe('DigitaleBaeckerei: Laden', () => {
     expect(fetchMock.mock.calls.map((c) => c[0]).sort()).toEqual([
       '/data/belegung.json',
       '/data/products.snapshot.json',
+      '/data/produkte-3d.json',
     ])
   })
 
@@ -680,6 +774,148 @@ describe('DigitaleBaeckerei: nichts auf dem Gerät', () => {
   })
 })
 
+describe('DigitaleBaeckerei: Nahansicht „In 3D ansehen“', () => {
+  // Laden, Karte und Dialog (MUI-Modal) in einem Test: auf den CI-Maschinen
+  // reichen die üblichen 5 s dafür nicht immer.
+  jest.setTimeout(30_000)
+
+  const knopf = () => screen.queryByRole('button', { name: NAHANSICHT_TEXT })
+
+  it('bietet den Knopf nur bei einem Produkt mit 3D-Modell an', async () => {
+    const { user } = await bereit()
+    await user.click(screen.getByRole('button', { name: 'tippe Testbrot' }))
+    expect(knopf()).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'tippe Probeweck' }))
+    expect(sheet()).toHaveTextContent('Probeweck')
+    expect(knopf()).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['fehlt (404)', null],
+    ['ist leer', { version: 1, modelle: {} }],
+    ['ist unlesbar', { irgendwas: true }],
+  ])(
+    'kein Knopf, wenn der Index %s - der Laden läuft weiter',
+    async (_, index) => {
+      antworteMitDaten(index)
+      const { user } = await bereit()
+      await user.click(screen.getByRole('button', { name: 'tippe Testbrot' }))
+      expect(sheet()).toHaveTextContent('Testbrot')
+      expect(knopf()).not.toBeInTheDocument()
+      expect(status()).toHaveTextContent(kartenAnsage('Testbrot'))
+      expect(ladeNahansichtMock).not.toHaveBeenCalled()
+    }
+  )
+
+  it('lädt den 3D-Code erst beim Öffnen, zeigt das Modell und gibt beim Schließen alles frei', async () => {
+    const { user } = await bereit()
+    await user.click(screen.getByRole('button', { name: 'tippe Testbrot' }))
+    expect(ladeNahansichtMock).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: NAHANSICHT_TEXT }))
+    const dialog = await screen.findByRole('dialog', { name: 'Testbrot' })
+    expect(
+      await within(dialog).findByRole('img', {
+        name: nahansichtLabel('Testbrot'),
+      })
+    ).toBeInTheDocument()
+    expect(nahansichten).toHaveLength(1)
+    expect(nahansichten[0]).toMatchObject({
+      url: `/produkte-3d/${TESTBROT.id}.glb`,
+      bytes: 1234,
+    })
+    expect(nahansichten[0].dispose).not.toHaveBeenCalled()
+
+    await user.click(within(dialog).getByRole('button', { name: ZURUECK_TEXT }))
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('img', { name: nahansichtLabel('Testbrot') })
+      ).not.toBeInTheDocument()
+    )
+    expect(nahansichten[0].dispose).toHaveBeenCalledTimes(1)
+    // Die Karte und der Laden dahinter sind noch da.
+    expect(sheet()).toHaveTextContent('Testbrot')
+    expect(viewer()).toHaveAttribute(
+      'data-auswahl',
+      'theke/vitrine/ebene-1/platz-01'
+    )
+    expect(mounts).toHaveLength(1)
+  })
+
+  it('Escape schließt nur die Nahansicht, die Karte bleibt offen', async () => {
+    const { user } = await bereit()
+    await user.click(screen.getByRole('button', { name: 'tippe Testbrot' }))
+    await user.click(screen.getByRole('button', { name: NAHANSICHT_TEXT }))
+    await screen.findByRole('img', { name: nahansichtLabel('Testbrot') })
+
+    await user.keyboard('{Escape}')
+    await waitFor(() =>
+      expect(screen.queryByTestId('nahansicht-buehne')).not.toBeInTheDocument()
+    )
+    expect(nahansichten[0].dispose).toHaveBeenCalledTimes(1)
+    expect(sheet()).toHaveTextContent('Testbrot')
+
+    // Jetzt gilt Escape wieder der Karte.
+    await user.keyboard('{Escape}')
+    expect(sheet()).not.toBeInTheDocument()
+  })
+
+  it('läuft unter React StrictMode: jede gebaute Nahansicht wird wieder abgebaut', async () => {
+    const { user } = await bereit(true)
+    await user.click(screen.getByRole('button', { name: 'tippe Testbrot' }))
+    await user.click(screen.getByRole('button', { name: NAHANSICHT_TEXT }))
+    await screen.findByRole('img', { name: nahansichtLabel('Testbrot') })
+    expect(
+      document.querySelectorAll('[data-testid="nahansicht-buehne"] canvas')
+    ).toHaveLength(1)
+
+    await user.click(screen.getByRole('button', { name: ZURUECK_TEXT }))
+    await waitFor(() =>
+      expect(screen.queryByTestId('nahansicht-buehne')).not.toBeInTheDocument()
+    )
+    expect(nahansichten.length).toBeGreaterThan(0)
+    for (const n of nahansichten) expect(n.dispose).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('DigitaleBaeckerei: Messhaken der Nahansicht (nur mit ?debug)', () => {
+  afterEach(() => {
+    delete window.__digitaleBaeckerei
+  })
+
+  it('öffnet die Nahansicht eines Modells ohne Karte - und nur für IDs aus dem Index', async () => {
+    // Den Haken legt sonst die Szene an (createViewer, nur mit ?debug).
+    window.__digitaleBaeckerei = {} as NonNullable<
+      typeof window.__digitaleBaeckerei
+    >
+    await bereit()
+    const haken = window.__digitaleBaeckerei
+    await waitFor(() => expect(haken?.nahansicht).toBeDefined())
+
+    let ergebnis: boolean | undefined
+    act(() => {
+      ergebnis = haken?.nahansicht?.('gibt-es-nicht')
+    })
+    expect(ergebnis).toBe(false)
+    expect(screen.queryByTestId('nahansicht-buehne')).not.toBeInTheDocument()
+
+    act(() => {
+      ergebnis = haken?.nahansicht?.(TESTBROT.id)
+    })
+    expect(ergebnis).toBe(true)
+    expect(
+      await screen.findByRole('dialog', { name: 'Testbrot' })
+    ).toBeInTheDocument()
+    expect(sheet()).not.toBeInTheDocument()
+  })
+
+  it('ohne ?debug gibt es keinen Haken', async () => {
+    await bereit()
+    expect(window.__digitaleBaeckerei).toBeUndefined()
+  })
+})
+
 describe('DigitaleBaeckerei: DB8', () => {
   it('nennt nirgends einen Preis - auch nicht mit Karte und Liste', async () => {
     const { user } = await bereit()
@@ -688,5 +924,196 @@ describe('DigitaleBaeckerei: DB8', () => {
     await user.click(screen.getByRole('button', { name: 'Alles hier' }))
     await screen.findByTestId('alles-hier-liste')
     expect(document.body.textContent).not.toMatch(VERBOTEN)
+  })
+})
+
+describe('DigitaleBaeckerei: Flug zum Start', () => {
+  /** Das Modell steht, und die Szene meldet: Der Flug läuft. */
+  async function fliegt() {
+    const { user } = setup()
+    await screen.findByTestId('fake-viewer')
+    await user.click(screen.getByRole('button', { name: 'fertig mit Flug' }))
+    await screen.findByTestId('ohne-webgl')
+    return { user }
+  }
+
+  it('gibt der Szene die Flüge des Raums', async () => {
+    await bereit()
+    expect(viewer()).toHaveAttribute('data-intros', 'kreisel,kurz')
+  })
+
+  it('zeigt während des Flugs nur „Überspringen“ - keine Leiste, kein Hinweis', async () => {
+    await fliegt()
+    expect(
+      screen.getByRole('button', { name: UEBERSPRINGEN_TEXT })
+    ).toBeInTheDocument()
+    expect(screen.queryByTestId('blickpunkt-leiste')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('hinweis')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /Blickpunkt:/ })
+    ).not.toBeInTheDocument()
+    expect(screen.queryByTestId('ladebild')).not.toBeInTheDocument()
+  })
+
+  it('sagt den Flug an und benennt das Canvas danach', async () => {
+    await fliegt()
+    expect(status()).toHaveTextContent(INTRO_ANSAGE)
+    expect(viewer()).toHaveAttribute('aria-label', INTRO_LABEL)
+  })
+
+  it('nach der Ankunft: Leiste, Hinweis und die Ansage des Blickpunkts', async () => {
+    const { user } = await fliegt()
+    await user.click(screen.getByRole('button', { name: 'Flug zu Ende' }))
+    expect(
+      screen.queryByRole('button', { name: UEBERSPRINGEN_TEXT })
+    ).not.toBeInTheDocument()
+    expect(screen.getByTestId('blickpunkt-leiste')).toBeInTheDocument()
+    expect(screen.getByTestId('hinweis')).toHaveAttribute(
+      'data-sichtbar',
+      'true'
+    )
+    expect(screen.getByTestId('hinweis')).toHaveTextContent(HINWEIS_TEXT)
+    expect(status()).toHaveTextContent(blickpunktAnsage('Theke'))
+    expect(viewer()).toHaveAttribute(
+      'aria-label',
+      '3D-Ansicht der Bäckerei, Blickpunkt Theke'
+    )
+  })
+
+  it('„Überspringen“ gibt den Auftrag an die Szene weiter', async () => {
+    const { user } = await fliegt()
+    await user.click(screen.getByRole('button', { name: UEBERSPRINGEN_TEXT }))
+    // Die (gemockte) Szene meldet darauf das Ende.
+    await waitFor(() =>
+      expect(screen.getByTestId('blickpunkt-leiste')).toBeInTheDocument()
+    )
+    expect(
+      screen.queryByRole('button', { name: UEBERSPRINGEN_TEXT })
+    ).not.toBeInTheDocument()
+  })
+
+  it('ohne Flug (kein Modell dafür, weniger Bewegung) startet es wie bisher an der Theke', async () => {
+    const { user } = await bereit()
+    expect(
+      screen.queryByRole('button', { name: UEBERSPRINGEN_TEXT })
+    ).not.toBeInTheDocument()
+    expect(status()).toHaveTextContent(BEREIT_TEXT)
+    // … und bietet ihn auch nicht zum Wiederholen an.
+    await user.click(screen.getByRole('button', { name: 'Quellen' }))
+    await screen.findByRole('dialog', { name: 'Quellen' })
+    expect(
+      screen.queryByRole('button', { name: INTRO_NOCHMAL_TEXT })
+    ).not.toBeInTheDocument()
+  })
+
+  it('abgestellt (?intro=0): gleich an der Theke, der Flug bleibt unter „Quellen“ zu haben', async () => {
+    const { user } = setup()
+    await screen.findByTestId('fake-viewer')
+    await user.click(
+      screen.getByRole('button', { name: 'fertig, Flug abgestellt' })
+    )
+    expect(screen.getByTestId('blickpunkt-leiste')).toBeInTheDocument()
+    expect(status()).toHaveTextContent(BEREIT_TEXT)
+    await user.click(screen.getByRole('button', { name: 'Quellen' }))
+    expect(
+      await screen.findByRole('button', { name: INTRO_NOCHMAL_TEXT })
+    ).toBeInTheDocument()
+  })
+
+  it('„noch einmal ansehen“ geht zurück an die Theke und fliegt von dort', async () => {
+    const { user } = await fliegt()
+    await user.click(screen.getByRole('button', { name: 'Flug zu Ende' }))
+    await user.click(screen.getByRole('button', { name: 'Brotregal' }))
+    await user.click(screen.getByRole('button', { name: 'tippe Testbrot' }))
+    expect(sheet()).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Quellen' }))
+    await user.click(
+      await screen.findByRole('button', { name: INTRO_NOCHMAL_TEXT })
+    )
+    await screen.findByRole('button', { name: UEBERSPRINGEN_TEXT })
+    expect(viewer()).toHaveAttribute('data-blickpunkt', 'theke')
+    expect(viewer()).toHaveAttribute('aria-label', INTRO_LABEL)
+    expect(screen.queryByTestId('blickpunkt-leiste')).not.toBeInTheDocument()
+    expect(sheet()).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Flug zu Ende' }))
+    expect(screen.getByTestId('blickpunkt-leiste')).toBeInTheDocument()
+  })
+
+  it('ein verlorener Kontext mitten im Flug lässt keinen „Überspringen“-Knopf zurück', async () => {
+    const { user } = await fliegt()
+    await user.click(screen.getByRole('button', { name: 'Kontext verlieren' }))
+    expect(status()).toHaveTextContent(UNTERBROCHEN_TEXT)
+    expect(
+      screen.queryByRole('button', { name: UEBERSPRINGEN_TEXT })
+    ).not.toBeInTheDocument()
+  })
+
+  it('speichert nichts auf dem Gerät', async () => {
+    const setItem = jest.spyOn(Storage.prototype, 'setItem')
+    const { user } = await fliegt()
+    await user.click(screen.getByRole('button', { name: UEBERSPRINGEN_TEXT }))
+    await screen.findByTestId('blickpunkt-leiste')
+    expect(setItem).not.toHaveBeenCalled()
+    expect(window.localStorage.length).toBe(0)
+    expect(window.sessionStorage.length).toBe(0)
+    expect(document.cookie).toBe('')
+    setItem.mockRestore()
+  })
+})
+
+describe('DigitaleBaeckerei: entdeckt x von y', () => {
+  const zaehler = () => screen.getByTestId('entdeckt')
+
+  it('zählt zu Beginn 0 von allen Produkten mit Karte im ganzen Laden', async () => {
+    const { user } = await bereit()
+    await user.click(screen.getByRole('button', { name: 'Alles hier' }))
+    await screen.findByTestId('alles-hier-liste')
+    // Drei Produkte kennt der Snapshot; das vierte im Modell hat keine Karte.
+    expect(zaehler()).toHaveTextContent('0 von 3 Produkten im Laden entdeckt')
+    expect(screen.queryByTestId('entdeckt-haken')).not.toBeInTheDocument()
+  })
+
+  it('zählt ein Produkt, sobald seine Karte offen war - jedes nur einmal', async () => {
+    const { user } = await bereit()
+    await user.click(screen.getByRole('button', { name: 'tippe Testbrot' }))
+    await user.click(screen.getByRole('button', { name: 'tippe daneben' }))
+    await user.click(screen.getByRole('button', { name: 'tippe Testbrot' }))
+    await user.click(screen.getByRole('button', { name: 'tippe Unbekanntes' }))
+    await user.click(screen.getByRole('button', { name: 'Alles hier' }))
+    const liste = await screen.findByTestId('alles-hier-liste')
+    expect(zaehler()).toHaveTextContent('1 von 3 Produkten im Laden entdeckt')
+    expect(
+      within(liste).getByRole('button', { name: /Testbrot/ })
+    ).toHaveAccessibleName(`Testbrot 500 g ${ENTDECKT_ZEILE_TEXT}`)
+    expect(
+      within(liste).getByRole('button', { name: /Probeweck/ })
+    ).toHaveAccessibleName('Probeweck')
+  })
+
+  it('zählt auch, was aus der Liste geöffnet wurde, und über Blickpunkte hinweg', async () => {
+    const { user } = await bereit()
+    await user.click(screen.getByRole('button', { name: 'Alles hier' }))
+    await user.click(
+      within(await screen.findByTestId('alles-hier-liste')).getByRole(
+        'button',
+        { name: /Probeweck/ }
+      )
+    )
+    await waitFor(() =>
+      expect(screen.queryByTestId('alles-hier-liste')).not.toBeInTheDocument()
+    )
+    await user.click(screen.getByRole('button', { name: 'Brotregal' }))
+    await user.click(screen.getByRole('button', { name: 'Alles hier' }))
+    await screen.findByTestId('alles-hier-liste')
+    expect(zaehler()).toHaveTextContent('1 von 3 Produkten im Laden entdeckt')
+    // Am Brotregal liegt nur die Äpfeltasche - noch ohne Haken.
+    expect(screen.queryByTestId('entdeckt-haken')).not.toBeInTheDocument()
+  })
+
+  it('steht nicht dauerhaft über der Szene', async () => {
+    const { user } = await bereit()
+    await user.click(screen.getByRole('button', { name: 'tippe Testbrot' }))
+    expect(screen.queryByTestId('entdeckt')).not.toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/entdeckt/)
   })
 })

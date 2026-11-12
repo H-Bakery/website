@@ -5,13 +5,16 @@ Produkte wie „Testbrot“, keine Preise. Das echte Modell (`twin.glb`), die da
 und der echte Produkt-Snapshot gehören nicht ins Repo; die Sync-Skripte schreiben sie nach `public/`
 (git-ignoriert). Den Katalog des Explorers (`catalogue.json`, mit Preisen) lädt die App gar nicht.
 
-| Datei                            | Inhalt                                                                         |
-| -------------------------------- | ------------------------------------------------------------------------------ |
-| `twin.fixture.glb`               | Mini-Modell des Ladens (≈ 59 kB, 60 Knoten). Erzeugt, nicht von Hand ändern.   |
-| `build-fixture.mjs`              | Generator des Mini-Modells (nur Node-Bordmittel, deterministisch).             |
-| `products.snapshot.fixture.json` | 20 erfundene Produkte in der Form `ProduktSnapshot`.                           |
-| `fixture-info.js`                | Liest beide Dateien (GLB-Container, Plätze, erwartete Listen) - für die Tests. |
-| `fixture.spec.ts`                | Prüft, was unten steht.                                                        |
+| Datei                            | Inhalt                                                                        |
+| -------------------------------- | ----------------------------------------------------------------------------- |
+| `twin.fixture.glb`               | Mini-Modell des Ladens (≈ 59 kB, 60 Knoten). Erzeugt, nicht von Hand ändern.  |
+| `build-fixture.mjs`              | Generator des Mini-Modells (nur Node-Bordmittel, deterministisch).            |
+| `products.snapshot.fixture.json` | 20 erfundene Produkte in der Form `ProduktSnapshot`.                          |
+| `produkt.fixture.glb`            | Ein Produkt-Modell für die Nahansicht (≈ 15 kB): kantiger Laib. Erzeugt.      |
+| `build-produkt-fixture.mjs`      | Generator dazu (nur Node-Bordmittel, deterministisch, ohne Winkelfunktionen). |
+| `produkte-3d.fixture.json`       | Index der Nahansicht: nur `testbrot-500g` hat ein Modell.                     |
+| `fixture-info.js`                | Liest die Dateien (GLB-Container, Plätze, erwartete Listen) - für die Tests.  |
+| `fixture.spec.ts`                | Prüft, was unten steht.                                                       |
 
 Mit `DIGITALE_BAECKEREI_FIXTURE=1` nehmen `sync-model` und `sync-products` diese Dateien statt der
 echten (`public/model/twin.glb`, `public/data/products.snapshot.json`, `public/data/belegung.json`).
@@ -30,7 +33,9 @@ Den Aufbau des echten Modells, damit dieselben Code-Pfade laufen:
   Material `KHR_materials_unlit` mit `baseColorFactor`. **Ohne meshopt**, also ohne Decoder lesbar.
 - Koordinaten im Rahmen des Explorers (x Ost, y Höhe 244,25-246,5 m, z −Nord). Möbel und Ware stehen
   grob an den echten Stellen (Theke und Brotregal um 20° gedreht, Kundenseite +x), damit die
-  Blickpunkte aus `src/config/raeume.ts` sie sehen.
+  Blickpunkte aus `src/config/raeume.ts` sie sehen. Die Wand zur Straße (`fassade/wand`) hat eine
+  offene Tür, und `umgebung/nachbarhaus` steht abseits: Der Flug zum Start (`intros` in `raeume.ts`)
+  führt wie am echten Modell über die Straße und durch die Tür, ohne durch Geometrie zu fliegen.
 - **Plätze** `produkt/<slot>` mit `extras { id: <slot>, product | ware, count, fills: ['morgens'] }`:
 
   | Möbel                | Plätze mit Produkt                                                                                                      | Neutrale Ware (`ware`)                    |
@@ -67,6 +72,23 @@ Den Aufbau des echten Modells, damit dieselben Code-Pfade laufen:
 `products.snapshot.fixture.json` enthält genau die Produkte, die im Mini-Modell liegen (außer
 `phantomgebaeck`): die meisten mit `einheit`, drei Brötchen und vier Teilchen/Snacks ohne, die
 „Musterkruste“ mit langem `text`, die „Testkekse“ mit `seite`. Kein Preisfeld.
+
+## Das Produkt-Modell der Nahansicht
+
+`produkt.fixture.glb` steht für die echten Modelle aus dem Daten-Repo `produkte-3d` (nur lokal, nie
+hier): Meter in echter Größe, Y nach oben, steht auf y = 0, PBR-Material (beleuchtet, nicht unlit),
+Vertex-Farben. Anders als die echten: ohne meshopt, Quantisierung und Textur. Die Form ist nicht
+drehsymmetrisch (ein dunkles Ende, drei Einschnitte, eine Mehlseite), damit die Suite sieht, dass
+Drehen das Bild ändert. `sync-produkte-3d` kopiert Modell und Index im Fixture-Modus Byte für Byte
+nach `public/produkte-3d/testbrot-500g.glb` und `public/data/produkte-3d.json`; CI und der
+e2e-Server prüfen, dass im Export genau das liegt. „Testbrot“ hat ein Modell, „Testkekse“ keines.
+
+```bash
+node src/test/fixtures/build-produkt-fixture.mjs           # schreibt produkt.fixture.glb
+node src/test/fixtures/build-produkt-fixture.mjs --check   # Exit 1, wenn die Datei abweicht
+```
+
+Ändert sich die Größe der Datei, `bytes` in `produkte-3d.fixture.json` nachziehen.
 
 ## Neu erzeugen
 

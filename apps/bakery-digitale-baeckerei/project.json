@@ -28,10 +28,21 @@
         "description": "Reads hq/products/*.md (HQ_PRODUCTS_DIR, else ../hq/products) and writes public/data/products.snapshot.json (git-ignored) without prices. Aborts without hq - no mocks. DIGITALE_BAECKEREI_FIXTURE=1: copies the synthetic src/test/fixtures/products.snapshot.fixture.json instead. Warns about products the model shows that hq does not have."
       }
     },
+    "sync-produkte-3d": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "cwd": "apps/bakery-digitale-baeckerei",
+        "command": "node scripts/sync-produkte-3d.mjs"
+      },
+      "metadata": {
+        "description": "Copies the per-product 3D models (close-up in the product sheet) at the commit pinned in produkte-3d.lock.json from the local-only data repo ../produkte-3d (PRODUKTE_3D_DIR) into public/produkte-3d/ (git-ignored), verifies sha256, and writes public/data/produkte-3d.json. No data repo (CI, deploy, other machines): empty index, exit 0 - the app then offers no close-up. DIGITALE_BAECKEREI_FIXTURE=1: copies the synthetic src/test/fixtures/produkt.fixture.glb instead."
+      }
+    },
     "build": {
       "executor": "nx:run-commands",
       "cache": false,
-      "dependsOn": ["sync-model", "sync-products"],
+      "dependsOn": ["sync-model", "sync-products", "sync-produkte-3d"],
       "outputs": ["{projectRoot}/out"],
       "options": {
         "cwd": "apps/bakery-digitale-baeckerei",
@@ -43,7 +54,7 @@
     },
     "serve": {
       "executor": "nx:run-commands",
-      "dependsOn": ["sync-model", "sync-products"],
+      "dependsOn": ["sync-model", "sync-products", "sync-produkte-3d"],
       "options": {
         "cwd": "apps/bakery-digitale-baeckerei",
         "command": "npx next dev --webpack -p 4222"
