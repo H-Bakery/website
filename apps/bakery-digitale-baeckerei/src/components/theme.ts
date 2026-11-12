@@ -11,6 +11,40 @@ export const TOUCH_TARGET = 44
 export const SCENE_BACKDROP = '#bdccdb'
 
 /**
+ * Stapelfolge der Bedienelemente über der Szene. Dialoge („Alles hier“,
+ * „Quellen“) liegen als MUI-Modal bei 1300 darüber.
+ */
+export const EBENE = {
+  pfeile: 10,
+  leiste: 11,
+  hinweis: 12,
+  sheet: 20,
+  ladebild: 30,
+} as const
+
+/**
+ * Ab hier gibt es Platz neben der Szene: Sheet und Liste stehen als Karte am
+ * rechten Rand statt unten (Desktop und Handy im Querformat), damit sie das
+ * Bild nicht verdecken.
+ */
+export const SEITLICH_ABFRAGE =
+  '(min-width: 900px), (orientation: landscape) and (max-height: 500px)'
+export const SEITLICH = `@media ${SEITLICH_ABFRAGE}`
+
+/** Die Blickpunkt-Leiste passt in eine Zeile. */
+export const LEISTE_EINZEILIG = '@media (min-width: 600px)'
+
+/** Bewegung nur, wenn das Gerät sie nicht abgestellt hat. */
+export const BEWEGUNG_OK = '@media (prefers-reduced-motion: no-preference)'
+export const WENIGER_BEWEGUNG = '(prefers-reduced-motion: reduce)'
+
+/** Abstand zum Rand, mit Rücksicht auf Notch und Home-Balken. */
+export const rand = (
+  seite: 'top' | 'right' | 'bottom' | 'left',
+  px = 12
+): string => `max(${px}px, env(safe-area-inset-${seite}))`
+
+/**
  * Markenpalette (docs/brand-identity.md): Highlight #d038ba, für Text und
  * Flächen die dunklere Stufe #A02E94 (Kontrast), Dunkelbraun #5A2E2A, Crème
  * #FFF3E6, Text #3B2B28. Hell und dunkel nach `prefers-color-scheme`.
