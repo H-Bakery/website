@@ -21,6 +21,7 @@
       "@bakery/shared/contexts": ["libs/shared/contexts/src/index.ts"],
       "@bakery/shared/data-access": ["libs/shared/data-access/src/index.ts"],
       "@bakery/shared/data-mocks": ["libs/shared/data-mocks/src/index.ts"],
+      "@bakery/shared/hq-products": ["libs/shared/hq-products/src/index.js"],
       "@bakery/shared/test-utils": ["libs/shared/test-utils/src/index.ts"],
       "@bakery/shared/types": ["libs/shared/types/src/index.ts"],
       "@bakery/shared/ui": ["libs/shared/ui/src/index.ts"],

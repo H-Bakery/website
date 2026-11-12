@@ -13,12 +13,24 @@
         "command": "node scripts/sync-model.mjs"
       },
       "metadata": {
-        "description": "Downloads twin.glb and catalogue.json at the commit pinned in model.lock.json into public/model/ (git-ignored), verifies sha256, aborts on a mismatch. No download when the files are already there."
+        "description": "Downloads twin.glb at the commit pinned in model.lock.json into public/model/ (git-ignored), verifies sha256, aborts on a mismatch, and derives public/data/belegung.json (which product sits on which slot in the morning) from the verified GLB. No download when the file is already there. DIGITALE_BAECKEREI_FIXTURE=1: no download, uses the synthetic src/test/fixtures/twin.fixture.glb."
+      }
+    },
+    "sync-products": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["sync-model"],
+      "options": {
+        "cwd": "apps/bakery-digitale-baeckerei",
+        "command": "node scripts/sync-products.mjs"
+      },
+      "metadata": {
+        "description": "Reads hq/products/*.md (HQ_PRODUCTS_DIR, else ../hq/products) and writes public/data/products.snapshot.json (git-ignored) without prices. Aborts without hq - no mocks. DIGITALE_BAECKEREI_FIXTURE=1: copies the synthetic src/test/fixtures/products.snapshot.fixture.json instead. Warns about products the model shows that hq does not have."
       }
     },
     "build": {
       "executor": "nx:run-commands",
-      "dependsOn": ["sync-model"],
+      "dependsOn": ["sync-model", "sync-products"],
       "outputs": ["{projectRoot}/out"],
       "options": {
         "cwd": "apps/bakery-digitale-baeckerei",
@@ -30,7 +42,7 @@
     },
     "serve": {
       "executor": "nx:run-commands",
-      "dependsOn": ["sync-model"],
+      "dependsOn": ["sync-model", "sync-products"],
       "options": {
         "cwd": "apps/bakery-digitale-baeckerei",
         "command": "npx next dev --webpack -p 4222"

@@ -5,6 +5,7 @@ import {
   parseLock,
   planSync,
   sha256Hex,
+  staleFiles,
 } from './model-lock'
 import committedLock from '../model.lock.json'
 
@@ -44,12 +45,9 @@ describe('parseLock', () => {
     expect(lock.files['twin.glb'].bytes).toBe(GLB.byteLength)
   })
 
-  it('nimmt das eingecheckte model.lock.json an', () => {
+  it('nimmt das eingecheckte model.lock.json an - nur das Modell, kein Katalog mit Preisen', () => {
     const lock = parseLock(committedLock)
-    expect(Object.keys(lock.files).sort()).toEqual([
-      'catalogue.json',
-      'twin.glb',
-    ])
+    expect(Object.keys(lock.files)).toEqual(['twin.glb'])
   })
 
   it.each([
@@ -182,5 +180,18 @@ describe('planSync', () => {
       ['catalogue.json', 'keep'],
     ])
     expect(plan[0].reason).toMatch(/veraltet/)
+  })
+})
+
+describe('staleFiles', () => {
+  it('nennt, was im Ordner liegt und nicht im Lock steht', () => {
+    expect(
+      staleFiles(['twin.glb', 'catalogue.json', 'alt.glb'], ['twin.glb'])
+    ).toEqual(['alt.glb', 'catalogue.json'])
+  })
+
+  it('ein passender Ordner bleibt, wie er ist', () => {
+    expect(staleFiles(['twin.glb'], ['twin.glb', 'fehlt-noch.glb'])).toEqual([])
+    expect(staleFiles([], ['twin.glb'])).toEqual([])
   })
 })
