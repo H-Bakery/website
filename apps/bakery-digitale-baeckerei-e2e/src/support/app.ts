@@ -26,6 +26,10 @@
  *   kein Produkt gewählt ist.
  * - Knopf „Alles hier“ öffnet `alles-hier-liste`.
  * - `ohne-webgl`: der Ersatz ohne 3D mit den Listen aller Blickpunkte.
+ * - `nahansicht`: der Dialog „In 3D ansehen“ mit `nahansicht-buehne`
+ *   (`data-phase`: laden | bereit | fehler | kein-webgl | unterbrochen); sein
+ *   Canvas trägt `role="img"` und „3D-Modell: <Name>“. Messhaken dazu:
+ *   `window.__digitaleBaeckereiNahansicht` (nur solange sie offen ist).
  */
 import { expect, type Locator, type Page } from '@playwright/test'
 // Blickpunkte und Fixtures gehören zur App (dort prüft sie jest); die Suite
@@ -37,6 +41,8 @@ import {
 } from '../../../bakery-digitale-baeckerei/src/config/raeume'
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import {
+  MIT_MODELL,
+  OHNE_MODELL,
   VARIANTE,
   WAISE,
   erwarteteEintraege,
@@ -45,6 +51,8 @@ import {
 } from '../../../bakery-digitale-baeckerei/src/test/fixtures/fixture-info'
 
 export {
+  MIT_MODELL,
+  OHNE_MODELL,
   VARIANTE,
   WAISE,
   erwarteteEintraege,
@@ -109,9 +117,39 @@ export interface DebugHaken {
   gewaehlt: string | null
 }
 
+/**
+ * Der Messhaken der Nahansicht (`src/lib/scene/createNahansicht.ts`): gibt es
+ * nur mit `?debug` und nur, solange eine Nahansicht offen ist.
+ */
+export interface NahansichtHaken {
+  ready: boolean
+  frames: number
+  /** Läuft die Runde vom Öffnen noch? */
+  dreht: boolean
+  info: () => {
+    triangles: number
+    pixelRatio: number
+    size: [number, number]
+    zustand: { yaw: number; pitch: number; zoom: number }
+    zoomMin: number
+  }
+  pixelStats: () => {
+    samples: number
+    distinct: number
+    backgroundShare: number
+    breite: number
+    hoehe: number
+    mitteX: number
+    mitteY: number
+    /** Prüfsumme des Bildes: ändert sich, wenn sich das Bild ändert. */
+    summe: string
+  }
+}
+
 declare global {
   interface Window {
     __digitaleBaeckerei?: DebugHaken
+    __digitaleBaeckereiNahansicht?: NahansichtHaken
   }
 }
 

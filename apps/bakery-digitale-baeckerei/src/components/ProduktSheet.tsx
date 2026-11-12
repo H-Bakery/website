@@ -2,6 +2,7 @@
 import React, { useEffect, useId, useRef, useState } from 'react'
 import CloseIcon from '@mui/icons-material/Close'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
+import ViewInArIcon from '@mui/icons-material/ViewInAr'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import IconButton from '@mui/material/IconButton'
@@ -21,6 +22,7 @@ import type { ProduktInfo } from '../lib/produkte/types'
 export const MEHR_LESEN_TEXT = 'Mehr lesen'
 export const WENIGER_TEXT = 'Weniger'
 export const WEBSITE_LINK_TEXT = 'Mehr auf der Website'
+export const NAHANSICHT_TEXT = 'In 3D ansehen'
 
 /** So weit muss man das Sheet nach unten ziehen, damit es zugeht (px). */
 export const ZIEH_SCHWELLE = 64
@@ -43,6 +45,11 @@ export interface ProduktSheetProps {
   fokus?: boolean
   /** Eine kurze Zeile unter dem Namen, z. B. dass das Produkt gerade nicht im Bild ist. */
   hinweis?: string
+  /**
+   * Öffnet die Nahansicht des Produkts. Nur gesetzt, wenn es für dieses
+   * Produkt ein 3D-Modell gibt - sonst gibt es den Knopf nicht.
+   */
+  onNahansicht?: () => void
 }
 
 const vonUnten = keyframes({
@@ -62,6 +69,7 @@ export default function ProduktSheet({
   hintergrundSchliesst = true,
   fokus = true,
   hinweis,
+  onNahansicht,
 }: ProduktSheetProps) {
   if (!produkt) return null
   return (
@@ -71,6 +79,7 @@ export default function ProduktSheet({
       hintergrundSchliesst={hintergrundSchliesst}
       fokus={fokus}
       hinweis={hinweis}
+      onNahansicht={onNahansicht}
     />
   )
 }
@@ -81,12 +90,14 @@ function OffenesSheet({
   hintergrundSchliesst,
   fokus,
   hinweis,
+  onNahansicht,
 }: {
   produkt: ProduktInfo
   onClose: () => void
   hintergrundSchliesst: boolean
   fokus: boolean
   hinweis?: string
+  onNahansicht?: () => void
 }) {
   const titelId = useId()
   const textId = useId()
@@ -304,6 +315,16 @@ function OffenesSheet({
             >
               {langerText}
             </Typography>
+          )}
+          {onNahansicht && (
+            <Button
+              variant="outlined"
+              onClick={onNahansicht}
+              startIcon={<ViewInArIcon aria-hidden />}
+              sx={{ mt: 1.5, minHeight: TOUCH_TARGET }}
+            >
+              {NAHANSICHT_TEXT}
+            </Button>
           )}
           {(hatLangenText || produkt.seite) && (
             <Box

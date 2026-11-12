@@ -281,6 +281,43 @@ kann (im Produkt-Sheet) und das auch die Produktseiten der Landingpage zeigen.
   einen festen Stand mit Prüfsumme. Rohfotos bleiben außerhalb aller Repos.
   Die Fotos der eigenen Ware gehören der Bäckerei und dürfen veröffentlicht werden.
 
+### Gebaut: Nahansicht in der Karte (nur lokal)
+
+- **Bedienung:** Hat das gewählte Produkt ein Modell, zeigt die Karte den Knopf „In 3D ansehen“. Er
+  öffnet die Nahansicht - auf dem Handy bildfüllend, auf dem Desktop als Dialog: das Modell auf
+  einem Drehteller (Ziehen dreht, nie von unten; zwei Finger, Mausrad oder +/- zoomen in Grenzen),
+  eine langsame Runde beim Öffnen (nicht bei `prefers-reduced-motion`), „Zurück“ oder Escape
+  schließt nur die Nahansicht. Kein Modell → kein Knopf, kein Ersatzmodell.
+- **Licht:** eigener Renderer mit den Einstellungen der Vorschau des Daten-Repos (`RoomEnvironment`
+  0,75 + ein Richtungslicht, sRGB, `NeutralToneMapping`, weicher Kontaktschatten) auf heller
+  Bühne - die Modelle sind beleuchtetes PBR, der Laden bleibt unlit. Der Laden behält seinen
+  WebGL-Kontext; die Nahansicht legt ihren erst beim Öffnen an (Code und Modell werden erst dann
+  geladen) und gibt beim Schließen alles frei.
+- **Daten:** `scripts/sync-produkte-3d.mjs` liest beim Bauen genau den Commit aus
+  `produkte-3d.lock.json` (`quelle`, `commit`, je Modell `sha256` und `bytes`) mit `git show` aus
+  `../produkte-3d` (`PRODUKTE_3D_DIR`), prüft jede Datei und schreibt `public/produkte-3d/<id>.glb`
+  und `public/data/produkte-3d.json` (beides git-ignoriert). **Gibt es das Daten-Repo nicht - CI,
+  Deploy, andere Rechner -, entsteht ein leerer Index, und die App bietet keine Nahansicht an.** Die
+  veröffentlichte Seite hat sie also erst, wenn das Daten-Repo ein Remote bekommt (dann wechselt nur
+  die Quelle von `git show` auf eine Adresse mit dem Commit im Pfad). CI und die Playwright-Suite
+  bauen mit einem synthetischen Laib für „Testbrot“ und prüfen, dass im Export nur der liegt.
+- **Ein neues Modell** kommt so hinein: im Daten-Repo verarbeiten und committen (`npm run process`,
+  `check`) → in `produkte-3d.lock.json` `commit` und für jedes Modell `sha256` und `bytes` aus dem
+  Manifest eintragen → PR. Die ID ist die hq-ID ohne Nummer; erreichbar ist die Nahansicht nur für
+  Produkte, die im Laden-Modell auf einem Platz liegen.
+- **Stand des 3-Produkte-Tests** (Commit `a97ed9d` des Daten-Repos, prozedural erzeugte
+  Testmodelle, keine Scans): Brezel (Brezelständer), Croissant (Vitrine) und Kornbrot 500 g
+  (Brotregal) liegen alle im Laden und sind über ihre Karte erreichbar. Gemessen in der Emulation
+  (Pixel 7, 4G + CPU 4×, Software-GPU; **auf echtem Handy ungeprüft**): vom Tipp bis zum ersten Bild
+  ≈ 1,4-1,6 s, dabei ≈ 13 kB Code und 214-350 kB Modell; in Ruhe 0 Bilder, nach dem Schließen kein
+  zusätzlicher WebGL-Kontext.
+- **Passt teilrealistisch neben stilisiert?** Als eigene Ansicht ja: Die Nahansicht steht auf einer
+  neutralen Bühne und liest sich wie ein Produktfoto zur Karte. Im Regal nebeneinander nicht - die
+  flächigen Produkte des Ladens und die texturierten Modelle sind zwei Bildsprachen, und die Farben
+  weichen sichtbar ab (das Croissant im Laden blass, in der Nahansicht kräftig goldbraun). Die zwei
+  Detailstufen bleiben also getrennt. Offen bleibt das Urteil an echten Scans - sie bringen ihr
+  eigenes, eingebackenes Licht mit.
+
 ## Offen (Inhaber)
 
 - Das Secret für den hq-Lesezugriff im Deploy-Workflow anlegen (Anleitung liefert der Agent).

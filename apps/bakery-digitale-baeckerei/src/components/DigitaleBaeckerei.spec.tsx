@@ -16,9 +16,12 @@ import DigitaleBaeckerei, {
   kartenAnsage,
 } from './DigitaleBaeckerei'
 import { HINWEIS_TEXT } from './Hinweis'
+import { ladeNahansicht } from './ladeNahansicht'
 import { ladeViewer } from './ladeViewer'
 import { LADE_TEXT } from './Ladebild'
+import { ZURUECK_TEXT, nahansichtLabel } from './Nahansicht'
 import { OHNE_WEBGL_TEXT } from './OhneWebGL'
+import { NAHANSICHT_TEXT } from './ProduktSheet'
 import { AEPFELTASCHE, PROBEWECK, TESTBROT, VERBOTEN } from './testdaten'
 import ThemeRegistry from './ThemeRegistry'
 
@@ -27,6 +30,8 @@ import ThemeRegistry from './ThemeRegistry'
 // echten Szene auslösen - oder scheitert, wie ein Chunk im wackligen Netz.
 const mounts: Record<string, unknown>[] = []
 jest.mock('./ladeViewer', () => ({ ladeViewer: jest.fn() }))
+// Ebenso die Nahansicht: Ihr 3D-Code wird nie geladen.
+jest.mock('./ladeNahansicht', () => ({ ladeNahansicht: jest.fn() }))
 
 function FakeViewer(props: {
   modelUrl: string
@@ -162,15 +167,36 @@ const BELEGUNG: Belegung = {
   ],
 }
 
+/** Nur das Testbrot hat ein (erfundenes) 3D-Modell für die Nahansicht. */
+const MODELLE = {
+  version: 1,
+  modelle: {
+    [TESTBROT.id]: {
+      datei: `produkte-3d/${TESTBROT.id}.glb`,
+      bytes: 1234,
+      bbox_m: { min: [-0.1, 0, -0.05], max: [0.1, 0.08, 0.05] },
+    },
+  },
+}
+
 const fetchMock = jest.fn()
 
-function antworteMitDaten() {
-  fetchMock.mockImplementation(async (url: string) => ({
-    ok: true,
-    status: 200,
-    json: async () =>
-      url.endsWith('/data/belegung.json') ? BELEGUNG : SNAPSHOT,
-  }))
+function antworteMitDaten(modelle: unknown = MODELLE) {
+  fetchMock.mockImplementation(async (url: string) => {
+    if (url.endsWith('/data/produkte-3d.json') && modelle === null) {
+      return { ok: false, status: 404 }
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () =>
+        url.endsWith('/data/belegung.json')
+          ? BELEGUNG
+          : url.endsWith('/data/produkte-3d.json')
+          ? modelle
+          : SNAPSHOT,
+    }
+  })
 }
 
 function setup(strict = false) {
@@ -189,7 +215,7 @@ async function bereit(strict = false) {
   const { user } = setup(strict)
   await screen.findByTestId('fake-viewer')
   await user.click(screen.getByRole('button', { name: 'fertig' }))
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(strict ? 4 : 2))
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(strict ? 6 : 3))
   // Die Liste für Screenreader erscheint, sobald die Daten geladen sind.
   await screen.findByTestId('ohne-webgl')
   return { user }
@@ -200,6 +226,11 @@ const viewer = () => screen.getByTestId('fake-viewer')
 const sheet = () => screen.queryByTestId('produkt-sheet')
 
 const ladeViewerMock = ladeViewer as jest.MockedFunction<typeof ladeViewer>
+const ladeNahansichtMock = ladeNahansicht as jest.MockedFunction<
+  typeof ladeNahansicht
+>
+/** Was die (gemockte) Nahansicht gebaut und wieder abgebaut hat. */
+const nahansichten: { url: string; bytes?: number; dispose: jest.Mock }[] = []
 
 beforeEach(() => {
   mounts.length = 0
@@ -210,6 +241,17 @@ beforeEach(() => {
   ladeViewerMock.mockResolvedValue(
     FakeViewer as unknown as Awaited<ReturnType<typeof ladeViewer>>
   )
+  nahansichten.length = 0
+  ladeNahansichtMock.mockReset()
+  ladeNahansichtMock.mockResolvedValue((container, options) => {
+    const canvas = document.createElement('canvas')
+    canvas.setAttribute('role', 'img')
+    canvas.setAttribute('aria-label', options.label)
+    container.prepend(canvas)
+    const dispose = jest.fn(() => canvas.remove())
+    nahansichten.push({ url: options.url, bytes: options.bytes, dispose })
+    return { dispose }
+  })
   window.localStorage.clear()
 })
 
@@ -246,6 +288,7 @@ describe('DigitaleBaeckerei: Laden', () => {
     expect(fetchMock.mock.calls.map((c) => c[0]).sort()).toEqual([
       '/data/belegung.json',
       '/data/products.snapshot.json',
+      '/data/produkte-3d.json',
     ])
   })
 
@@ -677,6 +720,144 @@ describe('DigitaleBaeckerei: nichts auf dem Gerät', () => {
     expect(window.localStorage.length).toBe(0)
     expect(window.sessionStorage.length).toBe(0)
     expect(document.cookie).toBe('')
+  })
+})
+
+describe('DigitaleBaeckerei: Nahansicht „In 3D ansehen“', () => {
+  const knopf = () => screen.queryByRole('button', { name: NAHANSICHT_TEXT })
+
+  it('bietet den Knopf nur bei einem Produkt mit 3D-Modell an', async () => {
+    const { user } = await bereit()
+    await user.click(screen.getByRole('button', { name: 'tippe Testbrot' }))
+    expect(knopf()).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'tippe Probeweck' }))
+    expect(sheet()).toHaveTextContent('Probeweck')
+    expect(knopf()).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['fehlt (404)', null],
+    ['ist leer', { version: 1, modelle: {} }],
+    ['ist unlesbar', { irgendwas: true }],
+  ])(
+    'kein Knopf, wenn der Index %s - der Laden läuft weiter',
+    async (_, index) => {
+      antworteMitDaten(index)
+      const { user } = await bereit()
+      await user.click(screen.getByRole('button', { name: 'tippe Testbrot' }))
+      expect(sheet()).toHaveTextContent('Testbrot')
+      expect(knopf()).not.toBeInTheDocument()
+      expect(status()).toHaveTextContent(kartenAnsage('Testbrot'))
+      expect(ladeNahansichtMock).not.toHaveBeenCalled()
+    }
+  )
+
+  it('lädt den 3D-Code erst beim Öffnen, zeigt das Modell und gibt beim Schließen alles frei', async () => {
+    const { user } = await bereit()
+    await user.click(screen.getByRole('button', { name: 'tippe Testbrot' }))
+    expect(ladeNahansichtMock).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: NAHANSICHT_TEXT }))
+    const dialog = await screen.findByRole('dialog', { name: 'Testbrot' })
+    expect(
+      await within(dialog).findByRole('img', {
+        name: nahansichtLabel('Testbrot'),
+      })
+    ).toBeInTheDocument()
+    expect(nahansichten).toHaveLength(1)
+    expect(nahansichten[0]).toMatchObject({
+      url: `/produkte-3d/${TESTBROT.id}.glb`,
+      bytes: 1234,
+    })
+    expect(nahansichten[0].dispose).not.toHaveBeenCalled()
+
+    await user.click(within(dialog).getByRole('button', { name: ZURUECK_TEXT }))
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('img', { name: nahansichtLabel('Testbrot') })
+      ).not.toBeInTheDocument()
+    )
+    expect(nahansichten[0].dispose).toHaveBeenCalledTimes(1)
+    // Die Karte und der Laden dahinter sind noch da.
+    expect(sheet()).toHaveTextContent('Testbrot')
+    expect(viewer()).toHaveAttribute(
+      'data-auswahl',
+      'theke/vitrine/ebene-1/platz-01'
+    )
+    expect(mounts).toHaveLength(1)
+  })
+
+  it('Escape schließt nur die Nahansicht, die Karte bleibt offen', async () => {
+    const { user } = await bereit()
+    await user.click(screen.getByRole('button', { name: 'tippe Testbrot' }))
+    await user.click(screen.getByRole('button', { name: NAHANSICHT_TEXT }))
+    await screen.findByRole('img', { name: nahansichtLabel('Testbrot') })
+
+    await user.keyboard('{Escape}')
+    await waitFor(() =>
+      expect(screen.queryByTestId('nahansicht-buehne')).not.toBeInTheDocument()
+    )
+    expect(nahansichten[0].dispose).toHaveBeenCalledTimes(1)
+    expect(sheet()).toHaveTextContent('Testbrot')
+
+    // Jetzt gilt Escape wieder der Karte.
+    await user.keyboard('{Escape}')
+    expect(sheet()).not.toBeInTheDocument()
+  })
+
+  it('läuft unter React StrictMode: jede gebaute Nahansicht wird wieder abgebaut', async () => {
+    const { user } = await bereit(true)
+    await user.click(screen.getByRole('button', { name: 'tippe Testbrot' }))
+    await user.click(screen.getByRole('button', { name: NAHANSICHT_TEXT }))
+    await screen.findByRole('img', { name: nahansichtLabel('Testbrot') })
+    expect(
+      document.querySelectorAll('[data-testid="nahansicht-buehne"] canvas')
+    ).toHaveLength(1)
+
+    await user.click(screen.getByRole('button', { name: ZURUECK_TEXT }))
+    await waitFor(() =>
+      expect(screen.queryByTestId('nahansicht-buehne')).not.toBeInTheDocument()
+    )
+    expect(nahansichten.length).toBeGreaterThan(0)
+    for (const n of nahansichten) expect(n.dispose).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('DigitaleBaeckerei: Messhaken der Nahansicht (nur mit ?debug)', () => {
+  afterEach(() => {
+    delete window.__digitaleBaeckerei
+  })
+
+  it('öffnet die Nahansicht eines Modells ohne Karte - und nur für IDs aus dem Index', async () => {
+    // Den Haken legt sonst die Szene an (createViewer, nur mit ?debug).
+    window.__digitaleBaeckerei = {} as NonNullable<
+      typeof window.__digitaleBaeckerei
+    >
+    await bereit()
+    const haken = window.__digitaleBaeckerei
+    await waitFor(() => expect(haken?.nahansicht).toBeDefined())
+
+    let ergebnis: boolean | undefined
+    act(() => {
+      ergebnis = haken?.nahansicht?.('gibt-es-nicht')
+    })
+    expect(ergebnis).toBe(false)
+    expect(screen.queryByTestId('nahansicht-buehne')).not.toBeInTheDocument()
+
+    act(() => {
+      ergebnis = haken?.nahansicht?.(TESTBROT.id)
+    })
+    expect(ergebnis).toBe(true)
+    expect(
+      await screen.findByRole('dialog', { name: 'Testbrot' })
+    ).toBeInTheDocument()
+    expect(sheet()).not.toBeInTheDocument()
+  })
+
+  it('ohne ?debug gibt es keinen Haken', async () => {
+    await bereit()
+    expect(window.__digitaleBaeckerei).toBeUndefined()
   })
 })
 

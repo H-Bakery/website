@@ -18,6 +18,13 @@ import type {
   ProduktSnapshot,
 } from '../lib/produkte/types'
 import {
+  LEERER_MODELL_INDEX,
+  ladeModellIndex,
+  modellAdresse,
+  modellFuer,
+  type ProduktModellIndex,
+} from '../lib/produkte/modelle'
+import {
   eintraegeFuer,
   ladeProduktdaten,
   type ListenEintrag,
@@ -28,6 +35,7 @@ import BlickpunktLeiste from './BlickpunktLeiste'
 import Hinweis from './Hinweis'
 import Ladebild from './Ladebild'
 import { ladeViewer, type ViewerKomponente } from './ladeViewer'
+import Nahansicht from './Nahansicht'
 import OhneWebGL, { OHNE_WEBGL_TEXT, OHNE_WEBGL_ZUSATZ } from './OhneWebGL'
 import ProduktSheet from './ProduktSheet'
 import { SCENE_BACKDROP } from './theme'
@@ -75,6 +83,13 @@ interface Auswahl {
   quelle: 'tipp' | 'liste'
 }
 
+/** Das Produkt, dessen 3D-Modell gerade in der Nahansicht offen ist. */
+interface OffeneNahansicht {
+  name: string
+  url: string
+  bytes: number
+}
+
 /** Größe der ausgelieferten (bereinigten) Datei - die lädt der Browser. */
 const modelBytes = (file: string): number | undefined => {
   const entry = (
@@ -113,7 +128,11 @@ export default function DigitaleBaeckerei() {
   const [gewechselt, setGewechselt] = useState(false)
   const [daten, setDaten] = useState<Produktdaten | null>(null)
   const [datenFehler, setDatenFehler] = useState(false)
+  /** 3D-Modelle einzelner Produkte; leer = keine Nahansicht (kein Fehler). */
+  const [modelle, setModelle] =
+    useState<ProduktModellIndex>(LEERER_MODELL_INDEX)
   const [auswahl, setAuswahl] = useState<Auswahl | null>(null)
+  const [nahansicht, setNahansicht] = useState<OffeneNahansicht | null>(null)
   /** Platz, der sich von hier nicht ins freie Bild drehen lässt. */
   const [nichtImBild, setNichtImBild] = useState<string | null>(null)
   const [listeOffen, setListeOffen] = useState(false)
@@ -157,6 +176,39 @@ export default function DigitaleBaeckerei() {
       aktuell = false
     }
   }, [])
+
+  // Welche Produkte ein 3D-Modell für die Nahansicht haben. Fehlt der Index
+  // oder ist er leer, gibt es den Knopf „In 3D ansehen“ einfach nicht.
+  useEffect(() => {
+    let aktuell = true
+    ladeModellIndex(BASE_PATH).then((index) => {
+      if (aktuell) setModelle(index)
+    })
+    return () => {
+      aktuell = false
+    }
+  }, [])
+
+  // Nur mit `?debug`: eine Nahansicht ohne Karte öffnen - für Modelle, deren
+  // Produkt (noch) auf keinem Platz im Laden liegt.
+  useEffect(() => {
+    if (zustand !== 'bereit') return undefined
+    const haken = window.__digitaleBaeckerei
+    if (!haken) return undefined
+    haken.nahansicht = (id: string) => {
+      const modell = modellFuer(modelle, id)
+      if (!modell) return false
+      setNahansicht({
+        name: daten?.snapshot.produkte[id]?.name ?? id,
+        url: modellAdresse(modell, BASE_PATH),
+        bytes: modell.bytes,
+      })
+      return true
+    }
+    return () => {
+      delete haken.nahansicht
+    }
+  }, [zustand, modelle, daten])
 
   const blickpunkte = useMemo(() => raum?.blickpunkte ?? [], [raum])
   const blickpunkt = raum && findeBlickpunkt(raum, aktivId)
@@ -240,7 +292,13 @@ export default function DigitaleBaeckerei() {
     [daten, waehle]
   )
 
-  const schliesseKarte = useCallback(() => waehle(null), [waehle])
+  // Solange die Nahansicht offen ist, gehört Escape ihr - die Karte bleibt.
+  const nahansichtOffen = useRef(false)
+  nahansichtOffen.current = nahansicht !== null
+  const schliesseKarte = useCallback(() => {
+    if (!nahansichtOffen.current) waehle(null)
+  }, [waehle])
+  const schliesseNahansicht = useCallback(() => setNahansicht(null), [])
 
   const nochmal = () => {
     setFortschritt(0)
@@ -297,6 +355,9 @@ export default function DigitaleBaeckerei() {
   }
 
   const keineInfos = keineInfosAn === blickpunkt.id && !auswahl
+  const auswahlModell = auswahl
+    ? modellFuer(modelle, auswahl.produkt.id)
+    : undefined
 
   return (
     <Box
@@ -398,6 +459,16 @@ export default function DigitaleBaeckerei() {
                 ? NICHT_IM_BILD_TEXT
                 : undefined
             }
+            onNahansicht={
+              auswahl && auswahlModell
+                ? () =>
+                    setNahansicht({
+                      name: auswahl.produkt.name,
+                      url: modellAdresse(auswahlModell, BASE_PATH),
+                      bytes: auswahlModell.bytes,
+                    })
+                : undefined
+            }
           />
           <AllesHierListe
             offen={listeOffen}
@@ -423,6 +494,15 @@ export default function DigitaleBaeckerei() {
           variante="screenreader"
           blickpunkte={[...blickpunkte]}
           eintraegeJe={eintraegeJe}
+        />
+      )}
+
+      {nahansicht && (
+        <Nahansicht
+          name={nahansicht.name}
+          url={nahansicht.url}
+          bytes={nahansicht.bytes}
+          onClose={schliesseNahansicht}
         />
       )}
 
