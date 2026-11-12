@@ -4,9 +4,10 @@
  *
  * URLs:
  *  - static routes
- *  - all product detail pages (/products/<id>) – mirrors src/lib/products.ts:
+ *  - all product detail pages (/products/<id>) – like src/lib/products.ts:
  *    prefers the HQ product markdown directory (env HQ_PRODUCTS_DIR or
- *    <monorepo>/../hq/products), falls back to src/mocks/products/*.json
+ *    <monorepo>/../hq/products) through the shared reader
+ *    libs/shared/hq-products, falls back to src/mocks/products/*.json
  *  - all news articles (/news/<slug>) from content/news/*.md
  *
  * Runs before `next build` (see project.json → build-static-standalone).
@@ -14,6 +15,11 @@
 
 const fs = require('fs')
 const path = require('path')
+// Plain relative require: this script runs with bare node, without the
+// tsconfig path alias `@bakery/shared/hq-products`.
+const {
+  readHqProducts,
+} = require('../../../libs/shared/hq-products/src/index.js')
 
 const APP_DIR = path.join(__dirname, '..')
 const MONOREPO_ROOT = path.join(APP_DIR, '..', '..')
@@ -32,7 +38,7 @@ const STATIC_ROUTES = [
   { path: '/datenschutz', changefreq: 'yearly', priority: 0.3 },
 ]
 
-/** Minimal YAML frontmatter reader (only top-level `key: value` pairs). */
+/** Minimal YAML frontmatter reader for the news files (only top-level `key: value` pairs). */
 function readFrontmatter(markdown) {
   const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(markdown)
   if (!match) return {}
@@ -60,30 +66,22 @@ function listMarkdownFiles(dir) {
     .sort()
 }
 
-function getHQProductsDir() {
-  if (process.env.HQ_PRODUCTS_DIR) return process.env.HQ_PRODUCTS_DIR
-  return path.join(MONOREPO_ROOT, '..', 'hq', 'products')
-}
-
-/** Product ids from HQ markdown (numeric_id, like loadProducts()). */
-function getHQProductIds() {
-  const dir = getHQProductsDir()
-  const ids = []
-  for (const file of listMarkdownFiles(dir)) {
-    try {
-      const data = readFrontmatter(
-        fs.readFileSync(path.join(dir, file), 'utf-8')
-      )
-      if (!data.id || !data.name) continue
-      const numericId = Number(data.numeric_id)
-      ids.push(
-        Number.isFinite(numericId) && numericId > 0 ? numericId : data.id
-      )
-    } catch {
-      // ignore unreadable file
-    }
-  }
-  return ids
+/**
+ * Product ids from HQ markdown (numeric_id, like loadProducts()), read with
+ * the shared reader - the same one src/lib/products.ts uses. Sorted by file
+ * name so the sitemap does not depend on the order the file system lists them.
+ */
+function getHQProducts() {
+  const { dir, products } = readHqProducts({ cwd: APP_DIR })
+  const ids = [...products]
+    .sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0))
+    .map((product) => {
+      const numericId = Number(product.numeric_id)
+      return Number.isFinite(numericId) && numericId > 0
+        ? numericId
+        : product.id
+    })
+  return { dir, ids }
 }
 
 /** Product ids from bundled JSON mocks (fallback). */
@@ -108,10 +106,10 @@ function getMockProductIds() {
 }
 
 function getProductIds() {
-  const hqIds = getHQProductIds()
-  if (hqIds.length > 0) {
-    console.log(`📦 Products: ${hqIds.length} from HQ (${getHQProductsDir()})`)
-    return hqIds
+  const hq = getHQProducts()
+  if (hq.ids.length > 0) {
+    console.log(`📦 Products: ${hq.ids.length} from HQ (${hq.dir})`)
+    return hq.ids
   }
   const mockIds = getMockProductIds()
   console.log(
