@@ -17,15 +17,16 @@ _Single working document. Created 2026-11-05 (KW 45), owner huhn511. Supersedes
 
 ## 0. How to work with this document
 
-**Current status (2026-11-11).**
+**Current status (2026-11-12).**
 
 - **Everything is on `main`.** website: #105 (release: waves 1–4, B8, B12, Rest am Abend), #110
-  (Z10), #111 (Dienstplan), #112, #118–#126; hq: #2 (H1–H5, Z1), #4 (Z10 YAML), #18 (calendar),
-  #20 (comparison with the paper sheets). The branches `pilot` and `next` are gone. Unmerged is
-  only the recipes work (`feat/rezepte`; hq `fix/rezepte-abgleich-2026-11-11`).
+  (Z10), #111 (Dienstplan), #112, #118–#126, #128 (Rezepte), #129 (Z15 „Heute keine“); hq: #2
+  (H1–H5, Z1), #4 (Z10 YAML), #18 (calendar), #19 (recipes compared with the originals), #20 and
+  #21 (comparison with the paper sheets). The branches `pilot` and `next` are gone.
 - **Running:** provisionally on the agents' Pi `robot0` (D4) over LAN HTTP; the app pushes the
   nightly preorder snapshot to hq since 2026-11-08 (existing GitHub App, Q3). What was merged on
-  2026-11-11 (#123–#126) shows there after the next deploy.
+  2026-11-11/12 (#123–#126, #128, #129) shows there after the deploy; that deploy is in progress
+  on 2026-11-12 and its result is not recorded here yet.
 - **Verified on `main` (2026-11-11, after #123–#126):** `npm run type-check` ok for landing, shop,
   management and delivery (locally it stops at `bakery-partybrezel`, `three` is not installed);
   `bakery-api:typecheck` ok; API jest 75 suites / 2467 tests - two local runs each had 2
@@ -35,7 +36,8 @@ bakery-management` 122 suites / 1573 tests green; `npm run lint:all` 6 projects,
   on `main` green.
 - **Open:** the owner and data items (Z0 answers and the open values of Z1, Z8, P5, Q1, Q2, Q4,
   Q8), the checks on the Pi (H1 conflict test, B5b first edit, Z9 Backzettel snapshot, H7
-  rollout), the rest of Z14 and Z15, and the recipes screen.
+  rollout), the rest of Z14 and Z15, and the open points of the recipes screen (deleting on the
+  box, `teige/`, users for `backstubenleiter`, the household-scale recipes in hq).
 - **Source of truth.** This file is the plan, the decisions and the progress log in one place.
   Nothing else in `.mc/proposals` or `.mc/research` holds pilot decisions.
 - **Status.** Tasks use checkboxes. `[ ]` open, `[~]` in progress (add branch/PR), `[x]` done
@@ -651,6 +653,8 @@ Exit criteria:
   "wartet auf Freigabe" badge until merged (M, → B5, H1, Q3). The prerequisites are met (token of
   the existing GitHub App, H1/H2 merged). Open: the first real edit from the app (e.g.
   Grundmengen) → `app/edits` PR → auto-merge, checked on the Pi. No `app/edits` PR has existed yet.
+  Fixed with #128: git paths unquoted (`core.quotePath=false`) - an unmerged edit of a file with an
+  umlaut in its name was dropped once `main` had moved on.
 - [~] **H2** (hq #2; merges with merge commits, not squash, for B5b) `hq` CI (S–M, → Z1). Green on
   GitHub on PRs, pushes and the daily schedule, all products included; actionlint 1.7.7 and
   shellcheck without findings (2026-11-11). Open: the auto-merge job has never run, because no
@@ -702,16 +706,21 @@ Exit criteria:
   - [x] Samstags-Satz print on 3 sheets (#125): prints like a full Saturday, day type framed on
         sheet 1; `closed_day_specials` no longer names an item that has the day's column.
 - [~] **Z15** Comparison of the app's sheets with the bakery's paper sheets of 03.–12.11. (website
-  #126, hq #20). The report with the real values is private:
-  `hq/notes/procedures/backzettel-abgleich.md`.
+  #126, #129, hq #20, #21). The report with the real values is private:
+  `hq/notes/procedures/backzettel-abgleich.md`. hq #21 records the developer's answers
+  (provisional) and a list of 18 questions for the owner
+  (`hq/notes/procedures/backzettel-fragen-inhaber.md`); the number of differences to the paper
+  stays the same until the owner has answered.
   - [x] „Weiteren Posten aufnehmen“ in the day planning (#126): an item without any quantity
         (`addable`) gets onto the draft through the usual correction with a reason and then
         counts in dough, litres and Bruch.
   - [x] Three provisional base values in hq (#20) - the owner confirms them.
-  - [ ] An explicit „heute keine“ for an open base quantity: a correction of 0 means "no
-        correction", so the dough stays incomplete. Needs a decision how "today 0" is stored.
-  - [ ] Two Bruch weights for one item on the same bake day (an item has one per bake day).
-  - [ ] A Kranz added on a weekday produces a Hefeteig box with 0 L (litres rounded to whole).
+  - [x] „Heute keine“ / „Menge für heute“ for an open base quantity (#129): its own flag per
+        line, a correction of 0 still means "no correction", the base stays „offen“.
+  - [x] A small dough amount is never shown as 0 L (#129): if the dough's rounding turns an
+        amount > 0 into 0, the exact litres are shown with the reason.
+  - [ ] Two Bruch weights for one item on the same bake day (an item has one per bake day). A
+        second item in hq covers it without code.
 
 ### M3 Run through Christmas (27.11. – 24.12.): freeze
 
@@ -750,8 +759,19 @@ Exit criterion: the Christmas preorders were handed over from the app and no dat
       a decision paper only (`docs/fernzugriff-fahrer.md`) and waits for Q8.
 - [x] "Rest am Abend" (#105, #112): unsold count per product at closing. This measures the waste target.
       Im Pilot freigegeben (Entscheidung 2026-11-08): Verkauf/Backstube zählen, Auswertung nur Inhaber.
-- [~] **Rezepte** (`feat/rezepte`) Recipes screen `/admin/rezepte` for the role `backstubenleiter`.
-  Pulled forward from M5 by the owner on 2026-11-11.
+- [~] **Rezepte** (#128) Recipes screen `/admin/rezepte` for the role `backstubenleiter`. Pulled
+  forward from M5 by the owner on 2026-11-11. Rules: `docs/domains/rezepte.md`, API:
+  `docs/api/recipes.md`.
+  - [x] API `/api/recipes` and the screen (#128): list, view, print, create, change; `inhaber`
+        and `backstubenleiter` write, `backstube` reads; edits go through the rolling `app/edits`
+        PR (B5b); im Pilot freigegeben.
+  - [ ] Deleting and moving a recipe is off on the box: hq's `scripts/validate/check-paths.js`
+        has to allow deletions under `data/recipes/**` first, then set `HQ_RECIPES_ALLOW_DELETE=1`.
+  - [ ] `teige/` recipes are read-only (vorläufig).
+  - [ ] Create the users with the role `backstubenleiter` (owner: who?).
+  - [ ] hq recipes: hq #19 compared them with the originals. 39 household-scale recipes are not
+        yet replaced by bakery-scale originals; the questions for the owner are in
+        `hq/notes/procedures/rezepte-abgleich.md` (private).
 - [ ] Backzettel v2 suggestions (§5.4).
 - [x] Fix the `group_name` loss in `hq` `convert_reports.js`; fix `create_baking_plan.py` (hq #2, with H3/H5).
 
@@ -912,3 +932,4 @@ PC width, in light and dark. It checks role filtering, 401s without a session, a
 | 2026-11-08 | Owner decision: the Dienstplan (TASK-042, PR #111) is im Pilot für den Inhaber freigegeben (Entscheidung 2026-11-08). `/admin/dienstplan` moved from `PILOT_HIDDEN_ROUTES` to `PILOT_ALLOWED_ROUTES`; still `inhaber` only with a personal session (`ROLE_ACCESS`, `PERSONAL_ONLY_ROUTES`, API `requireRole('inhaber')` + `requirePersonalSession`). D11 and the M5 table updated.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | 2026-11-08 | Owner decision (Dienstplan, TASK-042 follow-up): opening hours in the week view with the Verkauf Besetzung per day (one source: `opening-hours.core.js`, the landing page checked against it), shifts in every area (Besetzung still counts only Verkauf), planned hours per week/month next to the target from `weekly_hours`. Later: actual hours from a time clock and plan vs. actual - not part of this stage. Details: `docs/domains/dienstplan.md`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | 2026-11-11 | Merged: Z14 follow-ups (#121–#125: closing days in `/api/preorders` and in the preorder form, Grundmengen columns, Rest am Abend + Dienstplan on the calendar, Samstags-Satz print) and the comparison with the paper sheets (Z15: #126, hq #20). `main` checked after the four parallel merges, no break from the combination (numbers in §0). Task statuses in §0/§6/§7 checked against git and gh: everything from `pilot`, `next` and the hq branches is merged, so B8, B12, Rest am Abend, H3, H5, Z2, Z10 and Z13 are ticked. Owner decision: the recipes screen is pulled forward from M5 (`feat/rezepte`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 2026-11-12 | Merged: Rezepte (#128, with the `core.quotePath=false` fix in the hq write-back; hq #19 recipes compared with the originals) and the Z15 follow-ups (#129 „Heute keine“ and no 0 L; hq #21 answers and the question list for the owner). Open points of both are in §6. Deploy to `robot0` in progress.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
