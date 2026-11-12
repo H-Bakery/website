@@ -348,7 +348,12 @@ describe('reading', () => {
             { name: 'Salz', amount: 22, unit: 'g', note: null },
             { name: 'Testhefe', amount: 28, unit: 'g', note: null },
           ],
-          total: { label: 'Gesamtmasse', text: '1.735 g' },
+          total: {
+            label: 'Gesamtmasse',
+            text: '1.735 g',
+            // passt zu den Zutaten: kein Hinweis
+            ingredientSum: null,
+          },
         },
       ],
       steps: [
@@ -411,6 +416,18 @@ describe('reading', () => {
     })
     expect(teig.readOnlyReason).toMatch(/Rechengrundlage des Backzettels/)
     expect(teig.parts[0].ingredients).toHaveLength(5)
+    // staff-facing: no raw YAML key, German decimal comma
+    expect(teig.meta).toEqual(
+      expect.arrayContaining([
+        { key: 'art', label: 'Art', value: 'Teig' },
+        { key: 'basis', label: 'Basis', value: 'je 1 L Schüttwasser' },
+        {
+          key: 'teig_kg_je_l',
+          label: 'Teig je Liter Schüttwasser (kg)',
+          value: '2,7475',
+        },
+      ])
+    )
   })
 
   it('404 with message for what is not a recipe - also for path tricks', async () => {
@@ -951,6 +968,35 @@ describe('writing without HQ_WRITE_DIR (development)', () => {
     const b = after.split('\n')
     expect(b).toHaveLength(a.length)
     expect(b.filter((line, i) => line !== a[i])).toEqual(['### Teig:'])
+  })
+
+  it('a changed amount leaves the file total alone and reports the ingredient sum', async () => {
+    const recipe = await get(app, 'special/probe-duennbrot')
+    const before = readRecipe(hq.recipesDir, 'special/Probe-Dünnbrot')
+    expect(recipe.parts[0].total.ingredientSum).toBeNull()
+    const parts = JSON.parse(JSON.stringify(recipe.parts))
+    parts[0].ingredients[0].amount += 10
+    const res = await request(app)
+      .put('/api/recipes/special/probe-duennbrot')
+      .set(lead)
+      .send({ ...formOf(recipe), parts })
+    expect(res.status).toBe(200)
+    // the row stays as written - the view names what the ingredients add up to
+    expect(res.body.data.parts[0].total).toEqual({
+      ...recipe.parts[0].total,
+      ingredientSum: '1.745 g',
+    })
+    const a = before.split('\n')
+    const b = readRecipe(hq.recipesDir, 'special/Probe-Dünnbrot').split('\n')
+    expect(b.filter((line, i) => line !== a[i])).toHaveLength(1)
+    // back to the fixture for the tests that follow
+    fs.writeFileSync(
+      path.join(hq.recipesDir, 'special/Probe-Dünnbrot'),
+      before,
+      'utf-8'
+    )
+    const restored = await get(app, 'special/probe-duennbrot')
+    expect(restored.parts[0].total.ingredientSum).toBeNull()
   })
 
   it('teig recipes cannot be changed or deleted', async () => {

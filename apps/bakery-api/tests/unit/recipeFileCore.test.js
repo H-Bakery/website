@@ -160,7 +160,7 @@ describe('Formate', () => {
     ])
     expect(m.meta).toEqual(
       expect.arrayContaining([
-        { key: 'total_mass', label: 'Gesamtmasse (g)', value: '2100' },
+        { key: 'total_mass', label: 'Gesamtmasse (g)', value: '2.100' },
         {
           key: 'equipment',
           label: 'Geräte',
@@ -273,11 +273,13 @@ describe('Formate', () => {
     ])
     expect(m.meta).toEqual(
       expect.arrayContaining([
-        { key: 'art', label: 'Art', value: 'teig' },
+        // lesbar für die Backstube: kein YAML-Schlüssel, Dezimalkomma
+        { key: 'art', label: 'Art', value: 'Teig' },
+        { key: 'basis', label: 'Basis', value: 'je 1 L Schüttwasser' },
         {
           key: 'teig_kg_je_l',
           label: 'Teig je Liter Schüttwasser (kg)',
-          value: '2.7475',
+          value: '2,7475',
         },
         { key: 'bestaetigt', label: 'Bestätigt', value: null },
       ])
@@ -1312,6 +1314,97 @@ describe('Dateinamen und Kennungen', () => {
       'weiss-brot',
     ])
     expect(slugs.has('🍰.md')).toBe(false)
+  })
+
+  it('eine Datei, deren Löschung wartet, gibt die Kennung an das neue Rezept ab', () => {
+    // `Testkompott.md` ist gelöscht (wartet auf Freigabe), `testkompott.md`
+    // wurde unter demselben Namen neu angelegt.
+    const names = ['Testkompott.md', 'testkompott.md', 'Testkuchen.md']
+    expect(core.slugsForFiles(names).get('testkompott.md')).toBe(
+      'testkompott-2'
+    )
+    const slugs = core.slugsForFiles(names, ['Testkompott.md'])
+    expect(slugs.get('testkompott.md')).toBe('testkompott')
+    expect(slugs.get('Testkompott.md')).toBe('testkompott-2')
+    expect(slugs.get('Testkuchen.md')).toBe('testkuchen')
+    // nach der Freigabe ist die alte Datei weg - die Kennung bleibt
+    expect(
+      core
+        .slugsForFiles(['testkompott.md', 'Testkuchen.md'])
+        .get('testkompott.md')
+    ).toBe('testkompott')
+  })
+
+  it('Summenzeile der Datei: passt sie noch zu den Zutaten?', () => {
+    const part = (amounts, total) => ({
+      title: null,
+      ingredients: amounts.map(([amount, unit], i) => ({
+        name: `Zutat ${i}`,
+        amount,
+        unit,
+        note: null,
+      })),
+      total,
+    })
+    const total = { label: 'Gesamtmasse', text: '1.735 g' }
+    expect(
+      core.partTotalCheck(
+        part(
+          [
+            [640, 'g'],
+            [1, 'kg'],
+            [45, 'g'],
+            [22, 'g'],
+            [28, 'g'],
+          ],
+          total
+        )
+      )
+    ).toEqual({ matches: true, sum: 1735, sumText: '1.735 g' })
+    // eine Menge geändert: die Zeile der Datei ist überholt
+    expect(
+      core.partTotalCheck(
+        part(
+          [
+            [650, 'g'],
+            [1000, 'g'],
+            [45, 'g'],
+            [22, 'g'],
+            [28, 'g'],
+          ],
+          total
+        )
+      )
+    ).toEqual({ matches: false, sum: 1745, sumText: '1.745 g' })
+    // keine Aussage: offene Menge, andere Einheit, keine Masse, keine Zeile
+    expect(
+      core.partTotalCheck(
+        part(
+          [
+            [650, 'g'],
+            [null, null],
+          ],
+          total
+        )
+      )
+    ).toBe(null)
+    expect(
+      core.partTotalCheck(
+        part(
+          [
+            [650, 'g'],
+            [2, 'EL'],
+          ],
+          total
+        )
+      )
+    ).toBe(null)
+    expect(
+      core.partTotalCheck(
+        part([[650, 'g']], { label: 'Summe', text: '16 Stück' })
+      )
+    ).toBe(null)
+    expect(core.partTotalCheck(part([[650, 'g']], null))).toBe(null)
   })
 
   it('neuer Dateiname nur aus Buchstaben und Ziffern', () => {

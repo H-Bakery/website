@@ -566,6 +566,37 @@ const META_LABELS = Object.freeze({
 
 const BOOLEAN_TEXT = Object.freeze({ true: 'ja', false: 'nein' })
 
+/** Kopfwerte, die Zahlen sind: in der Anzeige mit Dezimalkomma. */
+const META_NUMBERS = Object.freeze([
+  'total_mass',
+  'teig_kg_je_l',
+  'baking.temperature',
+  'baking.time',
+  'preparation_time',
+  'resting_time',
+])
+
+const ART_TEXT = Object.freeze({ teig: 'Teig', zusatz: 'Zusatz' })
+
+/**
+ * Ein Kopfwert so, wie ihn die Backstube liest: `2.7475` → `2,7475`,
+ * `2100` Gramm → `2.100`, `{ wasser_l: 1 }` → „je 1 L Schüttwasser“,
+ * `teig` → „Teig“. Was sich nicht deuten lässt, bleibt wie in der Datei.
+ */
+function metaDisplay(key, value) {
+  if (key === 'basis') return basisText(value) || metaValue(value)
+  const text = metaValue(value)
+  if (text === null) return null
+  if (key === 'art') return ART_TEXT[text] || text
+  if (META_NUMBERS.includes(key) && /^\d+(\.\d+)?$/.test(text)) {
+    const [whole, frac] = text.split('.')
+    const grouped =
+      key === 'total_mass' ? whole.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : whole
+    return frac ? `${grouped},${frac}` : grouped
+  }
+  return text
+}
+
 function metaValue(value) {
   if (value === null || value === undefined) return null
   if (Array.isArray(value)) {
@@ -593,7 +624,7 @@ function frontmatterMeta(lines, entries, skip) {
     if (!entry.key || skip.includes(entry.key)) continue
     const inline = stripComment(entry.valueText).trim()
     if (inline !== '') {
-      push(entry.key, metaValue(parseFlow(inline)))
+      push(entry.key, metaDisplay(entry.key, parseFlow(inline)))
       continue
     }
     const items = []
@@ -606,7 +637,8 @@ function frontmatterMeta(lines, entries, skip) {
       if (item) items.push(metaValue(parseFlow(item[1])))
       else if (pair) {
         nested = true
-        push(`${entry.key}.${pair[1]}`, metaValue(parseFlow(pair[2])))
+        const key = `${entry.key}.${pair[1]}`
+        push(key, metaDisplay(key, parseFlow(pair[2])))
       }
     }
     if (items.length > 0) push(entry.key, items.join(', '))
@@ -2034,6 +2066,35 @@ function totalOf(chunk) {
   }
 }
 
+const MASS_IN_G = Object.freeze({ g: 1, kg: 1000 })
+
+/**
+ * Passt die Summenzeile der Datei noch zu den Zutaten darüber? Die App
+ * rechnet die Zeile nie neu (sie bleibt wörtlich stehen) - nach einer
+ * geänderten Menge stünde sonst eine alte Summe wie eine gültige da.
+ * Geprüft wird nur, wenn jede Zutat eine Menge in g/kg hat und die
+ * Summenzeile eine Masse nennt; sonst `null` (keine Aussage).
+ * @returns {{matches: boolean, sum: number, sumText: string}|null}
+ */
+function partTotalCheck(part) {
+  if (!part || !part.total || !Array.isArray(part.ingredients)) return null
+  if (part.ingredients.length === 0) return null
+  const stated = readQuantity(part.total.text)
+  if (stated.amount === null || !MASS_IN_G[stated.unit]) return null
+  let sum = 0
+  for (const ingredient of part.ingredients) {
+    const factor = MASS_IN_G[ingredient.unit]
+    if (typeof ingredient.amount !== 'number' || !factor) return null
+    sum += ingredient.amount * factor
+  }
+  sum = roundAmount(sum)
+  return {
+    matches: Math.abs(sum - stated.amount * MASS_IN_G[stated.unit]) <= 0.5,
+    sum,
+    sumText: `${formatAmount(sum, 'table')} g`,
+  }
+}
+
 function sameTotal(a, b) {
   if (a === null || b === null) return a === b
   return a.label === b.label && a.text === b.text
@@ -2539,18 +2600,28 @@ function fileStem(name) {
  * Kennungen (`slug`) für die Dateien eines Kategorie-Verzeichnisses, aus dem
  * Dateinamen abgeleitet (`Gefüllte-Testkränze.md` → `gefuellte-testkraenze`).
  * Gleiche Ergebnisse bekommen in Namensreihenfolge `-2`, `-3` …
+ * `leaving` sind Dateien, deren Löschung auf Freigabe wartet: sie kommen
+ * zuletzt dran. Ein Rezept, das unter demselben Namen neu angelegt wird,
+ * hat so von Anfang an die Kennung, die es nach der Freigabe behält.
+ * @param {Iterable<string>} names
+ * @param {Iterable<string>} [leaving]
  * @returns {Map<string, string>} Dateiname → slug (Dateien ohne brauchbaren Namen fehlen)
  */
-function slugsForFiles(names) {
+function slugsForFiles(names, leaving) {
   const out = new Map()
   const taken = new Set()
-  const sorted = [...names].sort((a, b) =>
+  const last = new Set(leaving || [])
+  const byName = (a, b) =>
     a.normalize('NFC') < b.normalize('NFC')
       ? -1
       : a.normalize('NFC') > b.normalize('NFC')
       ? 1
       : 0
-  )
+  const all = [...names]
+  const sorted = [
+    ...all.filter((name) => !last.has(name)).sort(byName),
+    ...all.filter((name) => last.has(name)).sort(byName),
+  ]
   for (const name of sorted) {
     if (!isRecipeFileName(name)) continue
     const base = slugify(fileStem(name).normalize('NFC'))
@@ -2650,6 +2721,7 @@ module.exports = {
   newRecipeFile,
   normalizeRecipeInput,
   parseRecipeFile,
+  partTotalCheck,
   readQuantity,
   recipeInputOf,
   referenceKey,

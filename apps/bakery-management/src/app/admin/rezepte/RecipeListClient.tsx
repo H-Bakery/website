@@ -28,9 +28,10 @@ import {
   type RecipeList,
   type RecipeSummary,
 } from '../../../lib/recipesApi'
-import type {
-  RecipeListFilters,
-  RecipeListFlash,
+import {
+  initialRecipeFilters,
+  type RecipeListFilters,
+  type RecipeListFlash,
 } from '../../../lib/recipeQuery'
 import { canWriteRecipes } from '../../../lib/roles'
 import { useOptionalSession } from '../../../lib/session'
@@ -158,12 +159,18 @@ export default function RecipeListClient({
   // Ohne Sitzung (Specs) bleibt alles sichtbar; durchgesetzt wird in der API.
   const canWrite = !role || canWriteRecipes(role)
   const [state, setState] = React.useState<State>({ phase: 'loading' })
-  const [category, setCategory] = React.useState<string | null>(
-    initialFilters.category
+  // Über „Zurück“ aus einem Rezept gilt die Adresse, nicht der erste Aufruf.
+  const [start] = React.useState(() =>
+    initialRecipeFilters(
+      initialFilters,
+      typeof window === 'undefined' ? null : window.location,
+      RECIPES_HREF
+    )
   )
-  const [search, setSearch] = React.useState(initialFilters.q)
+  const [category, setCategory] = React.useState<string | null>(start.category)
+  const [search, setSearch] = React.useState(start.q)
   /** Der Suchtext, mit dem die gezeigte Liste geladen wurde. */
-  const [query, setQuery] = React.useState(initialFilters.q.trim())
+  const [query, setQuery] = React.useState(start.q.trim())
   const [searching, setSearching] = React.useState(false)
   const [notice, setNotice] = React.useState<RecipeListFlash | null>(
     flash ?? null

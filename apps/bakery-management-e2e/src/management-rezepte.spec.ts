@@ -94,11 +94,54 @@ test.describe('Rezepte', () => {
     ).toBeLessThanOrEqual(0)
   })
 
+  test('„Zurück“ aus einem Rezept landet in derselben Auswahl', async ({
+    page,
+  }) => {
+    await signIn(page)
+    await page.goto('/admin/rezepte')
+    await expect(page.getByTestId('recipe-group-breads')).toBeVisible()
+    // Kategorie über den Chip (nicht über die Adresse) gewählt
+    await page.getByTestId('recipe-filter-fillings').click()
+    await expect(page).toHaveURL(/\/admin\/rezepte\?kategorie=fillings$/)
+    await expect(page.getByTestId('recipe-group-breads')).toHaveCount(0)
+    await page.getByTestId('recipe-row-fillings/gefuellte-testkraenze').click()
+    await expect(page).toHaveURL(
+      /\/admin\/rezepte\/fillings\/gefuellte-testkraenze$/
+    )
+    await expect(page.getByTestId('recipe-ingredients')).toBeVisible()
+    await page.goBack()
+    await expect(page).toHaveURL(/\/admin\/rezepte\?kategorie=fillings$/)
+    await expect(
+      page.getByTestId('recipe-row-fillings/gefuellte-testkraenze')
+    ).toBeVisible()
+    await expect(page.getByTestId('recipe-group-breads')).toHaveCount(0)
+
+    // dasselbe mit dem Suchtext
+    await page.goto('/admin/rezepte')
+    const search = page.getByRole('textbox', {
+      name: 'Rezept oder Zutat suchen',
+    })
+    await search.fill('Testsaat')
+    await expect(page).toHaveURL(/\/admin\/rezepte\?q=Testsaat$/)
+    await page.getByTestId('recipe-row-breads/musterkruste').click()
+    await expect(page).toHaveURL(/\/admin\/rezepte\/breads\/musterkruste$/)
+    await expect(page.getByTestId('recipe-ingredients')).toBeVisible()
+    await page.goBack()
+    await expect(page).toHaveURL(/\/admin\/rezepte\?q=Testsaat$/)
+    await expect(search).toHaveValue('Testsaat')
+    await expect(page.getByTestId('recipe-row-cakes/testkuchen')).toHaveCount(0)
+  })
+
   test('Teig-Rezept: nur zum Ansehen, auch für den Inhaber', async ({
     page,
   }) => {
     await signIn(page)
     await page.goto('/admin/rezepte/teige/musterteig')
+    // Angaben lesbar: kein YAML-Schlüssel, Dezimalkomma
+    const meta = page.getByTestId('recipe-meta')
+    await expect(meta).toContainText('je 1 L Schüttwasser')
+    await expect(meta).toContainText('2,7475')
+    await expect(meta).not.toContainText('wasser_l')
     await expect(page.getByTestId('recipe-readonly-hint')).toContainText(
       'Nur zum Ansehen'
     )

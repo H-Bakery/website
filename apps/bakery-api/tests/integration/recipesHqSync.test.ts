@@ -240,6 +240,51 @@ describe('recipes in the rolling hq PR', () => {
     expect((await get(app, 'cakes/musterschnitte')).status).toBe(404)
   })
 
+  it('a recipe created under the name of one that waits for deletion keeps its id after the merge', async () => {
+    const { app, edits, remote } = setup()
+    await edits.init()
+    const old = (await get(app, 'fillings/testkompott')).body.data
+    const removed = await request(app)
+      .delete('/api/recipes/fillings/testkompott')
+      .set(lead)
+      .send({ expectedVersion: old.version })
+    expect(removed.body).toMatchObject({ pending: true })
+    const created = await request(app)
+      .post('/api/recipes')
+      .set(lead)
+      .send({ title: 'Testkompott', category: 'fillings', yield: '2 kg' })
+    expect(created.status).toBe(201)
+    // the address the app opens now is the one that stays
+    expect(created.body.data).toMatchObject({
+      id: 'fillings/testkompott',
+      file: 'testkompott.md',
+      pending: 'created',
+    })
+    const waiting = await request(app)
+      .get('/api/recipes?category=fillings')
+      .set(lead)
+    expect(
+      waiting.body.data.recipes
+        .filter((r: { slug: string }) => r.slug.startsWith('testkompott'))
+        .map((r: { slug: string; pending: unknown }) => [r.slug, r.pending])
+        .sort()
+    ).toEqual([
+      ['testkompott', 'created'],
+      ['testkompott-2', 'deleted'],
+    ])
+    await edits.sync()
+    mergeEdits(remote)
+    await edits.sync()
+    const merged = (await get(app, 'fillings/testkompott')).body.data
+    expect(merged).toMatchObject({
+      id: 'fillings/testkompott',
+      file: 'testkompott.md',
+      yield: '2 kg',
+      pending: null,
+    })
+    expect((await get(app, 'fillings/testkompott-2')).status).toBe(404)
+  })
+
   it('an edit of a file with umlauts in its name survives main moving on (git quotes such paths)', async () => {
     // `git diff --name-only` prints non-ASCII paths quoted and escaped unless
     // core.quotePath is off. The squash-merge detection then compared a path

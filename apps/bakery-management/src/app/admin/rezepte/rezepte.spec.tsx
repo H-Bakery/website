@@ -145,6 +145,46 @@ describe('Rezeptliste (/admin/rezepte)', () => {
     )
   })
 
+  it('„Zurück“ aus einem Rezept: die Filter der Adresse gelten, nicht die des ersten Aufrufs', async () => {
+    mockApi()
+    const before = window.location.pathname + window.location.search
+    // Die Seite kommt über „Zurück“ mit den Angaben ihres ersten Aufrufs
+    // (ohne Filter) wieder - die Adresse trägt die zuletzt gewählten.
+    window.history.replaceState(
+      null,
+      '',
+      '/admin/rezepte?kategorie=fillings&q=n%C3%BCsse'
+    )
+    try {
+      renderAs('backstube', <RecipeListClient />)
+      await screen.findByTestId('recipe-row-fillings/gefuellte-testkraenze')
+      expect(
+        screen.queryByTestId('recipe-group-breads')
+      ).not.toBeInTheDocument()
+      expect(
+        screen.getByRole('textbox', { name: 'Rezept oder Zutat suchen' })
+      ).toHaveValue('nüsse')
+      expect(apiClient.get).toHaveBeenCalledWith(
+        '/api/recipes',
+        expect.objectContaining({ q: 'nüsse' })
+      )
+      // … und die Adresse behält sie
+      expect(window.location.search).toBe('?kategorie=fillings&q=n%C3%BCsse')
+    } finally {
+      window.history.replaceState(null, '', before)
+    }
+  })
+
+  it('auf dem Weg zur Liste (Adresse noch die alte Seite) gelten die Filter des Aufrufs', async () => {
+    mockApi()
+    renderAs(
+      'backstube',
+      <RecipeListClient initialFilters={{ category: 'fillings', q: '' }} />
+    )
+    await screen.findByTestId('recipe-row-fillings/gefuellte-testkraenze')
+    expect(screen.queryByTestId('recipe-group-breads')).not.toBeInTheDocument()
+  })
+
   it('sucht über die API (auch in Zutaten), sobald das Tippen ruht', async () => {
     jest.useFakeTimers()
     try {
@@ -334,6 +374,50 @@ describe('Rezeptansicht (/admin/rezepte/<kategorie>/<kennung>)', () => {
     expect(meta).toHaveTextContent('Bestätigtoffen')
     expect(screen.getByTestId('recipe-section')).toHaveTextContent(
       'FehlerquellenZu kurze Gare'
+    )
+  })
+
+  it('Summenzeile der Datei passt nicht mehr zu den Zutaten: Hinweis in Ansicht und Druck', async () => {
+    const filling = syntheticFilling()
+    mockApi({ recipes: [filling] })
+    const { unmount } = renderAs(
+      'backstube',
+      <RecipeDetailClient category="fillings" slug="gefuellte-testkraenze" />
+    )
+    expect(await screen.findByTestId('recipe-total')).toHaveTextContent(
+      '1.470 gGesamtmasse'
+    )
+    // passt (oder nicht prüfbar): kein Hinweis
+    expect(screen.queryByTestId('recipe-total-stale')).not.toBeInTheDocument()
+    unmount()
+
+    const total = filling.parts[0].total
+    mockApi({
+      recipes: [
+        {
+          ...filling,
+          parts: [
+            {
+              ...filling.parts[0],
+              total: total && { ...total, ingredientSum: '1.480 g' },
+            },
+          ],
+          meta: [
+            { key: 'total_mass', label: 'Gesamtmasse (g)', value: '1.470' },
+          ],
+        },
+      ],
+    })
+    renderAs(
+      'backstube',
+      <RecipeDetailClient category="fillings" slug="gefuellte-testkraenze" />
+    )
+    expect(await screen.findByTestId('recipe-total-stale')).toHaveTextContent(
+      'Summe aus der Rezeptdatei - die Zutaten ergeben zusammen 1.480 g.'
+    )
+    // Angaben aus dem Kopf der Datei: als Stand der Datei gekennzeichnet
+    expect(screen.getByTestId('recipe-meta')).toHaveTextContent(
+      'Stand der Rezeptdatei - diese Angaben werden in der App nicht geändert und nicht neu berechnet.'
     )
   })
 

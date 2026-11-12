@@ -39,8 +39,16 @@ export interface RecipePart {
   /** `null` = unbenannter Teil. */
   title: string | null
   ingredients: RecipeIngredient[]
-  /** Summenzeile der Datei - nur Anzeige, wird nie neu berechnet. */
-  total: { label: string; text: string } | null
+  /**
+   * Summenzeile der Datei - nur Anzeige, wird nie neu berechnet.
+   * `ingredientSum` nennt die Summe der Zutaten, wenn die Zeile nicht mehr
+   * dazu passt (z. B. nach einer geänderten Menge), sonst `null`.
+   */
+  total: {
+    label: string
+    text: string
+    ingredientSum?: string | null
+  } | null
 }
 
 export interface RecipeStepGroup {

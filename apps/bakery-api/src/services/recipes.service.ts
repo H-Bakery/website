@@ -57,7 +57,15 @@ export interface RecipePart {
   title: string | null
   ingredients: RecipeIngredient[]
   /** Summenzeile der Datei (`**Gesamtmasse**`), wie sie dort steht. */
-  total: { label: string; text: string } | null
+  total: {
+    label: string
+    text: string
+    /**
+     * Nur in der Antwort: Summe der Zutaten (z. B. `1.745 g`), wenn die
+     * Summenzeile der Datei nicht mehr dazu passt - sonst `null`.
+     */
+    ingredientSum?: string | null
+  } | null
 }
 
 export interface RecipeStepGroup {
@@ -601,14 +609,26 @@ export class RecipesService {
     }
 
     const namesByCategory = new Map<string, string[]>()
-    for (const file of found.values()) {
+    // Dateien, deren Löschung auf Freigabe wartet, bekommen ihre Kennung
+    // zuletzt - ein gleichnamiges neues Rezept behält seine über die
+    // Freigabe hinweg.
+    const leavingByCategory = new Map<string, string[]>()
+    for (const [rel, file] of found) {
       const list = namesByCategory.get(file.category) ?? []
       list.push(file.fileName)
       namesByCategory.set(file.category, list)
+      if (writeRoot && !writeFiles.has(rel) && deleted.has(rel)) {
+        const leaving = leavingByCategory.get(file.category) ?? []
+        leaving.push(file.fileName)
+        leavingByCategory.set(file.category, leaving)
+      }
     }
     const slugs = new Map<string, Map<string, string>>()
     for (const [category, names] of namesByCategory) {
-      slugs.set(category, core.slugsForFiles(names))
+      slugs.set(
+        category,
+        core.slugsForFiles(names, leavingByCategory.get(category))
+      )
     }
 
     const entries: Entry[] = []
@@ -728,7 +748,18 @@ export class RecipesService {
     return {
       ...this.summaryOf(entry, doc, uses),
       description: model.description ?? null,
-      parts: model.parts,
+      parts: model.parts.map((part: RecipePart) => {
+        if (!part.total) return part
+        const check = core.partTotalCheck(part)
+        return {
+          ...part,
+          total: {
+            label: part.total.label,
+            text: part.total.text,
+            ingredientSum: check && !check.matches ? check.sumText : null,
+          },
+        }
+      }),
       steps: model.steps,
       notes: model.notes ?? null,
       meta: model.meta,

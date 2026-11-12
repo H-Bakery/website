@@ -134,7 +134,9 @@ erlaubt. Die Liste meldet es mit `canDelete: false`.
 
 Neue Rezepte heißen `<kategorie>/<slug>.md` (Slug aus dem Namen, Umlaute umgeschrieben, nur
 `a-z0-9-`); in `teige/` legt die Verwaltung nichts an. Vorhandene Dateien behalten ihren Namen,
-auch wenn der Titel sich ändert - die Kennung `<kategorie>/<slug>` bleibt stabil. Die Kennung wird
+auch wenn der Titel sich ändert - die Kennung `<kategorie>/<slug>` bleibt stabil (auch für ein
+Rezept, das unter dem Namen eines gelöschten, noch nicht freigegebenen angelegt wird: die
+wartende Löschung bekommt die Kennung zuletzt). Die Kennung wird
 nie zu einem Pfad zusammengesetzt, sondern im Verzeichnis nachgeschlagen.
 
 ## Oberfläche (`/admin/rezepte`)
@@ -159,7 +161,9 @@ nicht erst. Die Backstube sieht dieselbe Liste und Ansicht ohne „Neues Rezept"
   Zutatenzahl. Die Suche geht an die API (`?q=`, 250 ms nach dem letzten Tastendruck) - nur sie
   kennt die Zutaten; der Kategorie-Filter läuft im Browser über das Suchergebnis, die Chips zählen
   die Treffer. Filter stehen in der Adresse (`?kategorie=&q=`), damit „Zurück" aus einem Rezept in
-  derselben Auswahl landet.
+  derselben Auswahl landet - die Liste startet deshalb mit den Filtern der Adresse
+  (`initialRecipeFilters`), nicht mit denen ihres ersten Aufrufs. Der Link „Alle Rezepte" im
+  Rezept führt zur ungefilterten Liste.
 - **Marker** (`RecipeStatusChips`, in Liste, Ansicht und Formular gleich): „wartet auf Freigabe"
   (auch „neu · …" und „gelöscht · …"), „Backzettel" (der Backzettel verwendet das Rezept) und - nur
   für Schreibende - „nur lesen". Die Liste nennt dazu die Zahl wartender Änderungen. Nicht
@@ -172,6 +176,12 @@ nicht erst. Die Backstube sieht dieselbe Liste und Ansicht ohne „Neues Rezept"
   übernommenen Abschnitte rendert `RecipeText` (Absätze, Listen, `**fett**`, Tabellen; HTML wird
   nicht ausgeführt, Unbekanntes bleibt Text). „Drucken" = `window.print()`: ohne Knöpfe und
   Hinweise, hell, Zutaten vor Zubereitung.
+  Die Summenzeile einer Tabelle und die „Angaben" aus dem Kopf (`total_mass` …) rechnet die App
+  nie neu. Passt die Summenzeile nicht mehr zu den Zutaten (alle in g/kg, `partTotalCheck`), steht
+  darunter „Summe aus der Rezeptdatei - die Zutaten ergeben zusammen …"; über den „Angaben" steht
+  „Stand der Rezeptdatei …" - beides auch im Druck. `total_mass` wird nicht geprüft (Vorteige
+  zählen in vielen Dateien doppelt). Angaben stehen deutsch da: Dezimalkomma, „je 1 L
+  Schüttwasser" statt `wasser_l: 1`, „Teig" statt `teig` (`metaDisplay`).
 - **Formular** (`RecipeForm`, für Neu und Bearbeiten): Name, Kategorie, „Ergibt", Beschreibung;
   Zutaten in Gruppen (Zeile hinzufügen/entfernen, mit Pfeilen umsortieren, Enter in der letzten Zeile
   legt die nächste an); Arbeitsschritte in Abschnitten (nummeriert oder Stichpunkte); Notizen. Leere

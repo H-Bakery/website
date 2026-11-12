@@ -188,7 +188,22 @@ function IngredientsTable({
                 >
                   {part.total.text}
                 </Box>
-                <th scope="row">{part.total.label}</th>
+                <th scope="row">
+                  {part.total.label}
+                  {part.total.ingredientSum && (
+                    <Typography
+                      component="span"
+                      data-testid="recipe-total-stale"
+                      sx={{
+                        display: 'block',
+                        fontSize: '0.875em',
+                        fontWeight: 400,
+                      }}
+                    >
+                      {`Summe aus der Rezeptdatei - die Zutaten ergeben zusammen ${part.total.ingredientSum}.`}
+                    </Typography>
+                  )}
+                </th>
               </tr>
             </tfoot>
           )}
@@ -518,6 +533,14 @@ export default function RecipeDetailClient({ category, slug, flash }: Props) {
 
       {recipe.meta.length > 0 && (
         <PageSection title="Angaben" data-testid="recipe-meta">
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ mb: 1.5, '@media print': { mb: 0.75 } }}
+          >
+            Stand der Rezeptdatei - diese Angaben werden in der App nicht
+            geändert und nicht neu berechnet.
+          </Typography>
           <Box
             component="dl"
             sx={{

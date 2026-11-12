@@ -22,6 +22,23 @@ export function recipeFiltersFromQuery(query: RecipeQuery): RecipeListFilters {
   return { category: one(query['kategorie']) || null, q: one(query['q']) }
 }
 
+/**
+ * Die Filter, mit denen die Liste startet. Steht die Liste schon in der
+ * Adresszeile, gilt die Adresse: über „Zurück“ aus einem Rezept kommt die
+ * Seite mit den Angaben ihres ersten Aufrufs wieder (`fromPage`), die
+ * Adresse trägt aber die zuletzt gewählten Filter. Auf dem Weg zur Liste
+ * (Adresse noch die alte Seite) und auf dem Server gilt `fromPage`.
+ */
+export function initialRecipeFilters(
+  fromPage: RecipeListFilters,
+  location: { pathname: string; search: string } | null,
+  listPath: string
+): RecipeListFilters {
+  if (!location || location.pathname !== listPath) return fromPage
+  const params = new URLSearchParams(location.search)
+  return { category: params.get('kategorie') || null, q: params.get('q') ?? '' }
+}
+
 /** Was nach dem Löschen oben auf der Liste steht. */
 export interface RecipeListFlash {
   /** Name des gelöschten Rezepts. */

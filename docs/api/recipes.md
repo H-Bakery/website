@@ -30,7 +30,8 @@ Mounted below the session guard; every answer is `{ success: true, data }`, ever
 `id` = `<category>/<slug>` - also the path of the API. `category` is the directory
 (`breads | rolls | baguettes | snacks | cakes | fillings | special | teige`), `slug` is derived from
 the file name (`Gefüllte-Testkränze.md` → `gefuellte-testkraenze`, `slugsForFiles`; equal results get `-2`,
-`-3` in name order). The id is never turned into a path: it is looked up in the directory listing,
+`-3` in name order; a file whose deletion waits for approval comes last, so a recipe created under
+the same name has the id it keeps after the merge). The id is never turned into a path: it is looked up in the directory listing,
 so `..`, encoded slashes or `Testkuchen.md` are plain 404s.
 
 ### `RecipeList`
@@ -88,7 +89,10 @@ names, group names, tags and file name - all words, case- and accent-insensitive
       "ingredients": [
         { "name": "Salz", "amount": 23, "unit": "g", "note": null }
       ],
-      "total": null // { label, text }: the file's own total row, display only
+      // the file's own total row, display only, never rewritten. `ingredientSum` ("1.745 g") is set
+      // in answers when every ingredient is in g/kg and the row no longer matches their sum
+      // (`partTotalCheck`), otherwise null
+      "total": null // { label, text, ingredientSum }
     }
   ],
   "steps": [
