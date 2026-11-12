@@ -40,9 +40,17 @@ import {
   VARIANTE,
   WAISE,
   erwarteteEintraege,
+  ladeFixture,
+  zaehlePreisPrimitive,
 } from '../../../bakery-digitale-baeckerei/src/test/fixtures/fixture-info'
 
-export { VARIANTE, WAISE, erwarteteEintraege }
+export {
+  VARIANTE,
+  WAISE,
+  erwarteteEintraege,
+  ladeFixture,
+  zaehlePreisPrimitive,
+}
 
 /** Unter diesem Pfad liegt der Export - wie später auf der Pages-Seite. */
 export const PFAD = '/digitale-baeckerei/'

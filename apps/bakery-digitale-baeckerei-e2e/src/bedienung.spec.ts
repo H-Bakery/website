@@ -11,11 +11,13 @@ import {
   WAISE,
   allesHierListe,
   bilder,
+  ladeFixture,
   oeffne,
   produktSheet,
   ruhe,
   szene,
   tippeAufPlatz,
+  zaehlePreisPrimitive,
 } from './support/app'
 
 const KEKSE = 'theke/vitrine/ebene-3/platz-01'
@@ -353,10 +355,24 @@ test.describe('Auswahl aus der Liste', () => {
 })
 
 test.describe('Preisschilder (DB8)', () => {
-  test('sind im Bild ausgeblendet', async ({ page }) => {
+  test('stecken nicht mehr im ausgelieferten Modell', async ({ page }) => {
     await oeffne(page)
-    // Das Fixture hat vier Brote mit Preiskarte und Preisschrift.
-    expect((await info(page)).preisschilder).toBe(8)
+    // Das Fixture hat vier Brote mit Preiskarte und Preisschrift; sync-model
+    // nimmt sie vor dem Ausliefern heraus. Die App blendet nichts mehr aus.
+    expect(
+      zaehlePreisPrimitive(ladeFixture().glb),
+      'das Fixture trägt die Preisschilder noch'
+    ).toEqual({ primitive: 8, materialien: 2 })
+    expect((await info(page)).preisschilder).toBe(0)
+
+    const antwort = await page.request.get(
+      new URL('model/twin.glb', page.url()).href
+    )
+    expect(antwort.ok()).toBe(true)
+    expect(zaehlePreisPrimitive(await antwort.body())).toEqual({
+      primitive: 0,
+      materialien: 0,
+    })
   })
 })
 

@@ -112,11 +112,17 @@ describe('parseGlbJson', () => {
     expect(() => parseGlbJson(data)).toThrow(message)
   })
 
-  it('wirft, wenn der JSON-Teil länger sein soll als die Datei', () => {
+  it('wirft bei einer abgeschnittenen Datei', () => {
     const data = glb(MODELL)
     expect(() => parseGlbJson(data.subarray(0, data.byteLength - 8))).toThrow(
-      'länger als die Datei'
+      'Länge im Kopf passt nicht zur Datei'
     )
+  })
+
+  it('wirft, wenn der JSON-Teil länger sein soll als die Datei', () => {
+    const data = Buffer.from(glb(MODELL))
+    data.writeUInt32LE(data.length, 12)
+    expect(() => parseGlbJson(data)).toThrow('länger als die Datei')
   })
 })
 

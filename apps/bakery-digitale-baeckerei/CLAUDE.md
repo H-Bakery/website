@@ -12,10 +12,14 @@ Regeln, die am meisten beißen:
 
 - **Modell und Produktdaten gehören nicht ins Repo.** `build` und `serve` hängen an zwei
   Sync-Targets, die nach `public/` schreiben (git-ignoriert):
-  - `sync-model` (`scripts/sync-model.mjs`): lädt `twin.glb` am festen Commit aus `model.lock.json`
-    nach `public/model/`, prüft sha256, löscht dort alles, was nicht im Lock steht, und leitet aus
+  - `sync-model` (`scripts/sync-model.mjs`): lädt `twin.glb` am festen Commit aus `model.lock.json`,
+    prüft sha256, **nimmt die Preisschilder heraus** (`scripts/glb-bereinigen.js`: Primitive mit
+    Material `preiskarte`/`preisschrift` samt ihren Bytes, dazu die `extras` `source`, `sigma_m`,
+    `confidence`), prüft das Ergebnis gegen die zweite Prüfsumme im Lock (`ausgeliefert`) und
+    schreibt es nach `public/model/`. Dort löscht es alles, was nicht im Lock steht, und leitet aus
     den `extras` des GLB `public/data/belegung.json` ab (welches Produkt morgens auf welchem Platz
-    liegt). `catalogue.json` des Explorers (mit Preisen) wird **nicht** geladen.
+    liegt). Das Original der Quelle liegt nie unter `public/`. `catalogue.json` des Explorers (mit
+    Preisen) wird **nicht** geladen.
   - `sync-products` (`scripts/sync-products.mjs`): liest `hq/products/*.md` (`HQ_PRODUCTS_DIR`, sonst
     `../hq/products`) über `libs/shared/hq-products` und schreibt
     `public/data/products.snapshot.json` **ohne Preise** und nur für Produkte, die im Modell
@@ -29,9 +33,14 @@ Regeln, die am meisten beißen:
   anderes aus. Tests, Fixtures und Screenshots im Repo: nur synthetisch (erfundene Produkte wie
   „Testbrot“).
 - **Neues Modell = bewusster Schritt:** Commit, sha256, Bytes und Datum in `model.lock.json`
-  ändern, dann PR. Nie ein Branch-Name als Stand. Danach die Blickpunkte am echten Modell ansehen.
-- **Keine Preise** (DB8) - nicht in Texten, Listen, im Snapshot oder im Bild: Die ins Modell
-  gebackenen Preisschilder blendet `preiskarten.ts` aus. Keine Allergene. Nichts erfinden: Ein
+  ändern, dazu `ausgeliefert` (sha256 und Bytes der bereinigten Datei - `sync-model` nennt die
+  Ist-Werte, wenn sie nicht passen), dann PR. Nie ein Branch-Name als Stand. Danach die Blickpunkte
+  am echten Modell ansehen, das Brotregal aus der Nähe. Dasselbe gilt nach jeder Änderung an
+  `glb-bereinigen.js`. Kennt die Bereinigung den Aufbau eines neuen Modells nicht (Texturen,
+  Animationen, fremde Extensions), bricht sie ab.
+- **Keine Preise** (DB8) - nicht in Texten, Listen, im Snapshot, im Bild oder in der Modell-Datei:
+  Die ins Modell gebackenen Preisschilder nimmt `sync-model` heraus; `preiskarten.ts` blendet als
+  zweite Sicherung aus, was trotzdem ankäme (am echten Modell heute 0). Keine Allergene. Nichts erfinden: Ein
   Produkt ohne Einheit zeigt keine, ein Bereich ohne hq-Produkte sagt das („Regale“ heute).
 - **three nie statisch importieren.** three steckt nur in `src/lib/scene/` - zur Laufzeit in
   `createViewer.ts`, `loadModel.ts`, `pick.ts`, `interact.ts` (und im Spec-Helfer `testladen.ts`),
@@ -53,7 +62,8 @@ Regeln, die am meisten beißen:
   `src/config/raeume.ts`; die Playwright-Suite liest sie von dort.
 - **Reine Logik ohne three** dort testen, wo sie steht: `fills.ts`, `view.ts`, `rig.ts`,
   `treffer.ts`, `bildausschnitt.ts`, `aussenraum.ts`, `src/lib/produkte/zuordnung.ts`,
-  `scripts/model-lock.js`, `belegung.js`, `product-snapshot.js`.
+  `scripts/model-lock.js`, `glb-bereinigen.js` (auch der eine Leser für GLB-Container),
+  `belegung.js`, `product-snapshot.js`.
 - **Leistung:** Pixeldichte ≤ 2, gerendert wird nur bei Bedarf (kein Dauer-Loop; in Ruhe 0 Bilder),
   eigenes Canvas je Mounten (StrictMode), beim Abbauen alles freigeben (Rig und Picker vor dem
   Modell). Messhaken `window.__digitaleBaeckerei` gibt es nur mit `?debug`.

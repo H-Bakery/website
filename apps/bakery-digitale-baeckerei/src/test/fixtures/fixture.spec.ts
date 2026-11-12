@@ -8,9 +8,12 @@ import {
   SNAPSHOT_PATH,
   VARIANTE,
   WAISE,
+  ausgeliefertesModell,
   erwarteteEintraege,
+  exportFehler,
   ladeFixture,
   leseGlb,
+  zaehlePreisPrimitive,
 } from './fixture-info'
 
 const KATEGORIEN = [
@@ -24,7 +27,7 @@ const KATEGORIEN = [
 ]
 /** Nichts im Fixture darf nach einem Preis aussehen (DB8). */
 const PREIS = /€|EUR|price|preis_eur/i
-/** Die beiden Materialnamen des echten Modells, die die App ausblendet. */
+/** Die beiden Materialnamen des echten Modells, die sync-model herausnimmt. */
 const PREIS_MATERIALIEN = ['preiskarte', 'preisschrift']
 
 /** Alle Zeichenketten eines JSON-Baums: Schlüssel und Werte. */
@@ -332,5 +335,53 @@ describe('keine Preise in den Fixtures (DB8)', () => {
     // Auch kein Feld, das „Preis“ heißt.
     expect(zeichenketten(snapshot).filter((s) => /preis/i.test(s))).toEqual([])
     expect(fs.readFileSync(SNAPSHOT_PATH, 'utf8')).not.toMatch(PREIS)
+  })
+})
+
+describe('der Export-Wächter (exportFehler)', () => {
+  let outDir: string
+  const lege = (model: Uint8Array | null, snapshot: Uint8Array | null) => {
+    fs.mkdirSync(path.join(outDir, 'model'), { recursive: true })
+    fs.mkdirSync(path.join(outDir, 'data'), { recursive: true })
+    if (model) fs.writeFileSync(path.join(outDir, 'model', 'twin.glb'), model)
+    if (snapshot) {
+      fs.writeFileSync(
+        path.join(outDir, 'data', 'products.snapshot.json'),
+        snapshot
+      )
+    }
+  }
+  beforeEach(() => {
+    outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'export-waechter-'))
+  })
+  afterEach(() => {
+    fs.rmSync(outDir, { recursive: true, force: true })
+  })
+
+  it('das ausgelieferte Fixture-Modell hat keine Preisschilder und ist herleitbar', () => {
+    const a = ausgeliefertesModell()
+    expect(zaehlePreisPrimitive(a)).toEqual({ primitive: 0, materialien: 0 })
+    expect(a.equals(ausgeliefertesModell())).toBe(true)
+    expect(a.equals(fs.readFileSync(GLB_PATH))).toBe(false)
+  })
+
+  it('lässt genau das bereinigte Fixture und den Fixture-Snapshot durch', () => {
+    lege(ausgeliefertesModell(), fs.readFileSync(SNAPSHOT_PATH))
+    expect(exportFehler(outDir)).toBeNull()
+  })
+
+  it('lehnt ein anderes Modell ab - auch das unbereinigte Fixture', () => {
+    const snapshot = fs.readFileSync(SNAPSHOT_PATH)
+    lege(fs.readFileSync(GLB_PATH), snapshot)
+    expect(exportFehler(outDir)).toMatch(/twin\.glb ist nicht das synthetische/)
+    lege(Buffer.from('irgendein anderes Modell'), snapshot)
+    expect(exportFehler(outDir)).toMatch(/twin\.glb ist nicht das synthetische/)
+  })
+
+  it('lehnt einen anderen Snapshot und fehlende Dateien ab', () => {
+    lege(ausgeliefertesModell(), Buffer.from('{"produkte":{}}'))
+    expect(exportFehler(outDir)).toMatch(/nicht der synthetische Snapshot/)
+    fs.rmSync(path.join(outDir, 'model', 'twin.glb'))
+    expect(exportFehler(outDir)).toMatch(/twin\.glb ist nicht das synthetische/)
   })
 })

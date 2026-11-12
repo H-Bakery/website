@@ -11,8 +11,8 @@
  * TypeScript und liest sie deshalb selbst.
  */
 
-const GLB_MAGIC = 0x46546c67 // 'glTF'
-const CHUNK_JSON = 0x4e4f534a // 'JSON'
+const { leseGlb } = require('./glb-bereinigen')
+
 const FILL = 'morgens'
 const PREFIX = 'produkt/'
 
@@ -27,39 +27,14 @@ function isRecord(v) {
 }
 
 /**
- * Liest den JSON-Teil (erster Chunk) eines binären glTF 2.0. Wirft mit einer
- * deutschen Meldung, wenn die Datei kein GLB ist.
+ * Liest den JSON-Teil eines binären glTF 2.0. Wirft mit einer deutschen
+ * Meldung, wenn die Datei kein GLB ist. Der Leser selbst steht einmal in
+ * glb-bereinigen.js.
  * @param {Uint8Array} data
  * @returns {Record<string, unknown>}
  */
 function parseGlbJson(data) {
-  if (data.byteLength < 20) throw new Error('GLB: Datei ist zu kurz')
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
-  if (view.getUint32(0, true) !== GLB_MAGIC) {
-    throw new Error('GLB: Kennung "glTF" fehlt')
-  }
-  const version = view.getUint32(4, true)
-  if (version !== 2) throw new Error(`GLB: Version ${version}, erwartet 2`)
-  const chunkLength = view.getUint32(12, true)
-  if (view.getUint32(16, true) !== CHUNK_JSON) {
-    throw new Error('GLB: der erste Teil ist kein JSON')
-  }
-  if (20 + chunkLength > data.byteLength) {
-    throw new Error('GLB: der JSON-Teil ist länger als die Datei')
-  }
-  const text = Buffer.from(
-    data.buffer,
-    data.byteOffset + 20,
-    chunkLength
-  ).toString('utf8')
-  let json
-  try {
-    json = JSON.parse(text)
-  } catch {
-    throw new Error('GLB: der JSON-Teil lässt sich nicht lesen')
-  }
-  if (!isRecord(json)) throw new Error('GLB: der JSON-Teil ist kein Objekt')
-  return json
+  return leseGlb(data).json
 }
 
 /**

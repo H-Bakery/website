@@ -75,8 +75,16 @@ interface Auswahl {
   quelle: 'tipp' | 'liste'
 }
 
-const modelBytes = (file: string): number | undefined =>
-  (lock.files as Record<string, { bytes: number } | undefined>)[file]?.bytes
+/** Größe der ausgelieferten (bereinigten) Datei - die lädt der Browser. */
+const modelBytes = (file: string): number | undefined => {
+  const entry = (
+    lock.files as Record<
+      string,
+      { bytes: number; ausgeliefert?: { bytes: number } } | undefined
+    >
+  )[file]
+  return entry?.ausgeliefert?.bytes ?? entry?.bytes
+}
 
 const UNSICHTBAR = {
   position: 'absolute',

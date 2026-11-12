@@ -408,13 +408,18 @@ jobs:
       # Der Export dieser App wird gleich als oeffentliches Artefakt
       # hochgeladen. Er muss das synthetische Fixture enthalten, Byte fuer Byte -
       # nie das echte Modell oder echte Produkttexte (z. B. aus einem Cache).
+      # sync-model nimmt auch aus dem Fixture die Preisschilder heraus; verglichen
+      # wird darum mit dem bereinigten Fixture (exportFehler in fixture-info.js,
+      # dieselbe Pruefung wie im e2e-Server).
       - name: Guard - Digitale Baeckerei export contains only the fixture
         if: matrix.app == 'bakery-digitale-baeckerei'
         run: |
-          cmp apps/bakery-digitale-baeckerei/out/model/twin.glb \
-              apps/bakery-digitale-baeckerei/src/test/fixtures/twin.fixture.glb
-          cmp apps/bakery-digitale-baeckerei/out/data/products.snapshot.json \
-              apps/bakery-digitale-baeckerei/src/test/fixtures/products.snapshot.fixture.json
+          node -e "
+            const { exportFehler } = require('./apps/bakery-digitale-baeckerei/src/test/fixtures/fixture-info')
+            const fehler = exportFehler('apps/bakery-digitale-baeckerei/out')
+            if (fehler) { console.error(fehler); process.exit(1) }
+            console.log('Export enthaelt nur die synthetischen Fixtures.')
+          "
 
       # Boot smoke of the pilot API (roadmap B1): the bundle from the step
       # above starts in production mode on a fresh SQLite file, /health must

@@ -13,7 +13,7 @@
         "command": "node scripts/sync-model.mjs"
       },
       "metadata": {
-        "description": "Downloads twin.glb at the commit pinned in model.lock.json into public/model/ (git-ignored), verifies sha256, aborts on a mismatch, and derives public/data/belegung.json (which product sits on which slot in the morning) from the verified GLB. No download when the file is already there. DIGITALE_BAECKEREI_FIXTURE=1: no download, uses the synthetic src/test/fixtures/twin.fixture.glb."
+        "description": "Downloads twin.glb at the commit pinned in model.lock.json, verifies its sha256, strips the price cards (scripts/glb-bereinigen.js), verifies the result against the lock's second checksum (ausgeliefert), writes it to public/model/ (git-ignored) and derives public/data/belegung.json (which product sits on which slot in the morning) from it. Aborts on any mismatch. No download when the served file is already there. DIGITALE_BAECKEREI_FIXTURE=1: no download, strips and uses the synthetic src/test/fixtures/twin.fixture.glb."
       }
     },
     "sync-products": {

@@ -1,5 +1,6 @@
 import {
   LOCK_FORMAT,
+  ausgeliefert,
   checkFile,
   fileUrl,
   parseLock,
@@ -13,6 +14,7 @@ import committedLock from '../model.lock.json'
 const bytes = (text: string) => new Uint8Array(Buffer.from(text, 'utf8'))
 const GLB = bytes('kein echtes glb, nur ein Testinhalt')
 const CATALOGUE = bytes('{"products":{"testbrot":{"name_de":"Testbrot"}}}')
+const BEREINIGT = bytes('bereinigt')
 
 const lockFor = (files: Record<string, Uint8Array>) => ({
   format: LOCK_FORMAT,
@@ -48,6 +50,48 @@ describe('parseLock', () => {
   it('nimmt das eingecheckte model.lock.json an - nur das Modell, kein Katalog mit Preisen', () => {
     const lock = parseLock(committedLock)
     expect(Object.keys(lock.files)).toEqual(['twin.glb'])
+  })
+
+  it('das eingecheckte Lock nennt die ausgelieferte Datei: eine andere, kleinere als die Quelle', () => {
+    const entry = parseLock(committedLock).files['twin.glb']
+    expect(entry.ausgeliefert).toBeDefined()
+    expect(entry.ausgeliefert?.sha256).not.toBe(entry.sha256)
+    expect(entry.ausgeliefert?.bytes).toBeLessThan(entry.bytes)
+  })
+
+  it('liest die Prüfsumme der ausgelieferten Datei', () => {
+    const raw = lockFor({ 'twin.glb': GLB })
+    const lock = parseLock({
+      ...raw,
+      files: {
+        'twin.glb': {
+          ...raw.files['twin.glb'],
+          ausgeliefert: { sha256: sha256Hex(BEREINIGT), bytes: 9 },
+        },
+      },
+    })
+    expect(lock.files['twin.glb'].ausgeliefert).toEqual({
+      sha256: sha256Hex(BEREINIGT),
+      bytes: 9,
+    })
+  })
+
+  it.each([
+    ['kein Objekt', 'abc', /ausgeliefert für a ist ungültig/],
+    ['sha256 fehlt', { bytes: 3 }, /sha256 für a \(ausgeliefert\)/],
+    [
+      'bytes ist keine Zahl',
+      { sha256: sha256Hex(GLB), bytes: '3' },
+      /bytes für a \(ausgeliefert\)/,
+    ],
+  ])('lehnt ab: ausgeliefert - %s', (_name, wert, message) => {
+    const raw = lockFor({ a: GLB })
+    expect(() =>
+      parseLock({
+        ...raw,
+        files: { a: { ...raw.files.a, ausgeliefert: wert } },
+      })
+    ).toThrow(message)
   })
 
   it.each([
@@ -179,6 +223,34 @@ describe('planSync', () => {
       ['twin.glb', 'fetch'],
       ['catalogue.json', 'keep'],
     ])
+    expect(plan[0].reason).toMatch(/veraltet/)
+  })
+})
+
+describe('ausgeliefert', () => {
+  const quelle = { sha256: sha256Hex(GLB), bytes: GLB.byteLength }
+  const served = { sha256: sha256Hex(BEREINIGT), bytes: BEREINIGT.byteLength }
+
+  it('ohne zweite Prüfsumme wird die Datei der Quelle ausgeliefert', () => {
+    expect(ausgeliefert(quelle)).toEqual(quelle)
+  })
+
+  it('mit zweiter Prüfsumme gilt die', () => {
+    expect(ausgeliefert({ ...quelle, ausgeliefert: served })).toEqual(served)
+  })
+
+  it('planSync vergleicht die Datei im Zielordner mit der ausgelieferten Prüfsumme', () => {
+    const raw = lockFor({ 'twin.glb': GLB })
+    const lock = parseLock({
+      ...raw,
+      files: { 'twin.glb': { ...quelle, ausgeliefert: served } },
+    })
+    // Die bereinigte Datei liegt da: nichts laden.
+    expect(planSync(lock, () => BEREINIGT)[0].action).toBe('keep')
+    // Das Original der Quelle im Zielordner gilt als veraltet - es darf dort
+    // nicht liegen bleiben.
+    const plan = planSync(lock, () => GLB)
+    expect(plan[0].action).toBe('fetch')
     expect(plan[0].reason).toMatch(/veraltet/)
   })
 })

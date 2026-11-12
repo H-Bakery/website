@@ -1,7 +1,7 @@
 # Digitale Bäckerei (`apps/bakery-digitale-baeckerei`) - Plan
 
-Status: **P0 gemergt** (PR #132, 2026-11-12), **P1 in Arbeit**. Dieses Dokument ist der Auftrag für die
-Umsetzung.
+Status: **P0 und P1 gemergt** (#132, #134, 2026-11-12); **P2 vorbereitet, wartet auf den Inhaber**.
+Dieses Dokument ist der Auftrag für die Umsetzung.
 
 Besucher schauen sich die Bäckerei Heusser in 3D an: die Theke mit Vitrine, das Brotregal und die
 Regale, voll mit den echten Produkten. Tippen auf ein Produkt zeigt Name und Kurztext (vorerst
@@ -99,7 +99,18 @@ Landingpage auf GitHub Pages). Nicht im Pilot, nicht auf der Box.
   sichtbar, aber ohne Karte, und der Build meldet es.
 - **Preisschilder im Modell:** Auf den zwei unteren Brotebenen sind Preiskarten mit dem alten
   Preisstand ins Modell gebacken (Materialien `preiskarte` / `preisschrift` in den
-  `produkt/*`-Knoten). Diese Teile ausblenden, denn vorerst gibt es keine Preise (DB8).
+  `produkt/*`-Knoten, 56 Primitive mit 7 669 Eckpunkten). Vorerst gibt es keine Preise (DB8), also
+  **nimmt `sync-model` sie aus der Datei, bevor sie ausgeliefert wird** (`scripts/glb-bereinigen.js`,
+  nur Node-Bordmittel): Die Primitive fliegen aus den Meshes; Accessors, BufferViews und Materialien,
+  die danach niemand mehr braucht, werden entfernt und neu durchgezählt, ihre (meshopt-komprimierten)
+  Bytes aus dem BIN-Teil geschnitten. Was übrig bleibt, ist dekodiert Byte für Byte dieselbe
+  Geometrie. Dazu fallen die `extras` weg, die nur der Generator braucht (`source`, `sigma_m`,
+  `confidence`). `model.lock.json` trägt dafür zwei Prüfsummen: die der Quelle und unter
+  `ausgeliefert` die der bereinigten Datei (3 237 272 → 3 127 052 Bytes) - so lässt sich belegen, was
+  der Deploy ausliefert. `preiskarten.ts` in der App bleibt als zweite Sicherung.
+  Rest: Die Dreiecks-Indizes aller Primitive liegen in **einer** gemeinsamen komprimierten
+  BufferView; die Indizes der Preisschrift stehen dort weiter als Zahlenfolge, aber ohne Eckpunkte -
+  daraus lässt sich keine Schrift mehr bilden.
 - **CI (`ci.yml`)** baut und testet diese App nur mit dem synthetischen Fixture
   (`DIGITALE_BAECKEREI_FIXTURE=1`): kein Download, kein hq, das echte Modell landet in keinem
   Artefakt.
@@ -123,9 +134,9 @@ react-three-fiber (das bräuchte React 19). Sie läuft in einer Client-Komponent
 
 ```
 apps/bakery-digitale-baeckerei/
-  scripts/sync-model.mjs     GLB laden, Prüfsumme prüfen, nach public/model/; Belegung nach public/data/
+  scripts/sync-model.mjs     GLB laden, prüfen, Preisschilder entfernen, nach public/model/; Belegung nach public/data/
   scripts/sync-products.mjs  hq lesen, Snapshot ohne Preise nach public/data/ (beides git-ignoriert)
-  model.lock.json            Quelle (Commit des Daten-Repos), sha256 je Datei, Abrufdatum
+  model.lock.json            Quelle (Commit des Daten-Repos), sha256 der Quelle und der ausgelieferten Datei, Abrufdatum
   src/config/raeume.ts       Räume → Blickpunkte (eye, look, Grenzen, Hoch-/Querformat, Möbel)
   src/lib/scene/             Laden, Morgens-Filter, Kamera-Rig, Picking, Hervorhebung (aus dem Explorer)
   src/lib/produkte/          Typen, Zuordnung Platz → Produkt, Laden von Snapshot und Belegung
@@ -136,8 +147,9 @@ apps/bakery-digitale-baeckerei-e2e/   Playwright (390×844 und Desktop), nur mit
 
 - **Sync:** `sync-model.mjs` lädt `twin.glb` an einem **festen Commit** von
   `raw.githubusercontent.com/Open-Kirrberg/saar-lidar-data/<sha>/zones/baeckerei-heusser/built/`,
-  prüft die sha256 aus `model.lock.json` und bricht bei einer Abweichung ab. Ein neues Modell
-  übernimmt man bewusst: Commit und Prüfsummen in `model.lock.json` ändern, dann PR.
+  prüft die sha256 aus `model.lock.json`, nimmt die Preisschilder heraus, prüft das Ergebnis gegen
+  `ausgeliefert` im Lock und bricht bei jeder Abweichung ab. Ein neues Modell übernimmt man bewusst:
+  Commit und beide Prüfsummen in `model.lock.json` ändern, das Modell ansehen, dann PR.
   Die Nx-Targets `build` und `serve` hängen von `sync-model` und `sync-products` ab. CI lädt
   nichts herunter, sondern baut mit dem Fixture.
 - **Räume als Datenmodell:** `raeume.ts` = `[{ id: 'laden', name, blickpunkte: [...] }]`. Die
@@ -189,7 +201,9 @@ apps/bakery-digitale-baeckerei-e2e/   Playwright (390×844 und Desktop), nur mit
 
 ## Bekannte Schwächen nach P1
 
-Bewusst nicht in P1 behoben (Stand nach dem Review von PR #134):
+Bewusst nicht in P1 behoben (Stand nach dem Review von PR #134). Erledigt seither: Die Preisschilder
+stecken nicht mehr als Geometrie in der ausgelieferten `twin.glb` (P2, siehe „Preisschilder im
+Modell“).
 
 - **Brotregal:** Die unterste Brotreihe und die Körbe sind von der Kundenseite teils von Kasse,
   Tüten und Aufstellern verdeckt; diese Produkte erreicht man über die Liste „Alles hier“.
@@ -210,8 +224,8 @@ Bewusst nicht in P1 behoben (Stand nach dem Review von PR #134):
   baut wie hq (heute aus Mocks mit denselben Nummern); nichts erzwingt das.
 - **Echtes Handy ungeprüft:** Pinch, Zwei-Finger-Wischen, die Zurück-Geste von iOS am Bildrand,
   Safari überhaupt - alles nur in Chromium emuliert.
-- **Preisschilder stecken weiter als Geometrie in `twin.glb`** (im Bild ausgeblendet, in der Datei
-  lesbar) → P2.
+- **Das Modell wird auch ohne WebGL 2 vorgeladen:** Das `<link rel="preload">` steht fest im HTML
+  und weiß nichts vom Gerät. Wer den Ersatz ohne 3D sieht, lädt die ≈ 3,1 MB trotzdem.
 - **Die Tür des Getränkekühlschranks ist undurchsichtig** (Modell); die Flaschen dahinter sieht
   man nicht.
 - **Der Fortschrittsbalken** rechnet mit der Größe des echten Modells aus `model.lock.json`; im
@@ -230,13 +244,13 @@ Handy.
 Jede Phase endet mit einem grünen PR. Bei sichtbaren Änderungen kommen Screenshots bei 390 px
 und Desktop dazu (lokal, nicht eingecheckt).
 
-| Phase         | Inhalt                                                                                                                                                                                                | Fertig, wenn                                                                                                                                                                                                                                                                                                           |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **P0 Spike**  | App-Gerüst, `sync-model` + `model.lock.json`, Modell laden, Morgens-Filter, ein Blickpunkt (Theke)                                                                                                    | Die Theke sieht auf dem Handy aus wie im Explorer. Ladezeit und FPS auf einem echten Handy sind im PR notiert. **Erledigt** (PR #132). Ladezeit und FPS sind nur in der Emulation gemessen (4G + CPU 4×: ≈ 4,9 s bis zum ersten Bild, lokal und unkomprimiert; ≈ 26 FPS mit Software-GPU) - auf echtem Handy ungeprüft |
-| **P1 MVP**    | Produktdaten aus hq, Preisschilder im Modell ausgeblendet, 3 Blickpunkte inkl. Hochformat-Werte, Kamera-Rig, Picking + Bottom-Sheet, Liste „Alles hier“, Ladebild, Ersatz ohne WebGL, Quellen-Hinweis | Unit-Tests (Blickpunkt-Grenzen, Produkt-Zuordnung, Morgens-Filter) und Playwright bei 390 px (laden, wechseln, antippen → Sheet) mit dem synthetischen Fixture grün                                                                                                                                                    |
-| **P2 Live**   | Produkttexte in hq überarbeitet, hq-Zugriff im Deploy (falls entschieden), Deploy unter `/digitale-baeckerei/`, Abnahme durch den Inhaber am Handy, danach der Link von der Landingpage               | Die Seite ist öffentlich erreichbar, und der Inhaber hat zugestimmt                                                                                                                                                                                                                                                    |
-| **P3 später** | Intro „Blick vom Kreisel“, Außenraum aus dem GLB schneiden, Backstube als zweiter Raum, Umzug des Generators (DB2), evtl. Feierabend-Umschalter oder „entdeckt x/y“                                   | einzeln entscheiden                                                                                                                                                                                                                                                                                                    |
-| **P4 später** | Echte 3D-Produkte (DB7), zuerst ein Test mit 3 Produkten                                                                                                                                              | eigener Plan, wenn es losgeht                                                                                                                                                                                                                                                                                          |
+| Phase         | Inhalt                                                                                                                                                                                                | Fertig, wenn                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **P0 Spike**  | App-Gerüst, `sync-model` + `model.lock.json`, Modell laden, Morgens-Filter, ein Blickpunkt (Theke)                                                                                                    | Die Theke sieht auf dem Handy aus wie im Explorer. Ladezeit und FPS auf einem echten Handy sind im PR notiert. **Erledigt** (PR #132). Ladezeit und FPS sind nur in der Emulation gemessen (4G + CPU 4×: ≈ 4,9 s bis zum ersten Bild, lokal und unkomprimiert; ≈ 26 FPS mit Software-GPU) - auf echtem Handy ungeprüft                                                                                                                              |
+| **P1 MVP**    | Produktdaten aus hq, Preisschilder im Modell ausgeblendet, 3 Blickpunkte inkl. Hochformat-Werte, Kamera-Rig, Picking + Bottom-Sheet, Liste „Alles hier“, Ladebild, Ersatz ohne WebGL, Quellen-Hinweis | Unit-Tests (Blickpunkt-Grenzen, Produkt-Zuordnung, Morgens-Filter) und Playwright bei 390 px (laden, wechseln, antippen → Sheet) mit dem synthetischen Fixture grün. **Erledigt** (PR #134). Geprüft: Unit-Tests und Playwright bei 390 px und Desktop mit dem Fixture. Am echten Modell nur in der Emulation angesehen und gemessen (4G + CPU 4×: ≈ 4,4 s bis zum ersten Bild des Modells; ≈ 26 FPS mit Software-GPU) - auf echtem Handy ungeprüft |
+| **P2 Live**   | Produkttexte in hq überarbeitet, hq-Zugriff im Deploy (falls entschieden), Deploy unter `/digitale-baeckerei/`, Abnahme durch den Inhaber am Handy, danach der Link von der Landingpage               | Die Seite ist öffentlich erreichbar, und der Inhaber hat zugestimmt                                                                                                                                                                                                                                                                                                                                                                                 |
+| **P3 später** | Intro „Blick vom Kreisel“, Außenraum aus dem GLB schneiden, Backstube als zweiter Raum, Umzug des Generators (DB2), evtl. Feierabend-Umschalter oder „entdeckt x/y“                                   | einzeln entscheiden                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| **P4 später** | Echte 3D-Produkte (DB7), zuerst ein Test mit 3 Produkten                                                                                                                                              | eigener Plan, wenn es losgeht                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 ## Später: Intro „Blick vom Kreisel“ (P3)
 
