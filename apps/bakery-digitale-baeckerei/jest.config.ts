@@ -5,9 +5,22 @@ const config = {
   setupFilesAfterEnv: ['<rootDir>/src/test-setup.ts'],
   testEnvironment: 'jsdom',
   transform: {
+    '/node_modules/three/.+\\.js$': [
+      'babel-jest',
+      {
+        babelrc: false,
+        configFile: false,
+        compact: false,
+        plugins: ['@babel/plugin-transform-modules-commonjs'],
+      },
+    ],
     '^(?!.*\\.(js|jsx|ts|tsx|css|json)$)': '@nx/react/plugins/jest',
     '^.+\\.[tj]sx?$': ['babel-jest', { presets: ['@nx/react/babel'] }],
   },
+  // three liefert nur noch ES-Module (three.cjs lädt three.module.js nach).
+  // Für die Tests des Antippens (Geometrie, Raycaster - ohne WebGL) wird es
+  // übersetzt: nur import/export → CommonJS (siehe `transform`), sonst nichts.
+  transformIgnorePatterns: ['/node_modules/(?!three/)'],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
   moduleNameMapper: {
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
