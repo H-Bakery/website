@@ -18,6 +18,7 @@ export const PRINT_ATTR = 'data-hilfe-print'
 export type SheetId =
   | 'spickzettel-verkauf'
   | 'spickzettel-backstube'
+  | 'spickzettel-backstubenleiter'
   | 'spickzettel-fahrer'
   | 'spickzettel-inhaber'
   | 'papier-regel'
@@ -28,6 +29,7 @@ export type SheetId =
 export const SHEET_IDS: readonly SheetId[] = [
   'spickzettel-verkauf',
   'spickzettel-backstube',
+  'spickzettel-backstubenleiter',
   'spickzettel-fahrer',
   'spickzettel-inhaber',
   'papier-regel',

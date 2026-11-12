@@ -20,6 +20,7 @@ import {
   EventNote as PreordersIcon,
   FactCheck as AbhollisteIcon,
   Assignment as BackzettelIcon,
+  MenuBook as RecipesIcon,
   Storefront as PartnerIcon,
   ChevronRight as ChevronRightIcon,
 } from '@mui/icons-material'
@@ -94,6 +95,13 @@ const quickLinks: QuickLink[] = [
     description: 'Tablet-Ansicht zum Abhaken',
     icon: <BakingListIcon />,
     href: '/backstube',
+  },
+  {
+    title: 'Rezepte',
+    description: 'Nachschlagen, anlegen, ändern',
+    readOnly: { roles: ['backstube'], description: 'Nachschlagen und drucken' },
+    icon: <RecipesIcon />,
+    href: '/admin/rezepte',
   },
   {
     title: 'Backschrank',

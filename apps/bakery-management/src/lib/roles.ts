@@ -29,6 +29,7 @@ export const PILOT_ROLES = [
   'inhaber',
   'verkauf',
   'backstube',
+  'backstubenleiter',
   'fahrer',
 ] as const
 export type PilotRole = (typeof PILOT_ROLES)[number]
@@ -37,11 +38,51 @@ export const ROLE_LABELS: Record<PilotRole, string> = {
   inhaber: 'Inhaber',
   verkauf: 'Verkauf',
   backstube: 'Backstube',
+  backstubenleiter: 'Backstubenleitung',
   fahrer: 'Fahrer',
 }
 
 /**
- * Rolle aus einer API-Antwort. Die API (B3) liefert die vier Pilot-Rollen.
+ * Rollen, die eine andere einschließen - wie `ROLE_INCLUDES` der API
+ * (`apps/bakery-api/src/services/auth-crypto.core.js`; `roles.spec.ts` hält
+ * beide gleich). Die Backstubenleitung darf alles, was die Backstube darf,
+ * und zusätzlich Rezepte anlegen und ändern.
+ */
+export const ROLE_INCLUDES: Partial<Record<PilotRole, readonly PilotRole[]>> = {
+  backstubenleiter: ['backstube'],
+}
+
+/**
+ * Ist `role` die Rolle `base` oder eine, die sie einschließt? Der Inhaber
+ * wird hier nicht behandelt - wer ihn meint, fragt ihn eigens ab.
+ */
+export function roleIncludes(
+  role: string | null | undefined,
+  base: PilotRole
+): boolean {
+  if (!role) return false
+  if (role === base) return true
+  return (ROLE_INCLUDES[role as PilotRole] ?? []).includes(base)
+}
+
+/**
+ * Wer am Backzettel plant, freigibt und abhakt und die Grundmengen pflegt:
+ * Inhaber, Backstube und Backstubenleitung (API: `requireRole('backstube')`).
+ */
+export function hasBackstubeRights(role: string | null | undefined): boolean {
+  return role === 'inhaber' || roleIncludes(role, 'backstube')
+}
+
+/**
+ * Wer Rezepte anlegt, ändert und löscht: Inhaber und Backstubenleitung
+ * (API: `RECIPE_WRITE_ROLES`). Die Backstube liest nur.
+ */
+export function canWriteRecipes(role: string | null | undefined): boolean {
+  return role === 'inhaber' || roleIncludes(role, 'backstubenleiter')
+}
+
+/**
+ * Rolle aus einer API-Antwort. Die API (B3) liefert die fünf Pilot-Rollen.
  * `admin`/`staff` stammen vom früheren Mock-Server (B12 gelöscht) und stehen
  * höchstens noch in einer alten gespeicherten Sitzung: `admin` → Inhaber,
  * sonst Verkauf. Unbekanntes → `null`.
@@ -96,6 +137,28 @@ const REST_COUNT_ROUTE: RouteRule = {
   except: ['/admin/rest/auswertung'],
 }
 
+/** Rezepte: Formulare zum Anlegen und Ändern (nur Inhaber und Backstubenleitung). */
+export const RECIPE_WRITE_PATHS: readonly string[] = [
+  '/admin/rezepte/neu',
+  '/admin/rezepte/bearbeiten',
+]
+
+/** Rezepte nur lesen: Liste und Rezeptansicht, ohne die Formulare. */
+const RECIPES_READ_ROUTE: RouteRule = {
+  path: '/admin/rezepte',
+  except: RECIPE_WRITE_PATHS,
+}
+
+/** Was Backstube und Backstubenleitung gemeinsam haben (ohne die Rezepte). */
+const BACKSTUBE_ROUTES: readonly RouteRule[] = [
+  '/admin',
+  '/admin/backzettel',
+  '/backstube',
+  // M4: die Zählung nur lesen (die API lässt die Backstube nicht zählen).
+  REST_COUNT_ROUTE,
+  ...COMMON_ROUTES,
+]
+
 /**
  * DIE Zuordnung Rolle → Routen + Startseite.
  *
@@ -105,7 +168,9 @@ const REST_COUNT_ROUTE: RouteRule = {
  *   (Liste, ohne Bearbeiten/Neu), Backschrank, Backzettel nur lesen (Z5, ohne
  *   Grundmengen). Start: /admin/preorders (P3); das Dashboard bleibt
  *   Ausweichstart.
- * - backstube: Backzettel, Backstube-Tablet; Ausweichstart Dashboard.
+ * - backstube: Backzettel, Backstube-Tablet, Rezepte nur lesen (ohne
+ *   Anlegen/Bearbeiten); Ausweichstart Dashboard.
+ * - backstubenleiter: wie backstube, dazu Rezepte anlegen und ändern.
  * - fahrer: Abholliste (P2, Start: übergeben, bezahlt, „nicht abgeholt“);
  *   Sammelstelle Mörsbach lesen (Liste, Bestellung, Backliste - ohne Erfassen
  *   und Lieferstelle); Vorbestellungen nur lesen (ohne die Erfassung
@@ -132,14 +197,11 @@ export const ROLE_ACCESS: Record<PilotRole, RoleAccess> = {
     start: ['/admin/preorders', '/admin'],
   },
   backstube: {
-    routes: [
-      '/admin',
-      '/admin/backzettel',
-      '/backstube',
-      // M4: die Zählung nur lesen (die API lässt die Backstube nicht zählen).
-      REST_COUNT_ROUTE,
-      ...COMMON_ROUTES,
-    ],
+    routes: [...BACKSTUBE_ROUTES, RECIPES_READ_ROUTE],
+    start: ['/backstube', '/admin'],
+  },
+  backstubenleiter: {
+    routes: [...BACKSTUBE_ROUTES, '/admin/rezepte'],
     start: ['/backstube', '/admin'],
   },
   fahrer: {

@@ -334,6 +334,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     let lastSeen = lastWrite
     // Grenze außerhalb von /backstube (an der Station: 10 min).
     const shortLimit = idleLimitMs(kind, undefined, { role, path: null })
+    // Bewusst genau `backstube`: die Backstubenleitung darf mehr (Rezepte
+    // ändern) und wird hier wie der Inhaber behandelt - ein liegen gelassenes
+    // Tablet vererbt ihre Schreibrechte nicht.
     const mayBeUnattended = kind === 'station' && role !== 'backstube'
     const markIfUnattended = (now: number) => {
       if (

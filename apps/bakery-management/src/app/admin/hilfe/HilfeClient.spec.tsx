@@ -4,7 +4,7 @@ import HilfeClient from './HilfeClient'
 import * as api from '../../../lib/backzettelApi'
 import { CONFIG_RESPONSE } from '../../../lib/backzettelFixtures'
 import { fakeSession, WithSession } from '../../../lib/testing/fakeSession'
-import type { PilotRole } from '../../../lib/roles'
+import { PILOT_ROLES, type PilotRole } from '../../../lib/roles'
 import { PRINT_ATTR } from '../../../components/hilfe/hilfePrint'
 
 jest.mock('../../../lib/backzettelApi', () => {
@@ -63,6 +63,17 @@ describe('Hilfe (/admin/hilfe, P6)', () => {
       ],
     ],
     [
+      'backstubenleiter',
+      'Kurzanleitung Backstubenleitung',
+      [
+        'Backzettel und Backstube',
+        'Rezept nachschlagen',
+        'Neues Rezept',
+        'Rezept ändern',
+        'Wartet auf Freigabe',
+      ],
+    ],
+    [
       'fahrer',
       'Kurzanleitung Fahrer',
       [
@@ -93,7 +104,7 @@ describe('Hilfe (/admin/hilfe, P6)', () => {
       expect(tabs[0]).toHaveAttribute('data-testid', `tab-${role}`)
       expect(tabs[0]).toHaveAttribute('aria-selected', 'true')
       expect(tabs[0]).toHaveTextContent('(Ihre Rolle)')
-      expect(tabs).toHaveLength(4)
+      expect(tabs).toHaveLength(PILOT_ROLES.length)
       const sheet = shownSheet()
       expect(sheet).toHaveAttribute('data-sheet', `spickzettel-${role}`)
       expect(

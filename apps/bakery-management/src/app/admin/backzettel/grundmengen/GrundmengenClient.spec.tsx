@@ -317,6 +317,15 @@ describe('GrundmengenClient', () => {
     expect(field).toHaveAttribute('aria-invalid', 'true')
   })
 
+  it('Backstubenleitung pflegt Grundmengen wie die Backstube', async () => {
+    sessionState.user = { role: 'backstubenleiter' }
+    mockGet()
+    renderWithTheme(<GrundmengenClient />)
+    await screen.findByTestId('row-testweck')
+    expect(input('Testweck, Dienstag')).toBeEnabled()
+    expect(screen.queryByText(/dürfen Inhaber und Backstube/)).toBeNull()
+  })
+
   it('Verkauf sieht nur Werte - keine Felder, keine Referenz', async () => {
     sessionState.user = { role: 'verkauf' }
     mockGet()

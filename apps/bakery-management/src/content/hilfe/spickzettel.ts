@@ -3,7 +3,8 @@
  *
  * Hier steht NUR Text - zum Ändern reicht diese Datei. Geschrieben nach den
  * echten Bildschirmen (Station, Vorbestellung, Abholliste, Backstube,
- * Backzettel, Benutzer); wer dort eine Beschriftung ändert, zieht sie hier nach.
+ * Backzettel, Rezepte, Benutzer); wer dort eine Beschriftung ändert, zieht sie
+ * hier nach.
  *
  * Schreibregeln: kurze Sätze, Anweisungen im Infinitiv („Namen antippen.“),
  * Beschriftungen der App in `**…**` (werden fett gedruckt). Jeder Zettel muss
@@ -182,6 +183,13 @@ export const SPICKZETTEL: Record<PilotRole, Spickzettel> = {
         ],
       },
       {
+        title: 'Rezepte',
+        steps: [
+          'Menü › **Rezepte**: Name oder Zutat suchen, Rezept antippen. **Drucken** druckt es.',
+          'Ändern können Rezepte die Backstubenleitung und der Inhaber.',
+        ],
+      },
+      {
         title: 'Keine Verbindung?',
         tone: 'warning',
         steps: [
@@ -194,6 +202,73 @@ export const SPICKZETTEL: Record<PilotRole, Spickzettel> = {
       {
         title: 'Abmelden',
         steps: ['Oben rechts **Abmelden**.'],
+      },
+    ],
+  },
+
+  backstubenleiter: {
+    role: 'backstubenleiter',
+    title: 'Backstubenleitung',
+    intro:
+      'Wie die Backstube – dazu Rezepte anlegen und ändern. Am Tablet (Station) oder am eigenen Gerät.',
+    blocks: [
+      {
+        title: 'Backzettel und Backstube',
+        steps: [
+          'Alles wie in der Kurzanleitung **Backstube**: Zettel, Abhaken, Nachträge, Drucken, Freigeben.',
+          'Dazu Menü › **Backzettel** › **Grundmengen** und die Rezepte.',
+        ],
+      },
+      {
+        title: 'Rezept nachschlagen',
+        steps: [
+          'Menü › **Rezepte**.',
+          'Im Suchfeld Name oder Zutat tippen – oder eine Kategorie antippen.',
+          'Rezept antippen. **Drucken** druckt es auf Papier.',
+        ],
+      },
+      {
+        title: 'Neues Rezept',
+        steps: [
+          '**Neues Rezept** tippen. **Name** und **Kategorie** eintragen.',
+          '**Ergibt**: z. B. „3 Laibe à 700 g“. Leer heißt offen.',
+          'Je Zutat **Menge**, **Einheit** und **Zutat**. Menge unbekannt? Leer lassen – dann steht dort „offen“, nie 0.',
+          '**Zutat hinzufügen** für die nächste Zeile. Die Pfeile ändern die Reihenfolge, der Papierkorb entfernt.',
+          '**Gruppe hinzufügen** für Vorteig, Hauptteig, Füllung.',
+          'Arbeitsschritte eintragen, dann **Rezept anlegen**.',
+        ],
+      },
+      {
+        title: 'Rezept ändern',
+        steps: [
+          'Rezept öffnen › **Bearbeiten** › ändern › **Speichern**.',
+          'Hat inzwischen jemand anderes gespeichert, meldet die App das: **Aktuellen Stand laden** und die Änderung noch einmal eintragen.',
+          'Teig-Rezepte (Rechengrundlage des Backzettels) sind nur zum Ansehen.',
+        ],
+      },
+      {
+        title: 'Wartet auf Freigabe',
+        steps: [
+          'Nach dem Speichern steht **wartet auf Freigabe** am Rezept: es ist gespeichert, der Inhaber übernimmt es noch.',
+          'Steht **Backzettel** am Rezept, rechnet der Backzettel damit – mit dem neuen Stand erst nach der Freigabe.',
+          'So ein Rezept lässt sich ändern, aber nicht löschen.',
+          '**Löschen** gibt es nur, wenn es freigeschaltet ist. Sonst dem Inhaber Bescheid geben.',
+        ],
+      },
+      {
+        title: 'Keine Verbindung?',
+        tone: 'warning',
+        steps: [
+          'WLAN am Tablet prüfen, Seite neu laden.',
+          'Nach **10 Minuten**: mit dem letzten freigegebenen Ausdruck backen (Hilfe › Papierbetrieb).',
+          'Rezeptänderungen auf Papier notieren und später eintragen.',
+        ],
+      },
+      {
+        title: 'Abmelden',
+        steps: [
+          'Am Tablet nach der Arbeit **Abmelden** – sonst kann jeder dort Rezepte ändern.',
+        ],
       },
     ],
   },
@@ -300,6 +375,13 @@ export const SPICKZETTEL: Record<PilotRole, Spickzettel> = {
         ],
       },
       {
+        title: 'Rezepte',
+        steps: [
+          'Menü › **Rezepte**: nachschlagen, **Neues Rezept**, **Bearbeiten**. Das darf auch die Rolle **Backstubenleitung** (Benutzer › Rolle); die Backstube liest nur.',
+          'Auch hier: **wartet auf Freigabe**, bis es in hq übernommen ist.',
+        ],
+      },
+      {
         title: 'Berichte und Finanzen',
         steps: [
           'Kassenberichte und Analysen: nur Inhaber.',
@@ -324,6 +406,7 @@ export const SPICKZETTEL: Record<PilotRole, Spickzettel> = {
 export const SPICKZETTEL_ORDER: readonly PilotRole[] = [
   'verkauf',
   'backstube',
+  'backstubenleiter',
   'fahrer',
   'inhaber',
 ]

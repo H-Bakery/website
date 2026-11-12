@@ -200,6 +200,34 @@ describe('AdminLayout', () => {
     expect(screen.getByLabelText('Pfad').textContent).not.toMatch(/\b12\b/)
   })
 
+  it('names the recipe pages and drops category and slug', () => {
+    renderLayout('/admin/rezepte')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Dashboard › Rezepte'
+    )
+    cleanup()
+    renderLayout('/admin/rezepte/breads/musterkruste')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Dashboard › Rezepte › Rezept'
+    )
+    expect(screen.getByLabelText('Pfad').textContent).not.toMatch(
+      /breads|musterkruste/
+    )
+    cleanup()
+    renderLayout('/admin/rezepte/bearbeiten/breads/musterkruste')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Dashboard › Rezepte › Bearbeiten'
+    )
+    expect(screen.getByLabelText('Pfad').textContent).not.toMatch(
+      /breads|musterkruste|bearbeiten\b/
+    )
+    cleanup()
+    renderLayout('/admin/rezepte/neu')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Dashboard › Rezepte › Neues Rezept'
+    )
+  })
+
   it('renders a readable breadcrumb', () => {
     renderLayout('/admin/products/new')
     expect(screen.getByLabelText('Pfad')).toHaveTextContent(

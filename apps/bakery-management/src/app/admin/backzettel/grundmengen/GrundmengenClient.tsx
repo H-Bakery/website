@@ -24,6 +24,7 @@ import {
 } from '@mui/icons-material'
 import { ApiError } from '@bakery/shared/data-access'
 import { useOptionalSession } from '../../../../lib/session'
+import { hasBackstubeRights } from '../../../../lib/roles'
 import { backzettelErrorText } from '../../../../lib/backstubeErrors'
 import {
   cellValue,
@@ -61,9 +62,6 @@ import {
   PageSection,
 } from '../../../../components/layout'
 import { OpenMasterDataNote } from '../../../../components/backzettel/OpenMasterDataNote'
-
-/** Wer Grundmengen ändern darf (wie `PUT /config/base`). */
-const EDIT_ROLES = ['inhaber', 'backstube']
 
 export const REFERENCE_TOOLTIP = 'Median verkauft, letzte 6 gleiche Wochentage'
 
@@ -722,7 +720,9 @@ function GrundmengenGrid(props: GridProps) {
 export default function GrundmengenClient() {
   const session = useOptionalSession()
   const role = session?.user?.role ?? null
-  const mayEdit = role !== null && EDIT_ROLES.includes(role)
+  // Wer Grundmengen ändern darf (wie `PUT /config/base`): Inhaber, Backstube
+  // und Backstubenleitung.
+  const mayEdit = hasBackstubeRights(role)
 
   const [view, setView] = useState<BackzettelConfigView | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)

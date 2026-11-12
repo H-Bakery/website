@@ -59,6 +59,7 @@ import {
   parseDecimal,
 } from '../../../../lib/backzettelFormat'
 import { useOptionalSession } from '../../../../lib/session'
+import { hasBackstubeRights } from '../../../../lib/roles'
 import { backzettelErrorText } from '../../../../lib/backstubeErrors'
 import { BackzettelSectionView } from '../../../../components/backzettel/BackzettelSectionView'
 import { HefeteigCard } from '../../../../components/backzettel/HefeteigCard'
@@ -155,7 +156,7 @@ export default function BackzettelDayClient({
 }: BackzettelDayClientProps) {
   const session = useOptionalSession()
   const role = session?.user?.role ?? null
-  const canPlan = role === 'inhaber' || role === 'backstube'
+  const canPlan = hasBackstubeRights(role)
   const canReopen = role === 'inhaber'
   const validDate = isIsoDate(date)
 

@@ -160,18 +160,23 @@ describe('login', () => {
     expect(currentSession()).toBeNull()
   })
 
-  it('weist die Backstube ab und beendet ihre eben entstandene Sitzung', async () => {
-    fetchMock
-      .mockResolvedValueOnce(answer(issued('at_b', 'rt_b', 'backstube')))
-      .mockResolvedValueOnce(answer({ success: true, message: 'Abgemeldet.' }))
+  it.each(['backstube', 'backstubenleiter'])(
+    'weist %s ab und beendet die eben entstandene Sitzung',
+    async (role) => {
+      fetchMock
+        .mockResolvedValueOnce(answer(issued('at_b', 'rt_b', role)))
+        .mockResolvedValueOnce(
+          answer({ success: true, message: 'Abgemeldet.' })
+        )
 
-    await expect(login('back', 'pw')).rejects.toBeInstanceOf(AuthError)
-    expect(currentSession()).toBeNull()
-    await Promise.resolve()
-    const [url, init] = fetchMock.mock.calls[1]
-    expect(url).toMatch(/\/api\/auth\/logout$/)
-    expect(init.headers.Authorization).toBe('Bearer at_b')
-  })
+      await expect(login('back', 'pw')).rejects.toBeInstanceOf(AuthError)
+      expect(currentSession()).toBeNull()
+      await Promise.resolve()
+      const [url, init] = fetchMock.mock.calls[1]
+      expect(url).toMatch(/\/api\/auth\/logout$/)
+      expect(init.headers.Authorization).toBe('Bearer at_b')
+    }
+  )
 
   it('ruft `prepare` vor dem Speichern auf', async () => {
     fetchMock.mockResolvedValue(answer(issued('at_1', 'rt_1')))
