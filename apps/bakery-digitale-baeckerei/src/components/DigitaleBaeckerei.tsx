@@ -25,14 +25,21 @@ import {
   type ProduktModellIndex,
 } from '../lib/produkte/modelle'
 import {
+  entdeckbare,
+  entdecktText,
+  merkeEntdeckt,
+  zaehleEntdeckt,
+} from '../lib/produkte/entdeckt'
+import {
   eintraegeFuer,
   ladeProduktdaten,
   type ListenEintrag,
 } from '../lib/produkte/zuordnung'
-import type { Treffer } from '../lib/scene/createViewer'
+import type { Treffer, ViewerReadyInfo } from '../lib/scene/createViewer'
 import AllesHierListe from './AllesHierListe'
 import BlickpunktLeiste from './BlickpunktLeiste'
 import Hinweis from './Hinweis'
+import IntroKnopf from './IntroKnopf'
 import Ladebild from './Ladebild'
 import { ladeViewer, type ViewerKomponente } from './ladeViewer'
 import Nahansicht from './Nahansicht'
@@ -59,6 +66,12 @@ export const KEINE_INFOS_HINWEIS =
  */
 export const NICHT_IM_BILD_TEXT = 'Von hier aus gerade nicht im Bild.'
 export const NOCHMAL_TEXT = 'Noch einmal versuchen'
+/** Ansage für Screenreader, solange der Flug zum Start läuft. */
+export const INTRO_ANSAGE =
+  'Kurzer Flug von der Straße zur Theke. Überspringen möglich.'
+/** Name des Canvas während des Flugs (danach: „Blickpunkt Theke“). */
+export const INTRO_LABEL =
+  '3D-Ansicht der Bäckerei, Flug von der Straße zur Theke'
 
 /** Ansage für Screenreader nach einem Wechsel. */
 export const blickpunktAnsage = (name: string) => `Blickpunkt ${name}.`
@@ -141,6 +154,22 @@ export default function DigitaleBaeckerei() {
   /** Blickpunkt, an dem gerade der Hinweis „keine Infos zum Antippen“ steht. */
   const [keineInfosAn, setKeineInfosAn] = useState<string | null>(null)
   const keineInfosGezeigt = useRef(new Set<string>())
+  /** Der Flug zum Start läuft: Solange gibt es nur „Überspringen“. */
+  const [introLaeuft, setIntroLaeuft] = useState(false)
+  /** Das Modell hat einen Flug (und das Gerät erlaubt Bewegung): „noch einmal ansehen“. */
+  const [introDa, setIntroDa] = useState(false)
+  /** Nach einem Flug sagt die Status-Region den Blickpunkt an. */
+  const [introGesehen, setIntroGesehen] = useState(false)
+  /** Zähler als Auftrag an die Szene: noch einmal zeigen / überspringen. */
+  const [introNochmal, setIntroNochmal] = useState(0)
+  const [introSchluss, setIntroSchluss] = useState(0)
+  /**
+   * Produkte, deren Karte in diesem Besuch schon offen war - nur im
+   * Arbeitsspeicher, nach dem Neuladen wieder leer.
+   */
+  const [entdeckt, setEntdeckt] = useState<ReadonlySet<string>>(
+    () => new Set<string>()
+  )
 
   // Die Szene nachladen. Scheitert das (wackliges Netz: HTML da, der
   // three-Chunk nicht), ist das ein Ladefehler mit „Noch einmal versuchen“ -
@@ -226,6 +255,7 @@ export default function DigitaleBaeckerei() {
   const waehle = useCallback((neu: Auswahl | null) => {
     setAuswahl(neu)
     setNichtImBild(null)
+    if (neu) setEntdeckt((vorher) => merkeEntdeckt(vorher, neu.produkt.id))
   }, [])
 
   const aktivRef = useRef(aktivId)
@@ -255,10 +285,23 @@ export default function DigitaleBaeckerei() {
   )
 
   const onProgress = useCallback((f: number) => setFortschritt(f), [])
-  const onReady = useCallback(() => setZustand('bereit'), [])
+  const onReady = useCallback((info?: ViewerReadyInfo) => {
+    setZustand('bereit')
+    setIntroDa(Boolean(info?.intro))
+  }, [])
+  const onIntro = useCallback((laeuft: boolean) => {
+    setIntroLaeuft(laeuft)
+    if (!laeuft) setIntroGesehen(true)
+  }, [])
   const onUnavailable = useCallback(() => setZustand('kein-webgl'), [])
-  const onError = useCallback(() => setZustand('fehler'), [])
-  const onLost = useCallback(() => setZustand('unterbrochen'), [])
+  const onError = useCallback(() => {
+    setIntroLaeuft(false)
+    setZustand('fehler')
+  }, [])
+  const onLost = useCallback(() => {
+    setIntroLaeuft(false)
+    setZustand('unterbrochen')
+  }, [])
   const onErsteGeste = useCallback(() => setBedient(true), [])
   const onAuswahlImBild = useCallback(
     (slot: string, imBild: boolean) =>
@@ -304,9 +347,29 @@ export default function DigitaleBaeckerei() {
     setFortschritt(0)
     waehle(null)
     setListeOffen(false)
+    setIntroLaeuft(false)
     setZustand('laden')
     setVersuch((n) => n + 1)
   }
+
+  /** „Flug noch einmal ansehen“: zurück an sein Ziel, dann fliegt die Szene. */
+  const zeigeIntroNochmal = () => {
+    wechsleZu(START_BLICKPUNKT_ID)
+    setIntroNochmal((n) => n + 1)
+  }
+
+  const entdecktZeile = useMemo(
+    () =>
+      daten
+        ? entdecktText(
+            zaehleEntdeckt(
+              entdeckt,
+              entdeckbare(daten.belegung, daten.snapshot)
+            )
+          )
+        : null,
+    [daten, entdeckt]
+  )
 
   const bereit = zustand === 'bereit'
   const eintraege = useMemo(
@@ -340,11 +403,14 @@ export default function DigitaleBaeckerei() {
     : zustand === 'kein-webgl' && !daten
     ? `${OHNE_WEBGL_TEXT} ${datenFehler ? DATEN_FEHLER_TEXT : DATEN_LADEN_TEXT}`
     : ''
+  const fliegt = bereit && introLaeuft
   const ansage = !bereit
     ? ''
+    : fliegt
+    ? INTRO_ANSAGE
     : auswahl?.quelle === 'tipp'
     ? kartenAnsage(auswahl.produkt.name)
-    : gewechselt
+    : gewechselt || introGesehen
     ? blickpunktAnsage(blickpunkt.name)
     : BEREIT_TEXT
 
@@ -383,7 +449,15 @@ export default function DigitaleBaeckerei() {
           modelBytes={modelBytes(raum.modell)}
           blickpunkt={blickpunkt}
           fuellung={raum.fuellung}
-          label={`3D-Ansicht der Bäckerei, Blickpunkt ${blickpunkt.name}`}
+          label={
+            fliegt
+              ? INTRO_LABEL
+              : `3D-Ansicht der Bäckerei, Blickpunkt ${blickpunkt.name}`
+          }
+          intros={raum.intros}
+          introNochmal={introNochmal}
+          introSchluss={introSchluss}
+          onIntro={onIntro}
           auswahl={auswahl?.slot ?? null}
           verdecktVon={produktKarte}
           onProgress={onProgress}
@@ -430,7 +504,9 @@ export default function DigitaleBaeckerei() {
         <Typography variant="h1">{TITEL}</Typography>
       </Paper>
 
-      {bereit && (
+      {fliegt && <IntroKnopf onClick={() => setIntroSchluss((n) => n + 1)} />}
+
+      {bereit && !fliegt && (
         <>
           <Hinweis
             sichtbar={keineInfos || (!bedient && !auswahl)}
@@ -444,6 +520,7 @@ export default function DigitaleBaeckerei() {
               setBedient(true)
               setListeOffen(true)
             }}
+            onIntroNochmal={introDa ? zeigeIntroNochmal : undefined}
           />
           <ProduktSheet
             produkt={auswahl?.produkt ?? null}
@@ -476,6 +553,8 @@ export default function DigitaleBaeckerei() {
             blickpunktName={blickpunkt.name}
             onSelect={waehleAusListe}
             onClose={() => setListeOffen(false)}
+            entdeckt={entdeckt}
+            entdecktText={entdecktZeile}
             leerText={
               daten
                 ? undefined

@@ -9,7 +9,7 @@
  */
 import React, { useCallback, useEffect, useRef } from 'react'
 import Box from '@mui/material/Box'
-import type { Blickpunkt } from '../config/raeume'
+import type { Blickpunkt, Intro } from '../config/raeume'
 import {
   createViewer,
   WebGLUnavailableError,
@@ -50,6 +50,14 @@ export interface Viewer3DProps {
   onErsteGeste?: () => void
   /** −1 = voriger, +1 = nächster Blickpunkt (Wischen mit zwei Fingern, Pfeiltasten). */
   onWechselGeste?: (richtung: -1 | 1) => void
+  /** Flüge zum Start dieses Raums (raeume.ts). `?intro=0` in der Adresse stellt sie ab. */
+  intros?: readonly Intro[]
+  /** Neuer Wert (> 0): den Flug noch einmal zeigen. */
+  introNochmal?: number
+  /** Neuer Wert (> 0): den laufenden Flug überspringen. */
+  introSchluss?: number
+  /** Ein Flug beginnt (`true`) oder ist zu Ende (`false`). */
+  onIntro?: (laeuft: boolean) => void
 }
 
 export default function Viewer3D(props: Viewer3DProps) {
@@ -60,6 +68,7 @@ export default function Viewer3D(props: Viewer3DProps) {
   aktuell.current = props
 
   const { modelUrl, modelBytes, blickpunkt, fuellung, label, auswahl } = props
+  const { intros, introNochmal = 0, introSchluss = 0 } = props
 
   /** Rechteck der Karte im Viewport - für die Szene, immer frisch gemessen. */
   const karte = useCallback((): Rechteck | null => {
@@ -73,10 +82,13 @@ export default function Viewer3D(props: Viewer3DProps) {
     const container = containerRef.current
     if (!container) return
     let debug = false
+    let introSpielen = true
     try {
-      debug = new URLSearchParams(window.location.search).has('debug')
+      const parameter = new URLSearchParams(window.location.search)
+      debug = parameter.has('debug')
+      introSpielen = parameter.get('intro') !== '0'
     } catch {
-      /* ohne Messhaken */
+      /* ohne Messhaken, mit Flug */
     }
     try {
       // Eigenes Canvas je Mounten - auch unter React StrictMode sauber.
@@ -87,6 +99,9 @@ export default function Viewer3D(props: Viewer3DProps) {
         fuellung,
         label: aktuell.current.label,
         debug,
+        intros,
+        introSpielen,
+        onIntro: (laeuft) => aktuell.current.onIntro?.(laeuft),
         onProgress: (f) => aktuell.current.onProgress(f),
         onReady: (info) => aktuell.current.onReady(info),
         onError: (err) => aktuell.current.onError(err),
@@ -109,7 +124,7 @@ export default function Viewer3D(props: Viewer3DProps) {
       else aktuell.current.onError(err)
       return undefined
     }
-  }, [modelUrl, modelBytes, fuellung, karte])
+  }, [modelUrl, modelBytes, fuellung, intros, karte])
 
   useEffect(() => {
     viewerRef.current?.setBlickpunkt(blickpunkt)
@@ -118,6 +133,15 @@ export default function Viewer3D(props: Viewer3DProps) {
   useEffect(() => {
     viewerRef.current?.setLabel(label)
   }, [label])
+
+  // Nach dem Blickpunkt: „Noch einmal“ setzt ihn zuerst auf das Ziel des Flugs.
+  useEffect(() => {
+    if (introNochmal > 0) viewerRef.current?.spieleIntro()
+  }, [introNochmal])
+
+  useEffect(() => {
+    if (introSchluss > 0) viewerRef.current?.ueberspringeIntro()
+  }, [introSchluss])
 
   useEffect(() => {
     viewerRef.current?.waehle(auswahl ?? null, karte)

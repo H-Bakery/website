@@ -3,7 +3,8 @@
 Der Laden in 3D mit festen Blickpunkten: eigene statische Next.js-App ohne API, nicht im Pilot.
 Stand **P1 (MVP)**: drei Blickpunkte (Theke, Brotregal, Regale) mit Kamera-Rig, Produkte antippen →
 Karte mit Daten aus hq, Liste „Alles hier“, Ladebild, Ersatz ohne WebGL, Quellen. Dazu aus **P4**
-die Nahansicht: „In 3D ansehen“ in der Karte, vorerst nur lokal (DB9). Dev auf 4222
+die Nahansicht: „In 3D ansehen“ in der Karte, vorerst nur lokal (DB9); aus **P3** der Flug zum Start
+und „entdeckt x von y“ in der Liste. Dev auf 4222
 (`npm run dev:digitale-baeckerei`), Export nach `apps/bakery-digitale-baeckerei/out`
 (`npm run build:digitale-baeckerei`, webpack), ausgeliefert auf 4232
 (`npm run serve:digitale-baeckerei`). Playwright: `apps/bakery-digitale-baeckerei-e2e`
@@ -77,10 +78,17 @@ Regeln, die am meisten beißen:
   umrechnen. Kamerawerte und welches Möbel zu welchem Blickpunkt gehört, stehen nur in
   `src/config/raeume.ts`; die Playwright-Suite liest sie von dort.
 - **Reine Logik ohne three** dort testen, wo sie steht: `fills.ts`, `view.ts`, `rig.ts`,
-  `treffer.ts`, `bildausschnitt.ts`, `aussenraum.ts`, `drehteller.ts`,
-  `src/lib/produkte/zuordnung.ts`, `modelle.ts`, `scripts/model-lock.js`, `glb-bereinigen.js`
+  `treffer.ts`, `bildausschnitt.ts`, `aussenraum.ts`, `drehteller.ts`, `intro.ts`,
+  `src/lib/produkte/zuordnung.ts`, `modelle.ts`, `entdeckt.ts`, `scripts/model-lock.js`, `glb-bereinigen.js`
   (auch der eine Leser für GLB-Container), `belegung.js`, `product-snapshot.js`,
   `produkte-3d-lock.js`.
+- **Flug zum Start (P3):** Weg und Zeitplan je Raum in `raeume.ts` (`intros`, Stützpunkte aus dem
+  Explorer - nicht verschieben, ohne die Bilder am echten Modell neu anzusehen), Rechnung in
+  `intro.ts`, geführt von `createViewer.ts` mit eigenem Takt nur für die Dauer des Flugs; das Rig
+  ist so lange gesperrt (`sperren`). Einmal je Seitenaufruf, **nichts wird gemerkt**; aus mit
+  `?intro=0` und bei `prefers-reduced-motion`. Ein Flug mit `braucht` wird nur angeboten, wenn das
+  Modell einen Knoten mit diesem Namensanfang hat. Die Playwright-Suite öffnet mit `?intro=0`
+  (`oeffne()`), nur `intro.spec.ts` mit Flug. „Entdeckt“ (`entdeckt.ts`) lebt nur im Arbeitsspeicher.
 - **Leistung:** Pixeldichte ≤ 2, gerendert wird nur bei Bedarf (kein Dauer-Loop; in Ruhe 0 Bilder),
   eigenes Canvas je Mounten (StrictMode), beim Abbauen alles freigeben (Rig und Picker vor dem
   Modell). Messhaken `window.__digitaleBaeckerei` gibt es nur mit `?debug`.

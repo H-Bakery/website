@@ -2,9 +2,11 @@ import React from 'react'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Belegung, ProduktSnapshot } from '../lib/produkte/types'
-import { LISTE_LEER_TEXT } from './AllesHierListe'
+import { ENTDECKT_ZEILE_TEXT, LISTE_LEER_TEXT } from './AllesHierListe'
 import DigitaleBaeckerei, {
   BEREIT_TEXT,
+  INTRO_ANSAGE,
+  INTRO_LABEL,
   DATEN_FEHLER_TEXT,
   FEHLER_TEXT,
   KEINE_INFOS_HINWEIS,
@@ -16,6 +18,8 @@ import DigitaleBaeckerei, {
   kartenAnsage,
 } from './DigitaleBaeckerei'
 import { HINWEIS_TEXT } from './Hinweis'
+import { UEBERSPRINGEN_TEXT } from './IntroKnopf'
+import { INTRO_NOCHMAL_TEXT } from './Quellen'
 import { ladeNahansicht } from './ladeNahansicht'
 import { ladeViewer } from './ladeViewer'
 import { LADE_TEXT } from './Ladebild'
@@ -49,7 +53,21 @@ function FakeViewer(props: {
   onErsteGeste?: () => void
   onWechselGeste?: (r: -1 | 1) => void
   onAuswahlImBild?: (slot: string, imBild: boolean) => void
+  intros?: readonly { id: string }[]
+  introNochmal?: number
+  introSchluss?: number
+  onIntro?: (laeuft: boolean) => void
 }) {
+  // Wie die echte Szene: Ein neuer Zähler ist ein Auftrag.
+  const { introNochmal = 0, introSchluss = 0, onIntro } = props
+  React.useEffect(() => {
+    if (introNochmal > 0) onIntro?.(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [introNochmal])
+  React.useEffect(() => {
+    if (introSchluss > 0) onIntro?.(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [introSchluss])
   React.useEffect(() => {
     mounts.push({
       modelUrl: props.modelUrl,
@@ -74,7 +92,40 @@ function FakeViewer(props: {
       aria-label={props.label}
       data-blickpunkt={props.blickpunkt.id}
       data-auswahl={props.auswahl ?? ''}
+      data-intros={(props.intros ?? []).map((i) => i.id).join(',')}
     >
+      <button
+        type="button"
+        onClick={() => {
+          props.onProgress(1)
+          props.onIntro?.(true)
+          props.onReady({
+            firstFrameMs: 1,
+            triangles: 12,
+            fill: null,
+            intro: { id: 'kurz', laeuft: true },
+          })
+        }}
+      >
+        fertig mit Flug
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          props.onProgress(1)
+          props.onReady({
+            firstFrameMs: 1,
+            triangles: 12,
+            fill: null,
+            intro: { id: 'kurz', laeuft: false },
+          })
+        }}
+      >
+        fertig, Flug abgestellt
+      </button>
+      <button type="button" onClick={() => props.onIntro?.(false)}>
+        Flug zu Ende
+      </button>
       <button type="button" onClick={() => props.onProgress(0.5)}>
         halb geladen
       </button>
@@ -873,5 +924,196 @@ describe('DigitaleBaeckerei: DB8', () => {
     await user.click(screen.getByRole('button', { name: 'Alles hier' }))
     await screen.findByTestId('alles-hier-liste')
     expect(document.body.textContent).not.toMatch(VERBOTEN)
+  })
+})
+
+describe('DigitaleBaeckerei: Flug zum Start', () => {
+  /** Das Modell steht, und die Szene meldet: Der Flug läuft. */
+  async function fliegt() {
+    const { user } = setup()
+    await screen.findByTestId('fake-viewer')
+    await user.click(screen.getByRole('button', { name: 'fertig mit Flug' }))
+    await screen.findByTestId('ohne-webgl')
+    return { user }
+  }
+
+  it('gibt der Szene die Flüge des Raums', async () => {
+    await bereit()
+    expect(viewer()).toHaveAttribute('data-intros', 'kreisel,kurz')
+  })
+
+  it('zeigt während des Flugs nur „Überspringen“ - keine Leiste, kein Hinweis', async () => {
+    await fliegt()
+    expect(
+      screen.getByRole('button', { name: UEBERSPRINGEN_TEXT })
+    ).toBeInTheDocument()
+    expect(screen.queryByTestId('blickpunkt-leiste')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('hinweis')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /Blickpunkt:/ })
+    ).not.toBeInTheDocument()
+    expect(screen.queryByTestId('ladebild')).not.toBeInTheDocument()
+  })
+
+  it('sagt den Flug an und benennt das Canvas danach', async () => {
+    await fliegt()
+    expect(status()).toHaveTextContent(INTRO_ANSAGE)
+    expect(viewer()).toHaveAttribute('aria-label', INTRO_LABEL)
+  })
+
+  it('nach der Ankunft: Leiste, Hinweis und die Ansage des Blickpunkts', async () => {
+    const { user } = await fliegt()
+    await user.click(screen.getByRole('button', { name: 'Flug zu Ende' }))
+    expect(
+      screen.queryByRole('button', { name: UEBERSPRINGEN_TEXT })
+    ).not.toBeInTheDocument()
+    expect(screen.getByTestId('blickpunkt-leiste')).toBeInTheDocument()
+    expect(screen.getByTestId('hinweis')).toHaveAttribute(
+      'data-sichtbar',
+      'true'
+    )
+    expect(screen.getByTestId('hinweis')).toHaveTextContent(HINWEIS_TEXT)
+    expect(status()).toHaveTextContent(blickpunktAnsage('Theke'))
+    expect(viewer()).toHaveAttribute(
+      'aria-label',
+      '3D-Ansicht der Bäckerei, Blickpunkt Theke'
+    )
+  })
+
+  it('„Überspringen“ gibt den Auftrag an die Szene weiter', async () => {
+    const { user } = await fliegt()
+    await user.click(screen.getByRole('button', { name: UEBERSPRINGEN_TEXT }))
+    // Die (gemockte) Szene meldet darauf das Ende.
+    await waitFor(() =>
+      expect(screen.getByTestId('blickpunkt-leiste')).toBeInTheDocument()
+    )
+    expect(
+      screen.queryByRole('button', { name: UEBERSPRINGEN_TEXT })
+    ).not.toBeInTheDocument()
+  })
+
+  it('ohne Flug (kein Modell dafür, weniger Bewegung) startet es wie bisher an der Theke', async () => {
+    const { user } = await bereit()
+    expect(
+      screen.queryByRole('button', { name: UEBERSPRINGEN_TEXT })
+    ).not.toBeInTheDocument()
+    expect(status()).toHaveTextContent(BEREIT_TEXT)
+    // … und bietet ihn auch nicht zum Wiederholen an.
+    await user.click(screen.getByRole('button', { name: 'Quellen' }))
+    await screen.findByRole('dialog', { name: 'Quellen' })
+    expect(
+      screen.queryByRole('button', { name: INTRO_NOCHMAL_TEXT })
+    ).not.toBeInTheDocument()
+  })
+
+  it('abgestellt (?intro=0): gleich an der Theke, der Flug bleibt unter „Quellen“ zu haben', async () => {
+    const { user } = setup()
+    await screen.findByTestId('fake-viewer')
+    await user.click(
+      screen.getByRole('button', { name: 'fertig, Flug abgestellt' })
+    )
+    expect(screen.getByTestId('blickpunkt-leiste')).toBeInTheDocument()
+    expect(status()).toHaveTextContent(BEREIT_TEXT)
+    await user.click(screen.getByRole('button', { name: 'Quellen' }))
+    expect(
+      await screen.findByRole('button', { name: INTRO_NOCHMAL_TEXT })
+    ).toBeInTheDocument()
+  })
+
+  it('„noch einmal ansehen“ geht zurück an die Theke und fliegt von dort', async () => {
+    const { user } = await fliegt()
+    await user.click(screen.getByRole('button', { name: 'Flug zu Ende' }))
+    await user.click(screen.getByRole('button', { name: 'Brotregal' }))
+    await user.click(screen.getByRole('button', { name: 'tippe Testbrot' }))
+    expect(sheet()).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Quellen' }))
+    await user.click(
+      await screen.findByRole('button', { name: INTRO_NOCHMAL_TEXT })
+    )
+    await screen.findByRole('button', { name: UEBERSPRINGEN_TEXT })
+    expect(viewer()).toHaveAttribute('data-blickpunkt', 'theke')
+    expect(viewer()).toHaveAttribute('aria-label', INTRO_LABEL)
+    expect(screen.queryByTestId('blickpunkt-leiste')).not.toBeInTheDocument()
+    expect(sheet()).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Flug zu Ende' }))
+    expect(screen.getByTestId('blickpunkt-leiste')).toBeInTheDocument()
+  })
+
+  it('ein verlorener Kontext mitten im Flug lässt keinen „Überspringen“-Knopf zurück', async () => {
+    const { user } = await fliegt()
+    await user.click(screen.getByRole('button', { name: 'Kontext verlieren' }))
+    expect(status()).toHaveTextContent(UNTERBROCHEN_TEXT)
+    expect(
+      screen.queryByRole('button', { name: UEBERSPRINGEN_TEXT })
+    ).not.toBeInTheDocument()
+  })
+
+  it('speichert nichts auf dem Gerät', async () => {
+    const setItem = jest.spyOn(Storage.prototype, 'setItem')
+    const { user } = await fliegt()
+    await user.click(screen.getByRole('button', { name: UEBERSPRINGEN_TEXT }))
+    await screen.findByTestId('blickpunkt-leiste')
+    expect(setItem).not.toHaveBeenCalled()
+    expect(window.localStorage.length).toBe(0)
+    expect(window.sessionStorage.length).toBe(0)
+    expect(document.cookie).toBe('')
+    setItem.mockRestore()
+  })
+})
+
+describe('DigitaleBaeckerei: entdeckt x von y', () => {
+  const zaehler = () => screen.getByTestId('entdeckt')
+
+  it('zählt zu Beginn 0 von allen Produkten mit Karte im ganzen Laden', async () => {
+    const { user } = await bereit()
+    await user.click(screen.getByRole('button', { name: 'Alles hier' }))
+    await screen.findByTestId('alles-hier-liste')
+    // Drei Produkte kennt der Snapshot; das vierte im Modell hat keine Karte.
+    expect(zaehler()).toHaveTextContent('0 von 3 Produkten im Laden entdeckt')
+    expect(screen.queryByTestId('entdeckt-haken')).not.toBeInTheDocument()
+  })
+
+  it('zählt ein Produkt, sobald seine Karte offen war - jedes nur einmal', async () => {
+    const { user } = await bereit()
+    await user.click(screen.getByRole('button', { name: 'tippe Testbrot' }))
+    await user.click(screen.getByRole('button', { name: 'tippe daneben' }))
+    await user.click(screen.getByRole('button', { name: 'tippe Testbrot' }))
+    await user.click(screen.getByRole('button', { name: 'tippe Unbekanntes' }))
+    await user.click(screen.getByRole('button', { name: 'Alles hier' }))
+    const liste = await screen.findByTestId('alles-hier-liste')
+    expect(zaehler()).toHaveTextContent('1 von 3 Produkten im Laden entdeckt')
+    expect(
+      within(liste).getByRole('button', { name: /Testbrot/ })
+    ).toHaveAccessibleName(`Testbrot 500 g ${ENTDECKT_ZEILE_TEXT}`)
+    expect(
+      within(liste).getByRole('button', { name: /Probeweck/ })
+    ).toHaveAccessibleName('Probeweck')
+  })
+
+  it('zählt auch, was aus der Liste geöffnet wurde, und über Blickpunkte hinweg', async () => {
+    const { user } = await bereit()
+    await user.click(screen.getByRole('button', { name: 'Alles hier' }))
+    await user.click(
+      within(await screen.findByTestId('alles-hier-liste')).getByRole(
+        'button',
+        { name: /Probeweck/ }
+      )
+    )
+    await waitFor(() =>
+      expect(screen.queryByTestId('alles-hier-liste')).not.toBeInTheDocument()
+    )
+    await user.click(screen.getByRole('button', { name: 'Brotregal' }))
+    await user.click(screen.getByRole('button', { name: 'Alles hier' }))
+    await screen.findByTestId('alles-hier-liste')
+    expect(zaehler()).toHaveTextContent('1 von 3 Produkten im Laden entdeckt')
+    // Am Brotregal liegt nur die Äpfeltasche - noch ohne Haken.
+    expect(screen.queryByTestId('entdeckt-haken')).not.toBeInTheDocument()
+  })
+
+  it('steht nicht dauerhaft über der Szene', async () => {
+    const { user } = await bereit()
+    await user.click(screen.getByRole('button', { name: 'tippe Testbrot' }))
+    expect(screen.queryByTestId('entdeckt')).not.toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/entdeckt/)
   })
 })

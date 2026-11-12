@@ -72,6 +72,40 @@ export interface Blickpunkt {
 /** Der Teil eines Blickpunkts, den die Bedienelemente brauchen. */
 export type BlickpunktKurz = Pick<Blickpunkt, 'id' | 'name'>
 
+/** Ein Stützpunkt eines Kameraflugs: Zeit auf dem Pfad (s), Standort, Blickziel. */
+export interface IntroPunkt {
+  t: number
+  eye: Vec3
+  look: Vec3
+}
+
+/**
+ * Ein kurzer, automatischer Kameraflug, der an einem Blickpunkt endet
+ * (Rechnung: src/lib/scene/intro.ts). Standort und Blickziel laufen zwischen
+ * den Stützpunkten geradlinig; die Stützpunkte sind im Explorer am Modell
+ * geprüft und stehen hier unverändert.
+ */
+export interface Intro {
+  id: string
+  name: string
+  /** id des Blickpunkts, an dem der Flug endet. Der letzte Punkt ist dessen Ruhelage. */
+  ziel: string
+  /**
+   * Der Flug führt über Gelände, das es erst in einem späteren Modell gibt:
+   * Er wird nur angeboten, wenn das geladene Modell einen Knoten enthält,
+   * dessen Name so beginnt.
+   */
+  braucht?: string
+  punkte: readonly IntroPunkt[]
+  /**
+   * Eigener Zeitplan: Zur Filmzeit `film` (s) steht die Kamera an der
+   * Pfadzeit `pfad`; dazwischen geradlinig. So lässt sich der Flug vorn kürzen
+   * (später einsteigen) oder ein Stück langsamer fliegen, ohne die geprüften
+   * Stützpunkte anzufassen. Ohne Angabe: Filmzeit = Pfadzeit.
+   */
+  ablauf?: readonly { film: number; pfad: number }[]
+}
+
 export interface Raum {
   id: string
   name: string
@@ -80,6 +114,11 @@ export interface Raum {
   /** Zustand der Auslage, der gezeigt wird (`extras.fills` im Modell). */
   fuellung: string
   blickpunkte: readonly Blickpunkt[]
+  /**
+   * Flüge zum Start, in der Reihenfolge des Vorrangs: Gezeigt wird der erste,
+   * den das geladene Modell hergibt (`braucht`).
+   */
+  intros?: readonly Intro[]
 }
 
 export const raeume: readonly Raum[] = [
@@ -163,6 +202,61 @@ export const raeume: readonly Raum[] = [
         },
         moebel: ['dosenregal/', 'getraenkekuehlschrank/'],
         aussenSichtbar: false,
+      },
+    ],
+    // Beide Flüge enden genau in der Ruhelage des Blickpunkts „Theke“
+    // (Querformat; ins Hochformat blendet intro.ts am Schluss über). Die
+    // Stützpunkte stammen aus dem Explorer (lokaler Zweig
+    // `feat/bh-intro-kreisel`, dort am Modell geprüft) - nicht verschieben,
+    // ohne die Bilder neu anzusehen: Der Weg führt durch die offene Ladentür.
+    intros: [
+      {
+        // Vom Kreisel die Eckstraße herunter: braucht Kreisel und Straße im
+        // Modell. Am heute gesperrten Stand gibt es sie nicht - dieser Flug
+        // wird erst mit einem neuen Modell angeboten, dann von selbst.
+        id: 'kreisel',
+        name: 'Vom Kreisel zur Theke',
+        ziel: 'theke',
+        braucht: 'umgebung/kreisel',
+        punkte: [
+          { t: 0, eye: [-25.0, 248.25, 61.0], look: [-4.0, 245.5, 28.0] },
+          { t: 1.7, eye: [-15.0, 245.83, 48.6], look: [-4.4, 247.5, 20.0] },
+          { t: 3.2, eye: [-9.0, 244.69, 38.8], look: [-4.39, 248.6, 16.23] },
+          { t: 6.0, eye: [3.2, 244.97, 15.0], look: [7.0, 245.6, -2.5] },
+          { t: 8.0, eye: [13.05, 245.22, -2.66], look: [6.3, 245.55, -4.14] },
+          { t: 9.4, eye: [8.21, 245.13, -3.22], look: [4.61, 245.55, -4.51] },
+          { t: 10.4, eye: [6.45, 245.9, -4.07], look: [4.3, 245.4, -3.6] },
+          { t: 11.2, eye: [5.6, 245.9, -4.48], look: [3.9, 245.1, -2.2] },
+          { t: 12.0, eye: [4.85, 245.9, -3.2], look: [3.9, 245.0, -1.2] },
+        ],
+      },
+      {
+        // Die Straße am Haus entlang, vor dem Laden einschwenken, die Stufen
+        // hinauf und durch die Tür: bleibt auf dem Außenraum, den das Modell
+        // schon hat (8,0 s, 35 m).
+        id: 'kurz',
+        name: 'Von der Straße zur Theke',
+        ziel: 'theke',
+        punkte: [
+          { t: 0.0, eye: [0.55, 244.87, 20.0], look: [7.0, 246.2, -2.5] },
+          { t: 1.2, eye: [3.2, 244.97, 15.0], look: [7.0, 245.6, -2.5] },
+          { t: 3.4, eye: [13.05, 245.22, -2.66], look: [6.3, 245.55, -4.14] },
+          { t: 5.0, eye: [8.21, 245.13, -3.22], look: [4.61, 245.55, -4.51] },
+          { t: 6.2, eye: [6.45, 245.9, -4.07], look: [4.3, 245.4, -3.6] },
+          { t: 7.2, eye: [5.6, 245.9, -4.48], look: [3.9, 245.1, -2.2] },
+          { t: 8.0, eye: [4.85, 245.9, -3.2], look: [3.9, 245.0, -1.2] },
+        ],
+        // Vorn gekürzt statt schneller: Das lange Stück an der Hauswand
+        // (20 m in 2,2 s, ≈ 9 m/s knapp über der Straße, dazu ein Schwenk
+        // bis ≈ 77°/s) ist am Handy zu hastig. Der Flug steigt darum erst
+        // bei Pfadzeit 1,9 ein - das erste Bild zeigt schon die Ladenfront -
+        // und nimmt sich für den Rest des Stücks 2,9 s (≈ 5 m/s, ≈ 40°/s).
+        // Ab dem Einschwenken vor dem Laden läuft er wie geprüft: 7,5 s, 23 m.
+        ablauf: [
+          { film: 0, pfad: 1.9 },
+          { film: 2.9, pfad: 3.4 },
+          { film: 7.5, pfad: 8.0 },
+        ],
       },
     ],
   },

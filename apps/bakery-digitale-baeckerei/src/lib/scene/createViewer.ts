@@ -27,7 +27,7 @@ import {
   WebGLRenderer,
 } from 'three'
 import type { Object3D } from 'three'
-import type { Blickpunkt, Vec3 } from '../../config/raeume'
+import type { Blickpunkt, Intro, Vec3 } from '../../config/raeume'
 import { setzeAussenraum } from './aussenraum'
 import {
   IM_BILD_RAND_PX,
@@ -41,6 +41,15 @@ import {
   type FillNode,
   type FillResult,
 } from './fills'
+import {
+  BILDRATE_NACH_MS,
+  MAX_PAUSE_MS,
+  dauer as introDauer,
+  introPose,
+  waehleIntro,
+  zuLangsam,
+  type IntroEnde,
+} from './intro'
 import { countTriangles, disposeTree, loadModel } from './loadModel'
 import {
   blendePreiskartenAus,
@@ -54,6 +63,7 @@ import { ansichtFuer, cappedPixelRatio, type Ansicht } from './view'
 
 export type { Treffer } from './pick'
 export type { Rechteck } from './bildausschnitt'
+export type { IntroEnde } from './intro'
 
 /**
  * Tippfläche kleiner Produkte mit der Maus: Der Zeiger ist genauer als ein
@@ -81,6 +91,11 @@ export interface ViewerReadyInfo {
   firstFrameMs: number
   triangles: number
   fill: FillResult
+  /**
+   * Der Flug zum Start, den dieses Modell hergibt (und ob er gerade läuft);
+   * `null`: keiner - auch bei `prefers-reduced-motion`.
+   */
+  intro: { id: string; laeuft: boolean } | null
 }
 
 export interface ViewerOptions {
@@ -94,6 +109,12 @@ export interface ViewerOptions {
   label: string
   /** Legt `window.__digitaleBaeckerei` zum Messen an (nur mit `?debug`). */
   debug?: boolean
+  /** Flüge zum Start (aus raeume.ts), in der Reihenfolge des Vorrangs. */
+  intros?: readonly Intro[]
+  /** `false`: nach dem Laden gleich am Blickpunkt stehen (`?intro=0`). */
+  introSpielen?: boolean
+  /** Ein Flug beginnt (`true`) oder ist zu Ende (`false`, auch übersprungen). */
+  onIntro?: (laeuft: boolean) => void
   onProgress: (fraction: number) => void
   onReady: (info: ViewerReadyInfo) => void
   onError: (error: unknown) => void
@@ -131,6 +152,14 @@ export interface ViewerHandle {
   waehle: (slot: string | null, verdeckt?: () => Rechteck | null) => void
   /** Die Karte hat ihre Größe geändert: den gewählten Platz wieder frei stellen. */
   haltFrei: () => void
+  /**
+   * Den Flug zum Start (noch einmal) zeigen. `false`: Es gibt keinen - das
+   * Modell ist nicht da, es hat keinen, die Kamera steht nicht an seinem
+   * Ziel-Blickpunkt, oder das Gerät will keine Bewegung.
+   */
+  spieleIntro: () => boolean
+  /** Einen laufenden Flug beenden: gleich am Blickpunkt stehen. */
+  ueberspringeIntro: () => void
   dispose: () => void
 }
 
@@ -155,6 +184,14 @@ export interface ViewerDebug {
     /** Ausgeblendete Preisschild-Meshes (DB8). */
     preisschilder: number
     aussenSichtbar: boolean
+    /** Flug zum Start: läuft er, welcher, wie endete der letzte, Bilder des letzten. */
+    intro: {
+      laeuft: boolean
+      id: string | null
+      ende: IntroEnde | null
+      bilder: number
+      sekunden: number
+    }
   }
   /** Rendert `ms` lang jedes Bild neu (leichtes Schwenken) und misst. */
   spin: (ms: number) => Promise<{
@@ -172,6 +209,11 @@ export interface ViewerDebug {
   }
   /** Kamera frei setzen (Blickpunkte für P1 ausprobieren). */
   setView: (eye: Vec3, look: Vec3, fov: number) => void
+  /**
+   * Standbild des Flugs zur Filmzeit `sekunden` (Außenraum eingeblendet);
+   * liefert die Dauer des Flugs oder `null`, wenn es keinen gibt.
+   */
+  introBild: (sekunden: number) => number | null
   /** Knoten mit Weltkoordinaten-Rahmen, gefiltert nach Namensanfang. */
   nodes: (prefix?: string) => {
     name: string
@@ -276,6 +318,22 @@ export function createViewer(
   /** Gesetzt, solange die Debug-Messung die Kamera führt. */
   let override: Ansicht | null = null
   let debugHook: ViewerDebug | null = null
+  /** Der Flug zum Start, den das geladene Modell hergibt. */
+  let intro: Intro | null = null
+  /** Gesetzt, solange der Flug die Kamera führt. */
+  let introLauf: {
+    intro: Intro
+    /** `performance.now()` beim ersten Bild; 0 = noch keins. */
+    start: number
+    letztes: number
+    sekunden: number
+    bilder: number
+    geprueft: boolean
+    raf: number
+  } | null = null
+  let introEnde: IntroEnde | null = null
+  let introBilder = 0
+  let introSekunden = 0
 
   const applyView = (view: Ansicht) => {
     camera.position.set(view.eye[0], view.eye[1], view.eye[2])
@@ -301,13 +359,14 @@ export function createViewer(
     })
   }
 
+  const reducedMotion =
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
   const rig = createRig({
     camera,
     element: canvas,
     requestRender,
-    reducedMotion:
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    reducedMotion,
   })
 
   const zeigeAussenraum = (sichtbar: boolean) => {
@@ -371,7 +430,7 @@ export function createViewer(
   function haltFrei(runde = 0) {
     nachRuhe = null
     const slot = gewaehlt
-    if (disposed || !slot || !model || override) return
+    if (disposed || !slot || !model || override || introLauf) return
     if (width === 0 || height === 0) return
     const mitte = mitteVon(slot)
     if (!mitte) {
@@ -453,6 +512,112 @@ export function createViewer(
   rig.onFirstGesture(() => options.onErsteGeste?.())
   rig.onWechselGeste((richtung) => options.onWechselGeste?.(richtung))
 
+  // --- Flug zum Start (Rechnung: intro.ts) ---------------------------------
+  // Der Flug führt die Kamera selbst, mit einem eigenen Takt nur für seine
+  // Dauer; das Rig steht derweil gesperrt schon am Ziel und übernimmt am Ende.
+
+  /** Die Kamera des Flugs zur Filmzeit, für das aktuelle Bildformat. */
+  const introAnsicht = (flug: Intro, sekunden: number): Ansicht => {
+    const ende = ansichtFuer(blickpunkt, camera.aspect)
+    return { ...introPose(flug, sekunden, ende), hochformat: ende.hochformat }
+  }
+
+  const beendeIntro = (grund: IntroEnde) => {
+    const lauf = introLauf
+    if (!lauf) return
+    introLauf = null
+    if (lauf.raf) cancelAnimationFrame(lauf.raf)
+    canvas.removeEventListener('pointerdown', onIntroZeiger)
+    window.removeEventListener('keydown', onIntroTaste, true)
+    document.removeEventListener('visibilitychange', onIntroSichtbarkeit)
+    introEnde = grund
+    introBilder = lauf.bilder
+    introSekunden = lauf.sekunden
+    if (disposed) return
+    rig.sperren(false)
+    // Das Rig übernimmt in der Ruhelage des Blickpunkts - genau dort endet
+    // der Flug. `onAnkunft` regelt den Außenraum wie bei jedem Blickpunkt.
+    rig.setBlickpunkt(blickpunkt, { animate: false })
+    requestRender()
+    options.onIntro?.(false)
+  }
+
+  const introTakt = (jetzt: number) => {
+    const lauf = introLauf
+    if (!lauf || disposed) return
+    lauf.raf = 0
+    // Die Uhr läuft ab dem ersten Bild: Das Hochladen des Modells auf die
+    // Grafikkarte davor kostet keine Flugzeit.
+    if (lauf.start === 0) lauf.start = jetzt
+    else if (jetzt - lauf.letztes > MAX_PAUSE_MS) {
+      beendeIntro('langsam')
+      return
+    }
+    lauf.letztes = jetzt
+    const ms = jetzt - lauf.start
+    lauf.sekunden = ms / 1000
+    if (lauf.sekunden >= introDauer(lauf.intro)) {
+      beendeIntro('ende')
+      return
+    }
+    if (!lauf.geprueft && ms >= BILDRATE_NACH_MS) {
+      lauf.geprueft = true
+      // Statt acht Sekunden zu ruckeln: gleich an die Theke.
+      if (zuLangsam(lauf.bilder, ms)) {
+        beendeIntro('langsam')
+        return
+      }
+    }
+    applyView(introAnsicht(lauf.intro, lauf.sekunden))
+    renderNow()
+    lauf.bilder += 1
+    lauf.raf = requestAnimationFrame(introTakt)
+  }
+
+  /** Jeder Tipp oder Klick ins Bild überspringt. */
+  function onIntroZeiger() {
+    beendeIntro('uebersprungen')
+  }
+  function onIntroTaste(e: KeyboardEvent) {
+    if (e.altKey || e.ctrlKey || e.metaKey) return
+    if (e.key !== 'Escape' && e.key !== 'Enter' && e.key !== ' ') return
+    e.preventDefault()
+    beendeIntro('uebersprungen')
+  }
+  /** Im Hintergrund läuft kein Takt: sauber an der Theke enden. */
+  function onIntroSichtbarkeit() {
+    if (document.visibilityState === 'hidden') beendeIntro('verborgen')
+  }
+
+  const starteIntro = (flug: Intro) => {
+    if (introLauf) beendeIntro('uebersprungen')
+    override = null
+    const lauf = {
+      intro: flug,
+      start: 0,
+      letztes: 0,
+      sekunden: 0,
+      bilder: 0,
+      geprueft: false,
+      raf: 0,
+    }
+    introLauf = lauf
+    rig.sperren(true)
+    // Das Rig steht schon am Ziel (eine laufende Fahrt dorthin wird geschnitten).
+    rig.setBlickpunkt(blickpunkt, { animate: false })
+    zeigeAussenraum(true)
+    applyView(introAnsicht(flug, 0))
+    canvas.addEventListener('pointerdown', onIntroZeiger)
+    window.addEventListener('keydown', onIntroTaste, true)
+    document.addEventListener('visibilitychange', onIntroSichtbarkeit)
+    options.onIntro?.(true)
+    if (document.visibilityState === 'hidden') {
+      beendeIntro('verborgen')
+      return
+    }
+    lauf.raf = requestAnimationFrame(introTakt)
+  }
+
   const resize = () => {
     if (disposed) return
     const rect = container.getBoundingClientRect()
@@ -463,7 +628,14 @@ export function createViewer(
     renderer.setSize(width, height, false)
     camera.aspect = width / height
     if (override) applyView(override)
-    else rig.resize(camera.aspect)
+    else {
+      rig.resize(camera.aspect)
+      // Mitten im Flug gedreht: Das Rig kennt jetzt die Ruhelage des neuen
+      // Formats, der Flug blendet in sie über - die Kamera führt weiter er.
+      if (introLauf) {
+        applyView(introAnsicht(introLauf.intro, introLauf.sekunden))
+      }
+    }
     // Neue Größe oder gedreht: Die Karte liegt jetzt woanders.
     haltFrei()
     // setSize leert das Canvas - gleich neu zeichnen, sonst blitzt es beim Drehen.
@@ -501,6 +673,16 @@ export function createViewer(
       zeigeAussenraum(blickpunkt.aussenSichtbar !== false)
       picker = createPicker({ root, camera, element: canvas, requestRender })
       if (gewaehlt) picker.highlight(gewaehlt)
+      // Ohne Bewegung (prefers-reduced-motion) gibt es keinen Flug.
+      intro = reducedMotion
+        ? null
+        : waehleIntro(
+            options.intros,
+            root.children.map((k) => String(k.userData.name ?? k.name)),
+            blickpunkt.id
+          )
+      // Vor dem ersten Bild: Es zeigt dann schon die Straße, nicht die Theke.
+      if (intro && options.introSpielen !== false) starteIntro(intro)
       resize()
       renderNow()
       firstFrameMs = performance.now()
@@ -514,6 +696,7 @@ export function createViewer(
         firstFrameMs,
         triangles: countTriangles(root, true),
         fill,
+        intro: intro ? { id: intro.id, laeuft: introLauf !== null } : null,
       })
     })
     .catch((err) => {
@@ -546,6 +729,13 @@ export function createViewer(
         richtung: camera.getWorldDirection(new Vector3()).toArray(),
         preisschilder,
         aussenSichtbar,
+        intro: {
+          laeuft: introLauf !== null,
+          id: intro?.id ?? null,
+          ende: introEnde,
+          bilder: introLauf?.bilder ?? introBilder,
+          sekunden: introLauf?.sekunden ?? introSekunden,
+        },
       }),
       spin: (ms) =>
         new Promise((resolve) => {
@@ -628,6 +818,15 @@ export function createViewer(
         applyView(override)
         renderNow()
       },
+      introBild: (sekunden) => {
+        if (!intro || !model) return null
+        if (introLauf) beendeIntro('uebersprungen')
+        setzeAussenraum(model, true)
+        override = introAnsicht(intro, sekunden)
+        applyView(override)
+        renderNow()
+        return introDauer(intro)
+      },
       nodes: (prefix = '') => {
         if (!model) return []
         model.updateMatrixWorld(true)
@@ -673,6 +872,8 @@ export function createViewer(
   return {
     setBlickpunkt: (neu) => {
       if (disposed || neu.id === blickpunkt.id) return
+      // Ein Wechsel mitten im Flug: erst an dessen Ziel, dann von dort weiter.
+      beendeIntro('uebersprungen')
       blickpunkt = neu
       override = null
       // Vor der Fahrt einblenden; nach der Ankunft blendet `onAnkunft` aus.
@@ -696,8 +897,18 @@ export function createViewer(
       haltFrei()
     },
     haltFrei: () => haltFrei(),
+    spieleIntro: () => {
+      if (disposed || !model || !intro || intro.ziel !== blickpunkt.id) {
+        return false
+      }
+      starteIntro(intro)
+      renderNow()
+      return true
+    },
+    ueberspringeIntro: () => beendeIntro('uebersprungen'),
     dispose: () => {
       if (disposed) return
+      beendeIntro('uebersprungen')
       disposed = true
       abort.abort()
       if (raf) cancelAnimationFrame(raf)

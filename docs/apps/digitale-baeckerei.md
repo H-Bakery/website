@@ -176,7 +176,8 @@ apps/bakery-digitale-baeckerei-e2e/   Playwright (390×844 und Desktop), nur mit
   auf Deutsch mit „Noch einmal versuchen“ und - wenn die Produktdaten da sind - die Listen aller
   Blickpunkte.
 - **Start:** Ein Ladebild (eine gezeichnete Theke als SVG in den Markenfarben - kein Standbild
-  des echten Modells, das gehört nicht ins Repo) mit Fortschritt, danach Blickpunkt „Theke“. Ein kurzer Hinweis „Ziehen zum Umschauen · Tippen für Infos“ verschwindet nach der
+  des echten Modells, das gehört nicht ins Repo) mit Fortschritt, danach der Flug von der Straße
+  zum Blickpunkt „Theke“ (überspringbar, siehe „Stand P3“). Ein kurzer Hinweis „Ziehen zum Umschauen · Tippen für Infos“ verschwindet nach der
   ersten Geste.
 - **Blickpunkt-Leiste** unten in Daumenreichweite mit den Chips _Theke_ · _Brotregal_ ·
   _Regale_. Zusätzlich Wischen mit zwei Fingern oder Pfeile am Rand. Auf dem Desktop: Pfeiltasten.
@@ -251,6 +252,54 @@ und Desktop dazu (lokal, nicht eingecheckt).
 | **P2 Live**   | Produkttexte in hq überarbeitet, hq-Zugriff im Deploy (falls entschieden), Deploy unter `/digitale-baeckerei/`, Abnahme durch den Inhaber am Handy, danach der Link von der Landingpage               | Die Seite ist öffentlich erreichbar, und der Inhaber hat zugestimmt                                                                                                                                                                                                                                                                                                                                                                                 |
 | **P3 später** | Intro „Blick vom Kreisel“, Außenraum aus dem GLB schneiden, Backstube als zweiter Raum, Umzug des Generators (DB2), evtl. Feierabend-Umschalter oder „entdeckt x/y“                                   | einzeln entscheiden                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | **P4 später** | Echte 3D-Produkte (DB7), zuerst ein Test mit 3 Produkten                                                                                                                                              | eigener Plan, wenn es losgeht                                                                                                                                                                                                                                                                                                                                                                                                                       |
+
+### Stand P3
+
+Gebaut (App-Seite, mit dem heute gesperrten Modell):
+
+- **Flug zum Start „Von der Straße zur Theke“:** Nach dem Laden fliegt die Kamera einmal je
+  Seitenaufruf die Straße am Haus entlang, die Stufen hinauf und durch die offene Tür bis genau in
+  die Ruhelage des Blickpunkts „Theke“ (7,5 s, ≈ 23 m); dort übernimmt das Rig. Weg und Zeitplan
+  stehen je Raum in `raeume.ts` (`intros`), die Rechnung in `src/lib/scene/intro.ts`. Der im
+  Explorer geprüfte Weg ist **vorn gekürzt** statt beschleunigt: Sein erstes Stück (20 m in 2,2 s
+  knapp über der Straße, dazu ein Schwenk bis ≈ 77°/s) ist am Handy zu hastig - der Flug steigt
+  später ein (das erste Bild zeigt schon die Ladenfront) und fliegt das Stück mit ≈ 5 m/s.
+- **Überspringen:** Knopf „Überspringen“ unten, jeder Tipp oder Klick ins Bild, Escape, Enter oder
+  Leertaste - sofort an die Theke. `?intro=0` startet ohne Flug. Bei `prefers-reduced-motion` gibt
+  es ihn gar nicht. Unter „Quellen“ lässt er sich noch einmal ansehen. Unterwegs gibt es weder
+  Leiste noch Antippen; der Hinweis „Ziehen zum Umschauen“ kommt erst nach der Ankunft.
+- **Leistung:** Der Takt läuft nur während des Flugs, danach wieder 0 Bilder in Ruhe. Schafft das
+  Gerät in der ersten Sekunde im Mittel keine 12 Bilder/s, oder wandert der Tab in den Hintergrund,
+  schneidet die App an die Theke. Gemessen in der Emulation (Pixel 7, 4G + CPU 4×, Software-GPU;
+  **auf echtem Handy ungeprüft**): erstes Bild nach ≈ 4,3 s mit wie ohne Flug, ≈ 28 Bilder/s im
+  Flug und ≈ 29 an der Theke (die Software-GPU begrenzt beides). Im Querformat und am Desktop
+  schafft die Software-GPU draußen nur ≈ 10 Bilder/s - dort schneidet die App nach der ersten
+  Sekunde wie vorgesehen an die Theke.
+- **„Entdeckt x von y“:** Die Liste „Alles hier“ nennt unter der Überschrift, wie viele Produkte
+  des Ladens schon als Karte offen waren, und setzt einen Haken an diese Zeilen. Nur im
+  Arbeitsspeicher - nach dem Neuladen zählt es von vorn.
+
+Nicht gebaut, und warum:
+
+- **Nur beim ersten Besuch zeigen:** Dafür müsste die App sich etwas merken, und sie speichert
+  nichts auf dem Gerät. Der Flug läuft darum bei jedem Seitenaufruf und lässt sich überspringen.
+  Ob sie sich das merken darf, entscheidet der Inhaber.
+- **Langer Flug vom Kreisel:** Im Explorer gebaut, auf dem lokalen Zweig `feat/bh-intro-kreisel`
+  (nicht gepusht, nicht veröffentlicht). Sein Weg steht schon in `raeume.ts` (12 s, 84 m); die App
+  bietet ihn von selbst an, sobald ein Modell gesperrt ist, das Knoten `umgebung/kreisel/*`
+  enthält - vorher fliegt sie den kurzen. Dann die Bilder neu ansehen.
+- **Feierabend-Umschalter:** Das gesperrte Modell hat keine `@feierabend`-Varianten - es gäbe
+  nichts umzuschalten. Der Filter bleibt `morgens`.
+- **Außenraum aus dem GLB schneiden:** Nach den Messungen nicht nötig, und der Flug braucht den
+  Außenraum.
+- **Backstube als zweiter Raum:** Das Datenmodell ist bereit (`raeume.ts` ist eine Liste), ein
+  Modell der Backstube gibt es noch nicht.
+- **Umzug des Generators (DB2):** Entscheidung des Inhabers, nicht begonnen.
+
+Schwächen des Flugs: Nur in Chromium mit Software-GPU angesehen (Standbilder bei 390×844, 844×390
+und 1440×900), nie als Bewegung auf einem echten Handy. Der Türrahmen zieht beim Eintreten sehr
+nah am linken Bildrand vorbei. Der Himmel ist eine Fläche in der Horizontfarbe. Der Flug vom
+Kreisel ist in der App an keinem Modell geprüft.
 
 ## Später: Intro „Blick vom Kreisel“ (P3)
 

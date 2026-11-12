@@ -33,7 +33,9 @@ Den Aufbau des echten Modells, damit dieselben Code-Pfade laufen:
   Material `KHR_materials_unlit` mit `baseColorFactor`. **Ohne meshopt**, also ohne Decoder lesbar.
 - Koordinaten im Rahmen des Explorers (x Ost, y Höhe 244,25-246,5 m, z −Nord). Möbel und Ware stehen
   grob an den echten Stellen (Theke und Brotregal um 20° gedreht, Kundenseite +x), damit die
-  Blickpunkte aus `src/config/raeume.ts` sie sehen.
+  Blickpunkte aus `src/config/raeume.ts` sie sehen. Die Wand zur Straße (`fassade/wand`) hat eine
+  offene Tür, und `umgebung/nachbarhaus` steht abseits: Der Flug zum Start (`intros` in `raeume.ts`)
+  führt wie am echten Modell über die Straße und durch die Tür, ohne durch Geometrie zu fliegen.
 - **Plätze** `produkt/<slot>` mit `extras { id: <slot>, product | ware, count, fills: ['morgens'] }`:
 
   | Möbel                | Plätze mit Produkt                                                                                                      | Neutrale Ware (`ware`)                    |
