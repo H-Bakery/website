@@ -124,13 +124,24 @@ export function protokolliere(page: Page): Protokoll {
     if (message.type() === 'error') protokoll.konsole.push(message.text())
   })
   page.on('pageerror', (error) => protokoll.ausnahmen.push(error.message))
+  /** Anfragen, die schon mit einem guten Status beantwortet sind. */
+  const beantwortet = new Set<unknown>()
   page.on('response', (response) => {
     if (response.status() >= 400) {
       protokoll.antworten.push(`${response.status()} ${response.url()}`)
+    } else {
+      beantwortet.add(response.request())
     }
   })
   page.on('requestfailed', (request) => {
-    protokoll.antworten.push(`fehlgeschlagen ${request.url()}`)
+    const grund = request.failure()?.errorText ?? '?'
+    // Die App liest das Modell als Stream (Fortschrittsanzeige). Chromium
+    // meldet so eine Anfrage über das DevTools-Protokoll öfter als
+    // „net::ERR_ABORTED“, obwohl sie mit 200 beantwortet und vollständig
+    // gelesen wurde. Das ist kein Ladefehler: Ob das Modell wirklich steht,
+    // prüft `oeffne()`. Abbrüche vor der Antwort zählen weiter.
+    if (grund === 'net::ERR_ABORTED' && beantwortet.has(request)) return
+    protokoll.antworten.push(`fehlgeschlagen ${request.url()} (${grund})`)
   })
   page.on('request', (request) => {
     if (!request.url().startsWith('data:'))
