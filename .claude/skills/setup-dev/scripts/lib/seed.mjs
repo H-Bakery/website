@@ -108,6 +108,14 @@ const USERS = {
     role: 'fahrer',
   },
 }
+// Backstubenleitung (recipes): only on refs whose API knows the role.
+const LEITUNG = {
+  username: 'verify.leitung',
+  password: 'Verify-Leitung-2026',
+  pin: '4682',
+  displayName: 'Lea Leitung',
+  role: 'backstubenleiter',
+}
 const login = async (u) =>
   (
     await must('POST', '/api/auth/login', {
@@ -138,6 +146,26 @@ for (const key of [
   })
   u.id = r.data.id
   console.log('user', u.username, u.id)
+}
+{
+  const r = await call('POST', '/api/users', {
+    token: owner,
+    body: {
+      username: LEITUNG.username,
+      displayName: LEITUNG.displayName,
+      role: LEITUNG.role,
+      password: LEITUNG.password,
+      pin: LEITUNG.pin,
+    },
+  })
+  if (r.status === 201) {
+    USERS.backstubenleiter = { ...LEITUNG, id: r.json.data.id }
+    console.log('user', LEITUNG.username, r.json.data.id)
+  } else if (r.status === 400) {
+    console.log('no role backstubenleiter on this ref - skipped')
+  } else {
+    throw new Error(`POST /api/users (Leitung) -> ${r.status}`)
+  }
 }
 
 // ---------------------------------------------------------------- station

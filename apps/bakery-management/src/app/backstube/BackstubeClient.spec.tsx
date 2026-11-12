@@ -1028,6 +1028,12 @@ describe('Backstube-Tablet', () => {
     ).toHaveAttribute('href', '/admin')
   })
 
+  it('Backstubenleitung hakt ab und quittiert wie die Backstube', async () => {
+    renderTablet({ role: 'backstubenleiter' })
+    await screen.findByTestId('bs-progress')
+    expect(screen.queryAllByRole('checkbox').length).toBeGreaterThan(0)
+  })
+
   it('Verkauf (nur lesen) bekommt weder Haken noch „Gesehen“', async () => {
     renderTablet({ role: 'verkauf' })
     await screen.findByTestId('bs-progress')

@@ -40,7 +40,22 @@ const PIN_PATTERN = /^[0-9]{4,6}$/
 const USER_ID_PATTERN = /^[1-9][0-9]{0,9}$/
 const USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{1,63}$/
 const DISPLAY_NAME_MAX_LENGTH = 120
-const ROLES = Object.freeze(['inhaber', 'verkauf', 'backstube', 'fahrer'])
+const ROLES = Object.freeze([
+  'inhaber',
+  'verkauf',
+  'backstube',
+  'backstubenleiter',
+  'fahrer',
+])
+/**
+ * Roles that include another one: `backstubenleiter` (Backstubenleitung) may
+ * do everything `backstube` may, plus what is granted to it by name
+ * (recipes). The only place that says so - guards go through `roleAllows`,
+ * role-dependent answers through `roleIncludes`.
+ */
+const ROLE_INCLUDES = Object.freeze({
+  backstubenleiter: Object.freeze(['backstube']),
+})
 
 const TOKEN_BYTES = 32
 
@@ -249,11 +264,26 @@ function validateRole(role) {
 }
 
 /**
- * `inhaber` passes every role check; everyone else needs one of `allowed`.
+ * Is `role` the role `base` or one that includes it? `backstubenleiter`
+ * counts as `backstube` (`ROLE_INCLUDES`); `inhaber` is not handled here.
+ */
+function roleIncludes(role, base) {
+  if (typeof role !== 'string' || typeof base !== 'string') return false
+  if (role === base) return true
+  const included = Object.prototype.hasOwnProperty.call(ROLE_INCLUDES, role)
+    ? ROLE_INCLUDES[role]
+    : []
+  return included.includes(base)
+}
+
+/**
+ * `inhaber` passes every role check; everyone else needs one of `allowed`,
+ * by name or through a role it includes (`backstubenleiter` → `backstube`).
  */
 function roleAllows(role, allowed) {
   if (role === 'inhaber') return true
-  return Array.isArray(allowed) && allowed.includes(role)
+  if (!Array.isArray(allowed)) return false
+  return allowed.some((a) => roleIncludes(role, a))
 }
 
 // ----------------------------------------------------------------- tokens
@@ -287,6 +317,8 @@ module.exports = {
   normalizeDisplayName,
   validateRole,
   roleAllows,
+  roleIncludes,
+  ROLE_INCLUDES,
   generateToken,
   hashToken,
 }

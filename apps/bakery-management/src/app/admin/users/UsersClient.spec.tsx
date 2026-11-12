@@ -137,6 +137,16 @@ describe('Benutzerverwaltung', () => {
     const d = dialog()
     expect(d.getByRole('button', { name: 'Speichern' })).toBeDisabled()
     fireEvent.mouseDown(d.getByRole('combobox'))
+    // alle fünf Rollen stehen zur Wahl - auch die Backstubenleitung
+    expect(
+      screen.getAllByRole('option').map((option) => option.textContent)
+    ).toEqual([
+      'Inhaber',
+      'Verkauf',
+      'Backstube',
+      'Backstubenleitung',
+      'Fahrer',
+    ])
     fireEvent.click(screen.getByRole('option', { name: 'Backstube' }))
     fireEvent.click(d.getByRole('button', { name: 'Speichern' }))
     await waitFor(() =>

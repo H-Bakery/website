@@ -19,7 +19,8 @@ contract tests in `tests/contract/` (see [Tests](#tests)).
 
 Domain docs: [auth](auth.md), [hq data](hq-data.md), [hq products + write-back](hq-products.md),
 [partners](partners.md), [preorders](preorders.md), [Backzettel](backzettel.md),
-[delivery tours](deliveries.md), [Rest am Abend](rest.md), [Dienstplan](dienstplan.md).
+[delivery tours](deliveries.md), [Rest am Abend](rest.md), [Dienstplan](dienstplan.md),
+[recipes](recipes.md).
 
 ## Build and run
 
@@ -125,6 +126,7 @@ Mounted:
 | `/api/backzettel`                                | `routes/backzettel.routes.ts`            | see [backzettel.md](backzettel.md)                                    |
 | `/api/rest`                                      | `routes/rest.routes.ts`                  | Rest am Abend (M4), see [rest.md](rest.md)                            |
 | `/api/dienstplan`                                | `routes/dienstplan.routes.ts`            | staff, shifts, absences, vacation; see [dienstplan.md](dienstplan.md) |
+| `/api/recipes`                                   | `routes/recipes.routes.ts`               | recipes in `hq/data/recipes`, see [recipes.md](recipes.md)            |
 | `/api/hq-sync`                                   | `routes/hq-sync.routes.ts`               | write-back status + retry, `inhaber`                                  |
 
 New domains are mounted in `app.ts` **below the global guard** - mount them there and add

@@ -42,6 +42,7 @@ import {
   neighbourProductionDay,
 } from '../../../../../lib/backzettelFormat'
 import { useOptionalSession } from '../../../../../lib/session'
+import { hasBackstubeRights } from '../../../../../lib/roles'
 import { DeltasCard } from '../../../../../components/backzettel/DeltasCard'
 import {
   BakeListPrint,
@@ -170,7 +171,7 @@ export interface BakeListClientProps {
 export default function BakeListClient({ date }: BakeListClientProps) {
   const session = useOptionalSession()
   const role = session?.user?.role ?? null
-  const canAck = role === 'inhaber' || role === 'backstube'
+  const canAck = hasBackstubeRights(role)
   const validDate = isIsoDate(date)
 
   const [config, setConfig] = React.useState<BackzettelConfigData | null>(null)

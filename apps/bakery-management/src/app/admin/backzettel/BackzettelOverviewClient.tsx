@@ -40,7 +40,7 @@ import {
 } from '../../../lib/backzettelFormat'
 import { BackzettelStatusChip } from '../../../components/backzettel/BackzettelStatusChip'
 import { useOptionalSession } from '../../../lib/session'
-import { isPathAllowedForRole } from '../../../lib/roles'
+import { hasBackstubeRights, isPathAllowedForRole } from '../../../lib/roles'
 import { backzettelErrorText } from '../../../lib/backstubeErrors'
 import {
   ErrorState,
@@ -216,7 +216,8 @@ export default function BackzettelOverviewClient({
   const role = session?.user?.role ?? null
   // W4-verify r3: wie die Tagesseite - planen dürfen Inhaber und Backstube;
   // für alle anderen heißt der Knopf „Ansehen“, nicht „Planen“.
-  const canPlan = role === 'inhaber' || role === 'backstube'
+  // (die Backstubenleitung zählt zur Backstube, `hasBackstubeRights`).
+  const canPlan = hasBackstubeRights(role)
   const showGrundmengen =
     role !== null &&
     isPathAllowedForRole(GRUNDMENGEN_HREF, role, session?.sessionKind ?? null)

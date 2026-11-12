@@ -65,7 +65,7 @@ import {
   type BackstubeTabId,
 } from '../../lib/backstubeTab'
 import { useSession } from '../../lib/session'
-import { isPathAllowedForRole } from '../../lib/roles'
+import { hasBackstubeRights, isPathAllowedForRole } from '../../lib/roles'
 import {
   BS_SECTION_TITLE_SX,
   BS_TITLE_SX,
@@ -263,7 +263,7 @@ export default function BackstubeClient({
   const session = useSession()
   const colors = useBackstubeColors()
   const role = session.user?.role ?? null
-  const canWork = role === 'inhaber' || role === 'backstube'
+  const canWork = hasBackstubeRights(role)
 
   const clockRef = React.useRef(clock)
   clockRef.current = clock

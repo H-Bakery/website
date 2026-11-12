@@ -96,6 +96,32 @@ describe('Spickzettel (P6)', () => {
     }
   })
 
+  it('Rezepte: Backstube liest, Backstubenleitung und Inhaber legen an und ändern', () => {
+    expect(text('backstube')).toContain('Rezepte')
+    expect(text('backstube')).toContain('Backstubenleitung')
+    const leitung = text('backstubenleiter')
+    for (const needle of [
+      'Kurzanleitung **Backstube**',
+      'Neues Rezept',
+      'Zutat hinzufügen',
+      'Gruppe hinzufügen',
+      'Rezept anlegen',
+      'Bearbeiten',
+      'Speichern',
+      'Aktuellen Stand laden',
+      'wartet auf Freigabe',
+      'offen',
+      'nie 0',
+      'nicht löschen',
+      'Abmelden',
+    ]) {
+      expect(leitung).toContain(needle)
+    }
+    const inhaber = text('inhaber')
+    expect(inhaber).toContain('Rezepte')
+    expect(inhaber).toContain('Backstubenleitung')
+  })
+
   it('Fahrer: Abholliste der Sammelstelle, übergeben + bezahlt, nicht abgeholt, nur im WLAN', () => {
     const t = `${SPICKZETTEL.fahrer.intro}\n${text('fahrer')}`
     for (const needle of [
@@ -132,8 +158,10 @@ describe('Spickzettel (P6)', () => {
       'fahrer',
       'verkauf',
       'backstube',
+      'backstubenleiter',
       'inhaber',
     ])
+    expect(spickzettelOrderFor('backstubenleiter')[0]).toBe('backstubenleiter')
     expect(spickzettelOrderFor(null)).toEqual([...SPICKZETTEL_ORDER])
   })
 })

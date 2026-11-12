@@ -182,6 +182,43 @@ describe('decideAccess', () => {
     ).resolves.toMatchObject({ kind: 'allow' })
   })
 
+  it('Backstubenleitung: API-Rolle wird erkannt (nicht „unbekannt“)', () => {
+    expect(
+      principalFromMe({
+        success: true,
+        data: { role: 'backstubenleiter', sessionKind: 'station' },
+      })
+    ).toEqual({ role: 'backstubenleiter', sessionKind: 'station' })
+  })
+
+  it('Rezepte: lesen auch die Backstube, die Formulare nur Leitung und Inhaber', async () => {
+    const decision = async (path: string, role: string) =>
+      (await decideAccess(path, 't', as(role, 'station'))).kind
+    for (const role of ['inhaber', 'backstubenleiter', 'backstube']) {
+      expect(await decision('/admin/rezepte', role)).toBe('allow')
+      expect(await decision('/admin/rezepte/breads/musterkruste', role)).toBe(
+        'allow'
+      )
+    }
+    for (const path of [
+      '/admin/rezepte/neu',
+      '/admin/rezepte/bearbeiten/breads/musterkruste',
+    ]) {
+      expect(await decision(path, 'inhaber')).toBe('allow')
+      expect(await decision(path, 'backstubenleiter')).toBe('allow')
+      expect(await decision(path, 'backstube')).toBe('deny')
+    }
+    for (const role of ['verkauf', 'fahrer']) {
+      expect(await decision('/admin/rezepte', role)).toBe('deny')
+    }
+    // alles, was die Backstube darf
+    expect(await decision('/backstube', 'backstubenleiter')).toBe('allow')
+    expect(
+      await decision('/admin/backzettel/grundmengen', 'backstubenleiter')
+    ).toBe('allow')
+    expect(await decision('/admin/reports', 'backstubenleiter')).toBe('deny')
+  })
+
   it('erlaubt: allow mit Rolle', async () => {
     await expect(
       decideAccess('/admin/reports', 't', as('inhaber'))

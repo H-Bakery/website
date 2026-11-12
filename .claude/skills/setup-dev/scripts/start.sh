@@ -117,6 +117,9 @@ export HQ_GITHUB_TOKEN=fake-token-bakery-dev
 export HQ_GITHUB_REPO=Test-Org/hq
 export GITHUB_API_URL="http://127.0.0.1:$GH_PORT"
 export HQ_SYNC_RETRY_MS=60000
+# recipes: deleting/moving is off by default with a write dir (the real hq path
+# guard refuses deletions from app/edits); the fake GitHub here has no guard
+export HQ_RECIPES_ALLOW_DELETE=1
 # dead geo services (closed port): delivery routes fall back to estimates (isEstimate: true)
 export NOMINATIM_URL="http://127.0.0.1:9/search"
 export OSRM_URL="http://127.0.0.1:9"

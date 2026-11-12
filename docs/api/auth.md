@@ -18,7 +18,7 @@ mock's `auth.mock.js` (deleted in B12), plus PIN/stations; the `user` object del
 | `GET/POST /api/users`, `PATCH /api/users/:id`, `POST /api/users/:id/password`, `POST /api/users/:id/pin` | `inhaber`, personal session     | `AdminUser` = user + `hasPin`, never a hash                                                                    |
 
 `user` = `{ id, username, displayName, role, active, isActive, createdAt, updatedAt, sessionKind }`.
-Roles `inhaber | verkauf | backstube | fahrer`. **D3 deviation, deliberate:** the mock's `email`,
+Roles `inhaber | verkauf | backstube | backstubenleiter | fahrer`. **D3 deviation, deliberate:** the mock's `email`,
 `firstName`, `lastName`, `lastLogin` do not exist (the pilot `users` table has no such columns and
 the API does not invent them); `isActive` mirrors `active` for the shared `User` type. Errors via
 `sendError`: 400 `validation` / `INVALID_TEXT`, 401 `invalid_credentials` („Benutzername oder
@@ -57,6 +57,14 @@ whitespace - tabs, line breaks, U+2028/U+2029, BOM - is collapsed to one space b
 - **Global guard is structural** (`app.ts`): public auth router → `app.use('/api', requireAuth)` →
   everything else. No path allow-list to get wrong; an unknown `/api` path without a session is a
   401, with a session a 404. `requireRole(...roles)` needs no service; `inhaber` passes every check.
+- **`backstubenleiter` (Backstubenleitung) includes `backstube`.** `ROLE_INCLUDES` in
+  `services/auth-crypto.core.js` is the only place that says so: `roleAllows` lets it through every
+  guard that names `backstube` (so no `requireRole` list had to change), and answers that depend on
+  the role ask `roleIncludes(role, 'backstube')` (`/api/preorders/sums` without amounts). What it may
+  do beyond that is granted by name - today creating, changing and deleting recipes
+  ([recipes.md](recipes.md)). `users.role` is TEXT in SQLite without a CHECK (Sequelize `ENUM`), so
+  the new role needed no migration; `USER_ROLES` in `models/User.ts` validates it.
+  `tests/integration/backstubenleiter.test.ts` compares both roles on every guarded route.
 - **Stations:** `X-Station-Token` (`st_…`, SHA-256 in `stations`). PIN login without a valid, not
   revoked station token is 403. PINs are 4-6 digits **as a string** (a number would lose leading
   zeros → 400). `userId` must be canonical (`parseUserId`: JSON integer > 0 or `"7"`); `"07"`,

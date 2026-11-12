@@ -70,6 +70,19 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Übersicht',
   },
   {
+    // Rezepte aus hq (Owner-Wunsch 2026-11-11): direkt unter den
+    // Backstube-Bildschirmen. Lesen: Inhaber, Backstubenleitung, Backstube;
+    // anlegen und ändern: Inhaber und Backstubenleitung (ROLE_ACCESS).
+    label: 'Rezepte',
+    href: '/admin/rezepte',
+    icon: 'recipes',
+    description: 'Nachschlagen, anlegen, ändern',
+    readOnly: {
+      path: '/admin/rezepte/neu',
+      description: 'Nachschlagen und drucken',
+    },
+  },
+  {
     // Nicht „Vorbestellungen“: so heißt der kommende allgemeine Bildschirm
     // /admin/preorders (M1) - zwei gleichnamige Einträge wären verwechselbar.
     label: 'Sammelstelle Mörsbach',
