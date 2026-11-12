@@ -1,6 +1,5 @@
 import React from 'react'
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import RecipeListClient from './RecipeListClient'
 import RecipeDetailClient from './[category]/[slug]/RecipeDetailClient'
@@ -66,6 +65,15 @@ function mockApi({
     if (found) return { success: true, data: found }
     throw new ApiError('Rezept nicht gefunden.', 404, 'not_found')
   })
+}
+
+/**
+ * Feld füllen. Bewusst `fireEvent` statt `userEvent.type`: Zeichen für
+ * Zeichen dauerte der längste Ablauf auf den CI-Runnern länger als die
+ * 15 s von Jest.
+ */
+function fill(field: HTMLElement, value: string) {
+  fireEvent.change(field, { target: { value } })
 }
 
 function renderAs(role: PilotRole, ui: React.ReactElement) {
@@ -468,7 +476,6 @@ describe('Rezeptansicht (/admin/rezepte/<kategorie>/<kennung>)', () => {
 
 describe('Neues Rezept (/admin/rezepte/neu)', () => {
   it('legt ein Rezept an: Zeilen hinzufügen, umsortieren, entfernen - offen bleibt offen', async () => {
-    const user = userEvent.setup()
     mockApi()
     const created = syntheticRecipe({
       id: 'cakes/testschnitte',
@@ -483,25 +490,19 @@ describe('Neues Rezept (/admin/rezepte/neu)', () => {
       changed: true,
     })
     renderAs('backstubenleiter', <NewRecipeClient initialCategory="cakes" />)
-    await user.type(
-      await screen.findByRole('textbox', { name: /Name/ }),
-      'Testschnitte'
-    )
+    fill(await screen.findByRole('textbox', { name: /Name/ }), 'Testschnitte')
     // Kategorie aus der Adresse vorgewählt; Teige stehen nicht zur Wahl
     expect(
       screen.getByRole('combobox', { name: 'Kategorie' })
     ).toHaveTextContent('Kuchen')
     const part = screen.getByTestId('part-form')
     const firstRow = () => within(part).getAllByTestId('ingredient-row')
-    await user.type(
-      within(firstRow()[0]).getByRole('textbox', { name: 'Menge' }),
-      '0,5'
-    )
-    await user.type(
+    fill(within(firstRow()[0]).getByRole('textbox', { name: 'Menge' }), '0,5')
+    fill(
       within(firstRow()[0]).getByRole('textbox', { name: 'Zutat' }),
       'Testhefe'
     )
-    await user.click(
+    fireEvent.click(
       within(part).getByRole('button', { name: 'Zutat hinzufügen' })
     )
     expect(firstRow()).toHaveLength(2)
@@ -509,26 +510,26 @@ describe('Neues Rezept (/admin/rezepte/neu)', () => {
     expect(
       within(firstRow()[1]).getByRole('textbox', { name: 'Menge' })
     ).toHaveFocus()
-    await user.type(
+    fill(
       within(firstRow()[1]).getByRole('textbox', { name: 'Zutat' }),
       'Probemehl'
     )
     // Enter in der letzten Zeile: nächste Zeile
-    await user.type(
+    fireEvent.keyDown(
       within(firstRow()[1]).getByRole('textbox', { name: 'Zutat' }),
-      '{Enter}'
+      { key: 'Enter' }
     )
     expect(firstRow()).toHaveLength(3)
-    await user.type(
+    fill(
       within(firstRow()[2]).getByRole('textbox', { name: 'Zutat' }),
       'Überflüssig'
     )
-    await user.click(
+    fireEvent.click(
       within(part).getByRole('button', { name: 'Zutat 3 entfernen' })
     )
     expect(firstRow()).toHaveLength(2)
     // Probemehl nach oben
-    await user.click(
+    fireEvent.click(
       within(part).getByRole('button', { name: 'Zutat 2 nach oben' })
     )
     expect(
@@ -538,11 +539,8 @@ describe('Neues Rezept (/admin/rezepte/neu)', () => {
       within(part).getByRole('button', { name: 'Zutat 1 nach oben' })
     ).toBeDisabled()
 
-    await user.type(
-      screen.getByRole('textbox', { name: 'Schritt 1' }),
-      'Alles verrühren'
-    )
-    await user.click(screen.getByRole('button', { name: 'Rezept anlegen' }))
+    fill(screen.getByRole('textbox', { name: 'Schritt 1' }), 'Alles verrühren')
+    fireEvent.click(screen.getByRole('button', { name: 'Rezept anlegen' }))
 
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledTimes(1))
     expect(apiClient.post).toHaveBeenCalledWith('/api/recipes', {
@@ -570,16 +568,12 @@ describe('Neues Rezept (/admin/rezepte/neu)', () => {
   })
 
   it('prüft vor dem Senden: Name fehlt, Menge keine Zahl - nichts wird geschickt', async () => {
-    const user = userEvent.setup()
     mockApi()
     renderAs('inhaber', <NewRecipeClient />)
     const row = (await screen.findAllByTestId('ingredient-row'))[0]
-    await user.type(within(row).getByRole('textbox', { name: 'Menge' }), 'viel')
-    await user.type(
-      within(row).getByRole('textbox', { name: 'Zutat' }),
-      'Probemehl'
-    )
-    await user.click(screen.getByRole('button', { name: 'Rezept anlegen' }))
+    fill(within(row).getByRole('textbox', { name: 'Menge' }), 'viel')
+    fill(within(row).getByRole('textbox', { name: 'Zutat' }), 'Probemehl')
+    fireEvent.click(screen.getByRole('button', { name: 'Rezept anlegen' }))
     expect(apiClient.post).not.toHaveBeenCalled()
     expect(
       screen.getByText(
@@ -593,14 +587,13 @@ describe('Neues Rezept (/admin/rezepte/neu)', () => {
       within(row).getByText(/Bitte eine Zahl eingeben/)
     ).toBeInTheDocument()
     // Korrigieren räumt die Markierung ab
-    await user.clear(within(row).getByRole('textbox', { name: 'Menge' }))
+    fill(within(row).getByRole('textbox', { name: 'Menge' }), '')
     expect(
       within(row).queryByText(/Bitte eine Zahl eingeben/)
     ).not.toBeInTheDocument()
   })
 
   it('zeigt die deutsche Meldung der API (Name schon vergeben)', async () => {
-    const user = userEvent.setup()
     mockApi()
     apiClient.post.mockRejectedValue(
       new ApiError(
@@ -610,11 +603,8 @@ describe('Neues Rezept (/admin/rezepte/neu)', () => {
       )
     )
     renderAs('inhaber', <NewRecipeClient />)
-    await user.type(
-      await screen.findByRole('textbox', { name: /Name/ }),
-      'Musterkruste'
-    )
-    await user.click(screen.getByRole('button', { name: 'Rezept anlegen' }))
+    fill(await screen.findByRole('textbox', { name: /Name/ }), 'Musterkruste')
+    fireEvent.click(screen.getByRole('button', { name: 'Rezept anlegen' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Ein Rezept mit diesem Namen gibt es in dieser Kategorie schon.'
     )
@@ -640,7 +630,6 @@ describe('Neues Rezept (/admin/rezepte/neu)', () => {
 
 describe('Rezept bearbeiten (/admin/rezepte/bearbeiten/…)', () => {
   it('schickt nur das Geänderte, mit dem geladenen Stand als expectedVersion', async () => {
-    const user = userEvent.setup()
     mockApi()
     const saved = syntheticRecipe({ version: 'bbbbbbbbbbbbbbbbbbbbbbbb' })
     apiClient.put.mockResolvedValue({
@@ -666,9 +655,9 @@ describe('Rezept bearbeiten (/admin/rezepte/bearbeiten/…)', () => {
         { name: 'Menge' }
       )
     ).toHaveValue('')
-    await user.clear(amount)
-    await user.type(amount, '0,75')
-    await user.click(screen.getByRole('button', { name: 'Speichern' }))
+    fill(amount, '')
+    fill(amount, '0,75')
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
 
     await waitFor(() => expect(apiClient.put).toHaveBeenCalledTimes(1))
     const [url, body] = apiClient.put.mock.calls[0]
@@ -693,14 +682,13 @@ describe('Rezept bearbeiten (/admin/rezepte/bearbeiten/…)', () => {
   })
 
   it('ohne Änderung wird nichts gespeichert', async () => {
-    const user = userEvent.setup()
     mockApi()
     renderAs(
       'inhaber',
       <RecipeEditClient category="breads" slug="musterkruste" />
     )
     await screen.findByRole('group', { name: 'Zutatengruppe Hauptteig' })
-    await user.click(screen.getByRole('button', { name: 'Speichern' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
     expect(
       screen.getByText('Nichts geändert - es gibt nichts zu speichern.')
     ).toBeInTheDocument()
@@ -708,7 +696,6 @@ describe('Rezept bearbeiten (/admin/rezepte/bearbeiten/…)', () => {
   })
 
   it('veralteter Stand (409 stale_recipe): Meldung und „Aktuellen Stand laden“', async () => {
-    const user = userEvent.setup()
     mockApi()
     apiClient.put.mockRejectedValue(
       new ApiError(
@@ -722,8 +709,8 @@ describe('Rezept bearbeiten (/admin/rezepte/bearbeiten/…)', () => {
       <RecipeEditClient category="breads" slug="musterkruste" />
     )
     const name = await screen.findByRole('textbox', { name: /Name/ })
-    await user.type(name, ' neu')
-    await user.click(screen.getByRole('button', { name: 'Speichern' }))
+    fill(name, 'Musterkruste neu')
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('Das Rezept wurde inzwischen geändert.')
     expect(mockPush).not.toHaveBeenCalled()
@@ -732,7 +719,7 @@ describe('Rezept bearbeiten (/admin/rezepte/bearbeiten/…)', () => {
       'Musterkruste neu'
     )
     mockApi({ recipes: [syntheticRecipe({ title: 'Musterkruste (Stand 2)' })] })
-    await user.click(
+    fireEvent.click(
       within(alert).getByRole('button', { name: 'Aktuellen Stand laden' })
     )
     await waitFor(() =>
@@ -839,14 +826,13 @@ describe('Rezept bearbeiten (/admin/rezepte/bearbeiten/…)', () => {
   })
 
   it('Gruppe mit Zutaten entfernen fragt nach', async () => {
-    const user = userEvent.setup()
     mockApi()
     renderAs(
       'inhaber',
       <RecipeEditClient category="breads" slug="musterkruste" />
     )
     await screen.findByRole('group', { name: 'Zutatengruppe Hauptteig' })
-    await user.click(
+    fireEvent.click(
       screen.getByRole('button', { name: 'Gruppe Testsauer entfernen' })
     )
     const dialog = await screen.findByRole('dialog', {
@@ -855,7 +841,7 @@ describe('Rezept bearbeiten (/admin/rezepte/bearbeiten/…)', () => {
     expect(dialog).toHaveTextContent(
       '„Testsauer“ mit 2 Zutaten wird aus dem Rezept entfernt.'
     )
-    await user.click(
+    fireEvent.click(
       within(dialog).getByRole('button', { name: 'Gruppe entfernen' })
     )
     await waitFor(() =>

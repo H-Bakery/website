@@ -42,6 +42,8 @@ import {
   type IngredientRow,
   type PartForm,
   type RecipeFormValues,
+  type RowProblem,
+  type StepForm,
   type StepGroupForm,
 } from '../../lib/recipeForm'
 
@@ -138,6 +140,288 @@ function RowButtons({
   )
 }
 
+interface IngredientRowFieldsProps {
+  row: IngredientRow
+  partKey: string
+  index: number
+  count: number
+  problem: RowProblem | null
+  compact: boolean
+  noteColumn: boolean
+  units: readonly string[]
+  onChange: (
+    partKey: string,
+    rowKey: string,
+    patch: Partial<IngredientRow>
+  ) => void
+  onMove: (partKey: string, rowKey: string, delta: number) => void
+  onRemove: (partKey: string, rowKey: string) => void
+  onAdd: (partKey: string) => void
+}
+
+/**
+ * Eine Zutatenzeile. `React.memo` mit stabilen Änderungs-Funktionen: beim
+ * Tippen rendert nur diese Zeile neu, nicht das ganze Formular - auf einem
+ * schwachen Tablet waren es sonst über 100 ms je Tastendruck.
+ */
+const IngredientRowFields = React.memo(function IngredientRowFields({
+  row,
+  partKey,
+  index,
+  count,
+  problem,
+  compact,
+  noteColumn,
+  units,
+  onChange,
+  onMove,
+  onRemove,
+  onAdd,
+}: IngredientRowFieldsProps) {
+  const what = `Zutat ${index + 1}`
+  const unitOptions =
+    row.unit && !units.includes(row.unit) ? [...units, row.unit] : units
+  return (
+    <Box
+      component="li"
+      key={row.key}
+      data-testid="ingredient-row"
+      data-focus-key={row.key}
+      aria-label={what}
+      sx={{
+        pb: { xs: 1.5, sm: 0 },
+        borderBottom: { xs: 1, sm: 0 },
+        borderColor: 'divider',
+        '&:last-of-type': { borderBottom: 0, pb: 0 },
+      }}
+    >
+      <Box
+        sx={{
+          display: 'grid',
+          columnGap: 1,
+          rowGap: 1,
+          alignItems: 'start',
+          gridTemplateColumns: rowColumns(noteColumn),
+        }}
+      >
+        <TextField
+          value={row.amount}
+          onChange={(event) =>
+            onChange(partKey, row.key, {
+              amount: event.target.value,
+            })
+          }
+          label={compact ? 'Menge' : undefined}
+          placeholder={compact ? undefined : 'offen'}
+          size="small"
+          error={problem?.field === 'amount'}
+          inputProps={{
+            'aria-label': compact ? undefined : 'Menge',
+            'aria-invalid': problem?.field === 'amount' ? true : undefined,
+            inputMode: 'decimal',
+            autoComplete: 'off',
+            style: { textAlign: 'right' },
+          }}
+        />
+        <TextField
+          select
+          value={row.unit}
+          onChange={(event) =>
+            onChange(partKey, row.key, {
+              unit: event.target.value,
+            })
+          }
+          label={compact ? 'Einheit' : undefined}
+          size="small"
+          error={problem?.field === 'unit'}
+          SelectProps={{
+            displayEmpty: true,
+            // Der Name gehört an das sichtbare Auswahlfeld
+            // (role=combobox), nicht an das versteckte input.
+            SelectDisplayProps: compact
+              ? undefined
+              : ({
+                  'aria-label': 'Einheit',
+                } as React.HTMLAttributes<HTMLDivElement>),
+          }}
+          InputLabelProps={compact ? { shrink: true } : undefined}
+        >
+          <MenuItem value="">{NO_UNIT_LABEL}</MenuItem>
+          {unitOptions.map((unit) => (
+            <MenuItem key={unit} value={unit}>
+              {unit}
+            </MenuItem>
+          ))}
+        </TextField>
+        <TextField
+          value={row.name}
+          onChange={(event) =>
+            onChange(partKey, row.key, {
+              name: event.target.value,
+            })
+          }
+          onKeyDown={(event) => {
+            // Enter in der letzten Zeile: gleich die nächste.
+            if (
+              event.key === 'Enter' &&
+              index === count - 1 &&
+              row.name.trim() !== ''
+            ) {
+              event.preventDefault()
+              onAdd(partKey)
+            }
+          }}
+          label={compact ? 'Zutat' : undefined}
+          size="small"
+          error={problem?.field === 'name'}
+          inputProps={{
+            'aria-label': compact ? undefined : 'Zutat',
+            'aria-invalid': problem?.field === 'name' ? true : undefined,
+            maxLength: 200,
+            autoComplete: 'off',
+          }}
+          sx={{ gridColumn: { xs: '1 / -1', sm: 'auto' } }}
+          fullWidth
+        />
+        {noteColumn && (
+          <TextField
+            value={row.note}
+            onChange={(event) =>
+              onChange(partKey, row.key, {
+                note: event.target.value,
+              })
+            }
+            label={compact ? 'Hinweis' : undefined}
+            placeholder={compact ? undefined : 'Hinweis'}
+            size="small"
+            inputProps={{
+              'aria-label': compact ? undefined : 'Hinweis',
+              maxLength: 200,
+              autoComplete: 'off',
+            }}
+            sx={{
+              // Unter `lg` unter dem Namen, hinter den
+              // Knöpfen der Zeile (Reihenfolge im DOM bleibt).
+              gridColumn: {
+                xs: '1 / -1',
+                sm: '3',
+                lg: 'auto',
+              },
+              gridRow: { sm: '2', lg: 'auto' },
+            }}
+            fullWidth
+          />
+        )}
+        <Box
+          sx={{
+            gridColumn: { xs: '1 / -1', sm: 'auto' },
+            display: 'flex',
+            justifyContent: 'flex-end',
+          }}
+        >
+          <RowButtons
+            what={what}
+            index={index}
+            count={count}
+            onMove={(delta) => onMove(partKey, row.key, delta)}
+            onRemove={() => onRemove(partKey, row.key)}
+          />
+        </Box>
+      </Box>
+      {problem && (
+        <Typography
+          variant="caption"
+          color="error"
+          role="alert"
+          sx={{ display: 'block', mt: 0.5 }}
+        >
+          {problem.message}
+        </Typography>
+      )}
+    </Box>
+  )
+})
+
+interface StepRowFieldsProps {
+  item: StepForm
+  groupKey: string
+  index: number
+  count: number
+  ordered: boolean
+  onChange: (groupKey: string, itemKey: string, text: string) => void
+  onMove: (groupKey: string, itemKey: string, delta: number) => void
+  onRemove: (groupKey: string, itemKey: string) => void
+}
+
+/** Ein Arbeitsschritt - wie die Zutatenzeile `React.memo`. */
+const StepRowFields = React.memo(function StepRowFields({
+  item,
+  groupKey,
+  index,
+  count,
+  ordered,
+  onChange,
+  onMove,
+  onRemove,
+}: StepRowFieldsProps) {
+  const what = `Schritt ${index + 1}`
+  return (
+    <Box
+      component="li"
+      key={item.key}
+      data-testid="step-row"
+      data-focus-key={item.key}
+      sx={{
+        display: 'flex',
+        flexWrap: { xs: 'wrap', sm: 'nowrap' },
+        alignItems: 'flex-start',
+        gap: 1,
+      }}
+    >
+      <Typography
+        aria-hidden="true"
+        sx={{
+          width: '1.75rem',
+          pt: 1.25,
+          textAlign: 'right',
+          fontWeight: 700,
+          color: 'text.secondary',
+          fontVariantNumeric: 'tabular-nums',
+          flexShrink: 0,
+        }}
+      >
+        {ordered ? `${index + 1}.` : '•'}
+      </Typography>
+      <TextField
+        value={item.text}
+        onChange={(event) => onChange(groupKey, item.key, event.target.value)}
+        multiline
+        minRows={1}
+        maxRows={10}
+        size="small"
+        inputProps={{ 'aria-label': what, maxLength: 2000 }}
+        sx={{ flex: '1 1 12rem', minWidth: 0 }}
+        fullWidth
+      />
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'flex-end',
+          flex: { xs: '1 1 100%', sm: '0 0 auto' },
+        }}
+      >
+        <RowButtons
+          what={what}
+          index={index}
+          count={count}
+          onMove={(delta) => onMove(groupKey, item.key, delta)}
+          onRemove={() => onRemove(groupKey, item.key)}
+        />
+      </Box>
+    </Box>
+  )
+})
+
 /**
  * Formular eines Rezepts: Name, Kategorie, „Ergibt“, Zutaten in Gruppen
  * (Zeilen hinzufügen, entfernen, umsortieren), Arbeitsschritte, Notizen.
@@ -190,36 +474,104 @@ export default function RecipeForm({
     value: RecipeFormValues[K]
   ) => onChange({ ...values, [key]: value })
 
-  const setPart = (key: string, change: (part: PartForm) => PartForm) =>
-    set(
-      'parts',
-      values.parts.map((part) => (part.key === key ? change(part) : part))
-    )
-  const setRow = (
-    partKey: string,
-    rowKey: string,
-    patch: Partial<IngredientRow>
-  ) =>
-    setPart(partKey, (part) => ({
-      ...part,
-      rows: part.rows.map((row) =>
-        row.key === rowKey ? { ...row, ...patch } : row
-      ),
-    }))
-  const addRow = (partKey: string) => {
-    const row = newIngredientRow()
-    setPart(partKey, (part) => ({ ...part, rows: [...part.rows, row] }))
-    setFocusKey(row.key)
-  }
+  // Stabile Änderungs-Funktionen für die Zeilen (`React.memo`): sie lesen den
+  // neuesten Stand aus einer Ref, statt bei jedem Rendern neu zu entstehen.
+  const latest = React.useRef({ values, onChange })
+  latest.current = { values, onChange }
+  const update = React.useCallback(
+    (change: (current: RecipeFormValues) => RecipeFormValues) =>
+      latest.current.onChange(change(latest.current.values)),
+    []
+  )
+  const setPart = React.useCallback(
+    (key: string, change: (part: PartForm) => PartForm) =>
+      update((current) => ({
+        ...current,
+        parts: current.parts.map((part) =>
+          part.key === key ? change(part) : part
+        ),
+      })),
+    [update]
+  )
+  const changeRow = React.useCallback(
+    (partKey: string, rowKey: string, patch: Partial<IngredientRow>) =>
+      setPart(partKey, (part) => ({
+        ...part,
+        rows: part.rows.map((row) =>
+          row.key === rowKey ? { ...row, ...patch } : row
+        ),
+      })),
+    [setPart]
+  )
+  const moveRow = React.useCallback(
+    (partKey: string, rowKey: string, delta: number) =>
+      setPart(partKey, (part) => ({
+        ...part,
+        rows: moveItem(
+          part.rows,
+          part.rows.findIndex((row) => row.key === rowKey),
+          delta
+        ),
+      })),
+    [setPart]
+  )
+  const removeRow = React.useCallback(
+    (partKey: string, rowKey: string) =>
+      setPart(partKey, (part) => ({
+        ...part,
+        rows: part.rows.filter((row) => row.key !== rowKey),
+      })),
+    [setPart]
+  )
+  const addRow = React.useCallback(
+    (partKey: string) => {
+      const row = newIngredientRow()
+      setPart(partKey, (part) => ({ ...part, rows: [...part.rows, row] }))
+      setFocusKey(row.key)
+    },
+    [setPart]
+  )
 
-  const setGroup = (
-    key: string,
-    change: (group: StepGroupForm) => StepGroupForm
-  ) =>
-    set(
-      'steps',
-      values.steps.map((group) => (group.key === key ? change(group) : group))
-    )
+  const setGroup = React.useCallback(
+    (key: string, change: (group: StepGroupForm) => StepGroupForm) =>
+      update((current) => ({
+        ...current,
+        steps: current.steps.map((group) =>
+          group.key === key ? change(group) : group
+        ),
+      })),
+    [update]
+  )
+  const changeStep = React.useCallback(
+    (groupKey: string, itemKey: string, text: string) =>
+      setGroup(groupKey, (group) => ({
+        ...group,
+        items: group.items.map((item) =>
+          item.key === itemKey ? { ...item, text } : item
+        ),
+      })),
+    [setGroup]
+  )
+  const moveStep = React.useCallback(
+    (groupKey: string, itemKey: string, delta: number) =>
+      setGroup(groupKey, (group) => ({
+        ...group,
+        items: moveItem(
+          group.items,
+          group.items.findIndex((item) => item.key === itemKey),
+          delta
+        ),
+      })),
+    [setGroup]
+  )
+  const removeStep = React.useCallback(
+    (groupKey: string, itemKey: string) =>
+      setGroup(groupKey, (group) => ({
+        ...group,
+        items: group.items.filter((item) => item.key !== itemKey),
+      })),
+    [setGroup]
+  )
   const addStep = (groupKey: string) => {
     const item = { key: nextKey('s'), text: '' }
     setGroup(groupKey, (group) => ({
@@ -231,9 +583,6 @@ export default function RecipeForm({
 
   const isLocked = (part: PartForm) =>
     part.existing && lockedPartTitles.includes(part.title)
-
-  const unitOptions = (current: string) =>
-    current && !units.includes(current) ? [...units, current] : units
 
   return (
     // Bewusst kein <form>: Enter in einem Mengenfeld soll am Tablet nicht
@@ -425,185 +774,23 @@ export default function RecipeForm({
                     gap: { xs: 1.5, sm: 1 },
                   }}
                 >
-                  {part.rows.map((row, rowIndex) => {
-                    const problem = problems?.rows[row.key] ?? null
-                    const what = `Zutat ${rowIndex + 1}`
-                    return (
-                      <Box
-                        component="li"
-                        key={row.key}
-                        data-testid="ingredient-row"
-                        data-focus-key={row.key}
-                        aria-label={what}
-                        sx={{
-                          pb: { xs: 1.5, sm: 0 },
-                          borderBottom: { xs: 1, sm: 0 },
-                          borderColor: 'divider',
-                          '&:last-of-type': { borderBottom: 0, pb: 0 },
-                        }}
-                      >
-                        <Box
-                          sx={{
-                            display: 'grid',
-                            columnGap: 1,
-                            rowGap: 1,
-                            alignItems: 'start',
-                            gridTemplateColumns: rowColumns(noteColumn),
-                          }}
-                        >
-                          <TextField
-                            value={row.amount}
-                            onChange={(event) =>
-                              setRow(part.key, row.key, {
-                                amount: event.target.value,
-                              })
-                            }
-                            label={compact ? 'Menge' : undefined}
-                            placeholder={compact ? undefined : 'offen'}
-                            size="small"
-                            error={problem?.field === 'amount'}
-                            inputProps={{
-                              'aria-label': compact ? undefined : 'Menge',
-                              'aria-invalid':
-                                problem?.field === 'amount' ? true : undefined,
-                              inputMode: 'decimal',
-                              autoComplete: 'off',
-                              style: { textAlign: 'right' },
-                            }}
-                          />
-                          <TextField
-                            select
-                            value={row.unit}
-                            onChange={(event) =>
-                              setRow(part.key, row.key, {
-                                unit: event.target.value,
-                              })
-                            }
-                            label={compact ? 'Einheit' : undefined}
-                            size="small"
-                            error={problem?.field === 'unit'}
-                            SelectProps={{
-                              displayEmpty: true,
-                              // Der Name gehört an das sichtbare Auswahlfeld
-                              // (role=combobox), nicht an das versteckte input.
-                              SelectDisplayProps: compact
-                                ? undefined
-                                : ({
-                                    'aria-label': 'Einheit',
-                                  } as React.HTMLAttributes<HTMLDivElement>),
-                            }}
-                            InputLabelProps={
-                              compact ? { shrink: true } : undefined
-                            }
-                          >
-                            <MenuItem value="">{NO_UNIT_LABEL}</MenuItem>
-                            {unitOptions(row.unit).map((unit) => (
-                              <MenuItem key={unit} value={unit}>
-                                {unit}
-                              </MenuItem>
-                            ))}
-                          </TextField>
-                          <TextField
-                            value={row.name}
-                            onChange={(event) =>
-                              setRow(part.key, row.key, {
-                                name: event.target.value,
-                              })
-                            }
-                            onKeyDown={(event) => {
-                              // Enter in der letzten Zeile: gleich die nächste.
-                              if (
-                                event.key === 'Enter' &&
-                                rowIndex === part.rows.length - 1 &&
-                                row.name.trim() !== ''
-                              ) {
-                                event.preventDefault()
-                                addRow(part.key)
-                              }
-                            }}
-                            label={compact ? 'Zutat' : undefined}
-                            size="small"
-                            error={problem?.field === 'name'}
-                            inputProps={{
-                              'aria-label': compact ? undefined : 'Zutat',
-                              'aria-invalid':
-                                problem?.field === 'name' ? true : undefined,
-                              maxLength: 200,
-                              autoComplete: 'off',
-                            }}
-                            sx={{ gridColumn: { xs: '1 / -1', sm: 'auto' } }}
-                            fullWidth
-                          />
-                          {noteColumn && (
-                            <TextField
-                              value={row.note}
-                              onChange={(event) =>
-                                setRow(part.key, row.key, {
-                                  note: event.target.value,
-                                })
-                              }
-                              label={compact ? 'Hinweis' : undefined}
-                              placeholder={compact ? undefined : 'Hinweis'}
-                              size="small"
-                              inputProps={{
-                                'aria-label': compact ? undefined : 'Hinweis',
-                                maxLength: 200,
-                                autoComplete: 'off',
-                              }}
-                              sx={{
-                                // Unter `lg` unter dem Namen, hinter den
-                                // Knöpfen der Zeile (Reihenfolge im DOM bleibt).
-                                gridColumn: {
-                                  xs: '1 / -1',
-                                  sm: '3',
-                                  lg: 'auto',
-                                },
-                                gridRow: { sm: '2', lg: 'auto' },
-                              }}
-                              fullWidth
-                            />
-                          )}
-                          <Box
-                            sx={{
-                              gridColumn: { xs: '1 / -1', sm: 'auto' },
-                              display: 'flex',
-                              justifyContent: 'flex-end',
-                            }}
-                          >
-                            <RowButtons
-                              what={what}
-                              index={rowIndex}
-                              count={part.rows.length}
-                              onMove={(delta) =>
-                                setPart(part.key, (current) => ({
-                                  ...current,
-                                  rows: moveItem(current.rows, rowIndex, delta),
-                                }))
-                              }
-                              onRemove={() =>
-                                setPart(part.key, (current) => ({
-                                  ...current,
-                                  rows: current.rows.filter(
-                                    (r) => r.key !== row.key
-                                  ),
-                                }))
-                              }
-                            />
-                          </Box>
-                        </Box>
-                        {problem && (
-                          <Typography
-                            variant="caption"
-                            color="error"
-                            role="alert"
-                            sx={{ display: 'block', mt: 0.5 }}
-                          >
-                            {problem.message}
-                          </Typography>
-                        )}
-                      </Box>
-                    )
-                  })}
+                  {part.rows.map((row, rowIndex) => (
+                    <IngredientRowFields
+                      key={row.key}
+                      row={row}
+                      partKey={part.key}
+                      index={rowIndex}
+                      count={part.rows.length}
+                      problem={problems?.rows[row.key] ?? null}
+                      compact={compact}
+                      noteColumn={noteColumn}
+                      units={units}
+                      onChange={changeRow}
+                      onMove={moveRow}
+                      onRemove={removeRow}
+                      onAdd={addRow}
+                    />
+                  ))}
                 </Box>
 
                 {part.total && (
@@ -738,89 +925,19 @@ export default function RecipeForm({
                     gap: 1,
                   }}
                 >
-                  {group.items.map((item, itemIndex) => {
-                    const what = `Schritt ${itemIndex + 1}`
-                    return (
-                      <Box
-                        component="li"
-                        key={item.key}
-                        data-testid="step-row"
-                        data-focus-key={item.key}
-                        sx={{
-                          display: 'flex',
-                          flexWrap: { xs: 'wrap', sm: 'nowrap' },
-                          alignItems: 'flex-start',
-                          gap: 1,
-                        }}
-                      >
-                        <Typography
-                          aria-hidden="true"
-                          sx={{
-                            width: '1.75rem',
-                            pt: 1.25,
-                            textAlign: 'right',
-                            fontWeight: 700,
-                            color: 'text.secondary',
-                            fontVariantNumeric: 'tabular-nums',
-                            flexShrink: 0,
-                          }}
-                        >
-                          {group.ordered ? `${itemIndex + 1}.` : '•'}
-                        </Typography>
-                        <TextField
-                          value={item.text}
-                          onChange={(event) =>
-                            setGroup(group.key, (current) => ({
-                              ...current,
-                              items: current.items.map((i) =>
-                                i.key === item.key
-                                  ? { ...i, text: event.target.value }
-                                  : i
-                              ),
-                            }))
-                          }
-                          multiline
-                          minRows={1}
-                          maxRows={10}
-                          size="small"
-                          inputProps={{ 'aria-label': what, maxLength: 2000 }}
-                          sx={{ flex: '1 1 12rem', minWidth: 0 }}
-                          fullWidth
-                        />
-                        <Box
-                          sx={{
-                            display: 'flex',
-                            justifyContent: 'flex-end',
-                            flex: { xs: '1 1 100%', sm: '0 0 auto' },
-                          }}
-                        >
-                          <RowButtons
-                            what={what}
-                            index={itemIndex}
-                            count={group.items.length}
-                            onMove={(delta) =>
-                              setGroup(group.key, (current) => ({
-                                ...current,
-                                items: moveItem(
-                                  current.items,
-                                  itemIndex,
-                                  delta
-                                ),
-                              }))
-                            }
-                            onRemove={() =>
-                              setGroup(group.key, (current) => ({
-                                ...current,
-                                items: current.items.filter(
-                                  (i) => i.key !== item.key
-                                ),
-                              }))
-                            }
-                          />
-                        </Box>
-                      </Box>
-                    )
-                  })}
+                  {group.items.map((item, itemIndex) => (
+                    <StepRowFields
+                      key={item.key}
+                      item={item}
+                      groupKey={group.key}
+                      index={itemIndex}
+                      count={group.items.length}
+                      ordered={group.ordered}
+                      onChange={changeStep}
+                      onMove={moveStep}
+                      onRemove={removeStep}
+                    />
+                  ))}
                 </Box>
                 <Button
                   startIcon={<AddIcon />}
