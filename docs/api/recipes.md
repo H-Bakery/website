@@ -105,13 +105,17 @@ names, group names, tags and file name - all words, case- and accent-insensitive
   "sections": [{ "title": "Fehlerquellen", "text": "- …" }], // sections the model does not interpret, verbatim, display only
   "version": "9f2c…", // 24 hex chars; send back as expectedVersion
   "deletable": true,
-  "deleteBlockedReason": null // German: Backzettel uses it / switched off / teig / already deleted
+  "deleteBlockedReason": null // German: Backzettel uses it / its config is unreadable / switched off / teig / already deleted
 }
 ```
 
 - `amount: null` = the amount is open - never 0. `unit` is then `null` too. In table files a
   quantity that is no plain number (`3–6 g (nach Geschmack)`) is `amount: null` with the text in
   `note`; `120 g (nach Bedarf)` is `120`, `g`, `note: "nach Bedarf"`.
+- In list files a leading number is the amount only when it stands alone (followed by a space, a
+  parenthesis or the end of the line). `405er Testmehl`, `5-Korn-Mischung`, `1.5 kg`, `1/2 TL`,
+  `3-6 g`, `2 x 500 g` are a name with `amount: null` - never half a number. `note` is always
+  `null` in list groups.
 - A step is one string; sub-points of a step are further lines of it, indented
   (`"Laibe formen:\n   - straff aufrollen"`).
 - `ordered: false` = bullet points (`- **Stockgare:** 35 Minuten`), `true` = numbered.
@@ -125,9 +129,14 @@ defaults). `category` must be a known, writable one (not `teige`).
 **`PUT`** body: `{ expectedVersion, title?, category?, yield?, description?, parts?, steps?, notes? }`.
 A field that is missing stays as it is; `null`/`""`/`[]` empties it. `total`, `meta` and `sections`
 are ignored. A different `category` **moves** the file (same file name). Empty ingredient rows and
-empty steps are dropped. The answer is the recipe as read back from the written file - the file
-decides the final shape (in list files a `note` becomes part of the name, a name typed as
-`2 Eier` comes back as amount 2 + name `Eier`).
+empty steps are dropped. The answer is the recipe as read back from the written file. An
+ingredient must read back exactly as sent, otherwise 400 `validation` naming group and row:
+without an amount a name that the file would read as a quantity is refused (`1050 Testmehl`,
+`2 Eier` - enter the amount or reorder the name), a `note` in a list group is refused (no such
+field there; it belongs into the name), and a `note` that would read as the amount (`5 g`) is
+refused. The only reinterpretation: in a table with a `Menge (g)` column a number without unit
+gets the column's unit. Renaming a group changes its heading line only (rows, table head, total
+row and the heading's decoration stay verbatim).
 
 **`DELETE`**: `expectedVersion` in the JSON body or as `?expectedVersion=`.
 
@@ -136,25 +145,26 @@ changed nothing (nothing written, nothing committed, no audit row).
 
 ### Errors
 
-| Status | `error`                                                          | When                                                                                                  |
-| ------ | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| 400    | `validation`                                                     | bad input (German reason: missing name, amount ≤ 0, unknown unit, `\|` in a name, heading in notes …) |
-| 400    | `invalid_recipe_file`                                            | the input would not read back from the file as entered (e.g. a title ending in `(…)` in a table file) |
-| 400    | `invalid_category`                                               | unknown or read-only category (create, move)                                                          |
-| 400    | `invalid_id`                                                     | no file name can be derived from the title                                                            |
-| 400    | `version_required`                                               | `expectedVersion` missing (PUT, DELETE)                                                               |
-| 404    | `not_found`                                                      | no such recipe                                                                                        |
-| 409    | `stale_recipe`                                                   | the file changed since `expectedVersion` (carries `currentVersion`)                                   |
-| 409    | `recipe_exists`                                                  | create/move: a recipe of that name is already in the category                                         |
-| 409    | `recipe_read_only`                                               | teig recipe, or a file the parser does not fully understand (`message` = the reason)                  |
-| 409    | `recipe_in_use`                                                  | delete/move of a recipe `config/backzettel.yaml` points at (carries `usedByBackzettel`)               |
-| 409    | `recipe_section_in_use`                                          | an edit would rename or remove the part the Backzettel reads                                          |
-| 409    | `recipe_deleted`                                                 | the recipe is deleted and waits for approval                                                          |
-| 409    | `recipe_delete_unavailable`                                      | deleting/moving is switched off (see below)                                                           |
-| 409    | `hq_write_out_of_sync`                                           | delete/move of a file the write worktree does not have yet                                            |
-| 500    | `hq_commit_failed`                                               | git refused the commit; the files are restored                                                        |
-| 503    | `hq_unavailable`                                                 | no recipes directory (development)                                                                    |
-| 503    | `hq_write_unavailable` / `hq_write_wrong_branch` / `repo_locked` | as for the products ([hq-products.md](hq-products.md))                                                |
+| Status | `error`                                                          | When                                                                                                         |
+| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| 400    | `validation`                                                     | bad input (German reason: missing name, amount ≤ 0, unknown unit, `\|` in a name, heading in notes …)        |
+| 400    | `invalid_recipe_file`                                            | the input would not read back from the file as entered (e.g. a title ending in `(…)` in a table file)        |
+| 400    | `invalid_category`                                               | unknown or read-only category (create, move)                                                                 |
+| 400    | `invalid_id`                                                     | no file name can be derived from the title                                                                   |
+| 400    | `version_required`                                               | `expectedVersion` missing (PUT, DELETE)                                                                      |
+| 404    | `not_found`                                                      | no such recipe                                                                                               |
+| 409    | `stale_recipe`                                                   | the file changed since `expectedVersion` (carries `currentVersion`)                                          |
+| 409    | `recipe_exists`                                                  | create/move: a recipe of that name is already in the category                                                |
+| 409    | `recipe_read_only`                                               | teig recipe, or a file the parser does not fully understand (`message` = the reason)                         |
+| 409    | `recipe_in_use`                                                  | delete/move of a recipe `config/backzettel.yaml` points at (carries `usedByBackzettel`)                      |
+| 409    | `recipe_section_in_use`                                          | an edit would rename, remove or shadow the part the Backzettel reads (same name twice, same start before it) |
+| 409    | `backzettel_config_unreadable`                                   | `config/backzettel.yaml` exists but cannot be read: delete, move and renaming parts are locked               |
+| 409    | `recipe_deleted`                                                 | the recipe is deleted and waits for approval                                                                 |
+| 409    | `recipe_delete_unavailable`                                      | deleting/moving is switched off (see below)                                                                  |
+| 409    | `hq_write_out_of_sync`                                           | edit/delete/move of a file the write worktree does not have yet (approved on main, not rebased in)           |
+| 500    | `hq_commit_failed`                                               | git refused the commit; the files are restored                                                               |
+| 503    | `hq_unavailable`                                                 | no recipes directory (development)                                                                           |
+| 503    | `hq_write_unavailable` / `hq_write_wrong_branch` / `repo_locked` | as for the products ([hq-products.md](hq-products.md))                                                       |
 
 ## How it works
 
@@ -191,8 +201,17 @@ changed nothing (nothing written, nothing committed, no audit row).
 - **Backzettel references:** `collectRecipeReferences` takes every `recipe:` path of
   `config/backzettel.yaml` (`fillings[]` today; `doughs[]` as soon as one is written there), from
   the approved file **and** the write worktree's. Such a recipe cannot be deleted or moved; an edit
-  must leave every referenced part resolvable - checked with the Backzettel's own
-  `findRecipeForReference` before and after.
+  must leave every reference on **the same part** - `referenceAfterEdit` (in
+  `backzettel-recipes.core.js`, built on the Backzettel's own `findRecipeForReference`) compares
+  before and after: still found, same title, and that title not more often than before (the lookup
+  takes the first exact or prefix match, so a new part in front would silently redirect it).
+  **Fail closed:** a config file that exists but cannot be read or parsed makes the references
+  unknown - then no recipe counts as unused (`deletable: false`, delete/move and any change to the
+  list of part titles answer 409 `backzettel_config_unreadable`). A missing file has no references.
+- **Never a second copy of an approved file:** a recipe that is in the approved version but not yet
+  in the write worktree is not written there (409 `hq_write_out_of_sync`) - adding it would be an
+  add/add conflict at the next rebase onto `origin/main` and stop the rolling PR for products and
+  Grundmengen too. A no-op save still answers 200 `changed: false`.
 - **Files that count:** regular files directly in a category directory (`[a-z0-9][a-z0-9_-]*`),
   named `*.md` or without extension, not hidden, not `_…`, not `README`, ≤ 512 kB. Symlinks, other
   types and nested directories are ignored. A file that is not valid UTF-8 is read-only.
@@ -220,9 +239,10 @@ The E2E hq (`prepareE2eHq()`, `HQ_RECIPES_DIR`) and `setup-dev` (`make-hq.js`) c
 
 ## Tests
 
-`tests/unit/recipeFileCore.test.js` (formats, zero diff for every fixture, minimal diffs, new file,
-validation, read-only cases, slugs - **and the same proofs over the real `hq/data/recipes` when it
-lies next to the repo**, skipped in CI), `tests/integration/recipes.test.ts` (401/403 matrix for
+`tests/unit/recipeFileCore.test.js` (formats, zero diff for every fixture, minimal diffs, renaming
+a group changes one line, list quantities, new file, validation, read-only cases, slugs,
+`referenceAfterEdit` - **and the same proofs over the real `hq/data/recipes` when it lies next to
+the repo**, skipped in CI), `tests/integration/recipes.test.ts` (401/403 matrix for
 all five roles, reading, both write modes, stale versions, Backzettel references, delete/move,
 audit), `tests/integration/recipesHqSync.test.ts` (rolling PR, merged edits and deletions against a
 bare origin), `tests/integration/backstubenleiter.test.ts` (the role in user administration and on

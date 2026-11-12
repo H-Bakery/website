@@ -46,6 +46,41 @@ function changedLines(before, after) {
 
 const FIXTURE_FILES = filesOf(FIXTURES)
 
+/**
+ * Jede Zutatengruppe einmal umbenennen: nur die Überschrift darf sich
+ * ändern (oder dazukommen), die Summenzeile bleibt. Liefert Abweichungen
+ * ohne Inhalt - nur Kategorie und Position.
+ */
+function renameFailures(files) {
+  const failures = []
+  files.forEach((f, index) => {
+    const text = fs.readFileSync(f.full, 'utf8')
+    const doc = core.parseRecipeFile(text, { fileStem: core.fileStem(f.file) })
+    if (!doc.editable) return
+    doc.model.parts.forEach((part, p) => {
+      const where = `${f.category} #${index + 1}, Gruppe ${p + 1}`
+      const form = formOf(doc)
+      form.parts[p].title = 'Umbenannt zur Probe'
+      const result = core.applyRecipeInput(doc, form)
+      if (!result.ok) {
+        failures.push(`${where}: ${result.error}`)
+        return
+      }
+      const diff = changedLines(text, result.text)
+      const grown = lines(result.text).length - lines(text).length
+      const same =
+        JSON.stringify(result.model.parts[p].total) ===
+        JSON.stringify(part.total)
+      if (diff.added.length !== 1 || diff.removed.length > 1 || grown > 1) {
+        failures.push(`${where}: mehr als die Überschrift geändert`)
+      } else if (grown < 0 || !same) {
+        failures.push(`${where}: Zeilen oder Summenzeile verloren`)
+      }
+    })
+  })
+  return failures
+}
+
 describe('Formate', () => {
   it('deckt jede Kategorie und jedes Format ab', () => {
     const seen = new Set(
@@ -548,7 +583,7 @@ describe('neues Rezept', () => {
               { name: 'Probemehl', amount: 1000, unit: 'g' },
               { name: 'Wasser', amount: 0.65, unit: 'l' },
               { name: 'Salz', amount: null, unit: 'g' },
-              { name: 'Testhefe', amount: 2, unit: 'Würfel', note: 'frisch' },
+              { name: 'Testhefe (frisch)', amount: 2, unit: 'Würfel' },
             ],
           },
         ],
@@ -733,15 +768,347 @@ describe('Prüfung der Eingabe', () => {
     ).toMatchObject({ ok: false, error: 'invalid_recipe_file' })
   })
 
-  it('was die Datei aus einer Zutat macht, steht in der Antwort', () => {
-    const result = core.applyRecipeInput(doc(), {
+  it('ohne Menge wird aus einem Namen nie eine Menge (Liste)', () => {
+    // steht die Zahl nicht für sich, ist sie Teil des Namens - Menge offen
+    const kept = core.applyRecipeInput(doc(), {
       parts: [
-        { title: 'Hauptteig', ingredients: [{ name: '2 Eier', amount: null }] },
+        {
+          title: 'Hauptteig',
+          ingredients: [
+            { name: '405er Testmehl', amount: null },
+            { name: '5-Korn-Probemischung', amount: null },
+            { name: '00-Testmehl', amount: null },
+            { name: '5-Korn-Probemischung', amount: 3, unit: null },
+            { name: '405er Testmehl', amount: 1, unit: 'kg' },
+          ],
+        },
       ],
     })
-    expect(result.model.parts[0].ingredients).toEqual([
-      { name: 'Eier', amount: 2, unit: null, note: null },
+    expect(kept.ok).toBe(true)
+    expect(kept.text).toContain(
+      [
+        '- [ ] 405er Testmehl',
+        '- [ ] 5-Korn-Probemischung',
+        '- [ ] 00-Testmehl',
+        '- [ ] 3 5-Korn-Probemischung',
+        '- [ ] 1 kg 405er Testmehl',
+      ].join('\n')
+    )
+    expect(kept.model.parts[0].ingredients).toEqual([
+      { name: '405er Testmehl', amount: null, unit: null, note: null },
+      { name: '5-Korn-Probemischung', amount: null, unit: null, note: null },
+      { name: '00-Testmehl', amount: null, unit: null, note: null },
+      { name: '5-Korn-Probemischung', amount: 3, unit: null, note: null },
+      { name: '405er Testmehl', amount: 1, unit: 'kg', note: null },
     ])
+
+    // steht die Zahl für sich, läse die Datei sie als Menge: abgelehnt
+    for (const name of ['1050 Testmehl', '2 Eier', '1 Prise Salz', '5 g']) {
+      const result = core.applyRecipeInput(doc(), {
+        parts: [{ title: 'Hauptteig', ingredients: [{ name, amount: null }] }],
+      })
+      expect(result).toMatchObject({ ok: false, error: 'validation' })
+      expect(result.message).toMatch(
+        /Zutatengruppe 1, Zutat 1: .*beginnt mit einer Zahl.*Feld „Menge“/
+      )
+    }
+    // genauso beim Anlegen
+    expect(
+      core.newRecipeFile(
+        {
+          title: 'Zahlentest',
+          parts: [{ title: null, ingredients: [{ name: '1050 Testmehl' }] }],
+        },
+        { category: 'breads' }
+      )
+    ).toMatchObject({ ok: false, error: 'validation' })
+  })
+
+  it('Menge, Einheit und Name kommen genau so zurück - sonst abgelehnt', () => {
+    const one = (ingredient, rel = 'breads/Probelaib.md') => {
+      const file = parse(rel)
+      const form = formOf(file)
+      form.parts[0].ingredients.push(ingredient)
+      return core.applyRecipeInput(file, form)
+    }
+    // Name beginnt mit einer Einheit: „3 g Testmehl“ wären 3 Gramm
+    expect(one({ name: 'g Testmehl', amount: 3, unit: null })).toMatchObject({
+      ok: false,
+      error: 'validation',
+      message: expect.stringMatching(/nicht eindeutig/),
+    })
+    // Liste: kein eigener Hinweis - nie stillschweigend in den Namen
+    const note = one({ name: 'Zimt', amount: 2, unit: 'g', note: 'gemahlen' })
+    expect(note).toMatchObject({ ok: false, error: 'validation' })
+    expect(note.message).toMatch(/keinen eigenen Hinweis.*in den Namen/)
+    expect(
+      one({
+        name: 'Zimt (gemahlen)',
+        amount: 2,
+        unit: 'g',
+      }).model.parts[0].ingredients.slice(-1)[0]
+    ).toEqual({ name: 'Zimt (gemahlen)', amount: 2, unit: 'g', note: null })
+
+    // Tabelle: ein Hinweis, der wie eine Menge aussieht, wird keine Menge
+    const hint = one(
+      { name: 'Testzucker', amount: null, note: '5 g' },
+      'cakes/Testkuchen.md'
+    )
+    expect(hint).toMatchObject({ ok: false, error: 'validation' })
+    expect(hint.message).toMatch(/Hinweis „5 g“ würde .* als Menge gelesen/)
+    // Klammern im Hinweis machten aus der Menge einen Text
+    expect(
+      one(
+        { name: 'Testzucker', amount: 5, unit: 'g', note: 'fein (gesiebt)' },
+        'cakes/Testkuchen.md'
+      )
+    ).toMatchObject({ ok: false, error: 'validation' })
+    // was keine Zahl ist, bleibt als Hinweis bei offener Menge
+    const range = one(
+      { name: 'Testzucker', amount: null, note: '2–5 g (nach Geschmack)' },
+      'cakes/Testkuchen.md'
+    )
+    expect(range.ok).toBe(true)
+    expect(range.model.parts[0].ingredients.slice(-1)[0]).toEqual({
+      name: 'Testzucker',
+      amount: null,
+      unit: null,
+      note: '2–5 g (nach Geschmack)',
+    })
+    // einzige Umdeutung: die Einheit der Spalte `Menge (g)`
+    const column = one(
+      { name: 'Testsaat', amount: 12, unit: null },
+      'special/Probe-Dünnbrot'
+    )
+    expect(column.ok).toBe(true)
+    expect(column.model.parts[0].ingredients.slice(-1)[0]).toEqual({
+      name: 'Testsaat',
+      amount: 12,
+      unit: 'g',
+      note: null,
+    })
+  })
+})
+
+describe('Listenzeilen: nur eine Zahl, die für sich steht, ist eine Menge', () => {
+  const ingredientsOf = (zutaten) => {
+    const doc = core.parseRecipeFile(
+      `---\ntitle: Test\n---\n\n# Test\n\n## Zutaten\n${zutaten
+        .map((line) => `- [ ] ${line}`)
+        .join('\n')}\n`
+    )
+    expect(doc.editable).toBe(true)
+    return doc.model.parts[0].ingredients.map((i) => [i.amount, i.unit, i.name])
+  }
+
+  it('liest Mengen wie bisher', () => {
+    expect(
+      ingredientsOf([
+        '200 g Testmehl Type 1150',
+        '500g Probemehl',
+        '1.000 g Wasser',
+        '0,5 g Testhefe',
+        '1 Ei (50g)',
+        '1 Ei + 50g Sahne',
+        '2 TL Probepulver',
+        '3 EL-Maß Saat',
+        '100 g, fein gemahlen',
+        'Wasser zum Besprühen',
+        'ca. 3 kg Testäpfel',
+      ])
+    ).toEqual([
+      [200, 'g', 'Testmehl Type 1150'],
+      [500, 'g', 'Probemehl'],
+      [1000, 'g', 'Wasser'],
+      [0.5, 'g', 'Testhefe'],
+      [1, null, 'Ei (50g)'],
+      [1, null, 'Ei + 50g Sahne'],
+      [2, 'TL', 'Probepulver'],
+      [3, null, 'EL-Maß Saat'],
+      [100, 'g', ', fein gemahlen'],
+      [null, null, 'Wasser zum Besprühen'],
+      [null, null, 'ca. 3 kg Testäpfel'],
+    ])
+  })
+
+  it('halbe Zahlen, Spannen und Rechnungen bleiben Text - Menge offen', () => {
+    const lines = [
+      '1.5 kg Testmehl',
+      '1/2 TL Salz',
+      '3-6 g Testhefe',
+      '3 – 6 g Testhefe',
+      '2 bis 3 EL Wasser',
+      '2 x 500 g Probebutter',
+      '500 g + 50 g Testmehl',
+      '405er Testmehl',
+      '5-Korn-Probemischung',
+      '00-Testmehl',
+      '50% Probesahne',
+    ]
+    expect(ingredientsOf(lines)).toEqual(lines.map((l) => [null, null, l]))
+  })
+
+  it('eine solche Zeile bleibt beim Umbenennen der Gruppe wörtlich stehen', () => {
+    const text =
+      '---\ntitle: Test\n---\n\n# Test\n\n## Zutaten\n\n### Teig\n- [ ] 1.5 kg Testmehl\n- [x] 500g Wasser\n'
+    const doc = core.parseRecipeFile(text)
+    const form = formOf(doc)
+    form.parts[0].title = 'Hauptteig'
+    const result = core.applyRecipeInput(doc, form)
+    expect(result.ok).toBe(true)
+    expect(result.text).toBe(text.replace('### Teig', '### Hauptteig'))
+  })
+})
+
+describe('Gruppe umbenennen: nur die Überschrift ändert sich', () => {
+  it('Tabelle: Kopfzeile, Ausrichtung und Summenzeile bleiben', () => {
+    const text = [
+      '# Testgebäck (für 2 Stück)',
+      '',
+      '### 🌰 Füllung:',
+      '',
+      '| Zutat      | Menge (g) |',
+      '|:-----------|----------:|',
+      '| Testmehl   |     1.000 |',
+      '| Testzucker |       250 |',
+      '| **Gesamtmasse** | **1.250** |',
+      '',
+      '### Zubereitung:',
+      '- Mischen',
+      '',
+    ].join('\n')
+    const doc = core.parseRecipeFile(text)
+    expect(doc.editable).toBe(true)
+    expect(doc.model.parts[0].total).toEqual({
+      label: 'Gesamtmasse',
+      text: '1.250',
+    })
+    const form = formOf(doc)
+    form.parts[0].title = 'Creme'
+    const result = core.applyRecipeInput(doc, form)
+    expect(result.ok).toBe(true)
+    expect(changedLines(text, result.text)).toEqual({
+      removed: ['### 🌰 Füllung:'],
+      added: ['### 🌰 Creme:'],
+    })
+    expect(result.model.parts[0]).toMatchObject({
+      title: 'Creme',
+      total: { label: 'Gesamtmasse', text: '1.250' },
+    })
+
+    // umbenennen und zugleich eine Menge ändern: Kopf und Summe bleiben
+    const both = formOf(doc)
+    both.parts[0].title = 'Creme'
+    both.parts[0].ingredients[1].amount = 300
+    const edited = core.applyRecipeInput(doc, both)
+    expect(edited.ok).toBe(true)
+    expect(changedLines(text, edited.text)).toEqual({
+      removed: ['### 🌰 Füllung:', '| Testzucker |       250 |'],
+      added: ['### 🌰 Creme:', '| Testzucker | 300 |'],
+    })
+    expect(edited.model.parts[0].total).toEqual({
+      label: 'Gesamtmasse',
+      text: '1.250',
+    })
+  })
+
+  it('die unbenannte Gruppe einer Tabellendatei bekommt einen Namen', () => {
+    const doc = parse('special/Probe-Dünnbrot')
+    expect(doc.model.parts[0].title).toBeNull()
+    expect(doc.model.parts[0].total).not.toBeNull()
+    const form = formOf(doc)
+    form.parts[0].title = 'Teig'
+    const result = core.applyRecipeInput(doc, form)
+    expect(result.ok).toBe(true)
+    const diff = changedLines(doc.text, result.text)
+    expect(diff.removed).toHaveLength(1)
+    expect(diff.added).toHaveLength(1)
+    expect(diff.added[0]).toMatch(/^#+ Teig:?$/)
+    expect(lines(result.text)).toHaveLength(lines(doc.text).length)
+    expect(result.model.parts[0].total).toEqual(doc.model.parts[0].total)
+  })
+
+  it('mehrere Teile: der umbenannte behält seine Tabelle, die anderen ihren Platz', () => {
+    const doc = parse('fillings/Gefüllte-Testkränze.md')
+    const form = formOf(doc)
+    form.parts[2].title = 'Umbenannte Füllung'
+    const result = core.applyRecipeInput(doc, form)
+    expect(result.ok).toBe(true)
+    const diff = changedLines(doc.text, result.text)
+    expect(diff.removed).toHaveLength(1)
+    expect(diff.added).toHaveLength(1)
+    expect(diff.added[0]).toMatch(/Umbenannte Füllung/)
+  })
+
+  it('Liste: abgehakte Kästchen, Schreibweisen und Leerzeilen bleiben', () => {
+    const text = [
+      '---',
+      'title: Test',
+      '---',
+      '',
+      '# Test',
+      '',
+      '## Zutaten',
+      '',
+      '### Vorteig (am Vortag)',
+      '',
+      '- [x] 1.000 g Testmehl',
+      '- [ ] 500g Wasser',
+      '',
+      '- [ ] 0,50 g Testhefe',
+      '',
+      '### Hauptteig',
+      '- [ ] 20 g Salz',
+      '',
+      '## Zubereitung',
+      '',
+      '### Teig',
+      '1) Kneten',
+      '2) Ruhen lassen',
+      '',
+    ].join('\n')
+    const doc = core.parseRecipeFile(text)
+    expect(doc.editable).toBe(true)
+    const form = formOf(doc)
+    form.parts[0].title = 'Sauerteig'
+    form.steps[0].title = 'Hauptteig kneten'
+    const result = core.applyRecipeInput(doc, form)
+    expect(result.ok).toBe(true)
+    expect(changedLines(text, result.text)).toEqual({
+      removed: ['### Vorteig (am Vortag)', '### Teig'],
+      added: ['### Sauerteig', '### Hauptteig kneten'],
+    })
+    expect(lines(result.text)).toHaveLength(lines(text).length)
+
+    // der Name fällt weg: die Zeilen bleiben, die Überschrift geht
+    const unnamed = formOf(doc)
+    unnamed.parts[0].title = null
+    const plain = core.applyRecipeInput(doc, unnamed)
+    expect(plain.ok).toBe(true)
+    expect(changedLines(text, plain.text)).toEqual({
+      removed: ['### Vorteig (am Vortag)'],
+      added: [],
+    })
+  })
+
+  it('jede Beispieldatei, jede Gruppe: nur die Überschrift ändert sich', () => {
+    expect(renameFailures(FIXTURE_FILES)).toEqual([])
+  })
+
+  it('eine neue Gruppe an der Stelle einer gelöschten erbt nichts', () => {
+    const doc = parse('special/Probe-Dünnbrot')
+    const form = formOf(doc)
+    form.parts = [
+      {
+        title: 'Ganz neu',
+        ingredients: [{ name: 'Testwasser', amount: 5, unit: 'g' }],
+      },
+    ]
+    const result = core.applyRecipeInput(doc, form)
+    expect(result.ok).toBe(true)
+    // die Summenzeile gehörte zur gelöschten Gruppe
+    expect(result.model.parts[0].total).toBeNull()
+    expect(result.text).not.toMatch(/Gesamtmasse/)
   })
 })
 
@@ -1086,6 +1453,77 @@ describe('Suche und Backzettel-Verweise', () => {
     ).toBeNull()
   })
 
+  it('nach einer Änderung muss der Verweis denselben Rezeptteil treffen', () => {
+    const doc = parse('fillings/Gefüllte-Testkränze.md')
+    const before = backzettelRecipes.parseFillingRecipes(doc.text)
+    const after = (change) => {
+      const form = formOf(doc)
+      change(form.parts)
+      const result = core.applyRecipeInput(doc, form)
+      expect(result.ok).toBe(true)
+      return backzettelRecipes.parseFillingRecipes(result.text)
+    }
+    const extra = (title) => ({
+      title,
+      ingredients: [{ name: 'Testwasser', amount: 5, unit: 'g' }],
+    })
+    const nuss = { id: 'nuss', section: 'Testnussfüllung' }
+    const schoko = { id: 'probeschoko' }
+    const check = (list, reference) =>
+      backzettelRecipes.referenceAfterEdit(before, list, reference)
+
+    // Mengen ändern, Teile dahinter anfügen, umsortieren: derselbe Teil
+    const edited = after((parts) => {
+      parts[0].ingredients[0].amount = 1400
+      parts.push(extra('Probeschoko Light'))
+      parts.reverse()
+    })
+    expect(check(edited, nuss)).toEqual({ ok: true })
+    expect(check(edited, schoko)).toMatchObject({ ok: false })
+    const appended = after((parts) => parts.push(extra('Probeschoko Light')))
+    expect(check(appended, schoko)).toEqual({ ok: true })
+
+    // umbenannt oder entfernt: der Verweis ginge ins Leere
+    expect(
+      check(
+        after((parts) => {
+          parts[0].title = 'Haselnussfüllung'
+        }),
+        nuss
+      )
+    ).toEqual({
+      ok: false,
+      reason: 'missing',
+      was: 'Testnussfüllung',
+      now: null,
+    })
+    // gleicher Name davor: der Verweis träfe die neuen Zutaten (5 g statt 1750 g)
+    const twice = after((parts) => parts.unshift(extra('Testnussfüllung')))
+    expect(backzettelRecipes.findRecipeForReference(twice, nuss).batch_g).toBe(
+      5
+    )
+    expect(check(twice, nuss)).toEqual({
+      ok: false,
+      reason: 'duplicate',
+      was: 'Testnussfüllung',
+      now: 'Testnussfüllung',
+    })
+    // gleicher Anfang davor: der Verweis über die id träfe den neuen Teil
+    expect(
+      check(
+        after((parts) => parts.splice(1, 0, extra('Probeschoko Light'))),
+        schoko
+      )
+    ).toEqual({
+      ok: false,
+      reason: 'redirected',
+      was: 'Probeschokofüllung',
+      now: 'Probeschoko Light',
+    })
+    // was vorher schon ins Leere zeigte, sperrt nichts
+    expect(check(twice, { id: 'mohn' })).toEqual({ ok: true })
+  })
+
   it('Commit-Betreff ohne Zeilenumbruch', () => {
     expect(
       core.commitSubject('create', 'Test\nbrot', 'breads/testbrot.md')
@@ -1166,6 +1604,10 @@ describeReal('echte Rezepte aus hq (lokal)', () => {
         failures.push(`${f.category} #${index + 1}: ${changed}`)
     })
     expect(failures).toEqual([])
+  })
+
+  it('jede bearbeitbare Datei, jede Gruppe: umbenennen ändert nur die Überschrift', () => {
+    expect(renameFailures(real)).toEqual([])
   })
 
   it('der Backzettel liest jede Datei wie die Rezeptverwaltung ihre Tabellen', () => {

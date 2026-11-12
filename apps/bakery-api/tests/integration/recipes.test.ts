@@ -814,6 +814,18 @@ describe('writing without HQ_WRITE_DIR (development)', () => {
         },
         'validation',
       ],
+      [
+        {
+          // ein Hinweis, der als Menge gelesen würde
+          parts: [
+            {
+              title: null,
+              ingredients: [{ name: 'A', amount: null, note: '5 g' }],
+            },
+          ],
+        },
+        'validation',
+      ],
       [{ title: 'Kuchen (hell)', yield: null }, 'invalid_recipe_file'],
       [{ category: 'teige' }, 'invalid_category'],
       [{ category: '../breads' }, 'invalid_category'],
@@ -835,6 +847,110 @@ describe('writing without HQ_WRITE_DIR (development)', () => {
       .set(owner)
       .send(formOf(recipe))
     expect(unknown.status).toBe(404)
+  })
+
+  it('never turns the start of a name into an amount (400, nothing written)', async () => {
+    const names = ['1050 Testmehl', '1 Prise Salz', '2 Eier']
+    for (const name of names) {
+      const created = await request(app)
+        .post('/api/recipes')
+        .set(lead)
+        .send({
+          title: 'Zahlentest',
+          category: 'breads',
+          parts: [{ title: null, ingredients: [{ name, amount: null }] }],
+        })
+      expect(created.status).toBe(400)
+      expect(created.body).toMatchObject({
+        success: false,
+        error: 'validation',
+        message: expect.stringMatching(/beginnt mit einer Zahl.*„Menge“/),
+      })
+    }
+    expect(
+      fs.existsSync(path.join(hq.recipesDir, 'breads/zahlentest.md'))
+    ).toBe(false)
+
+    // eine Zahl, die zum Namen gehört, bleibt Name - Menge offen
+    const ok = await request(app)
+      .post('/api/recipes')
+      .set(lead)
+      .send({
+        title: 'Zahlentest',
+        category: 'breads',
+        parts: [
+          {
+            title: null,
+            ingredients: [
+              { name: '405er Testmehl', amount: null },
+              { name: '5-Korn-Probemischung', amount: null },
+            ],
+          },
+        ],
+      })
+    expect(ok.status).toBe(201)
+    expect(ok.body.data.parts[0].ingredients).toEqual([
+      { name: '405er Testmehl', amount: null, unit: null, note: null },
+      { name: '5-Korn-Probemischung', amount: null, unit: null, note: null },
+    ])
+    expect(readRecipe(hq.recipesDir, 'breads/zahlentest.md')).toContain(
+      '- [ ] 405er Testmehl\n- [ ] 5-Korn-Probemischung\n'
+    )
+
+    // dasselbe beim Ändern eines Rezepts im Listenformat
+    const recipe = await get(app, 'breads/probelaib')
+    const before = readRecipe(hq.recipesDir, 'breads/Probelaib.md')
+    const parts = JSON.parse(JSON.stringify(recipe.parts))
+    parts[0].ingredients.push({ name: '1050 Testmehl', amount: null })
+    const put = await request(app)
+      .put('/api/recipes/breads/probelaib')
+      .set(lead)
+      .send({ ...formOf(recipe), parts })
+    expect(put.status).toBe(400)
+    expect(put.body).toMatchObject({ error: 'validation' })
+    // ein Hinweis hat im Listenformat kein eigenes Feld
+    const noted = JSON.parse(JSON.stringify(recipe.parts))
+    noted[0].ingredients.push({
+      name: 'Zimt',
+      amount: 2,
+      unit: 'g',
+      note: 'gemahlen',
+    })
+    const note = await request(app)
+      .put('/api/recipes/breads/probelaib')
+      .set(lead)
+      .send({ ...formOf(recipe), parts: noted })
+    expect(note.status).toBe(400)
+    expect(note.body).toMatchObject({
+      error: 'validation',
+      message: expect.stringMatching(/keinen eigenen Hinweis/),
+    })
+    expect(readRecipe(hq.recipesDir, 'breads/Probelaib.md')).toBe(before)
+  })
+
+  it('renaming a part keeps its table, sum row and every other line', async () => {
+    const recipe = await get(app, 'special/probe-duennbrot')
+    const before = readRecipe(hq.recipesDir, 'special/Probe-Dünnbrot')
+    expect(recipe.parts[0]).toMatchObject({
+      title: null,
+      total: { label: 'Gesamtmasse' },
+    })
+    const parts = JSON.parse(JSON.stringify(recipe.parts))
+    parts[0].title = 'Teig'
+    const res = await request(app)
+      .put('/api/recipes/special/probe-duennbrot')
+      .set(lead)
+      .send({ ...formOf(recipe), parts })
+    expect(res.status).toBe(200)
+    expect(res.body.data.parts[0]).toMatchObject({
+      title: 'Teig',
+      total: recipe.parts[0].total,
+    })
+    const after = readRecipe(hq.recipesDir, 'special/Probe-Dünnbrot')
+    const a = before.split('\n')
+    const b = after.split('\n')
+    expect(b).toHaveLength(a.length)
+    expect(b.filter((line, i) => line !== a[i])).toEqual(['### Teig:'])
   })
 
   it('teig recipes cannot be changed or deleted', async () => {
@@ -1012,6 +1128,145 @@ describe('writing without HQ_WRITE_DIR (development)', () => {
         .send({ ...formOf(recipe), parts: free })
       expect(ok.status).toBe(200)
     })
+
+    it('a new part cannot take the place of the one the Backzettel reads (409)', async () => {
+      const recipe = await get(app, ID)
+      const before = readRecipe(hq.recipesDir, FILE)
+      const extra = (title: string) => ({
+        title,
+        ingredients: [{ name: 'Testwasser', amount: 5, unit: 'g' }],
+      })
+      const put = (parts: unknown[]) =>
+        request(app)
+          .put(`/api/recipes/${ID}`)
+          .set(lead)
+          .send({ ...formOf(recipe), parts })
+
+      // derselbe Name noch einmal, davor: der Verweis über `section` fände den neuen
+      const twice = await put([extra('Testnussfüllung'), ...recipe.parts])
+      expect(twice.status).toBe(409)
+      expect(twice.body).toMatchObject({
+        error: 'recipe_section_in_use',
+        message: expect.stringMatching(/„Testnussfüllung“.*nur einmal/),
+      })
+      // auch dahinter bleibt der Name einmalig
+      expect(
+        (await put([...recipe.parts, extra('Testnussfüllung')])).status
+      ).toBe(409)
+      // gleicher Anfang, davor: der Verweis über die id (probeschoko) fände den neuen
+      const light = await put([
+        recipe.parts[0],
+        extra('Probeschoko Light'),
+        ...recipe.parts.slice(1),
+      ])
+      expect(light.status).toBe(409)
+      expect(light.body).toMatchObject({
+        error: 'recipe_section_in_use',
+        message: expect.stringMatching(
+          /„Probeschokofüllung“.*stattdessen „Probeschoko Light“/
+        ),
+      })
+      expect(light.body.usedByBackzettel).toHaveLength(2)
+      expect(readRecipe(hq.recipesDir, FILE)).toBe(before)
+
+      // dahinter eingeordnet liest der Backzettel weiter denselben Teil
+      const behind = await put([...recipe.parts, extra('Probeschoko Light')])
+      expect(behind.status).toBe(200)
+      expect(readRecipe(hq.recipesDir, FILE)).toContain('### Probeschoko Light')
+    })
+
+    it('unreadable Backzettel master data lock delete, move and part names instead of unlocking them', async () => {
+      const recipe = await get(app, ID)
+      const before = readRecipe(hq.recipesDir, FILE)
+      // eine Handänderung in hq, die das YAML bricht
+      fs.appendFileSync(hq.configPath, 'fillings: [unclosed\n  - : :\n')
+      const error = jest
+        .spyOn(console, 'error')
+        .mockImplementation(() => undefined)
+      try {
+        const broken = await get(app, ID)
+        expect(broken).toMatchObject({
+          deletable: false,
+          deleteBlockedReason: expect.stringMatching(
+            /Stammdaten des Backzettels .* nicht lesen/
+          ),
+        })
+        const del = await request(app)
+          .delete(`/api/recipes/${ID}`)
+          .set(lead)
+          .send({ expectedVersion: recipe.version })
+        expect(del.status).toBe(409)
+        expect(del.body).toMatchObject({
+          success: false,
+          error: 'backzettel_config_unreadable',
+          message: expect.stringMatching(/nicht lesen/),
+        })
+        const move = await request(app)
+          .put(`/api/recipes/${ID}`)
+          .set(owner)
+          .send({ ...formOf(recipe), category: 'cakes' })
+        expect(move.status).toBe(409)
+        expect(move.body).toMatchObject({
+          error: 'backzettel_config_unreadable',
+        })
+        const renamed = JSON.parse(JSON.stringify(recipe.parts))
+        renamed[0].title = 'Haselnussfüllung'
+        const rename = await request(app)
+          .put(`/api/recipes/${ID}`)
+          .set(lead)
+          .send({ ...formOf(recipe), parts: renamed })
+        expect(rename.status).toBe(409)
+        expect(rename.body).toMatchObject({
+          error: 'backzettel_config_unreadable',
+        })
+        expect(readRecipe(hq.recipesDir, FILE)).toBe(before)
+        // auch ein Rezept, auf das (soweit bekannt) nichts zeigt
+        const other = await get(app, 'cakes/testkuchen')
+        expect(other.deletable).toBe(false)
+        const otherDel = await request(app)
+          .delete('/api/recipes/cakes/testkuchen')
+          .set(owner)
+          .send({ expectedVersion: other.version })
+        expect(otherDel.status).toBe(409)
+        expect(
+          fs.existsSync(path.join(hq.recipesDir, 'cakes/Testkuchen.md'))
+        ).toBe(true)
+
+        // Mengen ändern geht weiter
+        const parts = JSON.parse(JSON.stringify(recipe.parts))
+        parts[0].ingredients[1].amount = 480
+        const edit = await request(app)
+          .put(`/api/recipes/${ID}`)
+          .set(lead)
+          .send({ ...formOf(recipe), parts })
+        expect(edit.status).toBe(200)
+      } finally {
+        error.mockRestore()
+      }
+
+      // repariert: wieder der genaue Grund
+      fs.writeFileSync(hq.configPath, BACKZETTEL_REFERENCES)
+      const again = await get(app, ID)
+      expect(again.usedByBackzettel).toHaveLength(2)
+      const del = await request(app)
+        .delete(`/api/recipes/${ID}`)
+        .set(lead)
+        .send({ expectedVersion: again.version })
+      expect(del.status).toBe(409)
+      expect(del.body).toMatchObject({ error: 'recipe_in_use' })
+    })
+  })
+
+  it('without config/backzettel.yaml nothing is referenced - delete works', async () => {
+    const plain = makeRecipesHq()
+    const other = appWith(plain)
+    const recipe = await get(other, 'fillings/gefuellte-testkraenze')
+    expect(recipe).toMatchObject({ usedByBackzettel: [], deletable: true })
+    const del = await request(other)
+      .delete('/api/recipes/fillings/gefuellte-testkraenze')
+      .set(lead)
+      .send({ expectedVersion: recipe.version })
+    expect(del.status).toBe(200)
   })
 })
 
@@ -1431,7 +1686,7 @@ describe('writing with HQ_WRITE_DIR (git worktree on app/edits)', () => {
     }
   })
 
-  it('a recipe that is only in the approved version is edited into the worktree; deleting waits', async () => {
+  it('a recipe that is only in the approved version waits for the worktree: no edit, no delete (409)', async () => {
     // ein Schreib-Worktree, der das Rezept (noch) nicht hat
     fs.rmSync(writeFile('cakes/Testkuchen.md'))
     git(writeRoot, 'commit', '-q', '-am', 'fehlt hier')
@@ -1450,24 +1705,82 @@ describe('writing with HQ_WRITE_DIR (git worktree on app/edits)', () => {
     const other = appWith(fresh, bare, { allowDelete: true })
     const recipe = await get(other, 'cakes/nur-freigegeben')
     expect(recipe).toMatchObject({ pending: null, editable: true })
+    const head = git(bare, 'rev-parse', 'HEAD')
+    const inWorktree = path.join(bare, 'data/recipes/cakes/Nur-freigegeben.md')
     const del = await request(other)
       .delete('/api/recipes/cakes/nur-freigegeben')
       .set(lead)
       .send({ expectedVersion: recipe.version })
     expect(del.status).toBe(409)
     expect(del.body).toMatchObject({ error: 'hq_write_out_of_sync' })
+    // Ändern legte die Datei im Worktree neu an - beim nächsten Rebase auf
+    // main kollidierte sie mit der dortigen (add/add), die PR bliebe stehen
     const put = await request(other)
       .put('/api/recipes/cakes/nur-freigegeben')
       .set(lead)
       .send({ ...formOf(recipe), yield: '1 Stück' })
-    expect(put.status).toBe(200)
-    expect(put.body.data).toMatchObject({
-      pending: 'changed',
-      yield: '1 Stück',
+    expect(put.status).toBe(409)
+    expect(put.body).toMatchObject({
+      success: false,
+      error: 'hq_write_out_of_sync',
+      message: expect.stringMatching(/noch nicht angekommen/),
     })
-    expect(git(bare, 'show', '--name-status', '--format=', 'HEAD')).toBe(
-      'A\tdata/recipes/cakes/Nur-freigegeben.md'
+    const move = await request(other)
+      .put('/api/recipes/cakes/nur-freigegeben')
+      .set(lead)
+      .send({ ...formOf(recipe), category: 'special' })
+    expect(move.status).toBe(409)
+    expect(move.body).toMatchObject({ error: 'hq_write_out_of_sync' })
+    expect(git(bare, 'rev-parse', 'HEAD')).toBe(head)
+    expect(git(bare, 'status', '--porcelain')).toBe('')
+    expect(fs.existsSync(inWorktree)).toBe(false)
+    // ein Speichern ohne Änderung schreibt ohnehin nichts
+    const same = await request(other)
+      .put('/api/recipes/cakes/nur-freigegeben')
+      .set(lead)
+      .send(formOf(recipe))
+    expect(same.status).toBe(200)
+    expect(same.body).toMatchObject({ changed: false })
+    expect(fs.existsSync(inWorktree)).toBe(false)
+
+    // sobald der Worktree die Datei hat (Rebase auf main), geht es
+    fs.copyFileSync(
+      path.join(fresh.recipesDir, 'cakes', 'Nur-freigegeben.md'),
+      inWorktree
     )
+    git(bare, 'add', '-A')
+    git(bare, 'commit', '-q', '-m', 'main: Rezept angekommen')
+    const later = await request(other)
+      .put('/api/recipes/cakes/nur-freigegeben')
+      .set(lead)
+      .send({ ...formOf(recipe), yield: '1 Stück' })
+    expect(later.status).toBe(200)
+    expect(git(bare, 'show', '--name-status', '--format=', 'HEAD')).toBe(
+      'M\tdata/recipes/cakes/Nur-freigegeben.md'
+    )
+  })
+
+  it('unreadable Backzettel master data in the worktree lock delete even when the read clone is fine', async () => {
+    const recipe = await get(app, 'cakes/testkuchen')
+    expect(recipe.deletable).toBe(true)
+    fs.writeFileSync(
+      path.join(writeRoot, 'config', 'backzettel.yaml'),
+      'fillings:\n  - { id: nuss\n'
+    )
+    const error = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined)
+    try {
+      const del = await request(app)
+        .delete('/api/recipes/cakes/testkuchen')
+        .set(owner)
+        .send({ expectedVersion: recipe.version })
+      expect(del.status).toBe(409)
+      expect(del.body).toMatchObject({ error: 'backzettel_config_unreadable' })
+      expect(fs.existsSync(writeFile('cakes/Testkuchen.md'))).toBe(true)
+    } finally {
+      error.mockRestore()
+    }
   })
 })
 

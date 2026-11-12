@@ -318,15 +318,45 @@ function emptyIngredient() {
   return { name: '', amount: null, unit: null, note: null }
 }
 
+const LIST_NUMBER = /^(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d+)?/
+
+/** Nach einer Menge steht nichts mehr, ein Leerzeichen, eine Klammer oder `, `. */
+function endsQuantity(rest) {
+  return rest === '' || /^(?:\s|\(|[,;]\s)/.test(rest)
+}
+
+/** `2 x 500 g`, `3 - 6 g`, `2 bis 3 EL`, `500 g + 50 g`: keine einzelne Menge. */
+const QUANTITY_CONTINUES = /^\s*(?:[x×*/+–—-]|bis\s)\s*\d/i
+
+/**
+ * Die Menge am Anfang einer Listenzeile - nur, wenn die Zahl für sich
+ * steht. `405er Mehl`, `5-Korn-Mischung`, `1.5 kg`, `1/2 TL`, `3-6 g` und
+ * `2 x 500 g` sind keine Menge, die sich als Zahl lesen lässt: dann bleibt
+ * die ganze Zeile der Name und die Menge offen (nie eine halbe Zahl).
+ * @returns {{amount: number, unit: string|null, rest: string}|null}
+ */
+function readListQuantity(body) {
+  const q = readQuantity(body)
+  if (q.amount === null || q.approx) return null
+  let found = q
+  if (!endsQuantity(q.rest)) {
+    // `3 EL-Maß`: die Einheit klebt am Namen - dann zählt nur die Zahl.
+    if (q.unit === null) return null
+    const rest = body.slice(LIST_NUMBER.exec(body)[0].length)
+    if (!endsQuantity(rest)) return null
+    found = { amount: q.amount, unit: null, rest }
+  }
+  if (QUANTITY_CONTINUES.test(found.rest)) return null
+  return found
+}
+
 /** `- [ ] 100 g Weizenmehl` → Zutat; `note` gibt es in der Listenform nicht. */
 function parseListIngredient(text) {
   const m = LIST_ITEM.exec(text)
   if (!m) return null
   const body = m[4].trim()
-  const q = readQuantity(body)
-  if (q.amount === null || q.approx) {
-    return { ...emptyIngredient(), name: body }
-  }
+  const q = readListQuantity(body)
+  if (!q) return { ...emptyIngredient(), name: body }
   return {
     name: q.rest.trim(),
     amount: roundAmount(q.amount),
@@ -341,8 +371,7 @@ function renderListIngredient(v, marker) {
     parts.push(formatAmount(v.amount, 'list'))
     if (v.unit) parts.push(v.unit)
   }
-  const name = v.note ? `${v.name} (${v.note})`.trim() : v.name
-  if (name) parts.push(name)
+  if (v.name) parts.push(v.name)
   return `${marker}${parts.join(' ')}`
 }
 
@@ -1355,13 +1384,7 @@ function parseRecipeFile(text, options) {
     : partSections.map((s) => s.chunk)
   model.parts = partChunks.map((chunk) => ({
     ...chunk.value,
-    total:
-      chunk.totals.length > 0
-        ? {
-            label: chunk.totals[0].cells[0].replace(/^\*\*|\*\*$/g, '').trim(),
-            text: (chunk.totals[0].cells[1] || '').replace(/\*\*/g, '').trim(),
-          }
-        : null,
+    total: totalOf(chunk),
   }))
   if (ingredientsSection) {
     const untitled = ingredientsSection.chunks.findIndex(
@@ -1729,32 +1752,103 @@ function createOutput(eol) {
   }
 }
 
-/** Ordnet neuen Gruppen die alten zu: gleicher Platz und Titel zuerst, dann gleicher Titel. */
-function matchChunks(values, chunks) {
+/**
+ * Ordnet neuen Gruppen die alten zu: gleicher Platz und Titel zuerst, dann
+ * gleicher Titel. Eine umbenannte Gruppe hat keinen Titel mehr gemeinsam -
+ * sie wird am Inhalt erkannt (`sameContent`: derselbe Inhalt; sonst
+ * `related`: am selben Platz oder irgendwo ein gemeinsamer Eintrag), damit
+ * ihre Zeilen, die Tabellenkopfzeile und die Summenzeile stehen bleiben.
+ */
+function matchChunks(values, chunks, sameContent, related) {
   const used = new Set()
-  const match = values.map((value, j) => {
-    if (chunks[j] && chunks[j].title === value.title) {
-      used.add(j)
-      return chunks[j]
-    }
-    return null
-  })
-  values.forEach((value, j) => {
-    if (match[j]) return
-    const k = chunks.findIndex(
-      (c, idx) => !used.has(idx) && c.title === value.title
-    )
-    if (k >= 0) {
-      used.add(k)
-      match[j] = chunks[k]
-    }
-  })
+  const match = values.map(() => null)
+  const take = (j, k) => {
+    used.add(k)
+    match[j] = chunks[k]
+  }
+  const pass = (find) => {
+    values.forEach((value, j) => {
+      if (match[j]) return
+      const k = find(value, j)
+      if (k >= 0) take(j, k)
+    })
+  }
+  const free = (k) => k >= 0 && k < chunks.length && !used.has(k)
+  pass((value, j) => (free(j) && chunks[j].title === value.title ? j : -1))
+  pass((value) =>
+    chunks.findIndex((c, k) => free(k) && c.title === value.title)
+  )
+  pass((value) =>
+    chunks.findIndex((c, k) => free(k) && sameContent(c.value, value))
+  )
+  pass((value, j) => (free(j) && related(chunks[j].value, value) ? j : -1))
+  pass((value) =>
+    chunks.findIndex((c, k) => free(k) && related(c.value, value))
+  )
   return match
 }
 
-function headingLine(level, title, original, eol) {
-  if (original !== null && original !== undefined) return original
-  return `${'#'.repeat(level)} ${title}${eol}`
+function sameIngredients(a, b) {
+  return sameList(a.ingredients, b.ingredients, sameIngredient)
+}
+
+/** Mindestens eine gemeinsame Zutat (oder beide leer). */
+function relatedPart(a, b) {
+  if (a.ingredients.length === 0 && b.ingredients.length === 0) return true
+  return a.ingredients.some((x) =>
+    b.ingredients.some((y) => sameIngredient(x, y))
+  )
+}
+
+function sameItems(a, b) {
+  return a.ordered === b.ordered && sameList(a.items, b.items, Object.is)
+}
+
+function relatedGroup(a, b) {
+  if (a.items.length === 0 && b.items.length === 0) return true
+  return a.items.some((x) => b.items.includes(x))
+}
+
+function matchParts(parts, chunks) {
+  return matchChunks(parts, chunks, sameIngredients, relatedPart)
+}
+
+function matchSteps(groups, chunks) {
+  return matchChunks(groups, chunks, sameItems, relatedGroup)
+}
+
+/**
+ * Überschrift einer Gruppe. Unverändert: die Zeile der Datei. Umbenannt: die
+ * Zier der alten Zeile bleibt (`### 🌰 Füllung:` → `### 🌰 Creme:`).
+ * `title` ist der Name im Modell (`null` = unbenannt), `shown` der Text der
+ * Überschrift (im Tabellenformat heißt die unbenannte Gruppe „Zutaten“).
+ */
+function groupHeading(level, title, shown, original, rawLines, eol) {
+  const raw =
+    original && original.headingLine !== null
+      ? rawLines[original.headingLine]
+      : null
+  if (raw !== null && original.title === title) return withEol(raw, eol)
+  const old = raw !== null ? HEADING.exec(lineText(raw)) : null
+  if (!old || title === null) return `${'#'.repeat(level)} ${shown}${eol}`
+  // „Zutaten:“ → „Teig:“ behält nur den Doppelpunkt, ein Name auch sein Emoji.
+  const prefix =
+    original.title === null ? '' : (/^[^\p{L}\p{N}]+/u.exec(old[2]) || [''])[0]
+  const suffix = (/:\s*$/.exec(old[2]) || [''])[0].trimEnd()
+  return `${old[1]} ${prefix}${shown}${suffix}${eol}`
+}
+
+/**
+ * Die Zeilen einer Gruppe ohne ihre Überschrift, wie sie in der Datei
+ * stehen - für eine Gruppe, die nur anders heißt. Ohne neue Überschrift
+ * (`headed` falsch) fallen die Leerzeilen davor weg.
+ */
+function groupBodyRaw(original, rawLines, eol, headed) {
+  const from =
+    original.headingLine !== null ? original.headingLine + 1 : original.start
+  const body = rawLines.slice(from, original.end)
+  while (!headed && body.length > 0 && isBlank(lineText(body[0]))) body.shift()
+  return body.map((raw) => withEol(raw, eol)).join('')
 }
 
 /** Rohzeile wiederverwenden, wenn sie genau diesen Wert trägt. */
@@ -1770,31 +1864,22 @@ function withEol(raw, eol) {
 }
 
 function renderPartChunk(value, original, options) {
-  const { eol, style, level, headed } = options
+  const { eol, style, level, headed, rawLines } = options
   const defaultUnit = original ? original.defaultUnit : null
   if (original && samePart(original.value, value)) return original.raw
   let out = ''
   const title =
     value.title === null && headed ? SECTION_TITLES.ingredients : value.title
   if (title !== null) {
-    const keep =
-      original &&
-      original.headingLine !== null &&
-      original.title === value.title
-    out += withEol(
-      headingLine(
-        level,
-        title,
-        keep ? options.rawLines[original.headingLine] : null,
-        eol
-      ),
-      eol
-    )
+    out += groupHeading(level, value.title, title, original, rawLines, eol)
+  }
+  // Nur der Name ist anders: alle Zeilen bleiben, wie sie sind.
+  if (original && sameIngredients(original.value, value)) {
+    return out + groupBodyRaw(original, rawLines, eol, out !== '')
   }
   if (style === 'table') {
     if (original && original.head.length > 0) {
-      for (const line of original.head)
-        out += withEol(options.rawLines[line], eol)
+      for (const line of original.head) out += withEol(rawLines[line], eol)
     } else {
       out += `| Zutat | Menge |${eol}|-------|-------|${eol}`
     }
@@ -1810,7 +1895,7 @@ function renderPartChunk(value, original, options) {
   }
   if (original) {
     for (const total of original.totals)
-      out += withEol(options.rawLines[total.line], eol)
+      out += withEol(rawLines[total.line], eol)
   }
   return out
 }
@@ -1821,23 +1906,21 @@ function renderStepItem(text, number, ordered) {
 }
 
 function renderStepChunk(value, original, options) {
-  const { eol, level } = options
+  const { eol, level, rawLines } = options
   if (original && sameGroup(original.value, value)) return original.raw
   let out = ''
   if (value.title !== null) {
-    const keep =
-      original &&
-      original.headingLine !== null &&
-      original.title === value.title
-    out += withEol(
-      headingLine(
-        level,
-        value.title,
-        keep ? options.rawLines[original.headingLine] : null,
-        eol
-      ),
+    out += groupHeading(
+      level,
+      value.title,
+      value.title,
+      original,
+      rawLines,
       eol
     )
+  }
+  if (original && sameItems(original.value, value)) {
+    return out + groupBodyRaw(original, rawLines, eol, out !== '')
   }
   const used = new Set()
   const items = original ? original.items : []
@@ -1857,11 +1940,10 @@ function renderStepChunk(value, original, options) {
 }
 
 /** Gruppen mit ihren alten Zwischenräumen; neue bekommen eine Leerzeile. */
-function renderChunks(values, chunks, gaps, render, eol) {
-  const match = matchChunks(values, chunks)
+function renderChunks(values, match, gaps, render, eol) {
   let out = ''
   values.forEach((value, j) => {
-    out += withEol(render(value, match[j]), eol)
+    out += withEol(render(value, match[j] || null), eol)
     if (j + 1 < values.length) {
       out +=
         gaps[j] !== undefined
@@ -1874,8 +1956,8 @@ function renderChunks(values, chunks, gaps, render, eol) {
   return out
 }
 
-/** Was die Datei aus einer Zutat macht (Liste: Hinweis im Namen, Tabelle: Einheit der Spalte). */
-function canonicalIngredient(ing, style, defaultUnit, marker) {
+/** Die Zutat, wie die Datei sie nach dem Schreiben wieder läse. */
+function rereadIngredient(ing, style, defaultUnit, marker) {
   if (style === 'table') {
     return parseTableIngredient(
       splitRow(renderTableIngredient(ing, defaultUnit)),
@@ -1885,17 +1967,53 @@ function canonicalIngredient(ing, style, defaultUnit, marker) {
   return parseListIngredient(renderListIngredient(ing, marker))
 }
 
-function canonicalParts(parts, chunks, blockStyle, marker) {
-  const match = matchChunks(parts, chunks)
+/**
+ * Warum die Datei diese Zutat anders läse, als sie eingegeben wurde -
+ * `null`, wenn sie genau so zurückkommt. Nichts wird umgedeutet: aus einem
+ * Namen wird nie eine Menge (`1050 Roggenmehl` ohne Menge wäre „1050 ×
+ * Roggenmehl“), aus einem Hinweis nie ein Teil des Namens.
+ */
+function ingredientProblem(ing, read, style) {
+  if (style !== 'table' && ing.note !== null) {
+    return 'Diese Zutatengruppe ist eine Liste und führt keinen eigenen Hinweis je Zutat. Bitte den Hinweis in den Namen schreiben, z. B. „Ei (zum Abglänzen)“.'
+  }
+  if (sameIngredient(ing, read)) return null
+  if (ing.amount === null && read.amount !== null) {
+    return style === 'table'
+      ? `Der Hinweis „${ing.note}“ würde in der Rezeptdatei als Menge gelesen. Bitte die Menge in das Feld „Menge“ eintragen.`
+      : `„${ing.name}“ beginnt mit einer Zahl, die in der Rezeptdatei als Menge gelesen würde. Bitte die Menge in das Feld „Menge“ eintragen oder den Namen umstellen (z. B. „Roggenmehl 1050“ statt „1050 Roggenmehl“).`
+  }
+  return 'Menge, Einheit und Name lassen sich so nicht eindeutig in der Rezeptdatei speichern (z. B. ein Name, der mit einer Einheit beginnt, oder Klammern im Hinweis). Bitte die Angaben in die jeweiligen Felder eintragen.'
+}
+
+/**
+ * Zutaten in der Schreibweise der Datei. Einzige Umdeutung: in einer
+ * Tabelle mit `Menge (g)` trägt eine Zahl ohne Einheit die Einheit der
+ * Spalte. Alles andere, was die Datei anders läse, wird abgelehnt.
+ * @throws {RecipeInputError}
+ */
+function canonicalParts(parts, match, blockStyle, marker) {
   return parts.map((part, j) => {
     const original = match[j]
     const style = (original && original.style) || blockStyle
     const unit = original ? original.defaultUnit : null
+    const known = original ? original.items.map((item) => item.value) : []
     return {
       title: part.title,
-      ingredients: part.ingredients.map((ing) =>
-        canonicalIngredient(ing, style, unit, marker)
-      ),
+      ingredients: part.ingredients.map((ing, i) => {
+        // Steht so in dieser Gruppe der Datei: die Zeile bleibt, wie sie ist.
+        if (known.some((value) => sameIngredient(value, ing))) return ing
+        const read = rereadIngredient(ing, style, unit, marker)
+        const wanted =
+          style === 'table' && ing.amount !== null && ing.unit === null && unit
+            ? { ...ing, unit }
+            : ing
+        const problem = ingredientProblem(wanted, read, style)
+        if (problem) {
+          fail(`Zutatengruppe ${j + 1}, Zutat ${i + 1}: ${problem}`)
+        }
+        return read
+      }),
     }
   })
 }
@@ -1906,6 +2024,19 @@ function canonicalSteps(groups) {
     ordered: group.items.length === 0 ? true : group.ordered,
     items: group.items,
   }))
+}
+
+function totalOf(chunk) {
+  if (!chunk || chunk.totals.length === 0) return null
+  return {
+    label: chunk.totals[0].cells[0].replace(/^\*\*|\*\*$/g, '').trim(),
+    text: (chunk.totals[0].cells[1] || '').replace(/\*\*/g, '').trim(),
+  }
+}
+
+function sameTotal(a, b) {
+  if (a === null || b === null) return a === b
+  return a.label === b.label && a.text === b.text
 }
 
 const UNSAFE_FILE =
@@ -1927,14 +2058,17 @@ function applyRecipeInput(doc, input, options) {
   if (!doc.editable) {
     return { ok: false, error: 'recipe_read_only', message: doc.readOnlyReason }
   }
-  let target
-  try {
-    target = normalizeRecipeInput(input, doc.model, doc.level)
-  } catch (error) {
+  const invalid = (error) => {
     if (error instanceof RecipeInputError) {
       return { ok: false, error: 'validation', message: error.message }
     }
     throw error
+  }
+  let target
+  try {
+    target = normalizeRecipeInput(input, doc.model, doc.level)
+  } catch (error) {
+    return invalid(error)
   }
 
   const { eol, regions, format, model } = doc
@@ -1975,8 +2109,21 @@ function applyRecipeInput(doc, input, options) {
         'Bei mehreren Zutatengruppen braucht jede Gruppe ab der zweiten einen Namen.',
     }
   }
-  target.parts = canonicalParts(target.parts, partChunks, blockStyle, marker)
+  // Welche Gruppe der Datei zu welcher der Eingabe gehört - einmal bestimmt,
+  // für Schreibweise, Rohtext und die Summenzeilen.
+  const partMatch = matchParts(target.parts, partChunks)
+  try {
+    target.parts = canonicalParts(target.parts, partMatch, blockStyle, marker)
+  } catch (error) {
+    return invalid(error)
+  }
   target.steps = canonicalSteps(target.steps)
+  const stepMatch = matchSteps(
+    target.steps,
+    stepsSection ? stepsSection.chunks : []
+  )
+  /** Eine Summenzeile gehört zu ihrer Gruppe und bleibt mit ihr stehen. */
+  const totals = partMatch.map(totalOf)
 
   const titleChanged = target.title !== model.title
   const categoryFm =
@@ -1995,10 +2142,10 @@ function applyRecipeInput(doc, input, options) {
   const newHeading = (type) =>
     `${'#'.repeat(sectionLevel)} ${SECTION_TITLES[type]}${eol}`
 
-  const renderParts = (values, chunks, gaps, headed) =>
+  const renderParts = (values, match, gaps, headed) =>
     renderChunks(
       values,
-      chunks,
+      match,
       gaps,
       (value, original) =>
         renderPartChunk(value, original, {
@@ -2009,10 +2156,10 @@ function applyRecipeInput(doc, input, options) {
         }),
       eol
     )
-  const renderSteps = (values, chunks, gaps) =>
+  const renderSteps = (values, match, gaps) =>
     renderChunks(
       values,
-      chunks,
+      match,
       gaps,
       (value, original) =>
         renderStepChunk(value, original, {
@@ -2205,9 +2352,7 @@ function applyRecipeInput(doc, input, options) {
           if (sameList(values, target.parts, samePart)) out.push(region.raw)
           else if (target.parts.length > 0) {
             out.push(region.head)
-            out.push(
-              renderParts(target.parts, region.chunks, region.gaps, false)
-            )
+            out.push(renderParts(target.parts, partMatch, region.gaps, false))
             out.push(region.tail)
           } else endsWithRemoval = true
         } else if (region.type === 'part') {
@@ -2223,7 +2368,7 @@ function applyRecipeInput(doc, input, options) {
             out.push(
               renderParts(
                 target.parts,
-                partSections.map((s) => s.chunk),
+                partMatch,
                 partSections.slice(0, -1).map((s) => s.tail),
                 true
               )
@@ -2235,7 +2380,7 @@ function applyRecipeInput(doc, input, options) {
           if (sameList(values, target.steps, sameGroup)) out.push(region.raw)
           else if (target.steps.length > 0) {
             out.push(region.head)
-            out.push(renderSteps(target.steps, region.chunks, region.gaps))
+            out.push(renderSteps(target.steps, stepMatch, region.gaps))
             out.push(region.tail)
           } else endsWithRemoval = true
         } else if (region.type === 'notes' || region.type === 'description') {
@@ -2283,6 +2428,8 @@ function applyRecipeInput(doc, input, options) {
     check.model.description === target.description &&
     check.model.notes === target.notes &&
     sameList(check.model.parts, target.parts, samePart) &&
+    // keine Summenzeile geht verloren oder wandert in eine andere Gruppe
+    check.model.parts.every((part, j) => sameTotal(part.total, totals[j])) &&
     sameList(check.model.steps, target.steps, sameGroup)
   if (!sameModel) {
     return { ok: false, error: 'invalid_recipe_file', message: UNSAFE_FILE }

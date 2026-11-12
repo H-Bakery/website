@@ -118,6 +118,35 @@ function findRecipeForReference(recipes, reference) {
 }
 
 /**
+ * Zeigt ein Verweis nach einer Änderung der Datei noch auf denselben
+ * Rezeptteil? „Irgendeiner wird gefunden" reicht nicht: die Suche nimmt den
+ * ersten Treffer (genauer Name, sonst gleicher Anfang), ein neuer Teil mit
+ * demselben Namen oder Anfang davor lenkte den Backzettel auf andere
+ * Zutaten. Gleich heißt: derselbe Name wie vorher, und dieser Name kommt
+ * nicht öfter vor als vorher. Was vorher schon ins Leere zeigte, bleibt frei.
+ * @param {object[]} before `parseFillingRecipes` der Datei vor der Änderung
+ * @param {object[]} after danach
+ * @param {{id?: string, section?: string|null}} reference
+ * @returns {{ok: true} | {ok: false, reason: 'missing'|'redirected'|'duplicate',
+ *   was: string, now: string|null}}
+ */
+function referenceAfterEdit(before, after, reference) {
+  const was = findRecipeForReference(before, reference)
+  if (!was) return { ok: true }
+  const now = findRecipeForReference(after, reference)
+  if (!now) return { ok: false, reason: 'missing', was: was.title, now: null }
+  if (now.title !== was.title) {
+    return { ok: false, reason: 'redirected', was: was.title, now: now.title }
+  }
+  const count = (list) =>
+    (list || []).filter((r) => r.title === was.title).length
+  if (count(after) > count(before)) {
+    return { ok: false, reason: 'duplicate', was: was.title, now: now.title }
+  }
+  return { ok: true }
+}
+
+/**
  * Skaliert ein Rezept auf `grams` Gesamtmenge. Zutaten werden auf `roundTo`
  * Gramm gerundet (Standard 10 g); eine Zutat, die gebraucht wird, rundet nie
  * auf 0, sondern auf mindestens `roundTo`.
@@ -186,6 +215,7 @@ module.exports = {
   findRecipeBySection,
   findRecipeForFilling,
   findRecipeForReference,
+  referenceAfterEdit,
   scaleRecipe,
   slugify,
 }

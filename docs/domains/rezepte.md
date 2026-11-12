@@ -45,7 +45,9 @@ Anzeige). Körper: `# Titel`, `## Beschreibung`, `## Zutaten` mit `### Gruppe` u
 am Schluss. Varianten der Zutatenzeile (Beispiele aus den erfundenen Dateien): `0,5 g Testhefe`,
 `2 TL Testsaat`, `1 Prise Musterzucker`, `4 Eier (200g)`, `1 Ei + 15g Testmilch (zum Abglänzen)`,
 Zeilen ohne Menge (`Probewasser zum Benetzen`, `Optional: Testsaat oder Probemohn`); Unterpunkte
-unter einem Schritt.
+unter einem Schritt. **Eine Zahl am Zeilenanfang ist nur dann die Menge, wenn sie für sich steht**
+(danach Leerzeichen, Klammer oder Zeilenende). `405er Testmehl`, `5-Korn-Mischung`, `1.5 kg`,
+`1/2 TL`, `3-6 g`, `2 x 500 g` bleiben ganz der Name, die Menge ist offen - nie eine halbe Zahl.
 
 **table** - `# 🍰 Name (für 3 Bleche)` (Emoji bleibt, die Klammer ist „Ergibt“), je Rezeptteil eine
 Überschrift (`### Zutaten:` = der unbenannte Teil, sonst `### 🌰 Testnussfüllung`) mit Tabelle
@@ -79,9 +81,19 @@ damit auch Produkt- und Grundmengen-Freigaben blockieren.
   `data/recipes` antwortet die Liste `status: 'no-data'`.
 - **Was das Modell nicht deutet, bleibt wörtlich** in der Datei und wird als `meta` / `sections`
   angezeigt - nie bearbeitet, nie verworfen.
-- **Die Datei entscheidet.** Nach dem Schreiben wird die Datei neu gelesen und mit der Eingabe
-  verglichen; passt es nicht (z. B. ein Titel mit Klammer am Ende in einer Tabellen-Datei), wird
-  nichts gespeichert (400 `invalid_recipe_file`).
+- **Die Datei entscheidet - und deutet nichts um.** Nach dem Schreiben wird die Datei neu gelesen
+  und mit der Eingabe verglichen; passt es nicht (z. B. ein Titel mit Klammer am Ende in einer
+  Tabellen-Datei), wird nichts gespeichert (400 `invalid_recipe_file`). Eine Zutat muss genau so
+  zurückkommen, wie sie eingegeben wurde (400 `validation` mit Gruppe und Zeile): ohne Menge wird
+  aus dem Namen nie eine Menge (`1050 Testmehl` läse die Datei als 1050 × Testmehl → abgelehnt,
+  Menge eintragen oder „Testmehl 1050“ schreiben), ein Hinweis wird nie Teil des Namens (Listen
+  haben kein Hinweis-Feld) und nie zur Menge (`5 g` als Hinweis). Einzige Umdeutung: in einer
+  Tabelle mit Spalte `Menge (g)` trägt eine Zahl ohne Einheit die Einheit der Spalte.
+- **Umbenennen ändert nur die Überschrift.** Eine Gruppe, die anders heißt (oder erst einen Namen
+  bekommt), wird am Inhalt wiedererkannt: ihre Zeilen, Tabellenkopf, Ausrichtung, abgehakte
+  Kästchen, Leerzeilen und die Summenzeile bleiben wörtlich, die Zier der Überschrift auch
+  (`### 🌰 Füllung:` → `### 🌰 Creme:`). Der Vergleich nach dem Schreiben prüft die Summenzeilen
+  mit - eine Summenzeile geht nur mit ihrer Gruppe.
 - **Stand prüfen.** Ändern und Löschen brauchen `expectedVersion`; hat sich die Datei seitdem
   geändert (auch in hq), gibt es 409 `stale_recipe` und nichts wird geschrieben.
 
@@ -90,7 +102,14 @@ damit auch Produkt- und Grundmengen-Freigaben blockieren.
 Ein Rezept, auf das `config/backzettel.yaml` mit `recipe:` zeigt (Füllungen; freigegebener Stand
 **und** wartende Änderung), lässt sich bearbeiten, aber **nicht löschen oder verschieben** (409
 `recipe_in_use`). Der Rezeptteil, den der Backzettel liest (`section`, sonst über die id), lässt
-sich nicht umbenennen oder entfernen (409 `recipe_section_in_use`). Die API liefert je Rezept
+sich nicht umbenennen oder entfernen (409 `recipe_section_in_use`) - und nicht verdrängen: nach der
+Änderung muss der Verweis **denselben** Teil treffen wie vorher (`referenceAfterEdit` in
+`backzettel-recipes.core.js`). Die Suche des Backzettels nimmt den ersten Treffer (genauer Name,
+sonst gleicher Anfang); ein neuer Teil mit demselben Namen oder mit gleichem Anfang davor lenkte
+ihn sonst still auf andere Zutaten. **Lassen sich die Stammdaten nicht lesen** (kaputtes YAML in
+einem der beiden Stände), gilt kein Rezept als unbenutzt: Löschen, Verschieben und das Umbenennen
+von Rezeptteilen sind dann gesperrt (409 `backzettel_config_unreadable`), Mengen ändern geht
+weiter. Fehlt die Datei ganz, gibt es keine Verweise. Die API liefert je Rezept
 `usedByBackzettel`; die Oberfläche sagt dazu, dass der Backzettel es verwendet. Der Backzettel
 rechnet weiter mit dem freigegebenen Stand - eine Rezeptänderung wirkt dort erst nach der Freigabe.
 
@@ -101,6 +120,11 @@ Schreib-Worktrees) und trägt `pending`: `created` (neu), `changed` (geändert) 
 (gelöscht - das Rezept bleibt bis zur Freigabe in der Liste, nur lesbar). Nach dem Merge der PR
 verschwindet die Markierung. Jede Änderung ist ein Commit mit dem Bearbeiter als `Co-authored-by`
 und steht zusätzlich im Audit-Log.
+
+Ein Rezept, das es im freigegebenen Stand schon gibt, im Schreib-Worktree aber noch nicht (hq hat
+es gerade bekommen, der Rebase steht noch aus), lässt sich solange nicht ändern, löschen oder
+verschieben (409 `hq_write_out_of_sync`, „in ein paar Minuten noch einmal“). Die Datei im Worktree
+neu anzulegen, kollidierte beim Rebase mit der von `main` und hielte die rollende PR an.
 
 **Löschen und Verschieben sind auf der Box vorerst aus** (`HQ_RECIPES_ALLOW_DELETE`): die Pfadwache
 von hq lehnt Löschungen aus `app/edits` ab. Erst einschalten, wenn hq sie unter `data/recipes/**`
@@ -142,8 +166,9 @@ nicht erst. Die Backstube sieht dieselbe Liste und Ansicht ohne „Neues Rezept"
   wegkürzen.
 - **Ansicht.** Für das Tablet in der Backstube: Zutaten und Schritte in großer Schrift (17/19 px),
   Menge rechtsbündig **vor** dem Namen wie auf dem Rezeptblatt, ab `md` Zutaten links und Zubereitung
-  rechts. Eine Zutat ohne Menge zeigt „offen" (bei Tabellen-Dateien den Text der Datei, z. B.
-  „3–6 g (nach Geschmack)"), nie 0. Notizen, Beschreibung, Schritte mit Unterpunkten und die wörtlich
+  rechts. Eine Zutat ohne Menge zeigt „offen", nie 0. Steht in der Datei statt einer Zahl ein
+  Mengentext mit Ziffer („3–6 g (nach Geschmack)"), steht der in der Mengenspalte; ein Hinweis ohne
+  Zahl („zum Bestreichen") ist keine Menge - dann „offen" und der Hinweis beim Namen. Notizen, Beschreibung, Schritte mit Unterpunkten und die wörtlich
   übernommenen Abschnitte rendert `RecipeText` (Absätze, Listen, `**fett**`, Tabellen; HTML wird
   nicht ausgeführt, Unbekanntes bleibt Text). „Drucken" = `window.print()`: ohne Knöpfe und
   Hinweise, hell, Zutaten vor Zubereitung.
@@ -152,7 +177,8 @@ nicht erst. Die Backstube sieht dieselbe Liste und Ansicht ohne „Neues Rezept"
   legt die nächste an); Arbeitsschritte in Abschnitten (nummeriert oder Stichpunkte); Notizen. Leere
   Menge = offen. Einheiten und Kategorien kommen aus `GET /api/recipes` (`units`,
   `categories[].writable`) - keine eigene Liste. Das Feld „Hinweis" je Zutat gibt es nur bei
-  Tabellen-Dateien (in Listen-Dateien gehört er in den Namen). Kein `<form>`-Submit: Enter in einem
+  Tabellen-Dateien (in Listen-Dateien gehört er in den Namen; die API lehnt ihn dort ab, statt ihn
+  still in den Namen zu schreiben). Kein `<form>`-Submit: Enter in einem
   Mengenfeld speichert nicht.
 - **Null-Diff auch von der Oberfläche.** `changedInput()` schickt nur die Felder, die vom geladenen
   Rezept abweichen; eine unberührte Zutatenzeile geht als dasselbe Objekt zurück, das die API

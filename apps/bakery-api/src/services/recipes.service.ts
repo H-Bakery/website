@@ -226,7 +226,7 @@ const MSG = {
   deleteOff:
     'Löschen und Verschieben von Rezepten ist noch nicht freigeschaltet: hq nimmt Löschungen aus der Verwaltung erst an, wenn die Pfadwache dort angepasst ist.',
   outOfSync:
-    'Das Rezept ist im Schreibverzeichnis von hq noch nicht vorhanden. Bitte in ein paar Minuten noch einmal versuchen.',
+    'Das Rezept ist im Schreibverzeichnis von hq noch nicht angekommen und lässt sich deshalb gerade nicht ändern. Bitte in ein paar Minuten noch einmal versuchen.',
   notUtf8:
     'Die Datei ist kein gültiger UTF-8-Text und lässt sich nur in hq bearbeiten.',
   commitFailed:
@@ -241,6 +241,20 @@ const MSG = {
     `Der Backzettel verwendet aus diesem Rezept den Teil „${
       use.section || use.name || use.id
     }“. Er lässt sich bearbeiten, aber nicht umbenennen oder entfernen.`,
+  sectionRedirected: (was: string, now: string) =>
+    `Der Backzettel verwendet aus diesem Rezept den Teil „${was}“. Nach dieser Änderung läse er stattdessen „${now}“, weil dieser Name gleich beginnt und weiter oben steht. Bitte den neuen Teil anders benennen oder hinter „${was}“ einordnen.`,
+  sectionDuplicate: (was: string) =>
+    `Der Backzettel verwendet aus diesem Rezept den Teil „${was}“. Diesen Namen darf es in der Datei nur einmal geben - bitte den anderen Teil anders benennen.`,
+  configUnreadable:
+    'Die Stammdaten des Backzettels (config/backzettel.yaml) lassen sich gerade nicht lesen. Solange steht nicht fest, ob der Backzettel dieses Rezept verwendet - Löschen, Verschieben und das Umbenennen von Rezeptteilen sind deshalb gesperrt.',
+}
+
+type Reference = RecipeUse & { key: string }
+
+/** Verweise des Backzettels; `unreadable`: mindestens eine Stammdaten-Datei ließ sich nicht lesen. */
+interface References {
+  uses: Reference[]
+  unreadable: boolean
 }
 
 /** Was `parseRecipeFile` liefert, soweit der Dienst es braucht. */
@@ -372,9 +386,10 @@ export class RecipesService {
   private branchCheck: { at: number; issue: RecipeList['writeIssue'] } | null =
     null
   private deletedCache: { head: string; paths: Set<string> } | null = null
+  /** `uses: null` = die Datei ließ sich nicht lesen. */
   private configCache = new Map<
     string,
-    { stamp: string; uses: (RecipeUse & { key: string })[] }
+    { stamp: string; uses: Reference[] | null }
   >()
 
   constructor(options: RecipesOptions = {}) {
@@ -407,29 +422,44 @@ export class RecipesService {
 
   // ------------------------------------------------------------ Verweise
 
-  /** Alle `recipe:`-Verweise der Backzettel-Stammdaten (beide Stände). */
-  private references(): (RecipeUse & { key: string })[] {
-    const out: (RecipeUse & { key: string })[] = []
+  /**
+   * Alle `recipe:`-Verweise der Backzettel-Stammdaten (beide Stände). Eine
+   * Datei, die es gibt, die sich aber nicht lesen lässt (kaputtes YAML, kein
+   * Zugriff), macht das Ergebnis `unreadable`: dann gilt kein Rezept als
+   * „unbenutzt" - Löschen und Verschieben bleiben gesperrt, statt den
+   * Schutz stillschweigend aufzuheben. Eine fehlende Datei hat keine Verweise.
+   */
+  private references(): References {
+    const out: Reference[] = []
     const seen = new Set<string>()
+    let unreadable = false
     for (const file of new Set(this.backzettelConfigPaths())) {
       let stamp: string
       try {
         const stat = fs.statSync(file)
         stamp = `${stat.mtimeMs}:${stat.size}`
-      } catch {
+      } catch (error) {
         this.configCache.delete(file)
+        if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+          unreadable = true
+        }
         continue
       }
       let cached = this.configCache.get(file)
       if (!cached || cached.stamp !== stamp) {
-        let uses: (RecipeUse & { key: string })[] = []
+        let uses: Reference[] | null = null
         try {
           const parsed = backzettelLoader.parseBackzettelYaml(
             fs.readFileSync(file, 'utf-8')
           )
-          if (parsed.ok) {
+          // Leere Datei: keine Verweise. Alles andere als eine Zuordnung
+          // (abgeschnittene Datei, Liste, Text) ist nicht lesbar.
+          const data = parsed.ok ? parsed.data : undefined
+          if (parsed.ok && (data === null || data === undefined)) {
+            uses = []
+          } else if (data && typeof data === 'object' && !Array.isArray(data)) {
             uses = core
-              .collectRecipeReferences(parsed.data)
+              .collectRecipeReferences(data)
               .map((r: RecipeUse & { recipe: string }) => ({
                 kind: r.kind,
                 id: r.id,
@@ -439,10 +469,19 @@ export class RecipesService {
               }))
           }
         } catch {
-          uses = []
+          uses = null
+        }
+        if (uses === null) {
+          console.error(
+            `[recipes] ${file} is not readable - delete/move of recipes stay locked`
+          )
         }
         cached = { stamp, uses }
         this.configCache.set(file, cached)
+      }
+      if (cached.uses === null) {
+        unreadable = true
+        continue
       }
       for (const use of cached.uses) {
         const id = `${use.key}\0${use.kind}\0${use.id}\0${use.section}`
@@ -451,15 +490,12 @@ export class RecipesService {
         out.push(use)
       }
     }
-    return out
+    return { uses: out, unreadable }
   }
 
-  private usesOf(
-    rel: string,
-    references: (RecipeUse & { key: string })[]
-  ): RecipeUse[] {
+  private usesOf(rel: string, references: References): RecipeUse[] {
     const key = `${RECIPES_REL}/${rel}`
-    return references
+    return references.uses
       .filter((r) => r.key === key)
       .map(({ kind, id, name, section }) => ({ kind, id, name, section }))
   }
@@ -670,19 +706,25 @@ export class RecipesService {
     }
   }
 
-  private deleteBlock(entry: Entry, uses: RecipeUse[]): string | null {
+  private deleteBlock(
+    entry: Entry,
+    uses: RecipeUse[],
+    unreadable: boolean
+  ): string | null {
     if (entry.pending === 'deleted') return MSG.deleted
     if (!this.allowDelete) return MSG.deleteOff
     const category = core.categoryOf(entry.category)
     if (category && category.readOnly) return core.TEIG_READ_ONLY
     if (uses.length > 0) return MSG.inUse(uses)
+    if (unreadable) return MSG.configUnreadable
     return null
   }
 
-  private recipeOf(entry: Entry, uses: RecipeUse[]): Recipe {
+  private recipeOf(entry: Entry, references: References): Recipe {
+    const uses = this.usesOf(entry.rel, references)
     const doc = this.docOf(entry)
     const model = doc.model
-    const blocked = this.deleteBlock(entry, uses)
+    const blocked = this.deleteBlock(entry, uses, references.unreadable)
     return {
       ...this.summaryOf(entry, doc, uses),
       description: model.description ?? null,
@@ -817,7 +859,7 @@ export class RecipesService {
       (e) => e.category === category && e.slug === slug
     )
     if (!entry) return null
-    return this.recipeOf(entry, this.usesOf(entry.rel, this.references()))
+    return this.recipeOf(entry, this.references())
   }
 
   // ------------------------------------------------------------ Schreiben
@@ -1104,7 +1146,8 @@ export class RecipesService {
       if (!doc.editable) {
         return fail(409, 'recipe_read_only', doc.readOnlyReason || MSG.notFound)
       }
-      const uses = this.usesOf(entry.rel, this.references())
+      const references = this.references()
+      const uses = this.usesOf(entry.rel, references)
 
       // Kategorie geändert = Datei verschieben (löschen + anlegen in hq).
       let moveTo: string | null = null
@@ -1121,6 +1164,9 @@ export class RecipesService {
             usedByBackzettel: uses,
           })
         }
+        if (references.unreadable) {
+          return fail(409, 'backzettel_config_unreadable', MSG.configUnreadable)
+        }
         if (!this.allowDelete) {
           return fail(409, 'recipe_delete_unavailable', MSG.deleteOff)
         }
@@ -1134,9 +1180,6 @@ export class RecipesService {
           fs.existsSync(path.join(target.root, wanted.id, entry.fileName))
         ) {
           return fail(409, 'recipe_exists', MSG.exists)
-        }
-        if (this.writeDir && !entry.inTarget) {
-          return fail(409, 'hq_write_out_of_sync', MSG.outOfSync)
         }
         if (!this.realCategoryDir(target.root, wanted.id)) {
           return fail(400, 'invalid_category', MSG.invalidCategory)
@@ -1161,20 +1204,44 @@ export class RecipesService {
         return this.answer(200, entry.category, entry.slug, false, 'update')
       }
 
-      // Der Backzettel muss seine Rezeptteile danach noch finden.
-      if (uses.length > 0) {
+      // Der Backzettel muss danach denselben Rezeptteil finden wie vorher -
+      // nicht irgendeinen (ein neuer Teil mit gleichem Namen oder gleichem
+      // Anfang davor lenkte ihn sonst auf andere Zutaten).
+      if (uses.length > 0 || references.unreadable) {
         const before = backzettelRecipes.parseFillingRecipes(entry.text)
         const after = backzettelRecipes.parseFillingRecipes(result.text)
         for (const use of uses) {
-          if (
-            backzettelRecipes.findRecipeForReference(before, use) &&
-            !backzettelRecipes.findRecipeForReference(after, use)
-          ) {
-            return fail(409, 'recipe_section_in_use', MSG.sectionInUse(use), {
-              usedByBackzettel: uses,
-            })
-          }
+          const kept: {
+            ok: boolean
+            reason?: 'missing' | 'redirected' | 'duplicate'
+            was?: string
+            now?: string | null
+          } = backzettelRecipes.referenceAfterEdit(before, after, use)
+          if (kept.ok) continue
+          const message =
+            kept.reason === 'redirected'
+              ? MSG.sectionRedirected(kept.was as string, kept.now as string)
+              : kept.reason === 'duplicate'
+              ? MSG.sectionDuplicate(kept.was as string)
+              : MSG.sectionInUse(use)
+          return fail(409, 'recipe_section_in_use', message, {
+            usedByBackzettel: uses,
+          })
         }
+        // Stammdaten nicht lesbar: welche Teile der Backzettel liest, steht
+        // nicht fest - dann bleiben alle Namen und ihre Reihenfolge.
+        const titles = (list: { title: string }[]) =>
+          JSON.stringify(list.map((r) => r.title))
+        if (references.unreadable && titles(before) !== titles(after)) {
+          return fail(409, 'backzettel_config_unreadable', MSG.configUnreadable)
+        }
+      }
+
+      // Die Datei steht (noch) nur im freigegebenen Stand: im Worktree
+      // angelegt, kollidierte sie beim nächsten Rebase mit der von main
+      // (add/add) - und die rollende PR bliebe stehen.
+      if (this.writeDir && !entry.inTarget) {
+        return fail(409, 'hq_write_out_of_sync', MSG.outOfSync)
       }
 
       const title: string = result.model.title
@@ -1252,11 +1319,15 @@ export class RecipesService {
       if (known && known.readOnly) {
         return fail(409, 'recipe_read_only', core.TEIG_READ_ONLY)
       }
-      const uses = this.usesOf(entry.rel, this.references())
+      const references = this.references()
+      const uses = this.usesOf(entry.rel, references)
       if (uses.length > 0) {
         return fail(409, 'recipe_in_use', MSG.inUse(uses), {
           usedByBackzettel: uses,
         })
+      }
+      if (references.unreadable) {
+        return fail(409, 'backzettel_config_unreadable', MSG.configUnreadable)
       }
       if (!this.allowDelete) {
         return fail(409, 'recipe_delete_unavailable', MSG.deleteOff)
