@@ -27,6 +27,9 @@ process.env.HQ_BACKZETTEL_CONFIG = path.join(
   'config',
   'backzettel.yaml'
 )
+// Rezepte: `${HQ_DIR}/data/recipes` (nowhere); never a developer's override.
+delete process.env.HQ_RECIPES_DIR
+delete process.env.HQ_RECIPES_ALLOW_DELETE
 // B5: never commit into a developer's hq write worktree from a test.
 delete process.env.HQ_WRITE_DIR
 delete process.env.HQ_WRITE_BRANCH

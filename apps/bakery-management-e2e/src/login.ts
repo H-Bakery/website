@@ -7,7 +7,8 @@
  *
  * - `inhaber`: der Inhaber, den `tools/e2e/real-api.js` beim Start über
  *   `BOOTSTRAP_ADMIN_*` anlegt (`E2E_ADMIN` in `tools/e2e/servers.js`),
- * - `verkauf`: ein Konto, das der Inhaber über `POST /api/users` anlegt,
+ * - `verkauf`, `backstube`, `leitung` (Rolle `backstubenleiter`): Konten, die
+ *   der Inhaber über `POST /api/users` anlegt,
  * - `station`: der Inhaber an einer PIN-Station (Station registrieren, PIN
  *   setzen, `POST /api/auth/pin`).
  *
@@ -49,8 +50,18 @@ const SESSIONS_ENV = 'E2E_SESSIONS'
 
 export { E2E_ADMIN }
 
-export type PilotRole = 'inhaber' | 'verkauf' | 'backstube' | 'fahrer'
-export type SessionName = 'inhaber' | 'verkauf' | 'station'
+export type PilotRole =
+  | 'inhaber'
+  | 'verkauf'
+  | 'backstube'
+  | 'backstubenleiter'
+  | 'fahrer'
+export type SessionName =
+  | 'inhaber'
+  | 'verkauf'
+  | 'backstube'
+  | 'leitung'
+  | 'station'
 
 export interface IssuedSession {
   /** Was die App unter `bakery-management-session` ablegt. */
@@ -77,7 +88,11 @@ interface IssuedData {
 /** Wie `normalizeRole()` der App - eine unbekannte Rolle bricht den Lauf ab. */
 export function pilotRole(raw: unknown): PilotRole {
   const role = typeof raw === 'string' ? raw.trim().toLowerCase() : ''
-  if (['inhaber', 'verkauf', 'backstube', 'fahrer'].includes(role)) {
+  if (
+    ['inhaber', 'verkauf', 'backstube', 'backstubenleiter', 'fahrer'].includes(
+      role
+    )
+  ) {
     return role as PilotRole
   }
   throw new Error(`Unbekannte Rolle von der API: ${String(raw)}`)
@@ -163,22 +178,30 @@ export async function issueSessions(): Promise<IssuedSessions> {
     const owner = await login(E2E_ADMIN.username, E2E_ADMIN.password)
     const auth = { Authorization: `Bearer ${owner.token}` }
 
-    // Verkauf: 409 username_taken heißt, ein früherer Lauf gegen dieselbe
-    // (wiederverwendete) API hat das Konto schon angelegt.
-    await expectOk(
-      await api.post('/api/users', {
-        headers: auth,
-        data: {
-          username: 'e2e.verkauf',
-          displayName: 'Test Verkauf',
-          role: 'verkauf',
-          password: E2E_USER_PASSWORD,
-        },
-      }),
-      'Konto e2e.verkauf anlegen',
-      [201, 409]
+    // Weitere Rollen: 409 username_taken heißt, ein früherer Lauf gegen
+    // dieselbe (wiederverwendete) API hat das Konto schon angelegt.
+    const account = async (
+      username: string,
+      displayName: string,
+      role: PilotRole
+    ) => {
+      await expectOk(
+        await api.post('/api/users', {
+          headers: auth,
+          data: { username, displayName, role, password: E2E_USER_PASSWORD },
+        }),
+        `Konto ${username} anlegen`,
+        [201, 409]
+      )
+      return login(username, E2E_USER_PASSWORD)
+    }
+    const sales = await account('e2e.verkauf', 'Test Verkauf', 'verkauf')
+    const bakery = await account('e2e.backstube', 'Test Backstube', 'backstube')
+    const lead = await account(
+      'e2e.leitung',
+      'Test Leitung',
+      'backstubenleiter'
     )
-    const sales = await login('e2e.verkauf', E2E_USER_PASSWORD)
 
     // Station: registrieren (Token kommt einmal), PIN des Inhabers setzen,
     // an der Station mit PIN anmelden.
@@ -214,6 +237,8 @@ export async function issueSessions(): Promise<IssuedSessions> {
     return {
       inhaber: toSession(owner),
       verkauf: toSession(sales),
+      backstube: toSession(bakery),
+      leitung: toSession(lead),
       station: toSession(atStation),
     }
   })
@@ -234,9 +259,12 @@ export function storeSessions(sessions: IssuedSessions): void {
   process.env[SESSIONS_ENV] = JSON.stringify(sessions)
 }
 
-/** `GET` an der API mit dem Token des Inhabers. */
-export async function apiGet<T = unknown>(path: string): Promise<T> {
-  const { token } = session('inhaber')
+/** `GET` an der API mit dem Token des Inhabers (oder einer anderen Sitzung). */
+export async function apiGet<T = unknown>(
+  path: string,
+  as: SessionName = 'inhaber'
+): Promise<T> {
+  const { token } = session(as)
   return withApi(async (api) => {
     const response = await expectOk(
       await api.get(path, { headers: { Authorization: `Bearer ${token}` } }),
@@ -268,6 +296,27 @@ export async function apiSend<T = unknown>(
       ok
     )
     return (await response.json()) as T
+  })
+}
+
+/**
+ * Status eines Aufrufs mit der Sitzung `as` - für „die API setzt die Rolle
+ * durch“ (403), ohne dass ein anderer Status den Test abbricht.
+ */
+export async function apiStatus(
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  path: string,
+  as: SessionName,
+  data?: unknown
+): Promise<number> {
+  const { token } = session(as)
+  return withApi(async (api) => {
+    const response = await api.fetch(path, {
+      method,
+      data,
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    return response.status()
   })
 }
 

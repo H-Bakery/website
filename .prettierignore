@@ -16,3 +16,8 @@ next-env.d.ts
 # Prettier wuerde die Anfuehrungszeichen im Frontmatter umschreiben, die
 # serializeProductFile() im Mock-Server genau so setzt.
 tools/e2e/hq-products
+
+# Synthetische Rezepte im Format von hq/data/recipes/**: Tabellenbreiten,
+# Leerzeichen am Zeilenende und das fehlende Zeilenende am Schluss gehoeren
+# zum Format, das der Parser verlustfrei lesen und schreiben muss.
+tools/e2e/hq-recipes

@@ -10,6 +10,7 @@ const ROLE_LABEL: Record<string, string> = {
   inhaber: 'Inhaber',
   verkauf: 'Verkauf',
   backstube: 'Backstube',
+  backstubenleiter: 'Backstubenleitung',
   fahrer: 'Fahrer',
 }
 

@@ -48,6 +48,11 @@ die Variable (lokal, CI) ändert sich nichts.
   der `page.tsx` **genau unter `href`** auseinanderlaufen, und auch, wenn es Unterseiten ohne diese
   Index-Seite gibt. `/backstube` liegt außerhalb `/admin` und bekommt weder Seitenleiste noch Sperre.
   Der Mörsbach-Eintrag heißt „Sammelstelle Mörsbach", nicht „Vorbestellungen".
+- **Rezepte (`/admin/rezepte`) sind im Pilot freigegeben** (Owner-Wunsch 2026-11-11, aus M5
+  vorgezogen): Eintrag „Rezepte" direkt unter „Backstube", Schnellzugriff auf dem Dashboard. Lesen
+  Inhaber, Backstubenleitung und Backstube; die Formulare (`/admin/rezepte/neu`,
+  `/admin/rezepte/bearbeiten/…`) nur Inhaber und Backstubenleitung (`ROLE_ACCESS`,
+  `RECIPE_WRITE_PATHS`). Regeln und Bildschirme: [`rezepte.md`](rezepte.md).
 - **Keine Mock-Abfragen.** Seit B12 fragt das Dashboard nur `GET /api/products` (zugleich
   API-Statusprüfung); „Offene Bestellungen", „Produktionsübersicht" und „Letzte Aktivitäten" sind mit
   den Demo-Seiten gelöscht. Der `NotificationProvider` bleibt (Einstellungen rufen
@@ -217,6 +222,11 @@ Kurzanleitung je Rolle und die Papier-Vordrucke, für **jede** Rolle erreichbar 
 `roles.ts`, `PILOT_ALLOWED_ROUTES`), Menüeintrag „Hilfe" ganz unten. Einweisung und Go-live-Checkliste
 fürs Personal: `docs/onboarding.md`; Regel und Vordrucke: `docs/runbook.md` §9.
 
+- **Fünf Kurzanleitungen** (`SPICKZETTEL: Record<PilotRole, …>` - eine neue Rolle ohne Blatt
+  kompiliert nicht): Verkauf, Backstube, Backstubenleitung, Fahrer, Inhaber. Das Blatt der
+  Backstubenleitung verweist für Zettel und Abhaken auf das der Backstube und erklärt die Rezepte
+  (nachschlagen, anlegen, ändern, „wartet auf Freigabe", „offen ≠ 0"); Backstube und Inhaber tragen je
+  einen kurzen Abschnitt „Rezepte".
 - **Text nur in `src/content/hilfe/`** (`spickzettel.ts` je Rolle, `papierbetrieb.ts` für die Regel) -
   reiner Text, `**fett**` für Beschriftungen der App. Geschrieben nach den echten Bildschirmen: **wer
   dort einen Knopf umbenennt** („Vorbestellung speichern", „Bezahlt und übergeben", „Gesehen", „Jetzt
@@ -258,5 +268,9 @@ fürs Personal: `docs/onboarding.md`; Regel und Vordrucke: `docs/runbook.md` §9
   `admin/partners/[id]/**/*.spec.tsx`, `src/lib/financeApi.spec.ts`, `admin/finance/**/*.spec.tsx`,
   `admin/analytics/revenue/page.spec.tsx`, `admin/settings/page.spec.tsx`,
   `libs/shared/data-access/src/lib/{api-client,services/analytics.service}.spec.ts`.
+- Rollen: `src/lib/roles.spec.ts` (Matrix Rolle × Seite inkl. `backstubenleiter`, Vergleich mit
+  `ROLE_INCLUDES`/`ROLES` der API), `src/lib/serverSession.spec.ts` (Proxy-Entscheidung),
+  `admin/users/UsersClient.spec.tsx` (Rollenauswahl).
+- Rezepte: siehe [`rezepte.md`](rezepte.md).
 - Hilfe: `src/content/hilfe/spickzettel.spec.ts`, `admin/hilfe/HilfeClient.spec.tsx` (je Rolle,
   Drucken, Vordrucke), `components/hilfe/BackzettelNotfallblatt.spec.tsx`.

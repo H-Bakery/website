@@ -12,6 +12,7 @@ API und ein eigenes Fixture in der App (`apps/bakery-digitale-baeckerei/src/test
 | `real-api.js`     | Startet das API-Bundle mit frischer SQLite-Datenbank im Temp-Verzeichnis (alle API-Suiten)         |
 | `serve-static.js` | Liefert `apps/bakery-landing/out` aus wie GitHub Pages (`/about` → `about.html`, 404 → `404.html`) |
 | `hq-products/`    | Synthetischer Produktkatalog im Format von `hq/products/*.md` (56 Produkte, 7 Kategorien)          |
+| `hq-recipes/`     | Erfundene Rezepte im Format von `hq/data/recipes/**` (je Formatvariante eine Datei, 8 Kategorien)  |
 
 ## Welche API
 
@@ -25,11 +26,13 @@ nicht mehr.
   (`BOOTSTRAP_ADMIN_*`, synthetisch). App und API lesen dasselbe synthetische
   `hq` aus `prepareE2eHq()`: eine Kopie des Fixture-Katalogs plus erfundene
   Kassenberichte und Finanzdaten aus
-  `apps/bakery-api/tests/fixtures/hq-data.synthetic.js`, im Temp-Verzeichnis je
+  `apps/bakery-api/tests/fixtures/hq-data.synthetic.js` und die erfundenen
+  Rezepte aus `hq-recipes/` (`HQ_RECIPES_DIR`; ohne `HQ_WRITE_DIR` schreibt die
+  API beim Speichern direkt in diese Kopie), im Temp-Verzeichnis je
   API-Port. Die App läuft im Pilotbetrieb und reicht `/api/*` über ihren
   `src/proxy.ts` an `API_URL` weiter - der Browser spricht nur die eigene Origin.
-  `src/global-setup.ts` meldet einmal vor allen Tests drei Sitzungen an
-  (Inhaber, Verkauf, Inhaber an einer PIN-Station) und gibt sie über
+  `src/global-setup.ts` meldet einmal vor allen Tests fünf Sitzungen an
+  (Inhaber, Verkauf, Backstube, Backstubenleitung, Inhaber an einer PIN-Station) und gibt sie über
   `E2E_SESSIONS` an die Worker; je Worker eine eigene PIN zu setzen, meldete
   die Stations-Sitzungen der anderen ab. (Das Login-Limit zählt seit W4 nur
   Fehlversuche, gleichzeitige erfolgreiche Anmeldungen sind kein Problem
@@ -131,6 +134,11 @@ liest ohnehin nur eine Kopie (`prepareE2eHq()`), sodass ein Speichern das
 Fixture im Repo nicht ändern würde - geprüft wird das Speichern in den
 Unit-Specs und in der Vertrags-Suite der API
 (`apps/bakery-api/tests/contract/hqProducts.contract.test.ts`).
+
+**Ausnahme Rezepte:** `management-rezepte.spec.ts` legt als Backstubenleitung ein Rezept an,
+ändert und löscht es - in der Wegwerf-Kopie `HQ_RECIPES_DIR` aus `prepareE2eHq()` (kein
+Schreib-Worktree, kein git). Der Name trägt das Playwright-Projekt (Desktop und Handy laufen
+gegen dieselbe API); ein Rest aus einem abgebrochenen Lauf wird vorher gelöscht.
 
 **Ausnahme seit W4:** `management-preorders.spec.ts` schreibt
 **Vorbestellungen** - aber nur in die Wegwerf-SQLite der Test-API

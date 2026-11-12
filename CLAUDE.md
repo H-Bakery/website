@@ -31,8 +31,8 @@ Bäckerei-Box in the shop's LAN; shop and Fahrer-App are not in the pilot.
 - `docs/README.md` - index. Start there.
 - `docs/development.md` - install, run, test, build, CI. Local full system: `setup-dev` skill.
 - `docs/domains/*.md` - rules per domain (Backzettel, Vorbestellungen, Anmeldung, Verwaltung,
-  Verkaufspartner, Kassenberichte, Finanzen, Produkte, Liefertouren, Rest am Abend). Read the one
-  you touch before changing it.
+  Verkaufspartner, Kassenberichte, Finanzen, Produkte, Liefertouren, Rest am Abend, Rezepte). Read
+  the one you touch before changing it.
 - `docs/api/*.md` - API internals; `docs/apps/*.md` - landing, shop, Fahrer-App,
   Partybrezel-Prototyp;
   `docs/known-issues.md` - failures that aren't regressions.

@@ -11,55 +11,27 @@
 // einer falschen Chargengroesse. Milliliter zaehlen wie Gramm (Wasser) - so hat es auch der
 // bisherige `FillingPreparation`-Rechner gemacht.
 
-const AMOUNT =
-  /^(?:ca\.?\s*)?(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d+))?\s*(kg|g|ml|l)(?![a-zäöüß])/i
+// Gelesen wird die Datei von `recipe-file.core.js` (der eine Parser für
+// Rezeptdateien, auch der Rezeptverwaltung): Überschriften, Tabellen und
+// Mengen kommen von dort; hier steht nur, was der Backzettel daraus macht
+// (Gramm, Chargengröße, Skalieren).
 
-function cleanHeading(text) {
-  // Emojis und Zierzeichen vorne weg: "🌰 Nussfüllung" -> "Nussfüllung"
-  return String(text)
-    .replace(/^[^\p{L}\p{N}]+/u, '')
-    .replace(/[:\s]+$/, '')
-    .trim()
-}
+const recipeFile = require('./recipe-file.core')
 
-function slugify(text) {
-  return String(text)
-    .toLowerCase()
-    .replace(/ä/g, 'ae')
-    .replace(/ö/g, 'oe')
-    .replace(/ü/g, 'ue')
-    .replace(/ß/g, 'ss')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-}
+const { slugify } = recipeFile
+
+/** Einheiten, die der Backzettel in Gramm umrechnet (1 ml = 1 g). */
+const GRAMS_PER_UNIT = { g: 1, ml: 1, kg: 1000, l: 1000 }
 
 /**
  * Liest eine deutsche Mengenangabe in Gramm.
  * @returns {{g: number|null, unit: string|null}}
  */
 function parseAmount(raw) {
-  const text = String(raw || '').trim()
-  const m = AMOUNT.exec(text)
-  if (!m) return { g: null, unit: null }
-  const whole = Number(m[1].replace(/\./g, ''))
-  const frac = m[2] ? Number(`0.${m[2]}`) : 0
-  const n = whole + frac
-  const unit = m[3].toLowerCase()
-  const factor = unit === 'kg' || unit === 'l' ? 1000 : 1
-  return { g: Math.round(n * factor * 1000) / 1000, unit }
-}
-
-function splitRow(line) {
-  return line
-    .trim()
-    .replace(/^\|/, '')
-    .replace(/\|$/, '')
-    .split('|')
-    .map((c) => c.trim())
-}
-
-function isSeparatorRow(cells) {
-  return cells.every((c) => /^:?-{2,}:?$/.test(c))
+  const q = recipeFile.readQuantity(raw)
+  const factor = q.unit ? GRAMS_PER_UNIT[q.unit] : undefined
+  if (q.amount === null || factor === undefined) return { g: null, unit: null }
+  return { g: Math.round(q.amount * factor * 1000) / 1000, unit: q.unit }
 }
 
 /**
@@ -68,61 +40,25 @@ function isSeparatorRow(cells) {
  *   ingredients: Array<{name:string, g:number|null, unit:string|null, raw:string}>}>}
  */
 function parseFillingRecipes(markdown) {
-  const lines = String(markdown || '').split(/\r?\n/)
   const recipes = []
-  let title = null
-  let current = null
-  let headerSeen = false
-
-  const finish = () => {
-    if (current && current.ingredients.length > 0) {
-      current.batch_g = current.ingredients.reduce(
-        (sum, i) => sum + (i.g || 0),
-        0
-      )
-      current.complete = current.ingredients.every((i) => i.g !== null)
-      recipes.push(current)
+  for (const table of recipeFile.scanIngredientTables(markdown)) {
+    const ingredients = []
+    for (const row of table.rows) {
+      const name = (row.cells[0] || '').replace(/\*+$/, '').trim()
+      const raw = row.cells[1] || ''
+      if (!name) continue
+      const { g, unit } = parseAmount(raw)
+      ingredients.push({ name, g, unit, raw })
     }
-    current = null
-    headerSeen = false
+    if (ingredients.length === 0) continue
+    recipes.push({
+      id: slugify(table.title || 'rezept'),
+      title: table.title || 'Rezept',
+      batch_g: ingredients.reduce((sum, i) => sum + (i.g || 0), 0),
+      complete: ingredients.every((i) => i.g !== null),
+      ingredients,
+    })
   }
-
-  for (const line of lines) {
-    const heading = /^(#{1,6})\s+(.*)$/.exec(line)
-    if (heading) {
-      finish()
-      const text = cleanHeading(heading[2])
-      // "### Zutaten:" unter "# Apfelfüllung" benennt kein eigenes Rezept.
-      if (!/^zutaten$/i.test(text)) title = text
-      continue
-    }
-    if (!line.trim().startsWith('|')) {
-      if (current && line.trim() !== '') finish()
-      continue
-    }
-    const cells = splitRow(line)
-    if (!current) {
-      // Kopfzeile: erste Spalte "Zutat"
-      if (/^zutat/i.test(cells[0] || '')) {
-        current = {
-          id: slugify(title || 'rezept'),
-          title: title || 'Rezept',
-          batch_g: 0,
-          complete: true,
-          ingredients: [],
-        }
-        headerSeen = true
-      }
-      continue
-    }
-    if (headerSeen && isSeparatorRow(cells)) continue
-    const name = (cells[0] || '').replace(/\*+$/, '').trim()
-    const raw = cells[1] || ''
-    if (!name) continue
-    const { g, unit } = parseAmount(raw)
-    current.ingredients.push({ name, g, unit, raw })
-  }
-  finish()
   return recipes
 }
 
@@ -147,7 +83,7 @@ function parseFillingRecipe(markdown, options) {
  */
 function findRecipeBySection(recipes, section) {
   const list = Array.isArray(recipes) ? recipes : []
-  const wanted = cleanHeading(String(section || '')).toLowerCase()
+  const wanted = recipeFile.cleanHeading(String(section || '')).toLowerCase()
   if (!wanted) return null
   return (
     list.find((r) => r.title.toLowerCase() === wanted) ||
@@ -163,6 +99,51 @@ function findRecipeBySection(recipes, section) {
 function findRecipeForFilling(recipes, fillingId) {
   const id = slugify(fillingId)
   return (recipes || []).find((r) => r.id === id || r.id.startsWith(id)) || null
+}
+
+/**
+ * Das Rezept, auf das ein Eintrag der Stammdaten zeigt: mit `section` die
+ * Ueberschrift, sonst ueber die id. Einzige Stelle dafuer - der Loader und
+ * die Rezeptverwaltung (darf eine Aenderung den Verweis brechen?) fragen
+ * beide hier.
+ * @param {object[]} recipes Ergebnis von `parseFillingRecipes`
+ * @param {{id?: string, section?: string|null}} reference
+ * @returns {object|null}
+ */
+function findRecipeForReference(recipes, reference) {
+  const ref = reference || {}
+  return ref.section
+    ? findRecipeBySection(recipes, ref.section)
+    : findRecipeForFilling(recipes, ref.id)
+}
+
+/**
+ * Zeigt ein Verweis nach einer Änderung der Datei noch auf denselben
+ * Rezeptteil? „Irgendeiner wird gefunden" reicht nicht: die Suche nimmt den
+ * ersten Treffer (genauer Name, sonst gleicher Anfang), ein neuer Teil mit
+ * demselben Namen oder Anfang davor lenkte den Backzettel auf andere
+ * Zutaten. Gleich heißt: derselbe Name wie vorher, und dieser Name kommt
+ * nicht öfter vor als vorher. Was vorher schon ins Leere zeigte, bleibt frei.
+ * @param {object[]} before `parseFillingRecipes` der Datei vor der Änderung
+ * @param {object[]} after danach
+ * @param {{id?: string, section?: string|null}} reference
+ * @returns {{ok: true} | {ok: false, reason: 'missing'|'redirected'|'duplicate',
+ *   was: string, now: string|null}}
+ */
+function referenceAfterEdit(before, after, reference) {
+  const was = findRecipeForReference(before, reference)
+  if (!was) return { ok: true }
+  const now = findRecipeForReference(after, reference)
+  if (!now) return { ok: false, reason: 'missing', was: was.title, now: null }
+  if (now.title !== was.title) {
+    return { ok: false, reason: 'redirected', was: was.title, now: now.title }
+  }
+  const count = (list) =>
+    (list || []).filter((r) => r.title === was.title).length
+  if (count(after) > count(before)) {
+    return { ok: false, reason: 'duplicate', was: was.title, now: now.title }
+  }
+  return { ok: true }
 }
 
 /**
@@ -233,6 +214,8 @@ module.exports = {
   parseFillingRecipe,
   findRecipeBySection,
   findRecipeForFilling,
+  findRecipeForReference,
+  referenceAfterEdit,
   scaleRecipe,
   slugify,
 }

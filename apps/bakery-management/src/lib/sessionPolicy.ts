@@ -25,6 +25,8 @@
  *   länger als die Stations-Grenze unberührt, meldet das Verlassen von
  *   `/backstube` ab (`unattendedAtBackstube` in `session.tsx`, W4-Fixup):
  *   sonst erbte, wer das liegen gelassene Tablet berührt, die Inhaber-Rechte.
+ *   Das gilt auch für die Backstubenleitung (`backstubenleiter`): sie darf
+ *   Rezepte ändern, die Backstube nicht.
  * - **Persönlich** (Benutzername + Passwort): nach
  *   `NEXT_PUBLIC_IDLE_LOGOUT_HOURS` (Vorgabe 12) Stunden ohne Bedienung.
  *

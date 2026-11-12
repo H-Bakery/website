@@ -41,6 +41,7 @@ import {
   Place as PickupPointIcon,
   QueryStats as RestSummaryIcon,
   CalendarMonth as DienstplanIcon,
+  MenuBook as RecipesIcon,
 } from '@mui/icons-material'
 import type { Theme } from '@mui/material/styles'
 import Link from 'next/link'
@@ -141,6 +142,7 @@ const iconMap: Record<string, React.ReactElement> = {
   pickuppoint: <PickupPointIcon />,
   restsummary: <RestSummaryIcon />,
   dienstplan: <DienstplanIcon />,
+  recipes: <RecipesIcon />,
 }
 
 /**
@@ -179,6 +181,25 @@ const DYNAMIC_BREADCRUMB_LABELS: Record<string, string | null> = {
   // Dienstplan (TASK-042): der Name steht auf der Profilseite selbst.
   '/admin/dienstplan/mitarbeiter': 'Mitarbeiter',
   '/admin/dienstplan/mitarbeiter/[id]': null,
+  // Rezepte: der Name steht als h1 auf der Seite; Kategorie und Kennung
+  // (`breads/musterkruste`) sagen im Pfad niemandem etwas - siehe
+  // `recipeBreadcrumbLabel`.
+  '/admin/rezepte/neu': 'Neues Rezept',
+  '/admin/rezepte/bearbeiten': null,
+}
+
+/**
+ * Rezepte liegen unter `/admin/rezepte/<kategorie>/<kennung>` (Ansicht) und
+ * `/admin/rezepte/bearbeiten/<kategorie>/<kennung>` (Formular): im Pfad steht
+ * dafür „Rezept“ bzw. „Bearbeiten“, die Kategorie fällt weg. `undefined` =
+ * kein Rezept-Pfad.
+ */
+function recipeBreadcrumbLabel(href: string): string | null | undefined {
+  const match = /^\/admin\/rezepte\/(bearbeiten\/)?[^/]+(\/[^/]+)?$/.exec(href)
+  if (!match || href === '/admin/rezepte/neu') return undefined
+  if (href === '/admin/rezepte/bearbeiten') return undefined
+  if (!match[2]) return null
+  return match[1] ? 'Bearbeiten' : 'Rezept'
 }
 
 /**
@@ -207,6 +228,8 @@ function getBreadcrumb(pathname: string, includeRoot = true): string[] {
       if (pattern in DYNAMIC_BREADCRUMB_LABELS) {
         return DYNAMIC_BREADCRUMB_LABELS[pattern]
       }
+      const recipeLabel = recipeBreadcrumbLabel(href)
+      if (recipeLabel !== undefined) return recipeLabel
       // W4-verify r2: Produkt-ID (Slug) und Backzettel-Datum nicht roh zeigen
       if (/^\/admin\/products\/[^/]+$/.test(href)) return 'Bearbeiten'
       // Tage (Backzettel, Kassenbericht …) als „Donnerstag, 05.11.2026“

@@ -1,15 +1,30 @@
 import {
   PILOT_ROLES,
+  RECIPE_WRITE_PATHS,
   ROLE_ACCESS,
+  ROLE_INCLUDES,
+  ROLE_LABELS,
+  canWriteRecipes,
   getNavigationForRole,
+  hasBackstubeRights,
   isPathAllowedForRole,
   isPersonalOnlyPath,
   isProtectedPath,
   normalizeRole,
   resolvePostLoginPath,
+  roleIncludes,
   startPathForRole,
   type PilotRole,
 } from './roles'
+
+// Die Rollen-Tabelle der API - `ROLE_INCLUDES` muss hier dasselbe sagen.
+// eslint-disable-next-line @typescript-eslint/no-var-requires, @nx/enforce-module-boundaries
+const authCore =
+  require('../../../bakery-api/src/services/auth-crypto.core') as {
+    ROLE_INCLUDES: Record<string, readonly string[]>
+    ROLES: readonly string[]
+    roleAllows: (role: string, allowed: string[]) => boolean
+  }
 import type { NavItem } from '../app/admin/navigation'
 
 function hrefs(items: NavItem[]): string[] {
@@ -19,7 +34,7 @@ function hrefs(items: NavItem[]): string[] {
 }
 
 describe('ROLE_ACCESS - die eine Rollen-Tabelle', () => {
-  it('kennt genau die vier Pilot-Rollen', () => {
+  it('kennt genau die fünf Pilot-Rollen', () => {
     expect(Object.keys(ROLE_ACCESS).sort()).toEqual([...PILOT_ROLES].sort())
   })
 
@@ -95,6 +110,40 @@ describe('ROLE_ACCESS - die eine Rollen-Tabelle', () => {
     ['verkauf', '/admin/preorders/neu', true],
     ['verkauf', '/admin/preorders/7', true],
     ['backstube', '/admin/preorders/tag', false],
+    // Rezepte: lesen Inhaber, Backstubenleitung und Backstube; anlegen und
+    // ändern nur Inhaber und Backstubenleitung
+    ['inhaber', '/admin/rezepte', true],
+    ['inhaber', '/admin/rezepte/neu', true],
+    ['inhaber', '/admin/rezepte/bearbeiten/breads/musterkruste', true],
+    ['backstubenleiter', '/admin/rezepte', true],
+    ['backstubenleiter', '/admin/rezepte/breads/musterkruste', true],
+    ['backstubenleiter', '/admin/rezepte/neu', true],
+    ['backstubenleiter', '/admin/rezepte/bearbeiten/breads/musterkruste', true],
+    ['backstube', '/admin/rezepte', true],
+    ['backstube', '/admin/rezepte/breads/musterkruste', true],
+    ['backstube', '/admin/rezepte/neu', false],
+    ['backstube', '/admin/rezepte/bearbeiten', false],
+    ['backstube', '/admin/rezepte/bearbeiten/breads/musterkruste', false],
+    ['backstube', '/admin/rezeptex', false],
+    ['verkauf', '/admin/rezepte', false],
+    ['verkauf', '/admin/rezepte/breads/musterkruste', false],
+    ['fahrer', '/admin/rezepte', false],
+    // Backstubenleitung: alles, was die Backstube darf - und nicht mehr
+    ['backstubenleiter', '/admin', true],
+    ['backstubenleiter', '/backstube', true],
+    ['backstubenleiter', '/admin/backzettel/2026-11-24', true],
+    ['backstubenleiter', '/admin/backzettel/grundmengen', true],
+    ['backstubenleiter', '/admin/backzettel/2026-11-29/backen', true],
+    ['backstubenleiter', '/admin/rest', true],
+    ['backstubenleiter', '/admin/rest/auswertung', false],
+    ['backstubenleiter', '/admin/settings', true],
+    ['backstubenleiter', '/admin/hilfe', true],
+    ['backstubenleiter', '/admin/preorders', false],
+    ['backstubenleiter', '/admin/products', false],
+    ['backstubenleiter', '/admin/reports', false],
+    ['backstubenleiter', '/admin/finance', false],
+    ['backstubenleiter', '/admin/users', false],
+    ['backstubenleiter', '/admin/dienstplan', false],
   ])('%s → %s: %s', (role, path, allowed) => {
     expect(isPathAllowedForRole(path, role)).toBe(allowed)
   })
@@ -103,6 +152,96 @@ describe('ROLE_ACCESS - die eine Rollen-Tabelle', () => {
     expect(isPathAllowedForRole('/admin/login', 'fahrer')).toBe(true)
     expect(isPathAllowedForRole('/admin/login', null)).toBe(true)
     expect(isPathAllowedForRole('/admin', null)).toBe(false)
+  })
+})
+
+describe('Backstubenleitung (backstubenleiter) = Backstube plus Rezepte', () => {
+  it('trägt das Etikett „Backstubenleitung“', () => {
+    expect(ROLE_LABELS.backstubenleiter).toBe('Backstubenleitung')
+    expect(normalizeRole('backstubenleiter')).toBe('backstubenleiter')
+    expect(normalizeRole(' Backstubenleiter ')).toBe('backstubenleiter')
+  })
+
+  it('schließt dieselben Rollen ein wie die API (ROLE_INCLUDES)', () => {
+    expect(ROLE_INCLUDES).toEqual(authCore.ROLE_INCLUDES)
+    // Verwaltung und API kennen dieselben Rollen
+    expect([...PILOT_ROLES].sort()).toEqual([...authCore.ROLES].sort())
+    for (const role of PILOT_ROLES) {
+      for (const base of PILOT_ROLES) {
+        if (role === 'inhaber') continue
+        expect(roleIncludes(role, base)).toBe(authCore.roleAllows(role, [base]))
+      }
+    }
+  })
+
+  it('darf jede Seite, die die Backstube darf', () => {
+    const backstube = ROLE_ACCESS.backstube.routes
+    if (backstube === 'all') throw new Error('unerwartet')
+    const paths = [
+      ...backstube.map((rule) => (typeof rule === 'string' ? rule : rule.path)),
+      '/admin/rezepte/breads/musterkruste',
+      '/admin/backzettel/grundmengen',
+      '/admin/backzettel/2026-11-24',
+      '/backstube',
+    ]
+    for (const path of paths) {
+      expect(isPathAllowedForRole(path, 'backstube')).toBe(true)
+      expect(isPathAllowedForRole(path, 'backstubenleiter')).toBe(true)
+    }
+    expect(ROLE_ACCESS.backstubenleiter.start).toEqual(
+      ROLE_ACCESS.backstube.start
+    )
+    expect(startPathForRole('backstubenleiter')).toBe('/backstube')
+  })
+
+  it('der einzige Unterschied zur Backstube sind die Rezept-Formulare', () => {
+    for (const path of RECIPE_WRITE_PATHS) {
+      expect(isPathAllowedForRole(path, 'backstubenleiter')).toBe(true)
+      expect(isPathAllowedForRole(path, 'backstube')).toBe(false)
+    }
+    expect(hrefs(getNavigationForRole('backstubenleiter', true))).toEqual(
+      hrefs(getNavigationForRole('backstube', true))
+    )
+  })
+
+  it('hasBackstubeRights und canWriteRecipes je Rolle', () => {
+    const rights = (check: (role: string | null) => boolean) =>
+      PILOT_ROLES.filter((role) => check(role))
+    expect(rights(hasBackstubeRights)).toEqual([
+      'inhaber',
+      'backstube',
+      'backstubenleiter',
+    ])
+    expect(rights(canWriteRecipes)).toEqual(['inhaber', 'backstubenleiter'])
+    expect(hasBackstubeRights(null)).toBe(false)
+    expect(canWriteRecipes(undefined)).toBe(false)
+    expect(roleIncludes('backstubenleiter', 'backstube')).toBe(true)
+    expect(roleIncludes('backstube', 'backstubenleiter')).toBe(false)
+    expect(roleIncludes('inhaber', 'backstube')).toBe(false)
+  })
+
+  it('Rezepte im Menü: für die Backstube „Nachschlagen und drucken“', () => {
+    const entry = (role: PilotRole) =>
+      getNavigationForRole(role, true).find(
+        (item) => item.href === '/admin/rezepte'
+      )
+    expect(entry('inhaber')?.description).toBe('Nachschlagen, anlegen, ändern')
+    expect(entry('backstubenleiter')?.description).toBe(
+      'Nachschlagen, anlegen, ändern'
+    )
+    expect(entry('backstube')?.description).toBe('Nachschlagen und drucken')
+    expect(entry('verkauf')).toBeUndefined()
+    expect(entry('fahrer')).toBeUndefined()
+  })
+
+  it('an der Station (PIN) bleiben die Rezepte erreichbar', () => {
+    expect(isPersonalOnlyPath('/admin/rezepte')).toBe(false)
+    expect(
+      isPathAllowedForRole('/admin/rezepte/neu', 'backstubenleiter', 'station')
+    ).toBe(true)
+    expect(isPathAllowedForRole('/admin/rezepte', 'backstube', 'station')).toBe(
+      true
+    )
   })
 })
 
@@ -199,11 +338,12 @@ describe('getNavigationForRole', () => {
     ])
   })
 
-  it('Backstube: Dashboard, Backzettel, Tablet, Rest am Abend, Einstellungen und Hilfe', () => {
+  it('Backstube: Dashboard, Backzettel, Tablet, Rezepte, Rest am Abend, Einstellungen und Hilfe', () => {
     expect(hrefs(getNavigationForRole('backstube', true))).toEqual([
       '/admin',
       '/admin/backzettel',
       '/backstube',
+      '/admin/rezepte',
       '/admin/rest',
       '/admin/settings',
       '/admin/hilfe',

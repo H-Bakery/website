@@ -22,7 +22,19 @@ import {
   Sequelize,
 } from 'sequelize'
 
-export const USER_ROLES = ['inhaber', 'verkauf', 'backstube', 'fahrer'] as const
+/**
+ * `backstubenleiter` (Backstubenleitung) = `backstube` plus creating and
+ * editing recipes; the inclusion lives in `auth-crypto.core.js`
+ * (`ROLE_INCLUDES`). The column is TEXT in SQLite (no CHECK), so a new role
+ * needs no migration.
+ */
+export const USER_ROLES = [
+  'inhaber',
+  'verkauf',
+  'backstube',
+  'backstubenleiter',
+  'fahrer',
+] as const
 export type UserRole = (typeof USER_ROLES)[number]
 
 export class User extends Model<

@@ -16,7 +16,12 @@ import { useSyncExternalStore } from 'react'
 
 import { API_BASE_URL } from './api-base'
 
-export type DeliveryRole = 'inhaber' | 'verkauf' | 'backstube' | 'fahrer'
+export type DeliveryRole =
+  | 'inhaber'
+  | 'verkauf'
+  | 'backstube'
+  | 'backstubenleiter'
+  | 'fahrer'
 
 export interface DeliveryUser {
   id: number | string
@@ -46,6 +51,7 @@ const ROLE_MAP: Record<string, DeliveryRole> = {
   inhaber: 'inhaber',
   verkauf: 'verkauf',
   backstube: 'backstube',
+  backstubenleiter: 'backstubenleiter',
   fahrer: 'fahrer',
   admin: 'inhaber', // Mock
   staff: 'verkauf', // Mock

@@ -100,16 +100,23 @@ function prepareE2eHq(apiURL) {
   const root = path.join(os.tmpdir(), `bakery-e2e-hq-${portOf(apiURL)}`)
   const products = path.join(root, 'products')
   const data = path.join(root, 'data')
+  const recipes = path.join(data, 'recipes')
   const env = {
     HQ_PRODUCTS_DIR: products,
     HQ_REPORTS_DIR: path.join(data, 'reports'),
     HQ_FINANCE_DIR: path.join(data, 'finance'),
+    // Rezepte: erfundene Dateien je Formatvariante (tools/e2e/hq-recipes).
+    // Ohne HQ_WRITE_DIR schreibt die API direkt in diese Kopie.
+    HQ_RECIPES_DIR: recipes,
   }
   if (process.env.TEST_WORKER_INDEX !== undefined) return env
 
   fs.rmSync(products, { recursive: true, force: true })
   fs.mkdirSync(products, { recursive: true })
   fs.cpSync(productsDir(), products, { recursive: true })
+  fs.rmSync(recipes, { recursive: true, force: true })
+  fs.mkdirSync(recipes, { recursive: true })
+  fs.cpSync(path.join(__dirname, 'hq-recipes'), recipes, { recursive: true })
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { writeSyntheticHq } = require(path.join(
     ROOT,

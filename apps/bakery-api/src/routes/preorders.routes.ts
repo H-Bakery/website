@@ -58,6 +58,7 @@ import { sendError } from '../utils/http-error'
 const core = require('../services/delivery-preorders.core')
 const tours = require('../services/delivery-tours.core')
 const shopOrders = require('../services/shop-orders.core')
+const authCrypto = require('../services/auth-crypto.core')
 /* eslint-enable @typescript-eslint/no-var-requires */
 
 const READ_ROLES = ['verkauf', 'fahrer'] as const // inhaber passes every check
@@ -131,7 +132,8 @@ function createPreordersRouter(service: PreordersService): Router {
       if (fail(res, result) || !result.ok) return
       // Die Backstube braucht Mengen, keine Beträge und keinen Bezahlstand
       // (wie `/day`, das sie gar nicht lesen darf): ohne `summary`.
-      if (req.user?.role === 'backstube') {
+      // Gilt auch für die Backstubenleitung (`roleIncludes`).
+      if (authCrypto.roleIncludes(req.user?.role, 'backstube')) {
         const { summary: _summary, ...data } = result.data as Record<
           string,
           unknown
