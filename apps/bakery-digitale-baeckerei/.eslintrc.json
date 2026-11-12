@@ -1,0 +1,19 @@
+{
+  "extends": ["../../.eslintrc.json"],
+  "ignorePatterns": [
+    "!**/*",
+    ".next/**/*",
+    "out/**/*",
+    "public/**/*",
+    "node_modules/**/*",
+    "next-env.d.ts"
+  ],
+  "overrides": [
+    {
+      "files": ["*.ts", "*.tsx", "*.js", "*.jsx", "*.mjs"],
+      "rules": {
+        "@next/next/no-html-link-for-pages": "off"
+      }
+    }
+  ]
+}

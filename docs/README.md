@@ -35,7 +35,8 @@
 
 **Apps:** [landing](./apps/landing.md) · [shop](./apps/shop.md) · [delivery](./apps/delivery.md) ·
 [partybrezel](./apps/partybrezel.md) (Klick-Prototyp, nicht im Pilot) ·
-[digitale-baeckerei](./apps/digitale-baeckerei.md) (3D-Laden, Plan)
+[digitale-baeckerei](./apps/digitale-baeckerei.md) (3D-Laden, nicht im Pilot;
+Plan und Phasen, App `apps/bakery-digitale-baeckerei`)
 
 ## Historical (pre-pilot, not maintained)
 
