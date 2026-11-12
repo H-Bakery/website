@@ -13,6 +13,10 @@
  * - `data/` enthält nur Belegung und Snapshot; der Snapshot hält den Vertrag
  *   ein (`pruefeSnapshot`: nur erlaubte Felder, kein „€“) und nennt kein
  *   Produkt, das nicht im Modell liegt;
+ * - keine 3D-Modelle einzelner Produkte (Nahansicht): die liegen vorerst nur
+ *   lokal (DB9) und gehören nicht in einen öffentlichen Export. Der Index
+ *   `data/produkte-3d.json` muss da und leer sein, `produkte-3d/` leer oder
+ *   nicht vorhanden - so baut der Deploy ohne das Daten-Repo;
  * - in keiner Datei des Exports steht ein „€“ (DB8).
  *
  * CommonJS, nur Node-Bordmittel; getestet in export-pruefung.spec.ts.
@@ -22,10 +26,12 @@ const path = require('path')
 const { checkFile, staleFiles } = require('./model-lock')
 const { zaehlePreisPrimitive } = require('./glb-bereinigen')
 const { pruefeSnapshot } = require('./product-snapshot')
+const { ZIEL_ORDNER, pruefeIndex } = require('./produkte-3d-lock')
 
 const FIXTURE_ENV = 'DIGITALE_BAECKEREI_FIXTURE'
 const EURO = Buffer.from('€', 'utf8')
-const DATEN = ['belegung.json', 'products.snapshot.json']
+const MODELL_INDEX = 'produkte-3d.json'
+const DATEN = ['belegung.json', 'products.snapshot.json', MODELL_INDEX]
 
 /** Alle Dateien unter `dir`, relativ, sortiert. @param {string} dir @returns {string[]} */
 function alleDateien(dir) {
@@ -120,7 +126,7 @@ function pruefeExport({ outDir, lock, env = {}, basePath = '' }) {
     }
   }
 
-  // Daten: nur Belegung und Snapshot, der Snapshot im Vertrag.
+  // Daten: nur Belegung, Snapshot und der (leere) Index der Nahansicht.
   const dataDir = path.join(outDir, 'data')
   for (const name of staleFiles(namenIn(dataDir), DATEN)) {
     fehler.push(`data/${name} gehört nicht in den Export`)
@@ -160,6 +166,34 @@ function pruefeExport({ outDir, lock, env = {}, basePath = '' }) {
         `data/products.snapshot.json: ${
           err instanceof Error ? err.message : String(err)
         }`
+      )
+    }
+  }
+
+  // Nahansicht: Die 3D-Modelle einzelner Produkte sind vorerst nur lokal (DB9).
+  // Ein öffentlicher Export hat einen leeren Index und keine Datei im Ordner.
+  const modellIndex = liesJson(MODELL_INDEX)
+  if (modellIndex !== null) {
+    try {
+      const anzahl = Object.keys(pruefeIndex(modellIndex).modelle).length
+      if (anzahl > 0) {
+        fehler.push(
+          `data/${MODELL_INDEX} nennt ${anzahl} 3D-Modell(e) - die Modelle einzelner Produkte sind vorerst nur lokal (DB9) und dürfen nicht raus`
+        )
+      }
+    } catch {
+      // Ohne die Meldung von pruefeIndex: Sie könnte eine Produkt-ID nennen.
+      fehler.push(`data/${MODELL_INDEX} hat nicht die erwartete Form`)
+    }
+  }
+  const modellOrdner = path.join(outDir, ZIEL_ORDNER)
+  if (fs.existsSync(modellOrdner)) {
+    const anzahl = fs.statSync(modellOrdner).isDirectory()
+      ? alleDateien(modellOrdner).length
+      : 1
+    if (anzahl > 0) {
+      fehler.push(
+        `${ZIEL_ORDNER}/ enthält ${anzahl} Datei(en) - die 3D-Modelle einzelner Produkte sind vorerst nur lokal (DB9) und dürfen nicht raus`
       )
     }
   }

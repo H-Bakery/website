@@ -1,5 +1,6 @@
 'use client'
 import React, { useId, useMemo } from 'react'
+import CheckIcon from '@mui/icons-material/Check'
 import CloseIcon from '@mui/icons-material/Close'
 import Box from '@mui/material/Box'
 import Dialog from '@mui/material/Dialog'
@@ -15,6 +16,8 @@ import { KEINE_PRODUKTINFOS_TEXT, gruppiereEintraege } from './produktliste'
 import { SEITLICH, TOUCH_TARGET, WENIGER_BEWEGUNG } from './theme'
 
 export const LISTE_LEER_TEXT = KEINE_PRODUKTINFOS_TEXT
+/** Text am Haken einer Zeile, deren Karte schon einmal offen war. */
+export const ENTDECKT_ZEILE_TEXT = 'schon entdeckt'
 
 export interface AllesHierListeProps {
   offen: boolean
@@ -29,6 +32,10 @@ export interface AllesHierListeProps {
    * laden oder wenn sie nicht geladen werden konnten.
    */
   leerText?: string
+  /** ids der Produkte, deren Karte in diesem Besuch schon offen war: Haken an der Zeile. */
+  entdeckt?: ReadonlySet<string>
+  /** Zeile unter der Überschrift, z. B. „3 von 12 Produkten im Laden entdeckt“. */
+  entdecktText?: string | null
 }
 
 /**
@@ -43,6 +50,8 @@ export default function AllesHierListe({
   onSelect,
   onClose,
   leerText = LISTE_LEER_TEXT,
+  entdeckt,
+  entdecktText,
 }: AllesHierListeProps) {
   const titelId = useId()
   const wenigerBewegung = useMediaQuery(WENIGER_BEWEGUNG)
@@ -88,13 +97,24 @@ export default function AllesHierListe({
           pb: 0.5,
         }}
       >
-        <Typography
-          id={titelId}
-          component="h2"
-          sx={{ flex: 1, fontSize: '1.15rem', fontWeight: 700 }}
-        >
-          Alles hier: {blickpunktName}
-        </Typography>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography
+            id={titelId}
+            component="h2"
+            sx={{ fontSize: '1.15rem', fontWeight: 700 }}
+          >
+            Alles hier: {blickpunktName}
+          </Typography>
+          {entdecktText && (
+            <Typography
+              data-testid="entdeckt"
+              color="text.secondary"
+              sx={{ fontSize: '0.8125rem', lineHeight: 1.3 }}
+            >
+              {entdecktText}
+            </Typography>
+          )}
+        </Box>
         <IconButton
           aria-label="Schließen"
           onClick={onClose}
@@ -137,6 +157,19 @@ export default function AllesHierListe({
                     }}
                     sx={{ my: 0.25 }}
                   />
+                  {entdeckt?.has(produkt.id) && (
+                    // Der Text hängt am Rahmen, nicht am Icon: MUI versteckt
+                    // Icons vor Screenreadern.
+                    <Box
+                      component="span"
+                      role="img"
+                      aria-label={ENTDECKT_ZEILE_TEXT}
+                      data-testid="entdeckt-haken"
+                      sx={{ ml: 1, display: 'flex', color: 'text.secondary' }}
+                    >
+                      <CheckIcon aria-hidden sx={{ fontSize: 20 }} />
+                    </Box>
+                  )}
                 </ListItemButton>
               </ListItem>
             ))}

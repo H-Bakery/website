@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "modelle": {
+    "testbrot-500g": {
+      "datei": "produkte-3d/testbrot-500g.glb",
+      "bytes": 14580,
+      "bbox_m": { "min": [-0.1, 0, -0.05], "max": [0.1, 0.075, 0.05] }
+    }
+  }
+}

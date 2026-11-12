@@ -3,6 +3,7 @@ import { fireEvent, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ProduktSheet, {
   MEHR_LESEN_TEXT,
+  NAHANSICHT_TEXT,
   WEBSITE_LINK_TEXT,
   WENIGER_TEXT,
   ZIEH_SCHWELLE,
@@ -215,6 +216,23 @@ describe('ProduktSheet', () => {
     )
     neu(TESTBROT)
     expect(sheet()).toBeInTheDocument()
+  })
+
+  it('zeigt „In 3D ansehen“ nur, wenn es eine Nahansicht gibt', async () => {
+    const onNahansicht = jest.fn()
+    const { user, onClose } = setup(TESTBROT, { onNahansicht })
+    const knopf = screen.getByRole('button', { name: NAHANSICHT_TEXT })
+    await user.click(knopf)
+    expect(onNahansicht).toHaveBeenCalledTimes(1)
+    // Die Karte bleibt dabei offen.
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('ohne 3D-Modell gibt es den Knopf nicht', () => {
+    setup(TESTBROT)
+    expect(
+      screen.queryByRole('button', { name: NAHANSICHT_TEXT })
+    ).not.toBeInTheDocument()
   })
 
   it('ohne Hinweis keine leere Zeile', () => {

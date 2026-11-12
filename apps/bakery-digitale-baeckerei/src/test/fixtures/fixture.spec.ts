@@ -5,6 +5,11 @@ import path from 'path'
 import {
   GENERATOR_PATH,
   GLB_PATH,
+  MIT_MODELL,
+  OHNE_MODELL,
+  PRODUKT_GENERATOR_PATH,
+  PRODUKT_GLB_PATH,
+  PRODUKT_INDEX_PATH,
   SNAPSHOT_PATH,
   VARIANTE,
   WAISE,
@@ -325,6 +330,93 @@ describe('products.snapshot.fixture.json', () => {
   })
 })
 
+describe('produkt.fixture.glb (Nahansicht)', () => {
+  const glb = fs.readFileSync(PRODUKT_GLB_PATH)
+  const produkt = leseGlb(glb)
+  const index = JSON.parse(fs.readFileSync(PRODUKT_INDEX_PATH, 'utf8'))
+
+  it('ist deterministisch: der Generator liefert genau die eingecheckte Datei', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'produkt-fixture-'))
+    try {
+      const target = path.join(dir, 'a.glb')
+      execFileSync(process.execPath, [PRODUKT_GENERATOR_PATH, '--out', target])
+      expect(fs.readFileSync(target).equals(glb)).toBe(true)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('ist klein und ohne Decoder lesbar: keine Erweiterungen, schlichte Accessoren', () => {
+    expect(glb.length).toBeLessThan(20_000)
+    expect(produkt.json.extensionsUsed).toBeUndefined()
+    expect(produkt.json.extensionsRequired).toBeUndefined()
+    expect(produkt.json.images).toBeUndefined()
+    expect(produkt.json.textures).toBeUndefined()
+    const [position, normale, farbe] = produkt.json.accessors
+    expect(position).toMatchObject({ componentType: 5126, type: 'VEC3' })
+    expect(normale).toMatchObject({ componentType: 5126, type: 'VEC3' })
+    expect(farbe).toMatchObject({
+      componentType: 5121,
+      normalized: true,
+      type: 'VEC4',
+    })
+    expect(position.count % 3).toBe(0)
+    const ende = produkt.json.bufferViews.reduce(
+      (max: number, v: { byteOffset: number; byteLength: number }) =>
+        Math.max(max, v.byteOffset + v.byteLength),
+      0
+    )
+    expect(ende).toBeLessThanOrEqual(produkt.bin.length)
+  })
+
+  it('ist beleuchtet (PBR, nicht metallisch) - anders als der Laden nicht unlit', () => {
+    expect(produkt.json.materials).toHaveLength(1)
+    const material = produkt.json.materials[0]
+    expect(material.extensions).toBeUndefined()
+    expect(material.pbrMetallicRoughness.metallicFactor).toBe(0)
+    expect(produkt.json.meshes[0].primitives[0].attributes).toEqual({
+      POSITION: 0,
+      NORMAL: 1,
+      COLOR_0: 2,
+    })
+  })
+
+  it('steht wie die echten Modelle: Meter, auf y = 0, Mitte der Grundfläche im Ursprung', () => {
+    const { min, max } = produkt.json.accessors[0]
+    expect(min[1]).toBe(0)
+    expect(min[0]).toBeCloseTo(-max[0])
+    expect(min[2]).toBeCloseTo(-max[2])
+    // Größe eines Brotes, nicht eines Hauses.
+    expect(max[0] - min[0]).toBeGreaterThan(0.03)
+    expect(max[0] - min[0]).toBeLessThan(0.6)
+    // Ein einzelner Knoten ohne Verschiebung: der Rahmen gilt für die Szene.
+    expect(produkt.json.nodes).toEqual([{ mesh: 0 }])
+  })
+
+  it('trägt keine Metadaten: keine extras, keine Namen', () => {
+    const texte = zeichenketten(produkt.json)
+    expect(texte).not.toContain('extras')
+    expect(texte).not.toContain('name')
+    expect(texte.filter((text) => PREIS.test(text))).toEqual([])
+  })
+
+  it('der Index nennt genau dieses Modell - für ein Produkt des Snapshots', () => {
+    expect(Object.keys(index.modelle)).toEqual([MIT_MODELL.produkt])
+    const eintrag = index.modelle[MIT_MODELL.produkt]
+    expect(eintrag.datei).toBe(`produkte-3d/${MIT_MODELL.produkt}.glb`)
+    expect(eintrag.bytes).toBe(glb.length)
+    const { min, max } = produkt.json.accessors[0]
+    for (let k = 0; k < 3; k += 1) {
+      expect(eintrag.bbox_m.min[k]).toBeCloseTo(min[k], 4)
+      expect(eintrag.bbox_m.max[k]).toBeCloseTo(max[k], 4)
+    }
+    expect(snapshot.produkte[MIT_MODELL.produkt].name).toBe(MIT_MODELL.name)
+    // Und es gibt ein Produkt ohne Modell, an dem die Suite „kein Knopf“ prüft.
+    expect(snapshot.produkte[OHNE_MODELL.produkt].name).toBe(OHNE_MODELL.name)
+    expect(index.modelle[OHNE_MODELL.produkt]).toBeUndefined()
+  })
+})
+
 describe('keine Preise in den Fixtures (DB8)', () => {
   it('weder im Modell noch im Snapshot', () => {
     const imModell = zeichenketten(json).filter(
@@ -351,6 +443,24 @@ describe('der Export-Wächter (exportFehler)', () => {
       )
     }
   }
+  /** Die Nahansicht im Export: Dateien in produkte-3d/ und der Index. */
+  const legeProdukte = (
+    dateien: Record<string, Uint8Array> = {
+      [`${MIT_MODELL.produkt}.glb`]: fs.readFileSync(PRODUKT_GLB_PATH),
+    },
+    index: Uint8Array | null = fs.readFileSync(PRODUKT_INDEX_PATH)
+  ) => {
+    const dir = path.join(outDir, 'produkte-3d')
+    fs.rmSync(dir, { recursive: true, force: true })
+    fs.mkdirSync(dir, { recursive: true })
+    for (const [name, data] of Object.entries(dateien)) {
+      fs.writeFileSync(path.join(dir, name), data)
+    }
+    const ziel = path.join(outDir, 'data', 'produkte-3d.json')
+    fs.mkdirSync(path.dirname(ziel), { recursive: true })
+    if (index) fs.writeFileSync(ziel, index)
+    else fs.rmSync(ziel, { force: true })
+  }
   beforeEach(() => {
     outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'export-waechter-'))
   })
@@ -365,9 +475,34 @@ describe('der Export-Wächter (exportFehler)', () => {
     expect(a.equals(fs.readFileSync(GLB_PATH))).toBe(false)
   })
 
-  it('lässt genau das bereinigte Fixture und den Fixture-Snapshot durch', () => {
+  it('lässt genau das bereinigte Fixture, den Fixture-Snapshot und das eine Produkt-Modell durch', () => {
     lege(ausgeliefertesModell(), fs.readFileSync(SNAPSHOT_PATH))
+    legeProdukte()
     expect(exportFehler(outDir)).toBeNull()
+  })
+
+  it('lehnt jedes andere Produkt-Modell der Nahansicht ab - zu viel, zu wenig, verändert', () => {
+    lege(ausgeliefertesModell(), fs.readFileSync(SNAPSHOT_PATH))
+    const fixture = fs.readFileSync(PRODUKT_GLB_PATH)
+    const name = `${MIT_MODELL.produkt}.glb`
+    const MELDUNG = /nicht genau das synthetische Produkt-Modell/
+
+    // gar keine Nahansicht im Export
+    expect(exportFehler(outDir)).toMatch(MELDUNG)
+    // ein zweites (z. B. echtes) Modell daneben
+    legeProdukte({ [name]: fixture, 'echtes-brot.glb': Buffer.from('echt') })
+    expect(exportFehler(outDir)).toMatch(/echtes-brot\.glb/)
+    // dieselbe Datei unter anderem Namen
+    legeProdukte({ 'echtes-brot.glb': fixture })
+    expect(exportFehler(outDir)).toMatch(MELDUNG)
+    // anderer Inhalt unter dem richtigen Namen
+    legeProdukte({ [name]: Buffer.from('ein anderes Modell') })
+    expect(exportFehler(outDir)).toMatch(MELDUNG)
+    // anderer oder fehlender Index
+    legeProdukte(undefined, Buffer.from('{"version":1,"modelle":{}}'))
+    expect(exportFehler(outDir)).toMatch(MELDUNG)
+    legeProdukte(undefined, null)
+    expect(exportFehler(outDir)).toMatch(MELDUNG)
   })
 
   it('lehnt ein anderes Modell ab - auch das unbereinigte Fixture', () => {

@@ -7,11 +7,18 @@ import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
 import Link from '@mui/material/Link'
+import ReplayIcon from '@mui/icons-material/Replay'
 import Typography from '@mui/material/Typography'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { TOUCH_TARGET, WENIGER_BEWEGUNG } from './theme'
 
 export const QUELLEN_TITEL = 'Quellen'
+export const INTRO_NOCHMAL_TEXT = 'Flug von der Straße noch einmal ansehen'
+
+export interface QuellenProps {
+  /** Zeigt den Flug zum Start noch einmal. Ohne diese Funktion fehlt der Knopf. */
+  onIntroNochmal?: () => void
+}
 
 const extern = { target: '_blank', rel: 'noopener noreferrer' } as const
 
@@ -19,7 +26,7 @@ const extern = { target: '_blank', rel: 'noopener noreferrer' } as const
  * Kleiner Eintrag „Quellen“, der die Herkunft von Modell und Außenraum in
  * einem Dialog nennt (Plan, Abschnitt „Rechte und Datenschutz“).
  */
-export default function Quellen() {
+export default function Quellen({ onIntroNochmal }: QuellenProps = {}) {
   const [offen, setOffen] = useState(false)
   const titelId = useId()
   const wenigerBewegung = useMediaQuery(WENIGER_BEWEGUNG)
@@ -96,6 +103,20 @@ export default function Quellen() {
               Name, Schriftzug und Texte gehören der Bäckerei Heusser.
             </Typography>
           </Box>
+          {onIntroNochmal && (
+            <Button
+              variant="outlined"
+              fullWidth
+              startIcon={<ReplayIcon aria-hidden />}
+              onClick={() => {
+                setOffen(false)
+                onIntroNochmal()
+              }}
+              sx={{ mt: 2.5, borderRadius: 999 }}
+            >
+              {INTRO_NOCHMAL_TEXT}
+            </Button>
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOffen(false)}>Schließen</Button>

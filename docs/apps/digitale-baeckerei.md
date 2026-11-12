@@ -174,7 +174,8 @@ apps/bakery-digitale-baeckerei-e2e/   Playwright (390×844 und Desktop), nur mit
   auf Deutsch mit „Noch einmal versuchen“ und - wenn die Produktdaten da sind - die Listen aller
   Blickpunkte.
 - **Start:** Ein Ladebild (eine gezeichnete Theke als SVG in den Markenfarben - kein Standbild
-  des echten Modells, das gehört nicht ins Repo) mit Fortschritt, danach Blickpunkt „Theke“. Ein kurzer Hinweis „Ziehen zum Umschauen · Tippen für Infos“ verschwindet nach der
+  des echten Modells, das gehört nicht ins Repo) mit Fortschritt, danach der Flug von der Straße
+  zum Blickpunkt „Theke“ (überspringbar, siehe „Stand P3“). Ein kurzer Hinweis „Ziehen zum Umschauen · Tippen für Infos“ verschwindet nach der
   ersten Geste.
 - **Blickpunkt-Leiste** unten in Daumenreichweite mit den Chips _Theke_ · _Brotregal_ ·
   _Regale_. Zusätzlich Wischen mit zwei Fingern oder Pfeile am Rand. Auf dem Desktop: Pfeiltasten.
@@ -252,7 +253,10 @@ Befehle in derselben Reihenfolge gelaufen (ohne Secret und ohne den hq-Checkout)
    wenn noch ein Preisschild darin steckt, wenn in `model/` oder `data/` etwas Fremdes liegt, wenn der
    Snapshot ein Feld außerhalb des Vertrags hat oder ein Produkt nennt, das nicht im Modell liegt,
    wenn irgendwo im Export ein „€“ steht, wenn der Export nicht für den Unterpfad gebaut ist oder der
-   Fixture-Schalter gesetzt ist. Gemeldet werden nur Dateinamen und Zahlen.
+   Fixture-Schalter gesetzt ist. Ebenso, wenn 3D-Modelle einzelner Produkte im Export liegen: Die
+   sind vorerst nur lokal (DB9), der Runner hat das Daten-Repo `produkte-3d` nicht - erwartet wird
+   genau der leere Index `data/produkte-3d.json` und kein `produkte-3d/*.glb`; live gibt es also
+   keinen Knopf „In 3D ansehen“. Gemeldet werden nur Dateinamen und Zahlen.
 6. `hq/` löschen, `out/` nach `apps/bakery-landing/out/digitale-baeckerei/` kopieren, dann der Upload
    wie bisher (CNAME, `.nojekyll`). Kein Artefakt mit `hq/` oder `public/data`.
 
@@ -323,6 +327,54 @@ und Desktop dazu (lokal, nicht eingecheckt).
 | **P3 später** | Intro „Blick vom Kreisel“, Außenraum aus dem GLB schneiden, Backstube als zweiter Raum, Umzug des Generators (DB2), evtl. Feierabend-Umschalter oder „entdeckt x/y“                                   | einzeln entscheiden                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | **P4 später** | Echte 3D-Produkte (DB7), zuerst ein Test mit 3 Produkten                                                                                                                                              | eigener Plan, wenn es losgeht                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
+### Stand P3
+
+Gebaut (App-Seite, mit dem heute gesperrten Modell):
+
+- **Flug zum Start „Von der Straße zur Theke“:** Nach dem Laden fliegt die Kamera einmal je
+  Seitenaufruf die Straße am Haus entlang, die Stufen hinauf und durch die offene Tür bis genau in
+  die Ruhelage des Blickpunkts „Theke“ (7,5 s, ≈ 23 m); dort übernimmt das Rig. Weg und Zeitplan
+  stehen je Raum in `raeume.ts` (`intros`), die Rechnung in `src/lib/scene/intro.ts`. Der im
+  Explorer geprüfte Weg ist **vorn gekürzt** statt beschleunigt: Sein erstes Stück (20 m in 2,2 s
+  knapp über der Straße, dazu ein Schwenk bis ≈ 77°/s) ist am Handy zu hastig - der Flug steigt
+  später ein (das erste Bild zeigt schon die Ladenfront) und fliegt das Stück mit ≈ 5 m/s.
+- **Überspringen:** Knopf „Überspringen“ unten, jeder Tipp oder Klick ins Bild, Escape, Enter oder
+  Leertaste - sofort an die Theke. `?intro=0` startet ohne Flug. Bei `prefers-reduced-motion` gibt
+  es ihn gar nicht. Unter „Quellen“ lässt er sich noch einmal ansehen. Unterwegs gibt es weder
+  Leiste noch Antippen; der Hinweis „Ziehen zum Umschauen“ kommt erst nach der Ankunft.
+- **Leistung:** Der Takt läuft nur während des Flugs, danach wieder 0 Bilder in Ruhe. Schafft das
+  Gerät in der ersten Sekunde im Mittel keine 12 Bilder/s, oder wandert der Tab in den Hintergrund,
+  schneidet die App an die Theke. Gemessen in der Emulation (Pixel 7, 4G + CPU 4×, Software-GPU;
+  **auf echtem Handy ungeprüft**): erstes Bild nach ≈ 4,3 s mit wie ohne Flug, ≈ 28 Bilder/s im
+  Flug und ≈ 29 an der Theke (die Software-GPU begrenzt beides). Im Querformat und am Desktop
+  schafft die Software-GPU draußen nur ≈ 10 Bilder/s - dort schneidet die App nach der ersten
+  Sekunde wie vorgesehen an die Theke.
+- **„Entdeckt x von y“:** Die Liste „Alles hier“ nennt unter der Überschrift, wie viele Produkte
+  des Ladens schon als Karte offen waren, und setzt einen Haken an diese Zeilen. Nur im
+  Arbeitsspeicher - nach dem Neuladen zählt es von vorn.
+
+Nicht gebaut, und warum:
+
+- **Nur beim ersten Besuch zeigen:** Dafür müsste die App sich etwas merken, und sie speichert
+  nichts auf dem Gerät. Der Flug läuft darum bei jedem Seitenaufruf und lässt sich überspringen.
+  Ob sie sich das merken darf, entscheidet der Inhaber.
+- **Langer Flug vom Kreisel:** Im Explorer gebaut, auf dem lokalen Zweig `feat/bh-intro-kreisel`
+  (nicht gepusht, nicht veröffentlicht). Sein Weg steht schon in `raeume.ts` (12 s, 84 m); die App
+  bietet ihn von selbst an, sobald ein Modell gesperrt ist, das Knoten `umgebung/kreisel/*`
+  enthält - vorher fliegt sie den kurzen. Dann die Bilder neu ansehen.
+- **Feierabend-Umschalter:** Das gesperrte Modell hat keine `@feierabend`-Varianten - es gäbe
+  nichts umzuschalten. Der Filter bleibt `morgens`.
+- **Außenraum aus dem GLB schneiden:** Nach den Messungen nicht nötig, und der Flug braucht den
+  Außenraum.
+- **Backstube als zweiter Raum:** Das Datenmodell ist bereit (`raeume.ts` ist eine Liste), ein
+  Modell der Backstube gibt es noch nicht.
+- **Umzug des Generators (DB2):** Entscheidung des Inhabers, nicht begonnen.
+
+Schwächen des Flugs: Nur in Chromium mit Software-GPU angesehen (Standbilder bei 390×844, 844×390
+und 1440×900), nie als Bewegung auf einem echten Handy. Der Türrahmen zieht beim Eintreten sehr
+nah am linken Bildrand vorbei. Der Himmel ist eine Fläche in der Horizontfarbe. Der Flug vom
+Kreisel ist in der App an keinem Modell geprüft.
+
 ## Später: Intro „Blick vom Kreisel“ (P3)
 
 Ein kurzer, automatischer Kameraflug: Er beginnt am Kreisel, führt die Eckstraße entlang und durch
@@ -351,6 +403,43 @@ kann (im Produkt-Sheet) und das auch die Produktseiten der Landingpage zeigen.
   bekommt es ein Remote (GitHub, ggf. LFS), und die App lädt die Modelle wie das Laden-Modell über
   einen festen Stand mit Prüfsumme. Rohfotos bleiben außerhalb aller Repos.
   Die Fotos der eigenen Ware gehören der Bäckerei und dürfen veröffentlicht werden.
+
+### Gebaut: Nahansicht in der Karte (nur lokal)
+
+- **Bedienung:** Hat das gewählte Produkt ein Modell, zeigt die Karte den Knopf „In 3D ansehen“. Er
+  öffnet die Nahansicht - auf dem Handy bildfüllend, auf dem Desktop als Dialog: das Modell auf
+  einem Drehteller (Ziehen dreht, nie von unten; zwei Finger, Mausrad oder +/- zoomen in Grenzen),
+  eine langsame Runde beim Öffnen (nicht bei `prefers-reduced-motion`), „Zurück“ oder Escape
+  schließt nur die Nahansicht. Kein Modell → kein Knopf, kein Ersatzmodell.
+- **Licht:** eigener Renderer mit den Einstellungen der Vorschau des Daten-Repos (`RoomEnvironment`
+  0,75 + ein Richtungslicht, sRGB, `NeutralToneMapping`, weicher Kontaktschatten) auf heller
+  Bühne - die Modelle sind beleuchtetes PBR, der Laden bleibt unlit. Der Laden behält seinen
+  WebGL-Kontext; die Nahansicht legt ihren erst beim Öffnen an (Code und Modell werden erst dann
+  geladen) und gibt beim Schließen alles frei.
+- **Daten:** `scripts/sync-produkte-3d.mjs` liest beim Bauen genau den Commit aus
+  `produkte-3d.lock.json` (`quelle`, `commit`, je Modell `sha256` und `bytes`) mit `git show` aus
+  `../produkte-3d` (`PRODUKTE_3D_DIR`), prüft jede Datei und schreibt `public/produkte-3d/<id>.glb`
+  und `public/data/produkte-3d.json` (beides git-ignoriert). **Gibt es das Daten-Repo nicht - CI,
+  Deploy, andere Rechner -, entsteht ein leerer Index, und die App bietet keine Nahansicht an.** Die
+  veröffentlichte Seite hat sie also erst, wenn das Daten-Repo ein Remote bekommt (dann wechselt nur
+  die Quelle von `git show` auf eine Adresse mit dem Commit im Pfad). CI und die Playwright-Suite
+  bauen mit einem synthetischen Laib für „Testbrot“ und prüfen, dass im Export nur der liegt.
+- **Ein neues Modell** kommt so hinein: im Daten-Repo verarbeiten und committen (`npm run process`,
+  `check`) → in `produkte-3d.lock.json` `commit` und für jedes Modell `sha256` und `bytes` aus dem
+  Manifest eintragen → PR. Die ID ist die hq-ID ohne Nummer; erreichbar ist die Nahansicht nur für
+  Produkte, die im Laden-Modell auf einem Platz liegen.
+- **Stand des 3-Produkte-Tests** (Commit `a97ed9d` des Daten-Repos, prozedural erzeugte
+  Testmodelle, keine Scans): Brezel (Brezelständer), Croissant (Vitrine) und Kornbrot 500 g
+  (Brotregal) liegen alle im Laden und sind über ihre Karte erreichbar. Gemessen in der Emulation
+  (Pixel 7, 4G + CPU 4×, Software-GPU; **auf echtem Handy ungeprüft**): vom Tipp bis zum ersten Bild
+  ≈ 1,4-1,6 s, dabei ≈ 13 kB Code und 214-350 kB Modell; in Ruhe 0 Bilder, nach dem Schließen kein
+  zusätzlicher WebGL-Kontext.
+- **Passt teilrealistisch neben stilisiert?** Als eigene Ansicht ja: Die Nahansicht steht auf einer
+  neutralen Bühne und liest sich wie ein Produktfoto zur Karte. Im Regal nebeneinander nicht - die
+  flächigen Produkte des Ladens und die texturierten Modelle sind zwei Bildsprachen, und die Farben
+  weichen sichtbar ab (das Croissant im Laden blass, in der Nahansicht kräftig goldbraun). Die zwei
+  Detailstufen bleiben also getrennt. Offen bleibt das Urteil an echten Scans - sie bringen ihr
+  eigenes, eingebackenes Licht mit.
 
 ## Offen (Inhaber)
 
