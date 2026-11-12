@@ -8,13 +8,18 @@ export const HINWEIS_TEXT = 'Ziehen zum Umschauen · Tippen für Infos'
 export interface HinweisProps {
   /** `false` nach der ersten Geste: der Hinweis blendet aus */
   sichtbar: boolean
+  /** Anderer Text als der Bedienhinweis, z. B. für einen Bereich ohne Produktinfos. */
+  text?: string
 }
 
 /**
  * Kurzer Bedienhinweis über der Blickpunkt-Leiste. Fängt keine Berührungen
  * ab; blendet weich aus (ohne Bewegung: sofort).
  */
-export default function Hinweis({ sichtbar }: HinweisProps) {
+export default function Hinweis({
+  sichtbar,
+  text = HINWEIS_TEXT,
+}: HinweisProps) {
   return (
     <Paper
       elevation={3}
@@ -50,7 +55,7 @@ export default function Hinweis({ sichtbar }: HinweisProps) {
         },
       }}
     >
-      {HINWEIS_TEXT}
+      {text}
     </Paper>
   )
 }

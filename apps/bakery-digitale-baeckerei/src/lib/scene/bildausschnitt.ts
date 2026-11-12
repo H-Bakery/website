@@ -18,6 +18,11 @@ export interface Rechteck {
 
 /** Abstand, den ein gewähltes Produkt zum Rand des freien Bildes hält (px). */
 export const FREI_RAND_PX = 48
+/**
+ * So nah am Rand des freien Bildes gilt ein Produkt noch als „im Bild“ (px),
+ * wenn die Grenze des Umschauens es nicht weiter hereinlässt.
+ */
+export const IM_BILD_RAND_PX = 8
 /** Ab diesem Anteil der Bildbreite gilt die Karte als Sheet am unteren Rand. */
 const UNTEN_AB = 0.9
 

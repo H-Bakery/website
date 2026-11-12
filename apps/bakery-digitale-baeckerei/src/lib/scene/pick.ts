@@ -66,6 +66,12 @@ export interface Picker {
    * dauerhafte Auswahl.
    */
   highlight(slot: string | null, opts?: { flash?: boolean }): void
+  /**
+   * Was gerade wirklich hervorgehoben ist: der Platz, an dem Überzüge hängen
+   * (`null`, wenn keiner hängt - unbekannter Platz, ausgeblendet, Meshes ohne
+   * Normalen), und ihre Anzahl.
+   */
+  readonly hervorgehoben: { slot: string | null; ueberzuege: number }
   dispose(): void
 }
 
@@ -328,6 +334,13 @@ export function createPicker(o: {
     highlight: (slot, opts) => {
       if (disposed) return
       hervorhebung.zeige(slot, opts)
+    },
+    get hervorgehoben() {
+      const ueberzuege = disposed ? 0 : hervorhebung.ueberzuege
+      return {
+        slot: ueberzuege > 0 ? hervorhebung.aktiv : null,
+        ueberzuege,
+      }
     },
     dispose: () => {
       if (disposed) return

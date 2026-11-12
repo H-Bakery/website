@@ -19,8 +19,14 @@ export const WECHSEL_MS = 800
 export const ZOOM_MS = 350
 /** Doppeltipp zoomt auf diesen Anteil des weitesten Öffnungswinkels. */
 export const ZOOM_ANTEIL = 0.5
-/** Ab so viel Grad unter der Startweite gilt das Bild als herangezoomt. */
+/** Mindestens so viel Grad unter der Startweite, damit ein Bild als gezoomt gilt. */
 export const ZOOM_EPS = 0.5
+
+/** Was einem Schwenk bis zu seinem Ziel fehlt (rad), weil die Grenze ihn kürzt. */
+export interface Schwenkrest {
+  yaw: number
+  pitch: number
+}
 /** So weit lässt sich über die Grenze hinausziehen (Gummiband), höchstens. */
 export const GUMMI_WEICH = 6 * GRAD
 /** Zeitkonstante des Zurückfederns. */
@@ -49,9 +55,12 @@ export interface Pose {
 /** Was an einem Blickpunkt bei einem Seitenverhältnis gilt. */
 export interface Rahmen {
   eye: Vec3
-  /** Ruhelage der Blickrichtung. */
+  /** Mitte der Grenzen des Umschauens (meist zugleich die Ruhelage). */
   yaw0: number
   pitch0: number
+  /** Ruhelage (Startbild) als Abweichung von dieser Mitte, in den Grenzen. */
+  startYaw: number
+  startPitch: number
   /** Start-Öffnungswinkel in Grad. */
   fov: number
   fovMin: number
@@ -116,16 +125,21 @@ export function rahmenFuer(blickpunkt: Blickpunkt, aspect: number): Rahmen {
   const eng = p ? p.fovMin ?? blickpunkt.fovMin : blickpunkt.fovMin
   const fovMax = capHorizontalFov(Math.max(weit, eng), aspect)
   const fovMin = Math.min(eng, fovMax)
-  const { yaw, pitch } = richtung(eye, look)
+  const ruhe = richtung(eye, look)
+  const { yaw, pitch } = p?.grenzenUm ? richtung(eye, p.grenzenUm) : ruhe
+  const yawMax = Math.abs(p?.yawDeg ?? blickpunkt.yawDeg) * GRAD
+  const pitchMax = Math.abs(p?.pitchDeg ?? blickpunkt.pitchDeg) * GRAD
   return {
     eye,
     yaw0: yaw,
     pitch0: pitch,
+    startYaw: klemmen(wickeln(ruhe.yaw - yaw), -yawMax, yawMax),
+    startPitch: klemmen(ruhe.pitch - pitch, -pitchMax, pitchMax),
     fov: klemmen(start, fovMin, fovMax),
     fovMin,
     fovMax,
-    yawMax: Math.abs(blickpunkt.yawDeg) * GRAD,
-    pitchMax: Math.abs(blickpunkt.pitchDeg) * GRAD,
+    yawMax,
+    pitchMax,
     hochformat,
   }
 }
@@ -286,8 +300,11 @@ export interface RigKern {
   /**
    * Den Blick weich um so viel drehen (Bogenmaß, wie `ziehen`), in den
    * Grenzen - z. B. damit ein gewähltes Produkt nicht unter der Karte liegt.
+   * Liefert, wie viel (rad) die Grenze vom Schwenk abgeschnitten hat (0 =
+   * ganz ausgeführt), oder `null`, wenn er gerade ruht (Wechsel, kein
+   * Blickpunkt, unbrauchbare Werte).
    */
-  schwenken(dYaw: number, dPitch: number): void
+  schwenken(dYaw: number, dPitch: number): Schwenkrest | null
   /** Zeit läuft: Gleiten und Zurückfedern. `true`, solange sich noch etwas bewegt. */
   schritt(dtMs: number): boolean
   bewegt(): boolean
@@ -315,10 +332,16 @@ export function createRigKern(o: { reducedMotion: boolean }): RigKern {
 
   const ruhepose = (r: Rahmen): Pose => ({
     eye: r.eye,
-    yaw: r.yaw0,
-    pitch: r.pitch0,
+    yaw: r.yaw0 + r.startYaw,
+    pitch: r.pitch0 + r.startPitch,
     fov: r.fov,
   })
+
+  /** Ab diesem Öffnungswinkel gilt das Bild als herangezoomt (Doppeltipp). */
+  const zoomSchwelle = (r: Rahmen): number => {
+    const ziel = klemmen(r.fovMax * ZOOM_ANTEIL, r.fovMin, r.fovMax)
+    return Math.min((r.fov + ziel) / 2, r.fov - ZOOM_EPS)
+  }
 
   const aktuellePose = (): Pose | null => {
     if (!rahmen) return null
@@ -349,6 +372,20 @@ export function createRigKern(o: { reducedMotion: boolean }): RigKern {
     abYaw = wickeln(p.yaw - rahmen.yaw0)
     abPitch = p.pitch - rahmen.pitch0
     fov = p.fov
+  }
+
+  /** Ziel einer laufenden Zoom-Fahrt neu in die Grenzen legen (`fov` = Ziel). */
+  const zielDerFahrtAnpassen = () => {
+    if (!rahmen || !fahrt || fahrt.art !== 'zoom') return
+    const g = grenzen(rahmen, fov, aspect)
+    abYaw = klemmen(abYaw, -g.yaw, g.yaw)
+    abPitch = klemmen(abPitch, -g.pitch, g.pitch)
+    fahrt.nach = {
+      eye: rahmen.eye,
+      yaw: rahmen.yaw0 + abYaw,
+      pitch: rahmen.pitch0 + abPitch,
+      fov,
+    }
   }
 
   const ohneBewegungKlemmen = () => {
@@ -407,8 +444,8 @@ export function createRigKern(o: { reducedMotion: boolean }): RigKern {
       const von = aktuellePose()
       blickpunkt = neu
       rahmen = ziel
-      abYaw = 0
-      abPitch = 0
+      abYaw = ziel.startYaw
+      abPitch = ziel.startPitch
       fov = ziel.fov
       zieht = false
       if (!von || o.reducedMotion || opts?.animate === false) {
@@ -435,24 +472,34 @@ export function createRigKern(o: { reducedMotion: boolean }): RigKern {
         fov = rahmen.fov
         return
       }
-      uebernimmFahrt()
       const andererStand =
         alt.hochformat !== rahmen.hochformat ||
         alt.eye.some((v, i) => v !== (rahmen as Rahmen).eye[i]) ||
         alt.yaw0 !== rahmen.yaw0 ||
-        alt.pitch0 !== rahmen.pitch0
+        alt.pitch0 !== rahmen.pitch0 ||
+        alt.startYaw !== rahmen.startYaw ||
+        alt.startPitch !== rahmen.startPitch
       if (andererStand) {
         // Hoch ↔ quer hat eigene Werte: in dessen Ruhelage schneiden.
-        abYaw = 0
-        abPitch = 0
+        fahrt = null
+        abYaw = rahmen.startYaw
+        abPitch = rahmen.startPitch
         fov = rahmen.fov
         zieht = false
         return
       }
       // Wer ganz weit oder in der Startweite war, bleibt es auch im neuen Format.
+      // (Während einer Zoom-Fahrt ist `fov` schon deren Ziel.)
       if (Math.abs(fov - alt.fov) < 1e-6) fov = rahmen.fov
       else if (Math.abs(fov - alt.fovMax) < 1e-6) fov = rahmen.fovMax
       else fov = klemmen(fov, rahmen.fovMin, rahmen.fovMax)
+      if (fahrt) {
+        // Eine Zoom- oder Schwenk-Fahrt läuft weiter - nur ihr Ziel muss in
+        // die Grenzen des neuen Formats passen. Sonst bliebe sie mittendrin
+        // stehen (halb gezoomt, halb gedreht).
+        zielDerFahrtAnpassen()
+        return
+      }
       ohneBewegungKlemmen()
     },
 
@@ -489,8 +536,19 @@ export function createRigKern(o: { reducedMotion: boolean }): RigKern {
 
     setzeFov(neu) {
       if (!rahmen || fahrt?.art === 'wechsel' || !Number.isFinite(neu)) return
-      uebernimmFahrt()
+      const von = fahrt ? aktuellePose() : null
       fov = klemmen(neu, rahmen.fovMin, rahmen.fovMax)
+      if (fahrt) {
+        // Mitten in einer Zoom- oder Schwenk-Fahrt: Die Drehung läuft zu
+        // ihrem Ziel weiter, nur der Öffnungswinkel bekommt ein neues. Die
+        // Fahrt setzt dafür ohne Sprung an der Pose von eben neu an.
+        const rest = Math.max(fahrt.dauer - fahrt.ms, ZOOM_MS / 4)
+        fahrt.von = von ?? fahrt.von
+        fahrt.ms = 0
+        fahrt.dauer = rest
+        zielDerFahrtAnpassen()
+        return
+      }
       ohneBewegungKlemmen()
     },
 
@@ -535,22 +593,32 @@ export function createRigKern(o: { reducedMotion: boolean }): RigKern {
     istGezoomt() {
       if (!rahmen) return false
       const ziel = fahrt?.art === 'zoom' ? fahrt.nach.fov : fov
-      return ziel < rahmen.fov - ZOOM_EPS
+      // Nicht schon nach einem Hauch Pinch: Erst etwa auf halbem Weg zur
+      // Doppeltipp-Weite zoomt der nächste Doppeltipp zurück statt heran.
+      return ziel <= zoomSchwelle(rahmen)
     },
 
     zoomZurueck() {
-      if (!rahmen) return
+      if (!rahmen || fahrt?.art === 'wechsel') return
+      const ziel = fahrt?.art === 'zoom' ? fahrt.nach.fov : fov
+      if (ziel >= rahmen.fov) return
       fahreZu(abYaw, abPitch, rahmen.fov)
     },
 
     schwenken(dYaw, dPitch) {
-      if (!rahmen || !Number.isFinite(dYaw) || !Number.isFinite(dPitch)) return
-      if (fahrt?.art === 'wechsel') return
+      if (!rahmen || !Number.isFinite(dYaw) || !Number.isFinite(dPitch)) {
+        return null
+      }
+      if (fahrt?.art === 'wechsel') return null
       // Ziel einer laufenden Fahrt als Ausgangspunkt, sonst der Stand jetzt.
       const g = grenzen(rahmen, fov, aspect)
       const yaw = zieht ? gummiband(abYaw, g.yaw, weich) : abYaw
       const pitch = zieht ? gummiband(abPitch, g.pitch, weich) : abPitch
-      fahreZu(yaw + dYaw, pitch + dPitch, fov)
+      const zielYaw = yaw + dYaw
+      const zielPitch = pitch + dPitch
+      fahreZu(zielYaw, zielPitch, fov)
+      // Was die Grenze abgeschnitten hat.
+      return { yaw: zielYaw - abYaw, pitch: zielPitch - abPitch }
     },
 
     schritt(dtMs) {

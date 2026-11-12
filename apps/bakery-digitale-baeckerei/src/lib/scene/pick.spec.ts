@@ -171,6 +171,47 @@ describe('pickAt', () => {
     expect(treffer).not.toHaveProperty('produkt')
   })
 
+  it('gibt ausgeblendeten Produkten keine Tippfläche', () => {
+    const { tippe, brezel } = aufbau()
+    expect(tippe(0, 0.6, 0, { dx: 15 })).toMatchObject({
+      produkt: 'testbrezel',
+    })
+    brezel.visible = false
+    const treffer = tippe(0, 0.6, 0, { dx: 15 })
+    expect(treffer).toMatchObject({ slot: 'testregal' })
+    expect(treffer).not.toHaveProperty('produkt')
+  })
+
+  it('gibt hinter einer Raumwand kein Tiefen-Spiel, hinter einem Möbelteil schon', () => {
+    // Eine dünne Fläche 10 cm vor der Testbrezel - näher als das Tiefen-Spiel
+    // von 30 cm. Als Möbelteil lässt sie den Tipp daneben zur Brezel durch ...
+    const mitBlende = testladen()
+    mitBlende.root.add(
+      knoten(
+        quader(material('holz'), [1, 1, 0.02], [0, 0.6, 0.13]),
+        'testtheke/blende',
+        { id: 'testtheke/blende' }
+      )
+    )
+    const blende = createPicker({ ...mitBlende, requestRender: jest.fn() })
+    const [x, y] = mitBlende.aufSchirm(0, 0.6, 0)
+    expect(blende.pickAt(x + 15, y)).toMatchObject({ produkt: 'testbrezel' })
+
+    // ... als Wand des Raums (umschließend: 14 m breit) nicht.
+    const mitWand = testladen()
+    mitWand.root.add(
+      knoten(
+        quader(material('putz'), [14, 4, 0.02], [0, 0.6, 0.13]),
+        'testraum/wand',
+        { id: 'testraum/wand' }
+      )
+    )
+    const wand = createPicker({ ...mitWand, requestRender: jest.fn() })
+    const treffer = wand.pickAt(x + 15, y)
+    expect(treffer).toMatchObject({ slot: 'testraum/wand' })
+    expect(treffer).not.toHaveProperty('produkt')
+  })
+
   it('macht aus dem Korb das Produkt, das auf demselben Platz liegt', () => {
     const { tippe, broetchen } = aufbau()
     // unten am Korb, unterhalb der Brötchen
@@ -342,6 +383,49 @@ describe('highlight', () => {
     brot.visible = false
     picker.highlight('testregal/ebene-1/platz-01')
     expect(kruste.children).toHaveLength(0)
+  })
+
+  it('meldet, was wirklich hervorgehoben ist - nicht, was verlangt wurde', () => {
+    const { picker, brot, kruste } = aufbau()
+    expect(picker.hervorgehoben).toEqual({ slot: null, ueberzuege: 0 })
+
+    picker.highlight('testregal/ebene-1/platz-01')
+    expect(picker.hervorgehoben.slot).toBe('testregal/ebene-1/platz-01')
+    expect(picker.hervorgehoben.ueberzuege).toBeGreaterThan(0)
+    expect(picker.hervorgehoben.ueberzuege).toBe(
+      brot.children.reduce((n, kind) => n + ueberzuege(kind as Mesh).length, 0)
+    )
+    expect(ueberzuege(kruste).length).toBeGreaterThan(0)
+
+    // unbekannter Platz: verlangt, aber nichts hängt
+    picker.highlight('gibt/es/nicht')
+    expect(picker.hervorgehoben).toEqual({ slot: null, ueberzuege: 0 })
+
+    // ausgeblendeter Platz: ebenso
+    brot.visible = false
+    picker.highlight('testregal/ebene-1/platz-01')
+    expect(picker.hervorgehoben).toEqual({ slot: null, ueberzuege: 0 })
+
+    brot.visible = true
+    picker.highlight('testregal/ebene-1/platz-02')
+    expect(picker.hervorgehoben.slot).toBe('testregal/ebene-1/platz-02')
+    picker.highlight(null)
+    expect(picker.hervorgehoben).toEqual({ slot: null, ueberzuege: 0 })
+    picker.dispose()
+    expect(picker.hervorgehoben).toEqual({ slot: null, ueberzuege: 0 })
+  })
+
+  it('hebt auch Meshes ohne Normalen hervor (unlit-Modell): berechnet sie einmal', () => {
+    const { picker, ware } = aufbau()
+    ware.geometry.deleteAttribute('normal')
+    expect(ware.geometry.attributes.normal).toBeUndefined()
+
+    picker.highlight('testregal/ebene-1/platz-02')
+    expect(picker.hervorgehoben.slot).toBe('testregal/ebene-1/platz-02')
+    expect(ueberzuege(ware)).toHaveLength(3)
+    expect(ware.geometry.attributes.normal.count).toBe(
+      ware.geometry.attributes.position.count
+    )
   })
 
   it('gibt beim Abbauen die eigenen Materialien frei und hängt alles ab', () => {

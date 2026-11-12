@@ -9,7 +9,8 @@
  *    (die Sync-Skripte nehmen dann das synthetische Mini-Modell und den
  *    synthetischen Produkt-Snapshot aus `src/test/fixtures/`) und
  *    `DIGITALE_BAECKEREI_BASE_PATH=/digitale-baeckerei`.
- * 2. Prüfen: Im Export muss genau das Fixture-Modell liegen. Die Suite lädt
+ * 2. Prüfen: Im Export müssen genau das Fixture-Modell und der
+ *    Fixture-Snapshot liegen (Byte für Byte). Die Suite lädt
  *    Spuren und Screenshots als CI-Artefakt hoch - das echte Modell darf dort
  *    nie auftauchen, also startet der Server sonst nicht.
  * 3. Den Export nach `<tmp>/…/digitale-baeckerei/` kopieren und das
@@ -24,6 +25,7 @@ const path = require('path')
 const { ROOT, usesBuiltApp } = require('../../tools/e2e/servers')
 const {
   GLB_PATH,
+  SNAPSHOT_PATH,
 } = require('../bakery-digitale-baeckerei/src/test/fixtures/fixture-info')
 
 const BASE_PATH = '/digitale-baeckerei'
@@ -63,12 +65,17 @@ if (!fs.existsSync(path.join(outDir, 'index.html'))) {
     `Kein Export in ${outDir}. Erst bauen: DIGITALE_BAECKEREI_FIXTURE=1 DIGITALE_BAECKEREI_BASE_PATH=${BASE_PATH} npx nx build ${PROJECT}`
   )
 }
-if (
-  !fs.existsSync(model) ||
-  !fs.readFileSync(model).equals(fs.readFileSync(GLB_PATH))
-) {
+const snapshot = path.join(outDir, 'data', 'products.snapshot.json')
+const gleich = (file, fixture) =>
+  fs.existsSync(file) && fs.readFileSync(file).equals(fs.readFileSync(fixture))
+if (!gleich(model, GLB_PATH)) {
   fail(
     `${model} ist nicht das synthetische Fixture. Die Suite läuft nur mit DIGITALE_BAECKEREI_FIXTURE=1 gebaut - nie mit dem echten Modell.`
+  )
+}
+if (!gleich(snapshot, SNAPSHOT_PATH)) {
+  fail(
+    `${snapshot} ist nicht der synthetische Snapshot. Die Suite läuft nur mit DIGITALE_BAECKEREI_FIXTURE=1 gebaut - nie mit echten Produkttexten.`
   )
 }
 

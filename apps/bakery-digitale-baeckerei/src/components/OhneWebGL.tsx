@@ -10,6 +10,7 @@ import { rand } from './theme'
 
 export const OHNE_WEBGL_TEXT =
   'Die 3D-Ansicht ist auf diesem Gerät nicht verfügbar.'
+export const OHNE_WEBGL_ZUSATZ = 'Hier findest du alles als Liste.'
 export const OHNE_WEBGL_TITEL = 'Die Bäckerei als Liste'
 export const BEREICH_LEER_TEXT = KEINE_PRODUKTINFOS_TEXT
 
@@ -23,6 +24,10 @@ export interface OhneWebGLProps {
    * ohne die Meldung.
    */
   variante?: 'ersatz' | 'screenreader'
+  /** Anderer Text der Meldung (Variante `ersatz`), z. B. nach einem Ladefehler. */
+  meldung?: string
+  /** Bedienelement unter der Meldung, z. B. „Noch einmal versuchen“. */
+  aktion?: React.ReactNode
 }
 
 const UNSICHTBAR = {
@@ -44,6 +49,8 @@ export default function OhneWebGL({
   blickpunkte,
   eintraegeJe,
   variante = 'ersatz',
+  meldung = `${OHNE_WEBGL_TEXT} ${OHNE_WEBGL_ZUSATZ}`,
+  aktion,
 }: OhneWebGLProps) {
   const ersatz = variante === 'ersatz'
 
@@ -68,18 +75,18 @@ export default function OhneWebGL({
       }
     >
       <Box sx={{ maxWidth: 640, mx: 'auto' }}>
-        {/* Die Status-Region steht immer im DOM, nur ihr Text hängt von der Variante ab. */}
-        <Paper
-          role="status"
-          variant="outlined"
-          sx={
-            ersatz
-              ? { px: 2, py: 1.5, mb: 2.5, bgcolor: 'action.hover' }
-              : UNSICHTBAR
-          }
-        >
-          {ersatz ? `${OHNE_WEBGL_TEXT} Hier findest du alles als Liste.` : ''}
-        </Paper>
+        {/* Neben der laufenden 3D-Ansicht gibt es nichts zu melden - dort
+            sagt die Status-Region der App an, was geschieht. */}
+        {ersatz && (
+          <Paper
+            role="status"
+            variant="outlined"
+            sx={{ px: 2, py: 1.5, mb: 2.5, bgcolor: 'action.hover' }}
+          >
+            <Typography component="p">{meldung}</Typography>
+            {aktion && <Box sx={{ mt: 1.5 }}>{aktion}</Box>}
+          </Paper>
+        )}
 
         <Typography
           component="h2"
@@ -145,7 +152,7 @@ export default function OhneWebGL({
                         </Typography>
                       )}
                       {produkt.kurztext && (
-                        <Typography variant="body2" sx={{ mt: 0.25 }}>
+                        <Typography sx={{ mt: 0.25, lineHeight: 1.45 }}>
                           {produkt.kurztext}
                         </Typography>
                       )}

@@ -422,6 +422,82 @@ describe('createRig: Zoom', () => {
     expect(frames.size).toBe(0)
   })
 
+  it('ein Rad-Ereignis ohne senkrechten Weg lässt eine laufende Fahrt in Ruhe', () => {
+    const { rig, kamera, element } = aufbau()
+    rig.zoomTo([Math.sin(10 * GRAD) * 4, 2, Math.cos(10 * GRAD) * 4])
+    laufen(160)
+    const fov = kamera.fov
+    const e = rad(element, 0)
+    // Die Seite scrollt trotzdem nicht mit.
+    expect(e.defaultPrevented).toBe(true)
+    expect(kamera.fov).toBe(fov)
+    laufen(600)
+    expect(kamera.fov).toBe(30)
+    expect(kamera.yaw()).toBeCloseTo(10 * GRAD, 9)
+  })
+
+  it('ein Rad-Tick während der Fahrt ändert nur das Ziel des Öffnungswinkels', () => {
+    const { rig, kamera, element } = aufbau()
+    rig.zoomTo([Math.sin(10 * GRAD) * 4, 2, Math.cos(10 * GRAD) * 4])
+    laufen(160)
+    const vorher = kamera.fov
+    rad(element, -100)
+    // kein Sprung auf das Ziel
+    expect(kamera.fov).toBeCloseTo(vorher, 6)
+    laufen(600)
+    expect(kamera.fov).toBeLessThan(30)
+    expect(kamera.yaw()).toBeCloseTo(10 * GRAD, 9)
+  })
+
+  it('nach einem Pinch dreht der liegen gebliebene Finger nicht und tippt nicht', () => {
+    const { element, kamera, taps, doppelt } = aufbau()
+    zeiger(element, 'pointerdown', 100, 200, { id: 1, zeit: 0 })
+    zeiger(element, 'pointerdown', 200, 200, { id: 2, zeit: 10 })
+    zeiger(element, 'pointermove', 220, 200, { id: 2, zeit: 40 })
+    // ein Finger hebt ab, der andere zieht weiter
+    zeiger(element, 'pointerup', 220, 200, { id: 2, zeit: 60 })
+    const yaw = kamera.yaw()
+    const fov = kamera.fov
+    zeiger(element, 'pointermove', 160, 240, { id: 1, zeit: 90 })
+    zeiger(element, 'pointermove', 260, 300, { id: 1, zeit: 120 })
+    expect(kamera.yaw()).toBeCloseTo(yaw, 9)
+    expect(kamera.fov).toBe(fov)
+    zeiger(element, 'pointerup', 260, 300, { id: 1, zeit: 150 })
+    laufen(400)
+    expect(kamera.yaw()).toBeCloseTo(yaw, 9)
+    expect(taps).toEqual([])
+    expect(doppelt).toEqual([])
+    // Die nächste Berührung mit einem Finger dreht wieder.
+    zeiger(element, 'pointerdown', 100, 200, { id: 3, zeit: 1000 })
+    zeiger(element, 'pointermove', 130, 200, { id: 3, zeit: 1030 })
+    zeiger(element, 'pointermove', 160, 200, { id: 3, zeit: 1060 })
+    expect(kamera.yaw()).not.toBeCloseTo(yaw, 6)
+    zeiger(element, 'pointerup', 160, 200, { id: 3, zeit: 1090 })
+  })
+
+  it('meldet das Ende einer Fahrt genau einmal (onRuhe) und ob sie noch läuft', () => {
+    const { rig } = aufbau()
+    const ruhe = jest.fn()
+    rig.onRuhe(ruhe)
+    expect(rig.bewegt()).toBe(false)
+    rig.schwenken(6 * GRAD, 0)
+    expect(rig.bewegt()).toBe(true)
+    laufen(160)
+    expect(ruhe).not.toHaveBeenCalled()
+    laufen(600)
+    expect(ruhe).toHaveBeenCalledTimes(1)
+    expect(rig.bewegt()).toBe(false)
+    laufen(600)
+    expect(ruhe).toHaveBeenCalledTimes(1)
+  })
+
+  it('schwenken meldet, was die Grenze abgeschnitten hat', () => {
+    const { rig } = aufbau()
+    expect(rig.schwenken(5 * GRAD, 0)?.yaw).toBeCloseTo(0, 12)
+    laufen(600)
+    expect(rig.schwenken(60 * GRAD, 0)?.yaw).toBeCloseTo(45 * GRAD, 9)
+  })
+
   it('Tipp und Doppeltipp nennen die Art des Zeigers', () => {
     const { rig, element } = aufbau()
     const arten: string[] = []

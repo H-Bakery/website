@@ -80,14 +80,15 @@ Landingpage auf GitHub Pages). Nicht im Pilot, nicht auf der Box.
   (Ordner ist git-ignoriert) und löscht dort alles, was nicht im Lock steht. Tests, e2e und CI
   nutzen ein **synthetisches** Mini-GLB und einen synthetischen Produkt-Snapshot mit erfundenen
   Produkten (`DIGITALE_BAECKEREI_FIXTURE=1`).
-- Kein Tracking, keine Cookies, keine Fremd-Fonts. Keine Personen, keine Fotos von Dritten.
+- Kein Tracking, keine Cookies, kein Gerätespeicher (`localStorage`), keine Fremd-Fonts. Keine
+  Personen, keine Fotos von Dritten.
 
 ## Produktdaten (DB6)
 
 - **Snapshot (DB8):** Das Skript `sync-products` liest beim Build `hq/products/*.md`
   (`HQ_PRODUCTS_DIR`) und schreibt die nötigen Felder **ohne Preise** (ID, Name, Kategorie, Einheit,
-  Kurztext, Text) nach `public/data/products.snapshot.json` (git-ignoriert). Die App liest nur diesen
-  Snapshot.
+  Kurztext, Text) nach `public/data/products.snapshot.json` (git-ignoriert) - nur für Produkte, die
+  im Modell auf einem Platz liegen (heute 48 von 103). Die App liest nur diesen Snapshot.
 - Der Leser für `hq/products/*.md` steht einmal in der Lib `libs/shared/hq-products`
   (`@bakery/shared/hq-products`); Landingpage (`src/lib/products.ts`, `scripts/generate-sitemap.js`)
   und `sync-products` nutzen ihn.
@@ -142,7 +143,10 @@ apps/bakery-digitale-baeckerei-e2e/   Playwright (390×844 und Desktop), nur mit
 - **Räume als Datenmodell:** `raeume.ts` = `[{ id: 'laden', name, blickpunkte: [...] }]`. Die
   Backstube ist später nur ein weiterer Eintrag mit eigenem Modell, Blickpunkte und UI bleiben.
 - **Blickpunkt:** `{ id, name, eye, look, yawDeg: 20, pitchDeg: 12, fovMin, fovMax, portrait?:
-{ eye, look, fov } }`. Hochformat bekommt eigene Werte, damit das ganze Regal ins Bild passt.
+{ eye, look, fov, grenzenUm?, yawDeg?, pitchDeg? } }`. Hochformat bekommt eigene Werte, damit
+  das ganze Regal ins Bild passt - auch eigene Grenzen um einen anderen Punkt als das Startbild
+  (`grenzenUm`): An der Theke darf man im schmalen Bild rund 60° nach rechts schwenken (bis zum
+  türseitigen Ende der Vitrine), nach links bleibt es bei rund 20°.
 - **Kamera-Rig:** Die Position bleibt fest. Ziehen dreht innerhalb der Grenzen und federt an den
   Rändern weich zurück. Pinch/Mausrad verändert die Brennweite (FOV) statt der Position, sonst
   fliegt man in die Regale. Doppeltipp auf ein Produkt zoomt dorthin, der nächste Doppeltipp
@@ -155,6 +159,10 @@ apps/bakery-digitale-baeckerei-e2e/   Playwright (390×844 und Desktop), nur mit
 
 ## Bedienung (Handy zuerst)
 
+- **Laden:** Das Modell steht als `<link rel="preload" as="fetch">` im HTML und lädt parallel zum
+  JavaScript. Scheitert das Nachladen des 3D-Codes oder des Modells, zeigt die App den Ladefehler
+  auf Deutsch mit „Noch einmal versuchen“ und - wenn die Produktdaten da sind - die Listen aller
+  Blickpunkte.
 - **Start:** Ein Ladebild (eine gezeichnete Theke als SVG in den Markenfarben - kein Standbild
   des echten Modells, das gehört nicht ins Repo) mit Fortschritt, danach Blickpunkt „Theke“. Ein kurzer Hinweis „Ziehen zum Umschauen · Tippen für Infos“ verschwindet nach der
   ersten Geste.
@@ -163,8 +171,13 @@ apps/bakery-digitale-baeckerei-e2e/   Playwright (390×844 und Desktop), nur mit
 - **Produkt antippen:** Das Produkt wird hervorgehoben, dazu ein Bottom-Sheet (Querformat und
   Desktop: Karte rechts oben) mit Name, Einheit und Kurztext, aufklappbar der lange Text. Die Szene
   bleibt dabei bedienbar: Ein Tipp auf ein anderes Produkt wechselt die Karte, ein Tipp daneben
-  (auch auf neutrale Ware oder Möbel) schließt sie. Läge das Produkt unter der Karte, dreht der
-  Blick es in den freien Teil des Bildes - in den Grenzen des Umschauens. Keine Preise (DB8). **Keine Allergene**, solange die Liste nicht vollständig
+  (auch auf neutrale Ware oder Möbel) schließt sie; neutrale Ware leuchtet dabei kurz auf. Läge
+  das Produkt unter der Karte, dreht der Blick es in den freien Teil des Bildes - in den Grenzen
+  des Umschauens, auch nach „Mehr lesen“ und nach dem Drehen des Geräts. Geht das von diesem
+  Blickpunkt nicht, sagt die Karte „Von hier aus gerade nicht im Bild.“ Nach einem Tipp bleibt
+  der Fokus in der Szene (Pfeiltasten, +/-); aus der Liste geöffnet, bekommt ihn die Karte.
+- **Blickpunkt ohne Produktinfos** (heute „Regale“): Bei der Ankunft sagt der Hinweis einmal
+  „Hier gibt es noch keine Infos zum Antippen – schau dich einfach um.“ Keine Preise (DB8). **Keine Allergene**, solange die Liste nicht vollständig
   bestätigt ist. Ein Link „Mehr auf der Website“ führt zur Produktseite der Landingpage, falls es
   sie gibt.
 - **Liste „Alles hier“** je Blickpunkt: alle Produkte dieses Blickpunkts als Liste (Name, Einheit).
@@ -173,6 +186,36 @@ apps/bakery-digitale-baeckerei-e2e/   Playwright (390×844 und Desktop), nur mit
   neben der laufenden 3D-Ansicht.
 - Deutsch in der Du-Form wie die Texte im Modell. Die Farben stammen aus der Markenpalette
   (`docs/brand-identity.md`). Dark Mode gilt nur für die Bedienelemente, die Szene bleibt hell.
+
+## Bekannte Schwächen nach P1
+
+Bewusst nicht in P1 behoben (Stand nach dem Review von PR #134):
+
+- **Brotregal:** Die unterste Brotreihe und die Körbe sind von der Kundenseite teils von Kasse,
+  Tüten und Aufstellern verdeckt; diese Produkte erreicht man über die Liste „Alles hier“.
+- **Karte verdeckt die Leiste:** Im Hochformat liegen Chips, „Alles hier“ und „Quellen“ unter der
+  offenen Karte (die Pfeile bleiben frei), im Querformat der rechte Pfeil und „Alles hier“.
+- **Pfeile und Hinweis liegen über Produkten:** Die Pfeile am Rand und der Hinweis beim Start
+  verdecken einzelne Produkte, bis man schwenkt bzw. das erste Mal zieht.
+- **Karte schließt per Wischen nur am Griff** oben, nicht auf dem Text.
+- **Ersatz ohne WebGL** zeigt Name und Kurztext, aber weder den langen Text noch den Link zur
+  Produktseite.
+- **Die Regel „Knotenname → Platz“ steht dreimal** (`scripts/belegung.js`, `treffer.ts`,
+  `createViewer.ts`) mit unterschiedlichem Vorrang von Name und `extras.id`; heute sind beide gleich.
+- **Schwenk zur Auswahl** wird aus der Pose mitten in einer laufenden Fahrt berechnet; er führt
+  danach nach, kann aber einen Umweg machen.
+- **Unter etwa 16 Bildern/s** laufen die Fahrten in Zeitlupe (längster Zeitschritt 64 ms) und
+  sperren so lange das Umschauen.
+- **Links „Mehr auf der Website“** stimmen nur, solange die Landingpage dieselben Produktnummern
+  baut wie hq (heute aus Mocks mit denselben Nummern); nichts erzwingt das.
+- **Echtes Handy ungeprüft:** Pinch, Zwei-Finger-Wischen, die Zurück-Geste von iOS am Bildrand,
+  Safari überhaupt - alles nur in Chromium emuliert.
+- **Preisschilder stecken weiter als Geometrie in `twin.glb`** (im Bild ausgeblendet, in der Datei
+  lesbar) → P2.
+- **Die Tür des Getränkekühlschranks ist undurchsichtig** (Modell); die Flaschen dahinter sieht
+  man nicht.
+- **Der Fortschrittsbalken** rechnet mit der Größe des echten Modells aus `model.lock.json`; im
+  Fixture-Modus springt er darum von knapp 2 % auf fertig.
 
 ## Deploy
 

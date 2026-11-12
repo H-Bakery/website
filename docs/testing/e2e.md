@@ -42,8 +42,11 @@ API welche Suite bekommt und was der Katalog erfüllen muss: [`tools/e2e/README.
   `npm run test:e2e:digitale-baeckerei`) hat keine API. Sie läuft immer gegen den statischen Export
   unter `/digitale-baeckerei`, gebaut mit dem synthetischen Mini-Modell
   (`DIGITALE_BAECKEREI_FIXTURE=1`); `digitaleBaeckereiApp()` in `servers.js` startet dafür
-  `serve-fixture.js`, das lokal selbst baut und sich weigert, etwas anderes als das Fixture
-  auszuliefern - das echte Modell darf in keiner Spur und keinem Screenshot landen. Zwei Projekte:
+  `serve-fixture.js`, das lokal selbst baut und nur startet, wenn im Export genau das
+  Fixture-Modell und der Fixture-Snapshot liegen - das echte Modell und echte Texte dürfen in
+  keiner Spur und keinem Screenshot landen. Lücke, nur lokal: Läuft auf dem Port schon ein Server,
+  nimmt Playwright ihn ohne diese Prüfung (in CI nie). Ein `e2e-ci`-Target ohne eigenen Server
+  hat diese Suite darum nicht. Zwei Projekte:
   `phone` (390×844, Touch) und `desktop`. WebGL läuft headless über SwiftShader. Selektoren und der
   Messhaken (`?debug`) stehen nur in `src/support/app.ts`; welche Plätze im Bild liegen, hängt an
   `src/config/raeume.ts` und am Fixture (`src/test/fixtures/README.md` der App).

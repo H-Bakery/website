@@ -176,10 +176,30 @@ function fehlendeProdukte(belegung, snapshot, records = []) {
   }
 }
 
+/**
+ * Nur die Produkte, die im Modell auf einem Platz liegen. Alles andere könnte
+ * die App nie zeigen - es wäre nur herunterladbarer Text ohne Zweck.
+ * @param {ProduktSnapshot} snapshot
+ * @param {{ slots: { produkt: string }[] }} belegung
+ * @returns {{ snapshot: ProduktSnapshot, entfernt: number }}
+ */
+function nurBelegte(snapshot, belegung) {
+  const belegt = new Set(belegung.slots.map((s) => s.produkt))
+  /** @type {Record<string, ProduktInfo>} */
+  const produkte = {}
+  let entfernt = 0
+  for (const [id, info] of Object.entries(snapshot.produkte)) {
+    if (belegt.has(id)) produkte[id] = info
+    else entfernt += 1
+  }
+  return { snapshot: { ...snapshot, produkte }, entfernt }
+}
+
 module.exports = {
   LANDING_URL,
   einheitAus,
   baueSnapshot,
+  nurBelegte,
   pruefeSnapshot,
   fehlendeProdukte,
 }

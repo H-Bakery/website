@@ -81,4 +81,9 @@ verschiebt oder die Blickpunkte in `src/config/raeume.ts` ändert, schaut danach
 Playwright-Suite tippt Plätze an und bricht mit „Platz … ist an diesem Blickpunkt nicht im Bild“ ab,
 wenn einer aus dem Bild gerutscht ist. Angetippt werden an der Theke `theke/vitrine/ebene-3/platz-01`
 und `-02`, `ebene-1/platz-03` und `-04` (hinter Glas) und am Desktop `brotregal/ebene-3/platz-01`,
-an den Regalen `dosenregal/platz-01` und `-03`.
+an den Regalen `dosenregal/platz-01`, `-03` und `-04`. Von schräg oben verdeckt dort das Fach
+darüber die Mitte des unteren: Nur `platz-04` (oberstes Fach) wird sicher selbst getroffen.
+
+Das Mini-Modell hat **keine Normalen** (wie ein unlit-Modell sie nicht braucht) - die Hervorhebung
+berechnet sie sich dann selbst. `sync-products` kopiert den Fixture-Snapshot Byte für Byte, damit CI
+und der e2e-Server den Export mit `cmp` gegen die Dateien hier prüfen können.

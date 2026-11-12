@@ -15,16 +15,6 @@
         "config": "apps/bakery-digitale-baeckerei-e2e/playwright.config.ts"
       }
     },
-    "e2e-ci": {
-      "executor": "@nx/playwright:playwright",
-      "outputs": [
-        "{workspaceRoot}/dist/.playwright/apps/bakery-digitale-baeckerei-e2e"
-      ],
-      "options": {
-        "config": "apps/bakery-digitale-baeckerei-e2e/playwright.config.ts",
-        "skipServe": true
-      }
-    },
     "lint": {
       "executor": "@nx/eslint:lint",
       "outputs": ["{options.outputFile}"],

@@ -30,6 +30,7 @@
     },
     "build": {
       "executor": "nx:run-commands",
+      "cache": false,
       "dependsOn": ["sync-model", "sync-products"],
       "outputs": ["{projectRoot}/out"],
       "options": {
@@ -37,7 +38,7 @@
         "command": "npx next build --webpack"
       },
       "metadata": {
-        "description": "Static export to apps/bakery-digitale-baeckerei/out (webpack; Turbopack is unreliable in worktrees). DIGITALE_BAECKEREI_BASE_PATH=/digitale-baeckerei builds for the subpath."
+        "description": "Static export to apps/bakery-digitale-baeckerei/out (webpack; Turbopack is unreliable in worktrees). DIGITALE_BAECKEREI_BASE_PATH=/digitale-baeckerei builds for the subpath. Never cached: what goes into out/ depends on things Nx cannot hash - the git-ignored public/model and public/data, the fixture flag, the base path and hq outside the workspace. A cached build could put the real model into a fixture build or the other way round."
       }
     },
     "serve": {

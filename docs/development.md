@@ -38,8 +38,8 @@ The Digitale Bäckerei needs its 3D model and product data, neither of which is 
 commit pinned in `apps/bakery-digitale-baeckerei/model.lock.json`, sha256-checked) into the git-ignored
 `public/model/` and derives `public/data/belegung.json` (which product sits on which slot) from it.
 `sync-products` reads `hq/products/*.md` (`HQ_PRODUCTS_DIR`, else `../hq/products`) through
-`libs/shared/hq-products` and writes `public/data/products.snapshot.json` **without prices**; it aborts
-when there is no hq - there are no mock products. Without hq (or offline), set
+`libs/shared/hq-products` and writes `public/data/products.snapshot.json` **without prices** and only
+for the products the model shows; it aborts when there is no hq - there are no mock products. Without hq (or offline), set
 `DIGITALE_BAECKEREI_FIXTURE=1`: both targets then use the synthetic mini model and snapshot from
 `src/test/fixtures/` and download nothing. `npm run serve:digitale-baeckerei` serves the static export
 on 4232, `npm run test:unit:digitale-baeckerei` runs its jest specs (no network, synthetic data).
@@ -48,11 +48,15 @@ Subpath build: `DIGITALE_BAECKEREI_BASE_PATH=/digitale-baeckerei`. See
 
 `npm run test:e2e:digitale-baeckerei` runs its Playwright suite (`apps/bakery-digitale-baeckerei-e2e`,
 Chromium with SwiftShader, projects `phone` 390×844 and `desktop` 1440×900) against the static export
-under `/digitale-baeckerei` on port 4236. It never uses the real model: the suite's server
-(`serve-fixture.js`) builds with `DIGITALE_BAECKEREI_FIXTURE=1` - the synthetic mini model and product
-snapshot from `apps/bakery-digitale-baeckerei/src/test/fixtures/` (see the README there) - and refuses
-to start on any other export. With `E2E_BUILT=1` (or in CI) it serves the export that is already built;
-`BASE_URL=http://localhost:<port>` moves the port.
+under `/digitale-baeckerei` on port 4236. The suite's server (`serve-fixture.js`) builds with
+`DIGITALE_BAECKEREI_FIXTURE=1` - the synthetic mini model and product snapshot from
+`apps/bakery-digitale-baeckerei/src/test/fixtures/` (see the README there) - and refuses to start
+unless the export holds exactly that model and that snapshot, byte for byte. With `E2E_BUILT=1` (or
+in CI) it serves the export that is already built; `BASE_URL=http://localhost:<port>` moves the port.
+One gap, local only: a server that already runs on that port is reused without the check (in CI
+nothing is reused), so don't point the suite at a server you started on a real build. `nx build` of
+this app is never cached (`"cache": false`): its output depends on the fixture flag, the base path,
+the git-ignored `public/` and hq, none of which Nx can hash.
 
 Ports come from each app's `project.json`. There is one API: since B12 the mock server
 (`serve:api:simple`) is deleted, and management, shop and Fahrer-App all talk to the TypeScript
@@ -176,6 +180,8 @@ build checks - `tsc -p` on it reports a spurious error.
 (`tools/e2e/`), so no private `hq` is needed. The 3D app is built with `DIGITALE_BAECKEREI_FIXTURE=1`
 in both the `build` matrix and `test-e2e-digitale-baeckerei` (there for the sub-path
 `/digitale-baeckerei`) - synthetic mini model and snapshot, no download of the real model, no hq.
+Before the `build` job uploads this app's export as an artifact, it compares model and snapshot in
+`out/` with the fixture files (`cmp`).
 
 - **Coverage thresholds and `--shard` don't mix**: a shard runs a third of the tests but measures
   all sources. The configs with thresholds drop them when `JEST_SHARDED=true` (set by the shard

@@ -179,6 +179,49 @@ describe('ProduktSheet', () => {
     expect(screen.getByRole('button', { name: 'Schließen' })).toHaveFocus()
   })
 
+  it('fokus={false}: der Fokus bleibt, wo er ist - auch beim Schließen', () => {
+    const ausloeser = document.createElement('button')
+    document.body.appendChild(ausloeser)
+    ausloeser.focus()
+
+    const { neu } = setup(TESTBROT, { fokus: false })
+    expect(ausloeser).toHaveFocus()
+    neu(PROBEWECK)
+    expect(ausloeser).toHaveFocus()
+    neu(null)
+    expect(ausloeser).toHaveFocus()
+    ausloeser.remove()
+  })
+
+  it('holt den Fokus nicht zurück, wenn er inzwischen woanders steht', () => {
+    const ausloeser = document.createElement('button')
+    const anderer = document.createElement('button')
+    document.body.append(ausloeser, anderer)
+    ausloeser.focus()
+
+    const { neu } = setup()
+    expect(sheet()).toHaveFocus()
+    anderer.focus()
+    neu(null)
+    expect(anderer).toHaveFocus()
+    ausloeser.remove()
+    anderer.remove()
+  })
+
+  it('zeigt eine Hinweiszeile unter dem Namen, wenn es eine gibt', () => {
+    const { neu } = setup(TESTBROT, { hinweis: 'Von hier aus nicht im Bild.' })
+    expect(screen.getByTestId('sheet-hinweis')).toHaveTextContent(
+      'Von hier aus nicht im Bild.'
+    )
+    neu(TESTBROT)
+    expect(sheet()).toBeInTheDocument()
+  })
+
+  it('ohne Hinweis keine leere Zeile', () => {
+    setup()
+    expect(screen.queryByTestId('sheet-hinweis')).not.toBeInTheDocument()
+  })
+
   it('nennt nie Kosten oder Inhaltsstoff-Hinweise - auch aufgeklappt nicht', async () => {
     const { user, neu } = setup()
     expect(document.body.textContent).not.toMatch(VERBOTEN)

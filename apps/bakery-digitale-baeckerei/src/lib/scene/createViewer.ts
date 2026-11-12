@@ -29,7 +29,12 @@ import {
 import type { Object3D } from 'three'
 import type { Blickpunkt, Vec3 } from '../../config/raeume'
 import { setzeAussenraum } from './aussenraum'
-import { freierBereich, schwenkFuer, type Rechteck } from './bildausschnitt'
+import {
+  IM_BILD_RAND_PX,
+  freierBereich,
+  schwenkFuer,
+  type Rechteck,
+} from './bildausschnitt'
 import {
   applyFill,
   parseProduktName,
@@ -103,6 +108,12 @@ export interface ViewerOptions {
   onErsteGeste?: () => void
   /** Zwei Finger gewischt oder Pfeiltaste: −1 = voriger, +1 = nächster Blickpunkt. */
   onWechselGeste?: (richtung: -1 | 1) => void
+  /**
+   * Steht der gewählte Platz im freien Teil des Bildes? `false`: Er liegt
+   * außerhalb dessen, was sich an diesem Blickpunkt erreichen lässt (oder es
+   * gibt ihn im Bild nicht).
+   */
+  onAuswahlImBild?: (slot: string, imBild: boolean) => void
 }
 
 export interface ViewerHandle {
@@ -112,10 +123,14 @@ export interface ViewerHandle {
   setLabel: (label: string) => void
   /**
    * Einen Platz dauerhaft hervorheben (`null`: aus). Liegt er außerhalb des
-   * Bildes oder unter der Karte `verdeckt` (Viewport-Koordinaten), dreht der
-   * Blick zu ihm hin - in den Grenzen des Umschauens.
+   * Bildes oder unter der Karte (`verdeckt` liefert ihr Rechteck in
+   * Viewport-Koordinaten), dreht der Blick zu ihm hin - in den Grenzen des
+   * Umschauens. Dasselbe noch einmal nach `haltFrei()`, nach einer
+   * Größenänderung und nach der Ankunft an einem Blickpunkt.
    */
-  waehle: (slot: string | null, verdeckt?: Rechteck | null) => void
+  waehle: (slot: string | null, verdeckt?: () => Rechteck | null) => void
+  /** Die Karte hat ihre Größe geändert: den gewählten Platz wieder frei stellen. */
+  haltFrei: () => void
   dispose: () => void
 }
 
@@ -171,8 +186,14 @@ export interface ViewerDebug {
    * ausgeblendet ist oder außerhalb des Bildes liegt.
    */
   screenPos: (slot: string) => { x: number; y: number } | null
-  /** Der Platz, der gerade dauerhaft hervorgehoben ist. */
+  /**
+   * Der Platz, an dem gerade wirklich eine Hervorhebung hängt (aus dem
+   * Picker gelesen) - `null`, wenn nichts gezeichnet wird, auch wenn ein
+   * Platz gewählt ist.
+   */
   hervorgehoben: string | null
+  /** Der gewählte Platz, wie ihn die App verlangt hat. */
+  gewaehlt: string | null
 }
 
 declare global {
@@ -200,6 +221,8 @@ export function createViewer(
   canvas.style.display = 'block'
   canvas.style.width = '100%'
   canvas.style.height = '100%'
+  // Kein graues Aufblitzen beim Antippen (Android).
+  canvas.style.setProperty('-webkit-tap-highlight-color', 'transparent')
   container.prepend(canvas)
 
   let renderer: WebGLRenderer
@@ -238,6 +261,8 @@ export function createViewer(
   let aussenSichtbar = true
   /** Dauerhaft hervorgehobener Platz (gewähltes Produkt). */
   let gewaehlt: string | null = null
+  /** Liefert das Rechteck der Karte, die das Bild gerade verdeckt. */
+  let verdecktVon: (() => Rechteck | null) | null = null
   let raf = 0
   let width = 0
   let height = 0
@@ -290,6 +315,8 @@ export function createViewer(
   rig.onAnkunft((bp) => {
     zeigeAussenraum(bp.aussenSichtbar !== false)
     requestRender()
+    // Während der Fahrt gewählt: erst jetzt lässt sich der Platz frei stellen.
+    haltFrei()
   })
 
   /** Mitte des sichtbaren Knotens `produkt/<slot>` im Zonen-Rahmen. */
@@ -310,24 +337,105 @@ export function createViewer(
   /** Bildpunkt (CSS-px, relativ zum Canvas) und ob er vor der Kamera liegt. */
   const bildpunkt = (welt: Vector3) => {
     camera.updateMatrixWorld()
-    const vorn = welt.clone().applyMatrix4(camera.matrixWorldInverse).z < 0
+    const imBlick = welt.clone().applyMatrix4(camera.matrixWorldInverse)
     const p = welt.clone().project(camera)
     return {
       x: ((p.x + 1) / 2) * width,
       y: ((1 - p.y) / 2) * height,
-      vorn,
+      vorn: imBlick.z < 0,
+      /** Liegt der Punkt rechts der Blickrichtung? (gilt auch hinter der Kamera) */
+      rechts: imBlick.x > 0,
     }
   }
 
   const tippRadius = (zeiger: string) =>
     zeiger === 'mouse' ? MAUS_RADIUS_PX : TIPP_RADIUS_PX
 
+  /** Höchstens so oft führt `haltFrei` nach (die Rechnung ist eine Näherung). */
+  const NACHFUEHRUNGEN = 2
+  /** Nach dem Ende des laufenden Schwenks noch einmal prüfen (Runde). */
+  let nachRuhe: number | null = null
+
+  /**
+   * Den gewählten Platz in den freien Teil des Bildes drehen (neben die
+   * Karte, ins Bild) und melden, ob das gelungen ist. Der nötige Schwenk ist
+   * aus dem Bildpunkt genähert (bei geneigter Kamera nicht exakt), darum
+   * prüft die Funktion nach dem Ende der Fahrt noch einmal und führt nach.
+   * Gemeldet wird am Schluss, wo das Produkt wirklich steht.
+   */
+  function haltFrei(runde = 0) {
+    nachRuhe = null
+    const slot = gewaehlt
+    if (disposed || !slot || !model || override) return
+    if (width === 0 || height === 0) return
+    const mitte = mitteVon(slot)
+    if (!mitte) {
+      options.onAuswahlImBild?.(slot, false)
+      return
+    }
+    const rect = canvas.getBoundingClientRect()
+    const bild = { breite: width, hoehe: height }
+    const k = verdecktVon?.() ?? null
+    const karte = k
+      ? {
+          left: k.left - rect.left,
+          top: k.top - rect.top,
+          right: k.right - rect.left,
+          bottom: k.bottom - rect.top,
+        }
+      : null
+    const p = bildpunkt(mitte)
+    const schwenk = p.vorn
+      ? schwenkFuer(p, freierBereich(bild, karte), bild, camera.fov)
+      : // Hinter der Kamera gibt es keinen Bildpunkt: grob in die Richtung drehen.
+        // (Blick nach rechts = das Bild wandert nach links = dYaw < 0.)
+        { dYaw: p.rechts ? -Math.PI / 2 : Math.PI / 2, dPitch: 0 }
+    if (!schwenk) {
+      options.onAuswahlImBild?.(slot, true)
+      return
+    }
+    if (runde >= NACHFUEHRUNGEN) {
+      // Mehr geht von hier nicht: Steht es wenigstens (knapp) im freien Bild?
+      const knapp = freierBereich(bild, karte, IM_BILD_RAND_PX)
+      options.onAuswahlImBild?.(
+        slot,
+        p.vorn &&
+          p.x >= knapp.left &&
+          p.x <= knapp.right &&
+          p.y >= knapp.top &&
+          p.y <= knapp.bottom
+      )
+      return
+    }
+    // Ruht der Schwenk (Fahrt zu einem Blickpunkt), kommt `haltFrei` bei der
+    // Ankunft noch einmal.
+    if (!rig.schwenken(schwenk.dYaw, schwenk.dPitch)) return
+    if (rig.bewegt()) nachRuhe = runde + 1
+    else haltFrei(runde + 1)
+  }
+  rig.onRuhe(() => {
+    if (nachRuhe !== null) haltFrei(nachRuhe)
+  })
+
   rig.onTap((x, y, zeiger) => {
     const treffer = picker?.pickAt(x, y, { radiusPx: tippRadius(zeiger) })
-    options.onTreffer?.(treffer?.produkt ? treffer : null)
+    if (treffer?.produkt) {
+      options.onTreffer?.(treffer)
+      return
+    }
+    options.onTreffer?.(null)
+    // Neutrale Ware hat keine Karte, aber der Tipp soll sichtbar ankommen:
+    // kurz aufleuchten. Die Auswahl ist damit schon aufgehoben - `waehle(null)`
+    // aus der App fasst die Hervorhebung dann nicht mehr an.
+    if (treffer?.ware && picker) {
+      gewaehlt = null
+      picker.highlight(null)
+      picker.highlight(treffer.slot, { flash: true })
+    }
   })
   // Doppeltipp auf Ware zoomt heran; der nächste Doppeltipp - egal wohin -
-  // zoomt wieder zur Startweite zurück.
+  // zoomt wieder zur Startweite zurück. Ein Doppeltipp ins Leere zoomt aus
+  // jeder Zoomstufe zurück.
   rig.onDoubleTap((x, y, zeiger) => {
     if (rig.istGezoomt()) {
       rig.zoomZurueck()
@@ -335,6 +443,7 @@ export function createViewer(
     }
     const treffer = picker?.pickAt(x, y, { radiusPx: tippRadius(zeiger) })
     if (treffer && (treffer.produkt || treffer.ware)) rig.zoomTo(treffer.punkt)
+    else rig.zoomZurueck()
   })
   rig.onFirstGesture(() => options.onErsteGeste?.())
   rig.onWechselGeste((richtung) => options.onWechselGeste?.(richtung))
@@ -350,6 +459,8 @@ export function createViewer(
     camera.aspect = width / height
     if (override) applyView(override)
     else rig.resize(camera.aspect)
+    // Neue Größe oder gedreht: Die Karte liegt jetzt woanders.
+    haltFrei()
     // setSize leert das Canvas - gleich neu zeichnen, sonst blitzt es beim Drehen.
     if (model) renderNow()
     else requestRender()
@@ -544,6 +655,9 @@ export function createViewer(
         return { x: rect.left + p.x, y: rect.top + p.y }
       },
       get hervorgehoben() {
+        return picker?.hervorgehoben.slot ?? null
+      },
+      get gewaehlt() {
         return gewaehlt
       },
     }
@@ -566,30 +680,17 @@ export function createViewer(
     },
     waehle: (slot, verdeckt) => {
       if (disposed) return
-      gewaehlt = slot
-      picker?.highlight(slot)
-      if (!slot || override || width === 0 || height === 0) return
-      const mitte = mitteVon(slot)
-      if (!mitte) return
-      const rect = canvas.getBoundingClientRect()
-      const bild = { breite: width, hoehe: height }
-      const frei = freierBereich(
-        bild,
-        verdeckt
-          ? {
-              left: verdeckt.left - rect.left,
-              top: verdeckt.top - rect.top,
-              right: verdeckt.right - rect.left,
-              bottom: verdeckt.bottom - rect.top,
-            }
-          : null
-      )
-      const p = bildpunkt(mitte)
-      // Hinter der Kamera gibt es keinen Bildpunkt - dorthin reicht auch kein Schwenk.
-      if (!p.vorn) return
-      const schwenk = schwenkFuer(p, frei, bild, camera.fov)
-      if (schwenk) rig.schwenken(schwenk.dYaw, schwenk.dPitch)
+      verdecktVon = slot ? verdeckt ?? null : null
+      // Dieselbe Auswahl noch einmal (oder schon durch einen Tipp auf Ware
+      // aufgehoben): die Hervorhebung nicht anfassen - ein laufendes
+      // Aufleuchten bliebe sonst stehen.
+      if (slot !== gewaehlt) {
+        gewaehlt = slot
+        picker?.highlight(slot)
+      }
+      haltFrei()
     },
+    haltFrei: () => haltFrei(),
     dispose: () => {
       if (disposed) return
       disposed = true

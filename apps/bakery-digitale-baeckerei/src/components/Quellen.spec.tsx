@@ -17,13 +17,16 @@ describe('Quellen', () => {
     await user.click(screen.getByRole('button', { name: 'Quellen' }))
     const dialog = screen.getByRole('dialog', { name: 'Quellen' })
     const text = dialog.textContent ?? ''
-    expect(text).toContain('© GeoBasis-DE/LVGL-SL (2026), dl-de/by-2-0')
+    expect(text).toContain(
+      'Gelände und Gebäude außen (verändert): © GeoBasis-DE/LVGL-SL (2026), dl-de/by-2-0'
+    )
+    expect(text).toContain('three.js, MUI und React (jeweils MIT-Lizenz)')
     expect(text).toContain('© OpenStreetMap-Mitwirkende, ODbL')
     expect(text).toContain('Saar LiDAR Explorer (Code unter MIT-Lizenz)')
     expect(text).toContain(
       'Name, Schriftzug und Texte gehören der Bäckerei Heusser.'
     )
-    expect(within(dialog).getAllByRole('listitem')).toHaveLength(4)
+    expect(within(dialog).getAllByRole('listitem')).toHaveLength(5)
     for (const link of within(dialog).getAllByRole('link')) {
       expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'))
     }

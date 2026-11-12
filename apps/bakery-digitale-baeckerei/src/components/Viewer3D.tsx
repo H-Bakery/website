@@ -7,7 +7,7 @@
  * Die Szene wird nur neu gebaut, wenn sich das Modell ändert. Blickpunkt,
  * Beschriftung und Auswahl gehen an die laufende Szene.
  */
-import React, { useEffect, useRef } from 'react'
+import React, { useCallback, useEffect, useRef } from 'react'
 import Box from '@mui/material/Box'
 import type { Blickpunkt } from '../config/raeume'
 import {
@@ -30,10 +30,13 @@ export interface Viewer3DProps {
   /** Platz des gewählten Produkts: hervorgehoben und im freien Bild gehalten. */
   auswahl?: string | null
   /**
-   * Was das Bild gerade verdeckt (die Produktkarte), in Viewport-Koordinaten.
-   * Wird gelesen, wenn sich `auswahl` ändert.
+   * Das Element, das das Bild gerade verdeckt (die Produktkarte), oder
+   * `null`. Ändert es seine Größe („Mehr lesen“, Drehen des Geräts), wird
+   * der gewählte Platz wieder in den freien Teil des Bildes gedreht.
    */
-  verdecktVon?: () => Rechteck | null
+  verdecktVon?: () => Element | null
+  /** Der gewählte Platz steht im freien Bild (`true`) oder lässt sich von hier nicht zeigen. */
+  onAuswahlImBild?: (slot: string, imBild: boolean) => void
   onProgress: (fraction: number) => void
   onReady: (info: ViewerReadyInfo) => void
   /** Kein WebGL auf diesem Gerät. */
@@ -57,6 +60,14 @@ export default function Viewer3D(props: Viewer3DProps) {
   aktuell.current = props
 
   const { modelUrl, modelBytes, blickpunkt, fuellung, label, auswahl } = props
+
+  /** Rechteck der Karte im Viewport - für die Szene, immer frisch gemessen. */
+  const karte = useCallback((): Rechteck | null => {
+    const element = aktuell.current.verdecktVon?.()
+    if (!element) return null
+    const { left, top, right, bottom } = element.getBoundingClientRect()
+    return { left, top, right, bottom }
+  }, [])
 
   useEffect(() => {
     const container = containerRef.current
@@ -84,9 +95,11 @@ export default function Viewer3D(props: Viewer3DProps) {
         onErsteGeste: () => aktuell.current.onErsteGeste?.(),
         onWechselGeste: (richtung) =>
           aktuell.current.onWechselGeste?.(richtung),
+        onAuswahlImBild: (slot, imBild) =>
+          aktuell.current.onAuswahlImBild?.(slot, imBild),
       })
       viewerRef.current = viewer
-      viewer.waehle(aktuell.current.auswahl ?? null)
+      viewer.waehle(aktuell.current.auswahl ?? null, karte)
       return () => {
         if (viewerRef.current === viewer) viewerRef.current = null
         viewer.dispose()
@@ -96,7 +109,7 @@ export default function Viewer3D(props: Viewer3DProps) {
       else aktuell.current.onError(err)
       return undefined
     }
-  }, [modelUrl, modelBytes, fuellung])
+  }, [modelUrl, modelBytes, fuellung, karte])
 
   useEffect(() => {
     viewerRef.current?.setBlickpunkt(blickpunkt)
@@ -107,11 +120,21 @@ export default function Viewer3D(props: Viewer3DProps) {
   }, [label])
 
   useEffect(() => {
-    viewerRef.current?.waehle(
-      auswahl ?? null,
-      auswahl ? aktuell.current.verdecktVon?.() ?? null : null
-    )
-  }, [auswahl])
+    viewerRef.current?.waehle(auswahl ?? null, karte)
+    if (!auswahl) return undefined
+    // Die Karte wächst („Mehr lesen“) oder wandert (hoch ↔ quer): den Platz
+    // wieder frei stellen.
+    const element = aktuell.current.verdecktVon?.()
+    if (!element || typeof ResizeObserver === 'undefined') return undefined
+    let erste = true
+    const beobachter = new ResizeObserver(() => {
+      // Der erste Aufruf meldet nur die Größe beim Anmelden.
+      if (erste) erste = false
+      else viewerRef.current?.haltFrei()
+    })
+    beobachter.observe(element)
+    return () => beobachter.disconnect()
+  }, [auswahl, karte])
 
   return (
     <Box

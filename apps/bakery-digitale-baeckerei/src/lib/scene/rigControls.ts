@@ -21,6 +21,7 @@ import {
   istDoppeltipp,
   istTipp,
   zweiFingerWisch,
+  type Schwenkrest,
 } from './rig'
 
 export interface Rig {
@@ -33,8 +34,12 @@ export interface Rig {
   istGezoomt(): boolean
   /** Zurück zur Startweite (zweiter Doppeltipp). */
   zoomZurueck(): void
-  /** Den Blick weich drehen (Bogenmaß; + = Bild nach rechts / unten), in den Grenzen. */
-  schwenken(dYaw: number, dPitch: number): void
+  /**
+   * Den Blick weich drehen (Bogenmaß; + = Bild nach rechts / unten), in den
+   * Grenzen. Liefert, was die Grenze abgeschnitten hat (rad), oder `null`,
+   * wenn der Schwenk gerade ruht (Wechsel des Blickpunkts).
+   */
+  schwenken(dYaw: number, dPitch: number): Schwenkrest | null
   /** Ein Tipp, der kein Ziehen war. `zeiger` = `PointerEvent.pointerType`. */
   onTap(cb: TippCallback): void
   onDoubleTap(cb: TippCallback): void
@@ -44,6 +49,10 @@ export interface Rig {
   onWechselGeste(cb: (richtung: -1 | 1) => void): void
   /** Angekommen (nach dem Gleiten, beim Schneiden sofort). */
   onAnkunft(cb: (bp: Blickpunkt) => void): void
+  /** Eine Fahrt oder das Zurückfedern ist zu Ende - die Kamera steht wieder. */
+  onRuhe(cb: () => void): void
+  /** Läuft gerade eine Fahrt oder federt der Blick zurück? */
+  bewegt(): boolean
   dispose(): void
 }
 
@@ -87,6 +96,7 @@ export function createRig(o: {
   let firstGesture: (() => void) | null = null
   let wechselGeste: ((richtung: -1 | 1) => void) | null = null
   let ankunftCb: ((bp: Blickpunkt) => void) | null = null
+  let ruheCb: (() => void) | null = null
   let ersteGesteGemeldet = false
 
   const finger = new Map<number, Finger>()
@@ -133,6 +143,7 @@ export function createRig(o: {
     const weiter = kern.schritt(dt)
     anwenden()
     if (weiter) raf = requestAnimationFrame(takt)
+    else ruheCb?.()
   }
 
   /** Kamera nachführen und den Takt nur starten, wenn sich noch etwas bewegt. */
@@ -304,6 +315,9 @@ export function createRig(o: {
         : e.deltaMode === 2
         ? e.deltaY * 400
         : e.deltaY
+    // Seitwärts gescrollt (Trackpad): kein Zoom - und nichts, was eine
+    // laufende Fahrt anfasst.
+    if (pixel === 0) return
     kern.zoomen(Math.exp(pixel * (e.ctrlKey ? RAD_JE_PX_PINCH : RAD_JE_PX)))
     aktualisieren()
   }
@@ -363,9 +377,10 @@ export function createRig(o: {
       aktualisieren()
     },
     schwenken(dYaw, dPitch) {
-      if (disposed) return
-      kern.schwenken(dYaw, dPitch)
+      if (disposed) return null
+      const rest = kern.schwenken(dYaw, dPitch)
       aktualisieren()
+      return rest
     },
     resize(aspect) {
       if (disposed) return
@@ -386,6 +401,12 @@ export function createRig(o: {
     },
     onAnkunft(cb) {
       ankunftCb = cb
+    },
+    onRuhe(cb) {
+      ruheCb = cb
+    },
+    bewegt() {
+      return !disposed && kern.bewegt()
     },
     dispose() {
       if (disposed) return
@@ -408,6 +429,7 @@ export function createRig(o: {
       finger.clear()
       element.style.touchAction = vorherTouchAction
       tap = doubleTap = firstGesture = wechselGeste = ankunftCb = null
+      ruheCb = null
     },
   }
 }

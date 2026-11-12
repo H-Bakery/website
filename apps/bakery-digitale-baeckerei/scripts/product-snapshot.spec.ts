@@ -5,6 +5,7 @@ import {
   baueSnapshot,
   einheitAus,
   fehlendeProdukte,
+  nurBelegte,
   pruefeSnapshot,
 } from './product-snapshot'
 
@@ -222,6 +223,51 @@ describe('pruefeSnapshot', () => {
     ],
   ])('wirft: %s', (_name, raw, message) => {
     expect(() => pruefeSnapshot(raw)).toThrow(message)
+  })
+})
+
+describe('nurBelegte', () => {
+  const records = [
+    record(),
+    record({ id: 'testkeks', file: '3-testkeks.md', name: 'Testkeks' }),
+    record({ id: 'testtorte', file: '4-testtorte.md', name: 'Testtorte' }),
+  ]
+
+  it('behält nur Produkte, die im Modell auf einem Platz liegen', () => {
+    const { snapshot } = baueSnapshot(records, { erstellt: ERSTELLT })
+    const r = nurBelegte(snapshot, {
+      slots: [
+        { produkt: 'testkeks' },
+        { produkt: 'testkeks' },
+        { produkt: 'gibt-es-nicht' },
+        { produkt: 'toString' },
+      ],
+    })
+    expect(Object.keys(r.snapshot.produkte)).toEqual(['testkeks'])
+    expect(r.entfernt).toBe(2)
+    expect(r.snapshot.version).toBe(1)
+    expect(r.snapshot.erstellt).toBe(ERSTELLT)
+    // Der gefilterte Snapshot besteht die Prüfung, der ursprüngliche bleibt, wie er war.
+    expect(() => pruefeSnapshot(r.snapshot)).not.toThrow()
+    expect(Object.keys(snapshot.produkte)).toHaveLength(3)
+  })
+
+  it('eine leere Belegung lässt nichts übrig - und meldet weiter, was fehlt', () => {
+    const { snapshot } = baueSnapshot(records, { erstellt: ERSTELLT })
+    const r = nurBelegte(snapshot, { slots: [] })
+    expect(r.snapshot.produkte).toEqual({})
+    expect(r.entfernt).toBe(3)
+  })
+
+  it('ändert nichts daran, welche Produkte des Modells als fehlend gemeldet werden', () => {
+    const { snapshot } = baueSnapshot(records, { erstellt: ERSTELLT })
+    const belegung = {
+      slots: [{ produkt: 'testkeks' }, { produkt: 'gibt-es-nicht' }],
+    }
+    const gefiltert = nurBelegte(snapshot, belegung).snapshot
+    expect(fehlendeProdukte(belegung, gefiltert, records)).toEqual(
+      fehlendeProdukte(belegung, snapshot, records)
+    )
   })
 })
 

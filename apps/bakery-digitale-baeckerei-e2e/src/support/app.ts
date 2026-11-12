@@ -12,8 +12,9 @@
  *   `clientX`/`clientY`) für die Mitte des sichtbaren Knotens `produkt/<slot>`,
  *   oder `null`, wenn es den Platz nicht gibt, er ausgeblendet ist oder
  *   außerhalb des Bildes liegt. Die Suite tippt genau dorthin.
- * - `hervorgehoben`: der Slot, den `Picker.highlight()` gerade hervorhebt,
- *   sonst `null`.
+ * - `hervorgehoben`: der Slot, an dem gerade wirklich eine Hervorhebung
+ *   hängt (aus dem Picker gelesen: Überzüge am Modell), sonst `null` - auch
+ *   dann `null`, wenn ein Platz gewählt ist, aber nichts gezeichnet wird.
  *
  * **Bedienelemente** (deutsch beschriftet, dazu vier `data-testid`):
  *
@@ -96,6 +97,8 @@ export interface DebugHaken {
   screenPos: (slot: string) => { x: number; y: number } | null
   /** Siehe Kopf der Datei. */
   hervorgehoben: string | null
+  /** Der Platz, den die App gewählt hat - auch wenn nichts gezeichnet wird. */
+  gewaehlt: string | null
 }
 
 declare global {
@@ -224,6 +227,8 @@ export function blickpunktKnopf(page: Page, name: string): Locator {
 export async function wechsleZu(page: Page, name: string): Promise<void> {
   await blickpunktKnopf(page, name).click()
   await expect(szene(page, name)).toBeVisible()
+  // Die Fahrt dorthin (≈ 0,8 s, auf langsamen Rechnern länger) abwarten.
+  await ruhe(page)
 }
 
 export const produktSheet = (page: Page): Locator =>
@@ -235,6 +240,26 @@ export const allesHierListe = (page: Page): Locator =>
 /** Wie viele Bilder die Szene bisher gezeichnet hat (gerendert wird nur bei Bedarf). */
 export const bilder = (page: Page): Promise<number> =>
   page.evaluate(() => window.__digitaleBaeckerei?.frames ?? -1)
+
+/**
+ * Wartet, bis die Szene nichts mehr zeichnet (Fahrt, Feder, Einblenden) -
+ * statt einer festen Wartezeit, die auf einem langsamen Rechner mitten in der
+ * Fahrt enden kann.
+ */
+export async function ruhe(page: Page): Promise<void> {
+  let vorher = -1
+  await expect
+    .poll(
+      async () => {
+        const jetzt = await bilder(page)
+        const still = jetzt === vorher
+        vorher = jetzt
+        return still
+      },
+      { intervals: [400], timeout: 30_000 }
+    )
+    .toBe(true)
+}
 
 /**
  * Tippt im 3D-Bild auf einen Platz: holt seine Bildschirmposition vom

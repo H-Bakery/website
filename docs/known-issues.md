@@ -77,4 +77,7 @@ deleted the six pre-pilot libraries whose specs used to fail (`feature-inventory
   completely - the app reads it as a stream for the progress bar (`fetchBytes` in
   `src/lib/scene/loadModel.ts`); a plain `fetch().arrayBuffer()` does not show it. The e2e suite
   ignores exactly that case (`protokolliere()` in `apps/bakery-digitale-baeckerei-e2e/src/support/app.ts`).
-  Not checked: whether such a response still lands in the HTTP cache on a real device.
+  It only happens when the server sends `Cache-Control: no-store`, as `tools/e2e/serve-static.js`
+  does: with cacheable headers there was no abort in 24 streamed loads and every repeat load came
+  from the HTTP cache (review of PR #134). Tested in headless Chromium only, not on a real device or
+  in Safari.

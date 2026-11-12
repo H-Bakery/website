@@ -18,12 +18,19 @@ dist/
 # (type-check) braucht die Datei nicht.
 /apps/bakery-partybrezel/next-env.d.ts
 /apps/bakery-digitale-baeckerei/next-env.d.ts
-# Digitale Bäckerei: Modell + Katalog (scripts/sync-model.mjs) und der
-# Produkt-Snapshot aus hq entstehen beim Bauen und gehören NICHT in dieses
-# öffentliche Repo (echte Texte/Preise). Screenshots bleiben lokal.
+# Digitale Bäckerei: Modell und Belegung (scripts/sync-model.mjs) und der
+# Produkt-Snapshot aus hq (scripts/sync-products.mjs) entstehen beim Bauen und
+# gehören NICHT in dieses öffentliche Repo (echtes Modell, echte Texte).
+# Screenshots bleiben lokal.
 /apps/bakery-digitale-baeckerei/public/model/
 /apps/bakery-digitale-baeckerei/public/data/
 /apps/bakery-digitale-baeckerei/screenshots/
+# Kein 3D-Modell im Repo, egal wo es abgelegt wird - außer dem synthetischen
+# Test-Modell.
+*.glb
+!/apps/bakery-digitale-baeckerei/src/test/fixtures/twin.fixture.glb
+# Playwright-Berichte (HTML mit Screenshots und Spuren)
+playwright-report/
 /out/
 
 # production

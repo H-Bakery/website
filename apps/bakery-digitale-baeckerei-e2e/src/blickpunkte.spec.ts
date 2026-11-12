@@ -11,6 +11,7 @@ import {
   bilder,
   blickpunktKnopf,
   oeffne,
+  ruhe,
   szene,
   wechsleZu,
 } from './support/app'
@@ -39,9 +40,8 @@ test.describe('Blickpunkte', () => {
     const protokoll = await oeffne(page)
 
     for (const name of ['Brotregal', 'Regale', 'Theke']) {
+      // wechsleZu wartet, bis die Fahrt ausgeklungen ist.
       await wechsleZu(page, name)
-      // Die Fahrt (≈ 0,8 s) ausklingen lassen, dann messen.
-      await page.waitForTimeout(1200)
       const stats = await page.evaluate(() =>
         window.__digitaleBaeckerei?.pixelStats()
       )
@@ -75,11 +75,10 @@ test.describe('Blickpunkte', () => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await oeffne(page)
     // Ruhe abwarten: gerendert wird nur bei Bedarf.
-    await page.waitForTimeout(500)
+    await ruhe(page)
     const vorher = await bilder(page)
 
     await wechsleZu(page, 'Brotregal')
-    await page.waitForTimeout(1200)
 
     // Eine Fahrt von 0,8 s zeichnet viele Bilder, ein Schnitt eine Handvoll.
     const gezeichnet = (await bilder(page)) - vorher

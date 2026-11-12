@@ -35,6 +35,14 @@ export interface ProduktSheetProps {
    * Sheet offen ist - dann schließt die Szene es selbst über `onClose`.
    */
   hintergrundSchliesst?: boolean
+  /**
+   * Den Fokus ins Sheet holen (Standard) - richtig, wenn es über Tastatur
+   * oder Liste geöffnet wurde. Mit `false` bleibt der Fokus, wo er ist: nach
+   * einem Tipp ins Bild sollen Pfeiltasten und +/- weiter der Szene gelten.
+   */
+  fokus?: boolean
+  /** Eine kurze Zeile unter dem Namen, z. B. dass das Produkt gerade nicht im Bild ist. */
+  hinweis?: string
 }
 
 const vonUnten = keyframes({
@@ -52,6 +60,8 @@ export default function ProduktSheet({
   produkt,
   onClose,
   hintergrundSchliesst = true,
+  fokus = true,
+  hinweis,
 }: ProduktSheetProps) {
   if (!produkt) return null
   return (
@@ -59,6 +69,8 @@ export default function ProduktSheet({
       produkt={produkt}
       onClose={onClose}
       hintergrundSchliesst={hintergrundSchliesst}
+      fokus={fokus}
+      hinweis={hinweis}
     />
   )
 }
@@ -67,10 +79,14 @@ function OffenesSheet({
   produkt,
   onClose,
   hintergrundSchliesst,
+  fokus,
+  hinweis,
 }: {
   produkt: ProduktInfo
   onClose: () => void
   hintergrundSchliesst: boolean
+  fokus: boolean
+  hinweis?: string
 }) {
   const titelId = useId()
   const textId = useId()
@@ -84,13 +100,26 @@ function OffenesSheet({
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
 
-  // Fokus ins Sheet, beim Schließen zurück dorthin, wo er vorher war.
+  // Fokus ins Sheet (nur wenn verlangt), beim Schließen zurück dorthin, wo
+  // er vorher war - aber nur, wenn er noch im Sheet steht: Wer inzwischen
+  // woandershin getabbt hat, bleibt dort.
+  const vorher = useRef<HTMLElement | null>(null)
   useEffect(() => {
-    const vorher = document.activeElement as HTMLElement | null
-    sheet.current?.focus({ preventScroll: true })
+    if (!fokus) return
+    const knoten = sheet.current
+    if (!knoten || knoten.contains(document.activeElement)) return
+    vorher.current = document.activeElement as HTMLElement | null
+    knoten.focus({ preventScroll: true })
+  }, [fokus, produkt.id])
+  useEffect(() => {
+    const knoten = sheet.current
     return () => {
-      if (vorher && vorher.isConnected && typeof vorher.focus === 'function') {
-        vorher.focus({ preventScroll: true })
+      const ziel = vorher.current
+      const aktiv = document.activeElement
+      const imSheet =
+        !aktiv || aktiv === document.body || !!knoten?.contains(aktiv)
+      if (ziel && imSheet && ziel.isConnected) {
+        ziel.focus({ preventScroll: true })
       }
     }
   }, [])
@@ -145,6 +174,10 @@ function OffenesSheet({
           flexDirection: 'column',
           // Zugeklappt bleibt mehr als die Hälfte des Bildes frei.
           maxHeight: mehr ? '80dvh' : '45dvh',
+          // Auf niedrigen Handys bliebe aufgeklappt sonst kaum Bild übrig.
+          '@media (max-height: 699px)': {
+            maxHeight: mehr ? '60dvh' : '45dvh',
+          },
           borderRadius: '16px 16px 0 0',
           pb: 'env(safe-area-inset-bottom)',
           outline: 'none',
@@ -226,6 +259,16 @@ function OffenesSheet({
                 data-testid="sheet-einheit"
               >
                 {produkt.einheit}
+              </Typography>
+            )}
+            {hinweis && (
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                data-testid="sheet-hinweis"
+                sx={{ mt: 0.25 }}
+              >
+                {hinweis}
               </Typography>
             )}
           </Box>

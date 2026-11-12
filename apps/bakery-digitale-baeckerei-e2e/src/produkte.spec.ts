@@ -18,6 +18,7 @@ import {
   moebelVon,
   oeffne,
   produktSheet,
+  ruhe,
   tippeAufPlatz,
   wechsleZu,
 } from './support/app'
@@ -106,7 +107,7 @@ test.describe('Produkt antippen', () => {
     const protokoll = await oeffne(page)
 
     await tippeAufPlatz(page, WAISE.slot, hasTouch)
-    await page.waitForTimeout(800)
+    await ruhe(page)
     await expect(produktSheet(page)).toBeHidden()
     await expect(page.getByText(WAISE.produkt)).toHaveCount(0)
     expect(protokoll.ausnahmen).toEqual([])
@@ -122,11 +123,11 @@ test.describe('Produkt antippen', () => {
   }) => {
     await oeffne(page)
     await wechsleZu(page, 'Regale')
-    await page.waitForTimeout(1200)
 
     // Dosen ohne eigenes Produkt (extras.ware).
     await tippeAufPlatz(page, 'dosenregal/platz-01', hasTouch)
-    await page.waitForTimeout(800)
+    // Das kurze Aufleuchten der Ware abwarten - eine Karte kommt nicht.
+    await ruhe(page)
     await expect(produktSheet(page)).toBeHidden()
 
     await tippeAufPlatz(page, 'dosenregal/platz-03', hasTouch)

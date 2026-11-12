@@ -1,4 +1,7 @@
-import { experimental_extendTheme as extendTheme } from '@mui/material/styles'
+import {
+  experimental_extendTheme as extendTheme,
+  type Theme,
+} from '@mui/material/styles'
 
 /** Mindestgröße für Touch-Ziele. */
 export const TOUCH_TARGET = 44
@@ -50,7 +53,7 @@ export const rand = (
  * #FFF3E6, Text #3B2B28. Hell und dunkel nach `prefers-color-scheme`.
  * Systemschrift - keine Fremd-Fonts.
  */
-export const digitaleBaeckereiTheme = extendTheme({
+const palette = extendTheme({
   colorSchemes: {
     light: {
       palette: {
@@ -81,5 +84,71 @@ export const digitaleBaeckereiTheme = extendTheme({
         root: { minHeight: TOUCH_TARGET, textTransform: 'none' },
       },
     },
+    // Tastatur: Jeder Knopf zeigt den Fokus mit demselben kräftigen Rahmen
+    // (Pfeile, „Alles hier“, „Quellen“, Knöpfe der Karte) - der Ripple
+    // allein ist auf Weiß kaum zu sehen.
+    MuiButtonBase: {
+      styleOverrides: {
+        root: {
+          '&.Mui-focusVisible': {
+            outline: '3px solid',
+            outlineOffset: 2,
+          },
+        },
+      },
+    },
+    // Zeilen der Liste füllen die Breite: Rahmen nach innen.
+    MuiListItemButton: {
+      styleOverrides: {
+        root: { '&.Mui-focusVisible': { outlineOffset: -3 } },
+      },
+    },
   },
 })
+
+/** Unter dieser Abfrage gilt das dunkle Schema - allein nach dem System. */
+export const DUNKEL = '@media (prefers-color-scheme: dark)'
+
+const wurzel = palette.generateCssVars()
+const hell = palette.generateCssVars('light')
+const dunkel = palette.generateCssVars('dark')
+
+const istObjekt = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/** Tiefes Zusammenführen einfacher Objekte (die Variablen-Bäume von MUI). */
+function vereine<T>(a: T, b: unknown): T {
+  if (!istObjekt(a) || !istObjekt(b)) return (b === undefined ? a : b) as T
+  const out: Record<string, unknown> = { ...a }
+  for (const [key, wert] of Object.entries(b)) {
+    out[key] = key in out ? vereine(out[key], wert) : wert
+  }
+  return out as T
+}
+
+/**
+ * Das Theme der App. Hell oder dunkel entscheidet **allein das CSS** nach
+ * `prefers-color-scheme` - ohne JavaScript, ohne Aufblitzen beim Laden und
+ * ohne etwas auf dem Gerät zu speichern.
+ *
+ * Warum nicht `CssVarsProvider`: Der schreibt die Wahl in `localStorage`
+ * (`mui-mode`, `mui-color-scheme-*`), auch ohne Umschalter. Die App verspricht
+ * „keine Cookies“, und Gerätespeicher zählt rechtlich dazu (§ 25 TDDDG).
+ * Darum hier dasselbe von Hand: Die Komponenten lesen ihre Farben aus
+ * CSS-Variablen (`theme.vars`), `FARBSCHEMA_CSS` setzt sie für hell an
+ * `:root` und überschreibt sie unter der Medienabfrage für dunkel.
+ */
+export const digitaleBaeckereiTheme = {
+  ...palette,
+  ...palette.colorSchemes.light,
+  palette: { ...palette.colorSchemes.light.palette, colorScheme: 'light' },
+  vars: vereine(vereine(wurzel.vars, hell.vars), dunkel.vars),
+  getColorSchemeSelector: (schema: string) =>
+    schema === 'dark' ? DUNKEL : '@media (prefers-color-scheme: light)',
+} as unknown as Theme
+
+/** Die CSS-Variablen beider Schemata für `<GlobalStyles>`. */
+export const FARBSCHEMA_CSS = {
+  ':root': { ...wurzel.css, ...hell.css, colorScheme: 'light dark' },
+  [DUNKEL]: { ':root': dunkel.css },
+}

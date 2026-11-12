@@ -1,6 +1,10 @@
 import type { Metadata, Viewport } from 'next'
-import ColorSchemeScript from '../components/ColorSchemeScript'
 import ThemeRegistry from '../components/ThemeRegistry'
+import { START_RAUM_ID, findeRaum } from '../config/raeume'
+import { modelUrl } from '../lib/basePath'
+
+/** Das Modell des Raums, in dem die App startet. */
+const START_MODELL = findeRaum(START_RAUM_ID)?.modell ?? 'twin.glb'
 
 export const metadata: Metadata = {
   title: 'Digitale Bäckerei – Bäckerei Heusser',
@@ -31,10 +35,20 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    // Das Farbschema-Skript setzt ein Attribut an <html>, bevor React lädt.
-    <html lang="de" suppressHydrationWarning>
+    <html lang="de">
+      <head>
+        {/* Das Modell ist der größte Brocken und würde sonst erst nach der
+            ganzen JS-Kette angefragt: schon mit dem HTML laden. `fetch()` in
+            loadModel.ts nimmt genau diese Antwort (gleiche URL, gleicher
+            Modus) - kein zweiter Download. */}
+        <link
+          rel="preload"
+          as="fetch"
+          crossOrigin="anonymous"
+          href={modelUrl(START_MODELL)}
+        />
+      </head>
       <body>
-        <ColorSchemeScript />
         <ThemeRegistry>{children}</ThemeRegistry>
       </body>
     </html>

@@ -58,7 +58,8 @@ export default function Quellen() {
         <DialogContent>
           <Box component="ul" sx={{ m: 0, pl: 2.5, '& li + li': { mt: 1.25 } }}>
             <Typography component="li" variant="body2">
-              Gelände und Gebäude außen: © GeoBasis-DE/LVGL-SL (2026),{' '}
+              Gelände und Gebäude außen (verändert): © GeoBasis-DE/LVGL-SL
+              (2026),{' '}
               <Link
                 href="https://www.govdata.de/dl-de/by-2-0"
                 sx={{ whiteSpace: 'nowrap' }}
@@ -87,6 +88,9 @@ export default function Quellen() {
                 Saar LiDAR Explorer
               </Link>{' '}
               (Code unter MIT-Lizenz)
+            </Typography>
+            <Typography component="li" variant="body2">
+              Software: three.js, MUI und React (jeweils MIT-Lizenz)
             </Typography>
             <Typography component="li" variant="body2">
               Name, Schriftzug und Texte gehören der Bäckerei Heusser.

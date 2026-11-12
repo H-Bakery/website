@@ -17,7 +17,19 @@ export type Vec3 = readonly [number, number, number]
 
 export interface BlickpunktHochformat {
   eye: Vec3
+  /** Punkt, auf den die Kamera in der Ruhelage (beim Start) schaut. */
   look: Vec3
+  /**
+   * Mitte der Grenzen des Umschauens, falls sie nicht die Ruhelage ist: Von
+   * diesem Punkt aus gelten ± `yawDeg` / ± `pitchDeg`. So darf man im schmalen
+   * Bild zu einer Seite weiter schwenken als zur anderen, ohne dass sich das
+   * Startbild ändert. Ohne Angabe: `look`.
+   */
+  grenzenUm?: Vec3
+  /** Umschauen im Hochformat: ± Grad seitlich (sonst der Wert des Blickpunkts). */
+  yawDeg?: number
+  /** Umschauen im Hochformat: ± Grad nach oben/unten (sonst der des Blickpunkts). */
+  pitchDeg?: number
   /** Senkrechter Öffnungswinkel in Grad: Start und weiteste Einstellung. */
   fov: number
   /** Engster Winkel im Hochformat (sonst der des Blickpunkts). */
@@ -95,6 +107,13 @@ export const raeume: readonly Raum[] = [
           eye: [4.85, 245.9, -3.2],
           look: [3.95, 245.0, -1.3],
           fov: 64,
+          // Der Standort steht neben dem türseitigen Ende der Vitrine. Im
+          // schmalen Bild reichen ± 20° nicht bis dorthin: Die Grenzen liegen
+          // darum um einen Punkt weiter rechts, ± 40°. Nach links bleibt es
+          // bei rund 20° ab dem Startbild, nach rechts sind es rund 60° - so
+          // kommt jeder Platz der Vitrine ins Bild (am echten Modell geprüft).
+          grenzenUm: [3.45, 245.0, -1.75],
+          yawDeg: 40,
         },
         moebel: ['theke/', 'gitterregal/'],
         // Links liegt das Schaufenster im Bild.

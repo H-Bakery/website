@@ -299,6 +299,9 @@ jobs:
   test-e2e-digitale-baeckerei:
     needs: [changes, quality]
     if: needs.changes.outputs.digitale-baeckerei == 'true'
+    # Dieser Job liest nur: auschecken, bauen, testen, Artefakt hochladen.
+    permissions:
+      contents: read
     runs-on: ubuntu-24.04 # Playwright 1.54 has no chromium build for ubuntu-latest (26.04)
     steps:
       - uses: actions/checkout@v4
@@ -331,8 +334,8 @@ jobs:
 
       # Playwright startet apps/bakery-digitale-baeckerei-e2e/serve-fixture.js
       # (tools/e2e/servers.js; CI=true: nimmt den Export von eben). Der Server weigert sich, wenn im
-      # Export nicht das Fixture-Modell liegt - die Artefakte unten sind
-      # oeffentlich. WebGL laeuft ueber SwiftShader (playwright.config.ts).
+      # Export nicht Fixture-Modell und Fixture-Snapshot liegen - die Artefakte
+      # unten sind oeffentlich. WebGL laeuft ueber SwiftShader (playwright.config.ts).
       - name: Run E2E tests
         run: npx nx e2e bakery-digitale-baeckerei-e2e
 
@@ -401,6 +404,17 @@ jobs:
           # Nur diese App liest die Variable.
           DIGITALE_BAECKEREI_FIXTURE: '1'
         run: npx nx build ${{ matrix.app }} --configuration=production
+
+      # Der Export dieser App wird gleich als oeffentliches Artefakt
+      # hochgeladen. Er muss das synthetische Fixture enthalten, Byte fuer Byte -
+      # nie das echte Modell oder echte Produkttexte (z. B. aus einem Cache).
+      - name: Guard - Digitale Baeckerei export contains only the fixture
+        if: matrix.app == 'bakery-digitale-baeckerei'
+        run: |
+          cmp apps/bakery-digitale-baeckerei/out/model/twin.glb \
+              apps/bakery-digitale-baeckerei/src/test/fixtures/twin.fixture.glb
+          cmp apps/bakery-digitale-baeckerei/out/data/products.snapshot.json \
+              apps/bakery-digitale-baeckerei/src/test/fixtures/products.snapshot.fixture.json
 
       # Boot smoke of the pilot API (roadmap B1): the bundle from the step
       # above starts in production mode on a fresh SQLite file, /health must

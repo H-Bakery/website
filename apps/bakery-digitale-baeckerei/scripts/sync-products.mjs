@@ -2,17 +2,21 @@
 /**
  * Schreibt den Produkt-Snapshot der Digitalen Bäckerei nach
  * public/data/products.snapshot.json (git-ignoriert): die verfügbaren Produkte
- * aus hq/products/*.md mit ID, Name, Kategorie, Einheit, Kurztext, Text und
- * Link zur Produktseite - OHNE Preise (DB8) und ohne Allergene. Die App liest
- * nur diesen Snapshot.
+ * aus hq/products/*.md, die im Modell auf einem Platz liegen
+ * (public/data/belegung.json aus sync-model), mit ID, Name, Kategorie,
+ * Einheit, Kurztext, Text und Link zur Produktseite - OHNE Preise (DB8) und
+ * ohne Allergene. Produkte, die das Modell nicht zeigt, bleiben draußen. Die
+ * App liest nur diesen Snapshot.
  *
  * - hq kommt aus HQ_PRODUCTS_DIR, sonst <monorepo>/../hq/products (gelesen
  *   über libs/shared/hq-products, denselben Leser wie die Landingpage).
  * - Ohne hq bricht das Skript ab. Es gibt keine Mock-Produkte.
  * - DIGITALE_BAECKEREI_FIXTURE=1 (Tests, e2e, CI ohne hq): kopiert stattdessen
- *   den synthetischen Snapshot src/test/fixtures/products.snapshot.fixture.json.
+ *   den synthetischen Snapshot src/test/fixtures/products.snapshot.fixture.json
+ *   Byte für Byte.
+ * - Ohne die Belegung bricht das Skript ab (zuerst sync-model).
  * - Meldet (als Warnung, der Build läuft weiter), welche Produkte die Belegung
- *   (public/data/belegung.json aus sync-model) zeigt, die es in hq nicht gibt.
+ *   zeigt, die es in hq nicht gibt.
  *
  * Aufruf: node scripts/sync-products.mjs   (Nx: `nx run bakery-digitale-baeckerei:sync-products`)
  * Die Logik steht in product-snapshot.js.
@@ -24,7 +28,8 @@ import hqProducts from '../../../libs/shared/hq-products/src/index.js'
 import productSnapshot from './product-snapshot.js'
 
 const { readHqProducts } = hqProducts
-const { baueSnapshot, pruefeSnapshot, fehlendeProdukte } = productSnapshot
+const { baueSnapshot, nurBelegte, pruefeSnapshot, fehlendeProdukte } =
+  productSnapshot
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const dataDir = path.join(appDir, 'public', 'data')
@@ -52,6 +57,27 @@ function writeJson(file, value) {
   fs.renameSync(tmp, file)
 }
 
+/** Die Belegung aus dem Modell (sync-model) - ohne sie geht es nicht weiter. */
+function leseBelegung() {
+  if (!fs.existsSync(belegungPath)) {
+    fail(
+      'public/data/belegung.json fehlt - zuerst sync-model laufen lassen (nx run bakery-digitale-baeckerei:sync-model).'
+    )
+  }
+  try {
+    const belegung = JSON.parse(fs.readFileSync(belegungPath, 'utf8'))
+    if (!Array.isArray(belegung.slots)) throw new Error('slots fehlt')
+    return belegung
+  } catch (err) {
+    return fail(
+      `public/data/belegung.json lässt sich nicht lesen (${
+        err instanceof Error ? err.message : err
+      })`
+    )
+  }
+}
+
+const belegung = leseBelegung()
 let snapshot
 let records = []
 if (fixtureMode) {
@@ -70,6 +96,10 @@ if (fixtureMode) {
       `Fixture-Snapshot ungültig: ${err instanceof Error ? err.message : err}`
     )
   }
+  // Byte für Byte kopieren: CI und der e2e-Server vergleichen den Export mit
+  // genau dieser Datei, um echte Daten in einem Fixture-Build auszuschließen.
+  fs.mkdirSync(path.dirname(target), { recursive: true })
+  fs.copyFileSync(fixturePath, target)
   console.log(
     `sync-products: FIXTURE - ${
       Object.keys(snapshot.produkte).length
@@ -90,44 +120,35 @@ if (fixtureMode) {
   for (const u of built.uebersprungen) {
     console.warn(`sync-products: WARNUNG ${u.file} übersprungen (${u.grund})`)
   }
-  if (Object.keys(built.snapshot.produkte).length === 0) {
+  const verfuegbar = Object.keys(built.snapshot.produkte).length
+  if (verfuegbar === 0) {
     fail(`Keine verfügbaren Produkte in ${hq.dir} gefunden.`)
   }
+  // Nur was im Modell auf einem Platz liegt: Den Rest könnte die App nie
+  // zeigen, er läge nur als Text zum Herunterladen im Export.
+  const gefiltert = nurBelegte(built.snapshot, belegung)
   try {
-    snapshot = pruefeSnapshot(built.snapshot)
+    snapshot = pruefeSnapshot(gefiltert.snapshot)
   } catch (err) {
     fail(err instanceof Error ? err.message : String(err))
   }
   console.log(
     `sync-products: ${
       Object.keys(snapshot.produkte).length
-    } verfügbare Produkte aus ${hq.dir} (${
+    } Produkte, die im Modell liegen, aus ${hq.dir} (${
       records.length
-    } Dateien gelesen), ohne Preise`
+    } Dateien gelesen, ${verfuegbar} verfügbar, ${
+      gefiltert.entfernt
+    } nicht im Modell und darum ausgelassen), ohne Preise`
   )
+  writeJson(target, snapshot)
 }
 
-writeJson(target, snapshot)
 console.log(`  geschrieben: ${path.relative(appDir, target)}`)
 
 // Was zeigt das Modell, das hq nicht hat? Nur melden - der Platz bleibt
 // sichtbar, aber ohne Karte.
-if (!fs.existsSync(belegungPath)) {
-  console.warn(
-    'sync-products: WARNUNG public/data/belegung.json fehlt (zuerst sync-model) - Abgleich mit dem Modell ausgelassen'
-  )
-} else {
-  let belegung
-  try {
-    belegung = JSON.parse(fs.readFileSync(belegungPath, 'utf8'))
-    if (!Array.isArray(belegung.slots)) throw new Error('slots fehlt')
-  } catch (err) {
-    fail(
-      `public/data/belegung.json lässt sich nicht lesen (${
-        err instanceof Error ? err.message : err
-      })`
-    )
-  }
+{
   const r = fehlendeProdukte(belegung, snapshot, records)
   console.log(
     `  Modell: ${r.gefunden} von ${r.imModell} Produkten der Belegung haben Daten`

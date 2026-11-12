@@ -64,7 +64,8 @@ describe('OhneWebGL', () => {
 
   it('als Screenreader-Weg: dieselbe Liste, aber ohne die Meldung', () => {
     setup({ variante: 'screenreader' })
-    expect(screen.getByRole('status')).toHaveTextContent('')
+    // Dort meldet die Status-Region der App - keine zweite, dauerhaft leere.
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
     expect(
       within(screen.getByRole('region', { name: 'Brotregal' })).getAllByRole(
         'listitem'
@@ -75,5 +76,24 @@ describe('OhneWebGL', () => {
   it('nennt weder Kosten noch Inhaltsstoff-Hinweise', () => {
     setup()
     expect(document.body.textContent).not.toMatch(VERBOTEN)
+  })
+
+  it('nimmt eine andere Meldung und ein Bedienelement auf (Ladefehler)', () => {
+    setup({
+      meldung: 'Der Laden konnte nicht geladen werden.',
+      aktion: <button type="button">Noch einmal</button>,
+    })
+    const status = screen.getByRole('status')
+    expect(status).toHaveTextContent('Der Laden konnte nicht geladen werden.')
+    expect(status).not.toHaveTextContent(OHNE_WEBGL_TEXT)
+    expect(
+      within(status).getByRole('button', { name: 'Noch einmal' })
+    ).toBeInTheDocument()
+  })
+
+  it('schreibt den Kurztext in Lesegröße, nicht klein', () => {
+    setup()
+    const [kurztext] = screen.getAllByText(PROBEWECK.kurztext)
+    expect(kurztext.className).toContain('MuiTypography-body1')
   })
 })

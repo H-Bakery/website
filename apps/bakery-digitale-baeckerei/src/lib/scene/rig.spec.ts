@@ -511,8 +511,9 @@ describe('RigKern: Umschauen in Grenzen', () => {
           const p = pose(kern)
           expect(Math.abs(wickeln(p.yaw - r.yaw0))).toBeCloseTo(r.yawMax, 9)
           expect(Math.abs(p.pitch - r.pitch0)).toBeCloseTo(r.pitchMax, 9)
+          const hoch = aspect < 1 ? bp.portrait : undefined
           expect(Math.abs(wickeln(p.yaw - r.yaw0)) / GRAD).toBeCloseTo(
-            bp.yawDeg,
+            hoch?.yawDeg ?? bp.yawDeg,
             6
           )
         }
@@ -741,6 +742,229 @@ describe('RigKern: zurückzoomen und schwenken', () => {
     expect(kern.wechselt()).toBe(true)
     auslaufen(kern)
     expect(pose(kern).yaw).toBeCloseTo(rahmenFuer(theke, QUER).yaw0, 9)
+  })
+})
+
+describe('Grenzen um einen anderen Punkt als die Ruhelage (Hochformat)', () => {
+  /** Startbild 10° links der Mitte der Grenzen; ± 40° statt ± 20°. */
+  const schief: Blickpunkt = {
+    ...regal,
+    portrait: {
+      eye: [0, 2, 0],
+      look: blickziel([0, 2, 0], 10 * GRAD, 0, 4),
+      grenzenUm: [0, 2, 4],
+      fov: 70,
+      yawDeg: 40,
+      pitchDeg: 8,
+    },
+  }
+
+  it('rahmenFuer: Mitte, Startabweichung und eigene Grenzen des Hochformats', () => {
+    const r = rahmenFuer(schief, HOCH)
+    expect(r.yaw0).toBeCloseTo(0, 9)
+    expect(r.startYaw).toBeCloseTo(10 * GRAD, 9)
+    expect(r.startPitch).toBeCloseTo(0, 9)
+    expect(r.yawMax).toBeCloseTo(40 * GRAD, 9)
+    expect(r.pitchMax).toBeCloseTo(8 * GRAD, 9)
+    // Querformat: unverändert die Werte des Blickpunkts.
+    const q = rahmenFuer(schief, QUER)
+    expect(q.startYaw).toBe(0)
+    expect(q.yawMax).toBeCloseTo(20 * GRAD, 9)
+    expect(q.pitchMax).toBeCloseTo(12 * GRAD, 9)
+  })
+
+  it('ohne grenzenUm ist die Ruhelage die Mitte', () => {
+    const r = rahmenFuer(regal, HOCH)
+    expect(r.startYaw).toBe(0)
+    expect(r.startPitch).toBe(0)
+  })
+
+  it('eine Ruhelage außerhalb der Grenzen wird an die Grenze geholt', () => {
+    const weit: Blickpunkt = {
+      ...regal,
+      portrait: {
+        eye: [0, 2, 0],
+        look: blickziel([0, 2, 0], 50 * GRAD, 0, 4),
+        grenzenUm: [0, 2, 4],
+        fov: 70,
+      },
+    }
+    expect(rahmenFuer(weit, HOCH).startYaw).toBeCloseTo(20 * GRAD, 9)
+  })
+
+  it('startet im Startbild und lässt zu einer Seite weiter schwenken als zur anderen', () => {
+    const kern = kernAm(schief, HOCH)
+    expect(pose(kern).yaw).toBeCloseTo(10 * GRAD, 9)
+
+    // nach links (yaw wächst): 30° bis zur Grenze
+    kern.ziehen(90 * GRAD, 0)
+    kern.loslassen()
+    auslaufen(kern)
+    expect(pose(kern).yaw).toBeCloseTo(40 * GRAD, 9)
+    // nach rechts: 50° ab dem Startbild
+    kern.ziehen(-180 * GRAD, 0)
+    kern.loslassen()
+    auslaufen(kern)
+    expect(pose(kern).yaw).toBeCloseTo(-40 * GRAD, 9)
+  })
+
+  it('ein Wechsel endet im Startbild, nicht in der Mitte der Grenzen', () => {
+    const kern = kernAm(theke, HOCH)
+    kern.setBlickpunkt(schief)
+    auslaufen(kern)
+    expect(pose(kern).yaw).toBeCloseTo(10 * GRAD, 9)
+    expect(kern.bewegt()).toBe(false)
+  })
+
+  it('hoch ↔ quer schneidet in das Startbild des jeweiligen Formats', () => {
+    const kern = kernAm(schief, QUER)
+    kern.resize(HOCH)
+    expect(pose(kern).yaw).toBeCloseTo(10 * GRAD, 9)
+    kern.resize(QUER)
+    expect(pose(kern).yaw).toBeCloseTo(0, 9)
+  })
+
+  it('der Laden: Theke im Hochformat startet wie bisher und reicht rechts weiter', () => {
+    const t = raeume[0].blickpunkte.find((b) => b.id === 'theke') as Blickpunkt
+    const r = rahmenFuer(t, HOCH)
+    const start = richtung(t.portrait?.eye as Vec3, t.portrait?.look as Vec3)
+    expect(r.yaw0 + r.startYaw).toBeCloseTo(start.yaw, 9)
+    // links (zum Schaufenster) bleibt es bei rund 20°, rechts sind es rund 60°
+    const links = (r.yawMax - r.startYaw) / GRAD
+    const rechts = (r.yawMax + r.startYaw) / GRAD
+    expect(links).toBeGreaterThan(18)
+    expect(links).toBeLessThan(24)
+    expect(rechts).toBeGreaterThan(55)
+    expect(rechts).toBeLessThan(62)
+  })
+})
+
+describe('RigKern: Fahrt bleibt bei Größenänderung, Mausrad und Pinch', () => {
+  it('eine Größenänderung im selben Format lässt die Zoom-Fahrt weiterlaufen', () => {
+    const kern = kernAm(regal)
+    kern.zoomTo(blickziel([0, 2, 0], 10 * GRAD, -5 * GRAD, 4))
+    kern.schritt(60)
+    kern.resize(1400 / 900)
+    expect(kern.bewegt()).toBe(true)
+    auslaufen(kern)
+    const p = pose(kern)
+    expect(p.fov).toBe(30)
+    expect(p.yaw).toBeCloseTo(10 * GRAD, 9)
+    expect(p.pitch).toBeCloseTo(-5 * GRAD, 9)
+    expect(kern.istGezoomt()).toBe(true)
+  })
+
+  it('das Ziel der Fahrt rückt dabei in die Grenzen des neuen Bildes', () => {
+    const kern = kernAm(regal)
+    kern.zoomTo(blickziel([0, 2, 0], 120 * GRAD, 0, 3))
+    kern.schritt(60)
+    // schmaleres Querformat: herangezoomt weniger Spiel zur Seite
+    kern.resize(1.2)
+    auslaufen(kern)
+    const g = grenzen(rahmenFuer(regal, 1.2), 30, 1.2)
+    expect(pose(kern).yaw).toBeCloseTo(g.yaw, 9)
+    expect(kern.bewegt()).toBe(false)
+  })
+
+  it('hoch ↔ quer während der Fahrt schneidet in die Ruhelage', () => {
+    const kern = kernAm(regal)
+    kern.zoomTo([0, 2, 4])
+    kern.schritt(60)
+    kern.resize(HOCH)
+    expect(kern.bewegt()).toBe(false)
+    expect(pose(kern).fov).toBe(70)
+    expect(pose(kern).eye).toEqual([1, 2, 1])
+  })
+
+  it('setzeFov während einer Zoom-Fahrt: die Drehung läuft zu ihrem Ziel weiter', () => {
+    const kern = kernAm(regal)
+    kern.zoomTo(blickziel([0, 2, 0], 10 * GRAD, 0, 4))
+    kern.schritt(ZOOM_MS / 2)
+    const mitte = pose(kern)
+    kern.zoomen(1)
+    // kein Sprung: Bild und Winkel stehen, wo sie eben standen
+    expect(pose(kern).yaw).toBeCloseTo(mitte.yaw, 9)
+    expect(pose(kern).fov).toBeCloseTo(mitte.fov, 9)
+    expect(kern.bewegt()).toBe(true)
+    auslaufen(kern)
+    expect(pose(kern).yaw).toBeCloseTo(10 * GRAD, 9)
+    expect(pose(kern).fov).toBe(30)
+  })
+
+  it('ein Pinch während der Fahrt gibt nur dem Öffnungswinkel ein neues Ziel', () => {
+    const kern = kernAm(regal)
+    kern.zoomTo(blickziel([0, 2, 0], 10 * GRAD, 0, 4))
+    kern.schritt(ZOOM_MS / 2)
+    kern.setzeFov(45)
+    auslaufen(kern)
+    expect(pose(kern).fov).toBe(45)
+    expect(pose(kern).yaw).toBeCloseTo(10 * GRAD, 9)
+  })
+})
+
+describe('RigKern: wann gilt das Bild als herangezoomt', () => {
+  it('ein Hauch Zoom zählt nicht - der Doppeltipp zoomt dann heran, nicht zurück', () => {
+    const kern = kernAm(regal)
+    kern.zoomen(0.97)
+    expect(pose(kern).fov).toBeCloseTo(58.2, 6)
+    expect(kern.istGezoomt()).toBe(false)
+    kern.zoomTo([0, 2, 4])
+    auslaufen(kern)
+    expect(pose(kern).fov).toBe(30)
+  })
+
+  it('die Schwelle liegt auf halbem Weg zur Doppeltipp-Weite', () => {
+    const kern = kernAm(regal)
+    // Start 60°, Doppeltipp 30° → Schwelle 45°
+    kern.setzeFov(46)
+    expect(kern.istGezoomt()).toBe(false)
+    kern.setzeFov(45)
+    expect(kern.istGezoomt()).toBe(true)
+  })
+
+  it('lässt sich kaum zoomen, zählt jeder Zoom knapp unter der Startweite', () => {
+    const eng: Blickpunkt = { ...regal, fovMin: 59 }
+    const kern = kernAm(eng)
+    kern.setzeFov(59)
+    expect(kern.istGezoomt()).toBe(true)
+  })
+
+  it('zoomZurueck in der Startweite tut nichts, aus jedem Zoom fährt es zurück', () => {
+    const kern = kernAm(regal)
+    kern.zoomZurueck()
+    expect(kern.bewegt()).toBe(false)
+    kern.setzeFov(58)
+    kern.zoomZurueck()
+    expect(kern.bewegt()).toBe(true)
+    auslaufen(kern)
+    expect(pose(kern).fov).toBe(60)
+  })
+})
+
+describe('RigKern: schwenken meldet, was die Grenze abgeschnitten hat', () => {
+  it('innerhalb der Grenzen: nichts', () => {
+    const kern = kernAm(regal)
+    const rest = kern.schwenken(8 * GRAD, -4 * GRAD)
+    expect(rest?.yaw).toBeCloseTo(0, 12)
+    expect(rest?.pitch).toBeCloseTo(0, 12)
+  })
+
+  it('über die Grenze hinaus: den Rest', () => {
+    const kern = kernAm(regal)
+    const rest = kern.schwenken(60 * GRAD, 0)
+    expect(rest?.yaw).toBeCloseTo(40 * GRAD, 9)
+    expect(rest?.pitch).toBeCloseTo(0, 12)
+    auslaufen(kern)
+    expect(pose(kern).yaw).toBeCloseTo(20 * GRAD, 9)
+    expect(kern.schwenken(0, -40 * GRAD)?.pitch).toBeCloseTo(-28 * GRAD, 9)
+  })
+
+  it('während eines Wechsels und bei unbrauchbaren Werten: nicht ausgeführt', () => {
+    const kern = kernAm(regal)
+    expect(kern.schwenken(Number.NaN, 0)).toBeNull()
+    expect(createRigKern({ reducedMotion: false }).schwenken(0.1, 0)).toBeNull()
+    kern.setBlickpunkt(theke)
+    expect(kern.schwenken(0.01, 0)).toBeNull()
   })
 })
 

@@ -18,8 +18,11 @@ Regeln, die am meisten beißen:
     liegt). `catalogue.json` des Explorers (mit Preisen) wird **nicht** geladen.
   - `sync-products` (`scripts/sync-products.mjs`): liest `hq/products/*.md` (`HQ_PRODUCTS_DIR`, sonst
     `../hq/products`) über `libs/shared/hq-products` und schreibt
-    `public/data/products.snapshot.json` **ohne Preise**. Ohne hq bricht es ab - es gibt keine
-    Mock-Produkte. Felder außerhalb des Vertrags oder ein „€“ im Text lassen es scheitern.
+    `public/data/products.snapshot.json` **ohne Preise** und nur für Produkte, die im Modell
+    liegen. Ohne hq bricht es ab - es gibt keine Mock-Produkte. Felder außerhalb des Vertrags
+    oder ein „€“ im Text lassen es scheitern.
+  - `build` ist **nie im Nx-Cache** (`"cache": false`): Was in `out/` landet, hängt an Dingen,
+    die Nx nicht hasht (git-ignoriertes `public/`, Fixture-Schalter, Unterpfad, hq).
 - **Fixture-Modus:** `DIGITALE_BAECKEREI_FIXTURE=1` - beide Targets nehmen das synthetische
   Mini-Modell und den synthetischen Snapshot aus `src/test/fixtures/` (README dort), ohne Download
   und ohne hq. So bauen CI und die Playwright-Suite; deren Server (`serve-fixture.js`) liefert nichts
@@ -33,8 +36,9 @@ Regeln, die am meisten beißen:
 - **three nie statisch importieren.** three steckt nur in `src/lib/scene/` - zur Laufzeit in
   `createViewer.ts`, `loadModel.ts`, `pick.ts`, `interact.ts` (und im Spec-Helfer `testladen.ts`),
   als reiner Typ in `rigControls.ts`, `aussenraum.ts`, `preiskarten.ts` - erreichbar allein über
-  `Viewer3D.tsx`, das `DigitaleBaeckerei.tsx` per `next/dynamic` (`ssr: false`) nachlädt. In jest
-  wird `Viewer3D` gemockt; die Specs, die three brauchen (`pick`, `preiskarten`), laufen über die
+  `Viewer3D.tsx`, das allein `ladeViewer.ts` per `import()` nachlädt (nicht `next/dynamic`: ein
+  gescheiterter Chunk wird so zum Ladefehler mit „Noch einmal versuchen“). In jest wird
+  `ladeViewer` gemockt; die Specs, die three brauchen (`pick`, `preiskarten`), laufen über die
   Transform-Ausnahme in `jest.config.ts`, ohne WebGL.
 - **Wer was macht:** `createViewer.ts` verdrahtet nur. Kamera: `rig.ts` (Rechnung) +
   `rigControls.ts` (Zeiger, Tasten). Antippen: `treffer.ts` (Rechnung) + `pick.ts`. Hervorhebung:
@@ -54,6 +58,8 @@ Regeln, die am meisten beißen:
   eigenes Canvas je Mounten (StrictMode), beim Abbauen alles freigeben (Rig und Picker vor dem
   Modell). Messhaken `window.__digitaleBaeckerei` gibt es nur mit `?debug`.
 - **Deutsch, Du-Form.** `noindex, nofollow`, kein Tracking, keine Cookies, keine Fremd-Fonts.
+  **Nichts auf dem Gerät speichern** (kein `localStorage`): Hell/dunkel folgt allein per CSS
+  `prefers-color-scheme` (`theme.ts`) - kein `CssVarsProvider`, der schreibt `mui-mode`.
   Dark Mode nur für die Bedienelemente, Touch-Ziele ≥ 44 px.
 - **Unterpfad:** `DIGITALE_BAECKEREI_BASE_PATH=/digitale-baeckerei` beim Build. Der Deploy-Workflow
   und ein Link von der Landingpage kommen erst nach der Abnahme durch den Inhaber (P2).

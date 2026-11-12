@@ -115,6 +115,79 @@ test.describe('Laden unter dem Unterpfad', () => {
   })
 })
 
+test.describe('Das Modell wird vorab geladen', () => {
+  test('steht als preload im HTML und wird genau einmal geholt', async ({
+    page,
+    baseURL,
+    request,
+  }) => {
+    const html = await (await request.get(PFAD)).text()
+    expect(html).toMatch(
+      /<link[^>]+rel="preload"[^>]+href="\/digitale-baeckerei\/model\/twin\.glb"/
+    )
+    expect(html).toMatch(/<link[^>]+as="fetch"[^>]+crossorigin/i)
+
+    const protokoll = await oeffne(page)
+    await page.waitForLoadState('networkidle')
+    const modell = `${baseURL}${PFAD}model/twin.glb`
+    expect(protokoll.anfragen.filter((url) => url === modell)).toHaveLength(1)
+    // Auch der Browser selbst hat es nur einmal übertragen - der Abruf der
+    // App nimmt die vorab geladene Antwort.
+    const uebertragen = await page.evaluate(
+      () =>
+        performance
+          .getEntriesByType('resource')
+          .filter((e) => e.name.endsWith('/model/twin.glb'))
+          .filter((e) => (e as PerformanceResourceTiming).transferSize > 0)
+          .length
+    )
+    expect(uebertragen).toBe(1)
+    // Kein „preload nicht benutzt“ in der Konsole.
+    expect(protokoll.konsole).toEqual([])
+  })
+})
+
+test.describe('Der 3D-Code lädt nicht', () => {
+  test('zeigt den Ladefehler auf Deutsch mit der Liste, der zweite Versuch gelingt', async ({
+    page,
+    request,
+  }) => {
+    // Alles, was das HTML nicht schon nennt, ist nachgeladen: die Szene mit
+    // three.js. Genau diese Dateien brechen ab - wie im wackligen Mobilnetz.
+    const html = await (await request.get(PFAD)).text()
+    let abbrechen = true
+    await page.route('**/_next/static/chunks/**', (route) => {
+      const datei = new URL(route.request().url()).pathname.split('/').pop()
+      if (abbrechen && datei && !html.includes(datei)) return route.abort()
+      return route.continue()
+    })
+    const ausnahmen: string[] = []
+    page.on('pageerror', (error) => ausnahmen.push(error.message))
+
+    await page.goto(`${PFAD}?debug`)
+    await expect(page.locator('main[data-zustand="fehler"]')).toBeVisible()
+    const ersatz = page.getByTestId('ohne-webgl')
+    await expect(ersatz.getByRole('status')).toContainText(
+      'Der Laden konnte nicht geladen werden.'
+    )
+    // Die Liste bleibt benutzbar, die Seite steht - auf Deutsch.
+    await expect(ersatz.getByText('Testkekse', { exact: true })).toBeVisible()
+    await expect(
+      page.getByRole('heading', { level: 1, name: 'Digitale Bäckerei' })
+    ).toBeVisible()
+    await expect(page.locator('body')).not.toContainText(/Application error/i)
+    expect(ausnahmen).toEqual([])
+    await erwarteKeinePreise(page)
+
+    abbrechen = false
+    await ersatz.getByRole('button', { name: 'Noch einmal versuchen' }).click()
+    await expect(page.locator('main[data-zustand="bereit"]')).toBeVisible({
+      timeout: 60_000,
+    })
+    await expect(page.locator('canvas')).toHaveCount(1)
+  })
+})
+
 test.describe('Ohne WebGL', () => {
   test('stürzt nicht ab und sagt, dass es kein 3D gibt', async ({ page }) => {
     await ohneWebGL(page)

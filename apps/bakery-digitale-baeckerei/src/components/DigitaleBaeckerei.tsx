@@ -1,6 +1,5 @@
 'use client'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import dynamic from 'next/dynamic'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Paper from '@mui/material/Paper'
@@ -23,20 +22,15 @@ import {
   ladeProduktdaten,
   type ListenEintrag,
 } from '../lib/produkte/zuordnung'
-import type { Rechteck, Treffer } from '../lib/scene/createViewer'
+import type { Treffer } from '../lib/scene/createViewer'
 import AllesHierListe from './AllesHierListe'
 import BlickpunktLeiste from './BlickpunktLeiste'
 import Hinweis from './Hinweis'
 import Ladebild from './Ladebild'
-import OhneWebGL, { OHNE_WEBGL_TEXT } from './OhneWebGL'
+import { ladeViewer, type ViewerKomponente } from './ladeViewer'
+import OhneWebGL, { OHNE_WEBGL_TEXT, OHNE_WEBGL_ZUSATZ } from './OhneWebGL'
 import ProduktSheet from './ProduktSheet'
 import { SCENE_BACKDROP } from './theme'
-
-/** three.js und die Szene erst im Browser nachladen - nie im ersten Bundle. */
-const Viewer3D = dynamic(() => import('./Viewer3D'), {
-  ssr: false,
-  loading: () => null,
-})
 
 export const TITEL = 'Digitale Bäckerei'
 export const FEHLER_TEXT =
@@ -47,9 +41,24 @@ export const BEREIT_TEXT = 'Der Laden ist geladen. Du stehst an der Theke.'
 export const DATEN_LADEN_TEXT = 'Die Produktinfos werden geladen …'
 export const DATEN_FEHLER_TEXT =
   'Die Produktinfos konnten nicht geladen werden.'
+/** An einem Blickpunkt ohne Produktinfos: einmal sagen, dass Tippen hier nichts öffnet. */
+export const KEINE_INFOS_HINWEIS =
+  'Hier gibt es noch keine Infos zum Antippen – schau dich einfach um.'
+/**
+ * Das gewählte Produkt lässt sich von diesem Blickpunkt aus nicht ins Bild
+ * drehen. Bewusst ohne Richtung: Die Grenze des Umschauens ist dann schon
+ * erreicht, „zieh nach rechts“ wäre falsch.
+ */
+export const NICHT_IM_BILD_TEXT = 'Von hier aus gerade nicht im Bild.'
+export const NOCHMAL_TEXT = 'Noch einmal versuchen'
 
 /** Ansage für Screenreader nach einem Wechsel. */
 export const blickpunktAnsage = (name: string) => `Blickpunkt ${name}.`
+/** Ansage, wenn ein Tipp ins Bild eine Karte geöffnet hat (der Fokus bleibt in der Szene). */
+export const kartenAnsage = (name: string) => `Infos zu ${name} geöffnet.`
+
+/** So lange steht der Hinweis an einem Blickpunkt ohne Produktinfos. */
+export const KEINE_INFOS_MS = 7000
 
 type Zustand = 'laden' | 'bereit' | 'kein-webgl' | 'fehler' | 'unterbrochen'
 
@@ -62,6 +71,8 @@ interface Produktdaten {
 interface Auswahl {
   slot: string
   produkt: ProduktInfo
+  /** `tipp`: ins Bild getippt - der Fokus bleibt in der Szene. */
+  quelle: 'tipp' | 'liste'
 }
 
 const modelBytes = (file: string): number | undefined =>
@@ -76,13 +87,9 @@ const UNSICHTBAR = {
   whiteSpace: 'nowrap',
 } as const
 
-/** Wo die Produktkarte gerade das Bild verdeckt. */
-function sheetRechteck(): Rechteck | null {
-  const sheet = document.querySelector('[data-testid="produkt-sheet"]')
-  if (!sheet) return null
-  const { left, top, right, bottom } = sheet.getBoundingClientRect()
-  return { left, top, right, bottom }
-}
+/** Die Produktkarte, solange sie offen ist - sie verdeckt einen Teil des Bildes. */
+const produktKarte = (): Element | null =>
+  document.querySelector('[data-testid="produkt-sheet"]')
 
 export default function DigitaleBaeckerei() {
   const raum = findeRaum(START_RAUM_ID)
@@ -91,15 +98,41 @@ export default function DigitaleBaeckerei() {
   const [fortschritt, setFortschritt] = useState(0)
   /** Neuer Wert = Szene neu aufbauen („Noch einmal versuchen“). */
   const [versuch, setVersuch] = useState(0)
+  /** Die nachgeladene 3D-Komponente (three.js) - nie im ersten Bundle. */
+  const [Viewer3D, setViewer3D] = useState<ViewerKomponente | null>(null)
   const [aktivId, setAktivId] = useState(START_BLICKPUNKT_ID)
   /** Erst nach einem Wechsel sagt die Status-Region den Blickpunkt an. */
   const [gewechselt, setGewechselt] = useState(false)
   const [daten, setDaten] = useState<Produktdaten | null>(null)
   const [datenFehler, setDatenFehler] = useState(false)
   const [auswahl, setAuswahl] = useState<Auswahl | null>(null)
+  /** Platz, der sich von hier nicht ins freie Bild drehen lässt. */
+  const [nichtImBild, setNichtImBild] = useState<string | null>(null)
   const [listeOffen, setListeOffen] = useState(false)
   /** Nach der ersten Bedienung verschwindet der Hinweis. */
   const [bedient, setBedient] = useState(false)
+  /** Blickpunkt, an dem gerade der Hinweis „keine Infos zum Antippen“ steht. */
+  const [keineInfosAn, setKeineInfosAn] = useState<string | null>(null)
+  const keineInfosGezeigt = useRef(new Set<string>())
+
+  // Die Szene nachladen. Scheitert das (wackliges Netz: HTML da, der
+  // three-Chunk nicht), ist das ein Ladefehler mit „Noch einmal versuchen“ -
+  // keine englische Fehlerseite.
+  const hatViewer = Viewer3D !== null
+  useEffect(() => {
+    if (hatViewer) return undefined
+    let aktuell = true
+    ladeViewer()
+      .then((komponente) => {
+        if (aktuell) setViewer3D(() => komponente)
+      })
+      .catch(() => {
+        if (aktuell) setZustand('fehler')
+      })
+    return () => {
+      aktuell = false
+    }
+  }, [hatViewer, versuch])
 
   // Snapshot aus hq und Belegung aus dem Modell - unabhängig von der Szene,
   // auch der Ersatz ohne WebGL braucht sie.
@@ -130,16 +163,26 @@ export default function DigitaleBaeckerei() {
     return je
   }, [daten, blickpunkte])
 
+  const waehle = useCallback((neu: Auswahl | null) => {
+    setAuswahl(neu)
+    setNichtImBild(null)
+  }, [])
+
   const aktivRef = useRef(aktivId)
   aktivRef.current = aktivId
-  const wechsleZu = useCallback((id: string) => {
-    if (aktivRef.current !== id) setGewechselt(true)
-    setAktivId(id)
-    // Karte und Liste gehören zum alten Blickpunkt.
-    setAuswahl(null)
-    setListeOffen(false)
-    setBedient(true)
-  }, [])
+  const wechsleZu = useCallback(
+    (id: string) => {
+      if (aktivRef.current !== id) setGewechselt(true)
+      setAktivId(id)
+      // Karte und Liste gehören zum alten Blickpunkt.
+      waehle(null)
+      setListeOffen(false)
+      setBedient(true)
+      setKeineInfosAn(null)
+    },
+    [waehle]
+  )
+
   const onWechselGeste = useCallback(
     (richtung: -1 | 1) => {
       const n = blickpunkte.length
@@ -157,6 +200,13 @@ export default function DigitaleBaeckerei() {
   const onError = useCallback(() => setZustand('fehler'), [])
   const onLost = useCallback(() => setZustand('unterbrochen'), [])
   const onErsteGeste = useCallback(() => setBedient(true), [])
+  const onAuswahlImBild = useCallback(
+    (slot: string, imBild: boolean) =>
+      setNichtImBild((vorher) =>
+        imBild ? (vorher === slot ? null : vorher) : slot
+      ),
+    []
+  )
 
   /**
    * Tipp ins Bild. Eine Karte gibt es nur für ein Produkt, das der Snapshot
@@ -172,48 +222,73 @@ export default function DigitaleBaeckerei() {
         Object.prototype.hasOwnProperty.call(daten.snapshot.produkte, id)
           ? daten.snapshot.produkte[id]
           : undefined
-      setAuswahl(treffer && produkt ? { slot: treffer.slot, produkt } : null)
+      waehle(
+        treffer && produkt
+          ? { slot: treffer.slot, produkt, quelle: 'tipp' }
+          : null
+      )
+      setKeineInfosAn(null)
     },
-    [daten]
+    [daten, waehle]
   )
 
-  const schliesseKarte = useCallback(() => setAuswahl(null), [])
+  const schliesseKarte = useCallback(() => waehle(null), [waehle])
 
   const nochmal = () => {
     setFortschritt(0)
-    setAuswahl(null)
+    waehle(null)
     setListeOffen(false)
     setZustand('laden')
     setVersuch((n) => n + 1)
   }
 
+  const bereit = zustand === 'bereit'
+  const eintraege = useMemo(
+    () => (blickpunkt ? eintraegeJe[blickpunkt.id] ?? [] : []),
+    [blickpunkt, eintraegeJe]
+  )
+
+  // An einem Blickpunkt ohne Produktinfos (heute: Regale) reagiert kein Tipp
+  // mit einer Karte. Das einmal sagen, statt den Besucher raten zu lassen.
+  const ohneInfos = bereit && daten !== null && eintraege.length === 0
+  useEffect(() => {
+    if (!ohneInfos || keineInfosGezeigt.current.has(aktivId)) return undefined
+    keineInfosGezeigt.current.add(aktivId)
+    setKeineInfosAn(aktivId)
+    const timer = setTimeout(() => setKeineInfosAn(null), KEINE_INFOS_MS)
+    return () => clearTimeout(timer)
+  }, [ohneInfos, aktivId])
+
   if (!raum || !blickpunkt) return null
 
-  const zeigtSzene = zustand === 'laden' || zustand === 'bereit'
-  const bereit = zustand === 'bereit'
-  const eintraege = eintraegeJe[blickpunkt.id] ?? []
+  const zeigtSzene = zustand === 'laden' || bereit
+  /** Mit Produktdaten bleibt bei einem Ladefehler die Liste benutzbar. */
+  const fehlerMitListe = zustand === 'fehler' && daten !== null
 
-  const meldung =
-    zustand === 'fehler'
-      ? FEHLER_TEXT
-      : zustand === 'unterbrochen'
-      ? UNTERBROCHEN_TEXT
-      : zustand === 'kein-webgl' && !daten
-      ? `${OHNE_WEBGL_TEXT} ${
-          datenFehler ? DATEN_FEHLER_TEXT : DATEN_LADEN_TEXT
-        }`
-      : ''
-  const ansage = bereit
-    ? gewechselt
-      ? blickpunktAnsage(blickpunkt.name)
-      : BEREIT_TEXT
+  const meldung = fehlerMitListe
+    ? ''
+    : zustand === 'fehler'
+    ? FEHLER_TEXT
+    : zustand === 'unterbrochen'
+    ? UNTERBROCHEN_TEXT
+    : zustand === 'kein-webgl' && !daten
+    ? `${OHNE_WEBGL_TEXT} ${datenFehler ? DATEN_FEHLER_TEXT : DATEN_LADEN_TEXT}`
     : ''
+  const ansage = !bereit
+    ? ''
+    : auswahl?.quelle === 'tipp'
+    ? kartenAnsage(auswahl.produkt.name)
+    : gewechselt
+    ? blickpunktAnsage(blickpunkt.name)
+    : BEREIT_TEXT
 
   const waehleAusListe = (slot: string) => {
     const eintrag = eintraege.find((e) => e.slot === slot)
     setListeOffen(false)
-    setAuswahl(eintrag ? { slot, produkt: eintrag.produkt } : null)
+    waehle(eintrag ? { slot, produkt: eintrag.produkt, quelle: 'liste' } : null)
   }
+
+  const keineInfos = keineInfosAn === blickpunkt.id && !auswahl
 
   return (
     <Box
@@ -225,11 +300,14 @@ export default function DigitaleBaeckerei() {
         // dvh: auf dem Handy ohne die ein- und ausfahrende Adressleiste
         height: '100dvh',
         overflow: 'hidden',
+        // Kein Doppeltipp-Zoom der ganzen Seite auf Leiste und Karte; die
+        // Szene selbst nimmt sich alle Gesten (touch-action: none am Canvas).
+        touchAction: 'manipulation',
         // Die Szene bleibt hell, auch im Dark Mode.
         backgroundColor: SCENE_BACKDROP,
       }}
     >
-      {zeigtSzene && (
+      {zeigtSzene && Viewer3D && (
         <Viewer3D
           key={versuch}
           modelUrl={modelUrl(raum.modell)}
@@ -238,7 +316,7 @@ export default function DigitaleBaeckerei() {
           fuellung={raum.fuellung}
           label={`3D-Ansicht der Bäckerei, Blickpunkt ${blickpunkt.name}`}
           auswahl={auswahl?.slot ?? null}
-          verdecktVon={sheetRechteck}
+          verdecktVon={produktKarte}
           onProgress={onProgress}
           onReady={onReady}
           onUnavailable={onUnavailable}
@@ -247,11 +325,25 @@ export default function DigitaleBaeckerei() {
           onTreffer={onTreffer}
           onErsteGeste={onErsteGeste}
           onWechselGeste={onWechselGeste}
+          onAuswahlImBild={onAuswahlImBild}
         />
       )}
 
       {zustand === 'kein-webgl' && daten && (
         <OhneWebGL blickpunkte={[...blickpunkte]} eintraegeJe={eintraegeJe} />
+      )}
+
+      {fehlerMitListe && (
+        <OhneWebGL
+          blickpunkte={[...blickpunkte]}
+          eintraegeJe={eintraegeJe}
+          meldung={`${FEHLER_TEXT} ${OHNE_WEBGL_ZUSATZ}`}
+          aktion={
+            <Button variant="contained" onClick={nochmal}>
+              {NOCHMAL_TEXT}
+            </Button>
+          }
+        />
       )}
 
       <Paper
@@ -271,7 +363,10 @@ export default function DigitaleBaeckerei() {
 
       {bereit && (
         <>
-          <Hinweis sichtbar={!bedient && !auswahl} />
+          <Hinweis
+            sichtbar={keineInfos || (!bedient && !auswahl)}
+            text={keineInfos ? KEINE_INFOS_HINWEIS : undefined}
+          />
           <BlickpunktLeiste
             blickpunkte={[...blickpunkte]}
             aktiv={blickpunkt.id}
@@ -287,6 +382,14 @@ export default function DigitaleBaeckerei() {
             // Die Szene bleibt bedienbar: Ein Tipp auf ein anderes Produkt
             // wechselt die Karte, ein Tipp daneben schließt sie (onTreffer).
             hintergrundSchliesst={false}
+            // Nach einem Tipp ins Bild bleibt der Fokus in der Szene
+            // (Pfeiltasten, +/-); die Status-Region sagt die Karte an.
+            fokus={auswahl?.quelle !== 'tipp'}
+            hinweis={
+              auswahl && nichtImBild === auswahl.slot
+                ? NICHT_IM_BILD_TEXT
+                : undefined
+            }
           />
           <AllesHierListe
             offen={listeOffen}
@@ -342,7 +445,7 @@ export default function DigitaleBaeckerei() {
             <Typography component="p">{meldung}</Typography>
             {zustand !== 'kein-webgl' && (
               <Button variant="contained" onClick={nochmal} sx={{ mt: 2 }}>
-                {zustand === 'fehler' ? 'Noch einmal versuchen' : 'Neu laden'}
+                {zustand === 'fehler' ? NOCHMAL_TEXT : 'Neu laden'}
               </Button>
             )}
           </Paper>

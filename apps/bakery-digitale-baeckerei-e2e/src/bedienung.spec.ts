@@ -13,11 +13,17 @@ import {
   bilder,
   oeffne,
   produktSheet,
+  ruhe,
   szene,
   tippeAufPlatz,
 } from './support/app'
 
 const KEKSE = 'theke/vitrine/ebene-3/platz-01'
+/**
+ * Neutrale Ware (eine Dose) an den Regalen: ohne Produkt, ohne Karte. Das
+ * oberste Fach - die Mitte der unteren verdeckt von schräg oben das Fach darüber.
+ */
+const WARE = 'dosenregal/platz-04'
 /** Liegt in der Vitrine hinter der Scheibe. */
 const PLUNDER = {
   slot: 'theke/vitrine/ebene-1/platz-04',
@@ -46,22 +52,6 @@ const yaw = async (page: Page) => {
   return (Math.atan2(richtung[0], richtung[2]) * 180) / Math.PI
 }
 
-/** Wartet, bis die Szene nichts mehr zeichnet (Fahrt, Feder, Einblenden). */
-async function ruhe(page: Page): Promise<void> {
-  let vorher = -1
-  await expect
-    .poll(
-      async () => {
-        const jetzt = await bilder(page)
-        const still = jetzt === vorher
-        vorher = jetzt
-        return still
-      },
-      { intervals: [400], timeout: 15_000 }
-    )
-    .toBe(true)
-}
-
 /** Mitte der freien Bildfläche über der Leiste - dort liegt kein Bedienelement. */
 const bildmitte = (page: Page) => {
   const { width, height } = page.viewportSize() ?? { width: 0, height: 0 }
@@ -73,6 +63,8 @@ test.describe('Umschauen und Zoom', () => {
     await oeffne(page)
     await ruhe(page)
     const vorher = await bilder(page)
+    // Hier ist die Wartezeit die Prüfung: In 1,5 s ohne Bedienung darf kein
+    // einziges Bild dazukommen.
     await page.waitForTimeout(1500)
     expect(await bilder(page)).toBe(vorher)
   })
@@ -236,20 +228,106 @@ test.describe('Karte bei laufender Szene', () => {
     await oeffne(page)
     await tippeAufPlatz(page, KEKSE, hasTouch)
     await expect(produktSheet(page)).toBeVisible()
-    // Im Hochformat liegt die Karte über der Leiste: erst schließen ist dort
-    // der Weg. Am Desktop bleibt die Leiste frei.
-    const brotregal = page
-      .getByTestId('blickpunkt-leiste')
-      .getByRole('button', { name: 'Brotregal', exact: true })
+    await expect.poll(() => hervorgehoben(page)).toBe(KEKSE)
+    // Bei offener Karte: Im Hochformat liegt sie über den Chips, die Pfeile
+    // am Rand bleiben frei. Am Desktop bleibt die Leiste frei.
     if (hasTouch) {
-      await produktSheet(page)
-        .getByRole('button', { name: 'Schließen' })
+      await page
+        .getByRole('button', { name: 'Nächster Blickpunkt: Brotregal' })
+        .click()
+    } else {
+      await page
+        .getByTestId('blickpunkt-leiste')
+        .getByRole('button', { name: 'Brotregal', exact: true })
         .click()
     }
-    await brotregal.click()
     await expect(szene(page, 'Brotregal')).toBeVisible()
     await expect(produktSheet(page)).toBeHidden()
     await expect.poll(() => hervorgehoben(page)).toBeNull()
+  })
+
+  test('nach einem Tipp bleibt der Fokus in der Szene: Pfeiltasten und +/- gehen weiter', async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(isMobile, 'Tastatur gibt es am Desktop.')
+    await oeffne(page)
+    await ruhe(page)
+    await tippeAufPlatz(page, KEKSE, false)
+    await expect(produktSheet(page)).toBeVisible()
+    await expect(szene(page, 'Theke')).toBeFocused()
+    // Die Karte ist angesagt, ohne den Fokus zu holen.
+    await expect(page.getByTestId('status')).toHaveText(
+      'Infos zu Testkekse geöffnet.'
+    )
+
+    await ruhe(page)
+    const vorher = (await info(page)).fov
+    await page.keyboard.press('+')
+    await ruhe(page)
+    expect((await info(page)).fov).toBeLessThan(vorher - 2)
+    await expect(produktSheet(page)).toBeVisible()
+
+    await page.keyboard.press('ArrowRight')
+    await expect(szene(page, 'Brotregal')).toBeVisible()
+    await expect(produktSheet(page)).toBeHidden()
+  })
+
+  test('ein Tipp auf neutrale Ware leuchtet kurz auf, ohne Karte', async ({
+    page,
+    hasTouch,
+  }) => {
+    await oeffne(page)
+    await page
+      .getByTestId('blickpunkt-leiste')
+      .getByRole('button', { name: 'Regale', exact: true })
+      .click()
+    await expect(szene(page, 'Regale')).toBeVisible()
+    await ruhe(page)
+
+    await tippeAufPlatz(page, WARE, hasTouch)
+    // Das Aufleuchten hängt wirklich am Modell ...
+    await expect.poll(() => hervorgehoben(page)).toBe(WARE)
+    await expect(produktSheet(page)).toBeHidden()
+    // ... und räumt sich selbst wieder ab; gewählt ist nichts.
+    await expect.poll(() => hervorgehoben(page)).toBeNull()
+    expect(
+      await page.evaluate(() => window.__digitaleBaeckerei?.gewaehlt ?? null)
+    ).toBeNull()
+    await ruhe(page)
+  })
+
+  test('nach einer Größenänderung steht das gewählte Produkt wieder frei', async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(isMobile, 'Das Fenster lässt sich am Desktop verändern.')
+    await oeffne(page)
+    await ruhe(page)
+    await tippeAufPlatz(page, BROT_OBEN.slot, false)
+    const sheet = produktSheet(page)
+    await expect(sheet.getByText(BROT_OBEN.name, { exact: true })).toBeVisible()
+    await ruhe(page)
+
+    // Schmaler: Die Karte bleibt rechts oben, deckt jetzt aber mehr vom Bild.
+    for (const groesse of [
+      { width: 1000, height: 700 },
+      { width: 1300, height: 600 },
+    ]) {
+      await page.setViewportSize(groesse)
+      await ruhe(page)
+      const karte = await sheet.boundingBox()
+      const produkt = await position(page, BROT_OBEN.slot)
+      expect(karte).not.toBeNull()
+      expect(produkt, 'das Produkt ist noch im Bild').not.toBeNull()
+      if (!karte || !produkt) return
+      const unterDerKarte =
+        produkt.x >= karte.x &&
+        produkt.x <= karte.x + karte.width &&
+        produkt.y >= karte.y &&
+        produkt.y <= karte.y + karte.height
+      expect(unterDerKarte, `${groesse.width}×${groesse.height}`).toBe(false)
+    }
   })
 })
 
@@ -294,5 +372,49 @@ test.describe('Außenraum', () => {
     await expect.poll(async () => (await info(page)).aussenSichtbar).toBe(false)
     await leiste.getByRole('button', { name: 'Theke', exact: true }).click()
     await expect.poll(async () => (await info(page)).aussenSichtbar).toBe(true)
+  })
+})
+
+test.describe('Nichts auf dem Gerät', () => {
+  test('legt nach Laden und Bedienen weder Cookies noch Speicher-Einträge an', async ({
+    page,
+    hasTouch,
+  }) => {
+    await oeffne(page)
+    await tippeAufPlatz(page, KEKSE, hasTouch)
+    await expect(produktSheet(page)).toBeVisible()
+    await produktSheet(page).getByRole('button', { name: 'Schließen' }).click()
+    await page.getByRole('button', { name: 'Alles hier' }).click()
+    await expect(allesHierListe(page)).toBeVisible()
+    await page.keyboard.press('Escape')
+    await page
+      .getByTestId('blickpunkt-leiste')
+      .getByRole('button', { name: 'Brotregal', exact: true })
+      .click()
+    await ruhe(page)
+
+    expect(await page.context().cookies()).toEqual([])
+    const speicher = await page.evaluate(() => ({
+      local: Object.keys(window.localStorage),
+      session: Object.keys(window.sessionStorage),
+    }))
+    expect(speicher).toEqual({ local: [], session: [] })
+  })
+
+  test('folgt dem Farbschema des Systems allein per CSS', async ({ page }) => {
+    const farbe = () =>
+      page
+        .getByTestId('blickpunkt-leiste')
+        .evaluate((el) => getComputedStyle(el).backgroundColor)
+    await page.emulateMedia({ colorScheme: 'light' })
+    await oeffne(page)
+    const hell = await farbe()
+    await page.emulateMedia({ colorScheme: 'dark' })
+    await expect.poll(farbe).not.toBe(hell)
+    await page.emulateMedia({ colorScheme: 'light' })
+    await expect.poll(farbe).toBe(hell)
+    expect(await page.evaluate(() => Object.keys(window.localStorage))).toEqual(
+      []
+    )
   })
 })

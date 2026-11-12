@@ -114,6 +114,8 @@ export interface Hervorhebung {
   zeige(slot: string | null, opts?: { flash?: boolean }): void
   /** Gerade hervorgehobener Platz. */
   readonly aktiv: string | null
+  /** Wie viele Überzüge gerade am Modell hängen (0 = nichts zu sehen). */
+  readonly ueberzuege: number
   /** Aktuelle Stärke 0…1 (Tests, Debug). */
   readonly staerke: number
   dispose(): void
@@ -200,8 +202,12 @@ export function createHervorhebung(o: {
   const haengeAn = (slot: string, ziel: HervorhebungsZiel) => {
     centre.value.copy(ziel.mitte)
     for (const mesh of ziel.meshes) {
-      // die Hülle braucht Normalen
-      if (!mesh.geometry?.attributes.normal) continue
+      // Die Hülle braucht Normalen. Ein unlit-Modell muss keine mitbringen:
+      // dann einmal aus den Flächen berechnen (das Bild des Modells ändert
+      // sich dadurch nicht). Ohne sie bliebe die Hervorhebung stumm aus.
+      if (!mesh.geometry?.attributes.position) continue
+      if (!mesh.geometry.attributes.normal) mesh.geometry.computeVertexNormals()
+      if (!mesh.geometry.attributes.normal) continue
       materials.forEach((material, i) => {
         const u = new Mesh(mesh.geometry, material)
         u.userData[UEBERZUG] = true
@@ -296,6 +302,9 @@ export function createHervorhebung(o: {
     },
     get aktiv() {
       return aktiv
+    },
+    get ueberzuege() {
+      return ueberzuege.length
     },
     get staerke() {
       return staerke
