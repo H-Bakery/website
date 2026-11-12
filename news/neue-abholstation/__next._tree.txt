@@ -4,4 +4,4 @@
 3:[["children",{"s":"__PAGE__","h":160}]]
 2:[["children",{"s":{"n":"slug","t":"d","k":"neue-abholstation","s":[]},"h":96,"c":"$Q3"}]]
 1:[["children",{"s":"news","h":64,"c":"$Q2"}]]
-0:{"b":"xVuMzl09MO3fo04RUAjTL","t":{"t":{"s":"","h":16,"c":"$Q1"}}}
+0:{"b":"P15bKkRsE9F_BF5nRccV0","t":{"t":{"s":"","h":16,"c":"$Q1"}}}
