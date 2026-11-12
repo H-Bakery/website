@@ -9,6 +9,11 @@
  */
 const fs = require('fs')
 const path = require('path')
+const {
+  bereinigeGlb,
+  leseGlb: leseContainer,
+  zaehlePreisPrimitive,
+} = require('../../../scripts/glb-bereinigen')
 
 const GLB_PATH = path.join(__dirname, 'twin.fixture.glb')
 const SNAPSHOT_PATH = path.join(__dirname, 'products.snapshot.fixture.json')
@@ -28,36 +33,13 @@ const VARIANTE = {
 
 /**
  * Zerlegt einen GLB-Container (glTF 2.0 binär) in JSON- und BIN-Teil und
- * prüft Kopf und Längen.
+ * prüft Kopf und Längen - der Leser der Sync-Skripte.
  * @param {Buffer} buffer
  * @returns {{ json: any, bin: Buffer }}
  */
 function leseGlb(buffer) {
-  if (buffer.length < 20 || buffer.readUInt32LE(0) !== 0x46546c67) {
-    throw new Error('Kein GLB: Kennung "glTF" fehlt')
-  }
-  if (buffer.readUInt32LE(4) !== 2) throw new Error('Kein glTF 2.0')
-  if (buffer.readUInt32LE(8) !== buffer.length) {
-    throw new Error('GLB: Länge im Kopf passt nicht zur Datei')
-  }
-  const jsonLength = buffer.readUInt32LE(12)
-  if (buffer.readUInt32LE(16) !== 0x4e4f534a) {
-    throw new Error('GLB: erster Chunk ist nicht JSON')
-  }
-  const json = JSON.parse(buffer.subarray(20, 20 + jsonLength).toString('utf8'))
-  let bin = Buffer.alloc(0)
-  const next = 20 + jsonLength
-  if (next < buffer.length) {
-    const binLength = buffer.readUInt32LE(next)
-    if (buffer.readUInt32LE(next + 4) !== 0x004e4942) {
-      throw new Error('GLB: zweiter Chunk ist nicht BIN')
-    }
-    if (next + 8 + binLength !== buffer.length) {
-      throw new Error('GLB: BIN-Chunk passt nicht zur Dateilänge')
-    }
-    bin = buffer.subarray(next + 8, next + 8 + binLength)
-  }
-  return { json, bin }
+  const { json, bin } = leseContainer(buffer)
+  return { json, bin: bin ?? Buffer.alloc(0) }
 }
 
 /**
@@ -84,10 +66,47 @@ function plaetze(json) {
     })
 }
 
+/**
+ * Das Mini-Modell, wie `sync-model` es im Fixture-Modus ausliefert: ohne die
+ * Preisschilder (`scripts/glb-bereinigen.js`), Byte für Byte herleitbar.
+ * @returns {Buffer}
+ */
+function ausgeliefertesModell() {
+  return Buffer.from(bereinigeGlb(fs.readFileSync(GLB_PATH)).glb)
+}
+
+/**
+ * Enthält ein Export (`out/`) genau die synthetischen Fixtures - das bereinigte
+ * Mini-Modell und den Fixture-Snapshot, Byte für Byte? Liefert sonst die
+ * Meldung, was nicht stimmt. Dieselbe Prüfung für den e2e-Server
+ * (`serve-fixture.js`) und den `build`-Job in CI: Das echte Modell und echte
+ * Produkttexte dürfen in keinem öffentlichen Artefakt landen.
+ * @param {string} outDir
+ * @returns {string | null}
+ */
+function exportFehler(outDir) {
+  const model = path.join(outDir, 'model', 'twin.glb')
+  const snapshot = path.join(outDir, 'data', 'products.snapshot.json')
+  if (
+    !fs.existsSync(model) ||
+    !fs.readFileSync(model).equals(ausgeliefertesModell())
+  ) {
+    return `${model} ist nicht das synthetische Fixture (bereinigt). Nur mit DIGITALE_BAECKEREI_FIXTURE=1 gebaut - nie mit dem echten Modell.`
+  }
+  if (
+    !fs.existsSync(snapshot) ||
+    !fs.readFileSync(snapshot).equals(fs.readFileSync(SNAPSHOT_PATH))
+  ) {
+    return `${snapshot} ist nicht der synthetische Snapshot. Nur mit DIGITALE_BAECKEREI_FIXTURE=1 gebaut - nie mit echten Produkttexten.`
+  }
+  return null
+}
+
 function ladeFixture() {
-  const { json, bin } = leseGlb(fs.readFileSync(GLB_PATH))
+  const glb = fs.readFileSync(GLB_PATH)
+  const { json, bin } = leseGlb(glb)
   const snapshot = JSON.parse(fs.readFileSync(SNAPSHOT_PATH, 'utf8'))
-  return { json, bin, snapshot, plaetze: plaetze(json) }
+  return { glb, json, bin, snapshot, plaetze: plaetze(json) }
 }
 
 /**
@@ -120,8 +139,11 @@ module.exports = {
   SNAPSHOT_PATH,
   VARIANTE,
   WAISE,
+  ausgeliefertesModell,
   erwarteteEintraege,
+  exportFehler,
   ladeFixture,
   leseGlb,
   plaetze,
+  zaehlePreisPrimitive,
 }

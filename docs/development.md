@@ -35,8 +35,10 @@ Prerequisites: Node ≥ 20.9 locally (the box runs Node 22 LTS). `.npmrc` sets
 
 The Digitale Bäckerei needs its 3D model and product data, neither of which is in this repo: `dev:` /
 `build:digitale-baeckerei` first run two Nx targets. `sync-model` downloads `twin.glb` (public, at the
-commit pinned in `apps/bakery-digitale-baeckerei/model.lock.json`, sha256-checked) into the git-ignored
-`public/model/` and derives `public/data/belegung.json` (which product sits on which slot) from it.
+commit pinned in `apps/bakery-digitale-baeckerei/model.lock.json`, sha256-checked), strips the price
+cards baked into the model (`scripts/glb-bereinigen.js`), checks the result against the lock's second
+checksum (`ausgeliefert`), writes it to the git-ignored `public/model/` and derives
+`public/data/belegung.json` (which product sits on which slot) from it.
 `sync-products` reads `hq/products/*.md` (`HQ_PRODUCTS_DIR`, else `../hq/products`) through
 `libs/shared/hq-products` and writes `public/data/products.snapshot.json` **without prices** and only
 for the products the model shows; it aborts when there is no hq - there are no mock products. Without hq (or offline), set
@@ -51,7 +53,8 @@ Chromium with SwiftShader, projects `phone` 390×844 and `desktop` 1440×900) ag
 under `/digitale-baeckerei` on port 4236. The suite's server (`serve-fixture.js`) builds with
 `DIGITALE_BAECKEREI_FIXTURE=1` - the synthetic mini model and product snapshot from
 `apps/bakery-digitale-baeckerei/src/test/fixtures/` (see the README there) - and refuses to start
-unless the export holds exactly that model and that snapshot, byte for byte. With `E2E_BUILT=1` (or
+unless the export holds exactly that model (as `sync-model` serves it: price cards stripped) and that
+snapshot, byte for byte. With `E2E_BUILT=1` (or
 in CI) it serves the export that is already built; `BASE_URL=http://localhost:<port>` moves the port.
 One gap, local only: a server that already runs on that port is reused without the check (in CI
 nothing is reused), so don't point the suite at a server you started on a real build. `nx build` of
@@ -181,7 +184,8 @@ build checks - `tsc -p` on it reports a spurious error.
 in both the `build` matrix and `test-e2e-digitale-baeckerei` (there for the sub-path
 `/digitale-baeckerei`) - synthetic mini model and snapshot, no download of the real model, no hq.
 Before the `build` job uploads this app's export as an artifact, it compares model and snapshot in
-`out/` with the fixture files (`cmp`).
+`out/` with the fixture files, byte for byte (`exportFehler` in the fixtures' `fixture-info.js`, the
+same check as the e2e server; the model is compared with the stripped fixture).
 
 - **Coverage thresholds and `--shard` don't mix**: a shard runs a third of the tests but measures
   all sources. The configs with thresholds drop them when `JEST_SHARDED=true` (set by the shard

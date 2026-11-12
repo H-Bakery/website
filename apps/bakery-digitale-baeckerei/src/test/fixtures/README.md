@@ -55,8 +55,10 @@ Den Aufbau des echten Modells, damit dieselben Code-Pfade laufen:
   je ein Produkt (im echten Modell tragen sie nur neutrale Ware) - so prüft die Suite Karten und
   Listen an allen drei Blickpunkten. Den leeren Bereich prüfen die jest-Specs der Komponenten.
 - **Preiskarten:** `brotregal/ebene-1/platz-01…03` und `ebene-2/platz-01` sind Meshes aus vier
-  Primitiven, zwei davon mit den Materialien `preiskarte` und `preisschrift` (die App blendet sie
-  aus). Die übrigen Brote haben ein Primitiv.
+  Primitiven, zwei davon mit den Materialien `preiskarte` und `preisschrift`. Ihre Positionen liegen
+  in einer eigenen BufferView vor den übrigen. `sync-model` nimmt sie vor dem Ausliefern heraus
+  (`scripts/glb-bereinigen.js`) - das Fixture **behält** sie, damit dieser Weg in den Tests und der
+  Playwright-Suite wirklich läuft. Die übrigen Brote haben ein Primitiv.
 - **Glas:** Material `glas` (`alphaMode: BLEND`, doppelseitig): Frontscheibe, Glasboden und Deckel
   der Vitrine, Tür des Kühlschranks. Tippen muss hindurchgehen.
 
@@ -85,5 +87,6 @@ an den Regalen `dosenregal/platz-01`, `-03` und `-04`. Von schräg oben verdeckt
 darüber die Mitte des unteren: Nur `platz-04` (oberstes Fach) wird sicher selbst getroffen.
 
 Das Mini-Modell hat **keine Normalen** (wie ein unlit-Modell sie nicht braucht) - die Hervorhebung
-berechnet sie sich dann selbst. `sync-products` kopiert den Fixture-Snapshot Byte für Byte, damit CI
-und der e2e-Server den Export mit `cmp` gegen die Dateien hier prüfen können.
+berechnet sie sich dann selbst. `sync-products` kopiert den Fixture-Snapshot Byte für Byte; das Modell im
+Export ist das bereinigte Fixture (`ausgeliefertesModell()` in `fixture-info.js`, Byte für Byte
+herleitbar). Gegen beides prüfen CI und der e2e-Server den Export (`exportFehler()`).

@@ -16,7 +16,8 @@
  * - Produkte sind Knoten `produkt/<slot>` mit `extras { id, product | ware,
  *   count, fills }`, ein Platz hat zusätzlich die Variante `…@feierabend`;
  * - Brote im Brotregal sind Meshes mit mehreren Primitiven, darunter
- *   `preiskarte` und `preisschrift` (werden in der App ausgeblendet);
+ *   `preiskarte` und `preisschrift` mit eigener BufferView (`sync-model` nimmt
+ *   sie vor dem Ausliefern heraus, `scripts/glb-bereinigen.js`);
  * - `glas` ist durchsichtig (`alphaMode: BLEND`, doppelseitig) und steht vor
  *   und über der Ware in der Vitrine;
  * - Möbel und Ware stehen grob dort, wo sie im echten Laden stehen (Rahmen
@@ -485,9 +486,17 @@ produkt('wuerfelregal/platz-06', { ware: 'dose' }, 4, [
 const round4 = (n) => Math.round(n * 1e4) / 1e4
 const materialNames = Object.keys(MATERIALS)
 
-/** Positions-Accessoren, nach Inhalt entdoppelt (gleiche Ware teilt Geometrie). */
+/**
+ * Positions-Accessoren, nach Inhalt entdoppelt (gleiche Ware teilt Geometrie).
+ * Die Preisschilder bekommen eine eigene BufferView (3), die im BIN-Teil VOR
+ * den übrigen Positionen (2) liegt - wie im echten Modell hat ihre Geometrie
+ * eigene Bytes, die `scripts/glb-bereinigen.js` herausschneidet, und alles
+ * dahinter rückt auf.
+ */
 const positionBlocks = []
+const preisBlocks = []
 const positionIndex = new Map()
+const PREIS_MATERIALIEN = ['preiskarte', 'preisschrift']
 const accessors = [
   // 0: Indizes und 1: Farben gelten für jede Kiste.
   { bufferView: 0, componentType: 5123, count: 36, type: 'SCALAR' },
@@ -501,8 +510,9 @@ const accessors = [
 ]
 const POSITION_STRIDE = 8 // 3 × int16 + 2 Füllbytes (byteStride muss durch 4 teilbar sein)
 
-function positionAccessor(ints) {
-  const key = ints.join(',')
+function positionAccessor(ints, preis) {
+  const blocks = preis ? preisBlocks : positionBlocks
+  const key = `${preis ? 'preis:' : ''}${ints.join(',')}`
   let index = positionIndex.get(key)
   if (index !== undefined) return index
   const min = [32767, 32767, 32767]
@@ -515,8 +525,8 @@ function positionAccessor(ints) {
   }
   index = accessors.length
   accessors.push({
-    bufferView: 2,
-    byteOffset: positionBlocks.length * 24 * POSITION_STRIDE,
+    bufferView: preis ? 3 : 2,
+    byteOffset: blocks.length * 24 * POSITION_STRIDE,
     componentType: 5122,
     normalized: true,
     count: 24,
@@ -524,7 +534,7 @@ function positionAccessor(ints) {
     min,
     max,
   })
-  positionBlocks.push(ints)
+  blocks.push(ints)
   positionIndex.set(key, index)
   return index
 }
@@ -556,7 +566,10 @@ for (const node of nodes) {
     const material = materialNames.indexOf(teil.mat)
     if (material < 0) throw new Error(`Unbekanntes Material: ${teil.mat}`)
     return {
-      attributes: { COLOR_0: 1, POSITION: positionAccessor(ints) },
+      attributes: {
+        COLOR_0: 1,
+        POSITION: positionAccessor(ints, PREIS_MATERIALIEN.includes(teil.mat)),
+      },
       mode: 4,
       material,
       indices: 0,
@@ -573,7 +586,7 @@ for (const node of nodes) {
   })
 }
 
-// Binärteil: Indizes, Farben, Positionen.
+// Binärteil: Indizes, Farben, Positionen der Preisschilder, übrige Positionen.
 const indexBytes = Buffer.alloc(36 * 2)
 for (let f = 0; f < 6; f += 1) {
   const o = f * 4
@@ -587,18 +600,23 @@ FACES.forEach((face, f) => {
     colourBytes.fill(face.shade, (f * 4 + c) * 4, (f * 4 + c) * 4 + 3)
   }
 })
-const positionBytes = Buffer.alloc(positionBlocks.length * 24 * POSITION_STRIDE)
-positionBlocks.forEach((ints, b) => {
-  for (let i = 0; i < 24; i += 1) {
-    for (let k = 0; k < 3; k += 1) {
-      positionBytes.writeInt16LE(
-        ints[i * 3 + k],
-        (b * 24 + i) * POSITION_STRIDE + k * 2
-      )
+function positionen(blocks) {
+  const bytes = Buffer.alloc(blocks.length * 24 * POSITION_STRIDE)
+  blocks.forEach((ints, b) => {
+    for (let i = 0; i < 24; i += 1) {
+      for (let k = 0; k < 3; k += 1) {
+        bytes.writeInt16LE(
+          ints[i * 3 + k],
+          (b * 24 + i) * POSITION_STRIDE + k * 2
+        )
+      }
     }
-  }
-})
-const bin = Buffer.concat([indexBytes, colourBytes, positionBytes])
+  })
+  return bytes
+}
+const preisBytes = positionen(preisBlocks)
+const positionBytes = positionen(positionBlocks)
+const bin = Buffer.concat([indexBytes, colourBytes, preisBytes, positionBytes])
 
 const gltf = {
   asset: {
@@ -636,8 +654,15 @@ const gltf = {
     },
     {
       buffer: 0,
-      byteOffset: indexBytes.length + colourBytes.length,
+      byteOffset: indexBytes.length + colourBytes.length + preisBytes.length,
       byteLength: positionBytes.length,
+      byteStride: POSITION_STRIDE,
+      target: 34962,
+    },
+    {
+      buffer: 0,
+      byteOffset: indexBytes.length + colourBytes.length,
+      byteLength: preisBytes.length,
       byteStride: POSITION_STRIDE,
       target: 34962,
     },

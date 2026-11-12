@@ -43,7 +43,8 @@ API welche Suite bekommt und was der Katalog erfüllen muss: [`tools/e2e/README.
   unter `/digitale-baeckerei`, gebaut mit dem synthetischen Mini-Modell
   (`DIGITALE_BAECKEREI_FIXTURE=1`); `digitaleBaeckereiApp()` in `servers.js` startet dafür
   `serve-fixture.js`, das lokal selbst baut und nur startet, wenn im Export genau das
-  Fixture-Modell und der Fixture-Snapshot liegen - das echte Modell und echte Texte dürfen in
+  Fixture-Modell (ohne Preisschilder, so wie `sync-model` es ausliefert) und der Fixture-Snapshot
+  liegen - das echte Modell und echte Texte dürfen in
   keiner Spur und keinem Screenshot landen. Lücke, nur lokal: Läuft auf dem Port schon ein Server,
   nimmt Playwright ihn ohne diese Prüfung (in CI nie). Ein `e2e-ci`-Target ohne eigenen Server
   hat diese Suite darum nicht. Zwei Projekte:

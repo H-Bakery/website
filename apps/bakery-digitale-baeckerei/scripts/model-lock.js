@@ -10,7 +10,12 @@ const LOCK_FORMAT = 'bakery-model-lock-v1'
 const RAW_HOST = 'https://raw.githubusercontent.com'
 
 /**
- * @typedef {{ sha256: string, bytes: number }} LockFile
+ * @typedef {{ sha256: string, bytes: number }} Pruefsumme
+ * @typedef {Pruefsumme & { ausgeliefert?: Pruefsumme }} LockFile
+ *   sha256/bytes: die Datei, wie sie an der Quelle liegt. `ausgeliefert`: die
+ *   Datei, wie sie nach der Bereinigung (scripts/glb-bereinigen.js) unter
+ *   public/model/ liegt und ausgeliefert wird - fehlt es, wird die Datei
+ *   unverändert ausgeliefert.
  * @typedef {{
  *   format: string,
  *   source: { repo: string, commit: string, path: string },
@@ -23,6 +28,22 @@ const RAW_HOST = 'https://raw.githubusercontent.com'
 /** @param {unknown} v @returns {v is Record<string, unknown>} */
 function isRecord(v) {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+/**
+ * @param {Record<string, unknown>} entry
+ * @param {string} name
+ * @returns {Pruefsumme}
+ */
+function parsePruefsumme(entry, name) {
+  const { sha256, bytes } = entry
+  if (typeof sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(sha256)) {
+    throw new Error(`model.lock.json: sha256 für ${name} ist ungültig`)
+  }
+  if (typeof bytes !== 'number' || !Number.isInteger(bytes) || bytes <= 0) {
+    throw new Error(`model.lock.json: bytes für ${name} ist ungültig`)
+  }
+  return { sha256, bytes }
 }
 
 /**
@@ -75,14 +96,18 @@ function parseLock(raw) {
     if (!isRecord(entry)) {
       throw new Error(`model.lock.json: Eintrag für ${name} fehlt`)
     }
-    const { sha256, bytes } = entry
-    if (typeof sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(sha256)) {
-      throw new Error(`model.lock.json: sha256 für ${name} ist ungültig`)
+    out[name] = parsePruefsumme(entry, name)
+    if (entry.ausgeliefert !== undefined) {
+      if (!isRecord(entry.ausgeliefert)) {
+        throw new Error(
+          `model.lock.json: ausgeliefert für ${name} ist ungültig`
+        )
+      }
+      out[name].ausgeliefert = parsePruefsumme(
+        entry.ausgeliefert,
+        `${name} (ausgeliefert)`
+      )
     }
-    if (typeof bytes !== 'number' || !Number.isInteger(bytes) || bytes <= 0) {
-      throw new Error(`model.lock.json: bytes für ${name} ist ungültig`)
-    }
-    out[name] = { sha256, bytes }
   }
   return {
     format: LOCK_FORMAT,
@@ -113,7 +138,7 @@ function sha256Hex(data) {
 /**
  * Stimmt der Inhalt mit dem Lock-Eintrag überein (Größe und sha256)?
  * @param {Uint8Array} data
- * @param {LockFile} entry
+ * @param {Pruefsumme} entry
  * @returns {CheckResult}
  */
 function checkFile(data, entry) {
@@ -131,8 +156,19 @@ function checkFile(data, entry) {
 }
 
 /**
+ * Die Prüfsumme der Datei, wie sie ausgeliefert wird: `ausgeliefert`, sonst
+ * die der Quelle (unverändert ausgeliefert).
+ * @param {LockFile} entry
+ * @returns {Pruefsumme}
+ */
+function ausgeliefert(entry) {
+  return entry.ausgeliefert ?? { sha256: entry.sha256, bytes: entry.bytes }
+}
+
+/**
  * Was ist zu tun? `local` liefert den Inhalt einer schon vorhandenen Datei
- * oder null. Vorhanden und passend: nichts laden. Sonst laden.
+ * im Zielordner oder null. Vorhanden und passend zur ausgelieferten
+ * Prüfsumme: nichts laden. Sonst von der Quelle laden.
  * @param {ModelLock} lock
  * @param {(name: string) => Uint8Array | null} local
  * @returns {{ name: string, url: string, entry: LockFile, action: 'keep' | 'fetch', reason: string }[]}
@@ -144,7 +180,7 @@ function planSync(lock, local) {
     if (have === null) {
       return { name, url, entry, action: 'fetch', reason: 'fehlt' }
     }
-    const check = checkFile(have, entry)
+    const check = checkFile(have, ausgeliefert(entry))
     return check.ok
       ? {
           name,
@@ -178,6 +214,7 @@ function staleFiles(present, keep) {
 
 module.exports = {
   LOCK_FORMAT,
+  ausgeliefert,
   parseLock,
   fileUrl,
   sha256Hex,
