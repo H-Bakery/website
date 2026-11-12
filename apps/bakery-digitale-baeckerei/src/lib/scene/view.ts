@@ -1,7 +1,7 @@
 /**
  * Welche Kamerawerte gelten für einen Blickpunkt bei einem Seitenverhältnis?
- * Reine Rechnung ohne three (view.spec.ts). Das Kamera-Rig (Umschauen, Zoom)
- * kommt in P1 und baut auf denselben Werten auf.
+ * Reine Rechnung ohne three (view.spec.ts). Das Kamera-Rig (rig.ts: Umschauen,
+ * Zoom, Gleiten) baut auf denselben Werten auf.
  */
 import type { Blickpunkt, Vec3 } from '../../config/raeume'
 
@@ -20,8 +20,7 @@ export function istHochformat(aspect: number): boolean {
 
 /**
  * Ruhelage eines Blickpunkts: im Hochformat die eigenen Werte (falls
- * vorhanden), sonst Standort und Blick des Blickpunkts mit dem weitesten
- * Öffnungswinkel.
+ * vorhanden), sonst Standort, Blick und Start-Öffnungswinkel des Blickpunkts.
  */
 export function ansichtFuer(blickpunkt: Blickpunkt, aspect: number): Ansicht {
   const hochformat = istHochformat(aspect)
@@ -32,7 +31,7 @@ export function ansichtFuer(blickpunkt: Blickpunkt, aspect: number): Ansicht {
   return {
     eye: blickpunkt.eye,
     look: blickpunkt.look,
-    fov: capHorizontalFov(blickpunkt.fovMax, aspect),
+    fov: capHorizontalFov(Math.min(blickpunkt.fov, blickpunkt.fovMax), aspect),
     hochformat,
   }
 }
