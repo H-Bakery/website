@@ -10,10 +10,6 @@
     "twin.glb": {
       "sha256": "7b63bc5795e8b49016e20e50aad7a6c4179cb58f75bad4b349a8fd4a1c2d7f7a",
       "bytes": 3237272
-    },
-    "catalogue.json": {
-      "sha256": "384ff353a2d5ef650fd3659f2c24a36670b6885155726b14e8317ce7d527c273",
-      "bytes": 50477
     }
   }
 }

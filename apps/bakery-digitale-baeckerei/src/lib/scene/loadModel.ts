@@ -93,6 +93,8 @@ export function countTriangles(root: Object3D, visibleOnly = false): number {
   const visit = (node: Object3D) => {
     if (visibleOnly && !node.visible) return
     const mesh = node as Mesh
+    // Überzüge der Hervorhebung (interact.ts) teilen die Geometrie ihres Meshes.
+    if (mesh.userData?.dbUeberzug) return
     if (mesh.isMesh) {
       triangles +=
         (mesh.geometry.index?.count ??

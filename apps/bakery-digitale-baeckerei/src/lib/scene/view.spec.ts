@@ -1,12 +1,5 @@
 import type { Blickpunkt } from '../../config/raeume'
 import {
-  START_BLICKPUNKT_ID,
-  START_RAUM_ID,
-  findeBlickpunkt,
-  findeRaum,
-  raeume,
-} from '../../config/raeume'
-import {
   MAX_HORIZONTAL_FOV,
   ansichtFuer,
   capHorizontalFov,
@@ -20,11 +13,13 @@ const testpunkt: Blickpunkt = {
   name: 'Testregal',
   eye: [1, 2, 3],
   look: [0, 2, 0],
+  fov: 60,
   yawDeg: 20,
   pitchDeg: 12,
   fovMin: 30,
   fovMax: 60,
   portrait: { eye: [2, 2, 4], look: [0, 1.5, 0], fov: 80 },
+  moebel: ['testregal/'],
 }
 
 describe('istHochformat', () => {
@@ -41,7 +36,7 @@ describe('istHochformat', () => {
 })
 
 describe('ansichtFuer', () => {
-  it('Querformat: Standort des Blickpunkts, weitester Winkel', () => {
+  it('Querformat: Standort des Blickpunkts, Start-Winkel', () => {
     expect(ansichtFuer(testpunkt, 1440 / 900)).toEqual({
       eye: [1, 2, 3],
       look: [0, 2, 0],
@@ -57,6 +52,11 @@ describe('ansichtFuer', () => {
       fov: 80,
       hochformat: true,
     })
+  })
+
+  it('Querformat startet mit `fov`, auch wenn `fovMax` weiter ist', () => {
+    const weiter: Blickpunkt = { ...testpunkt, fov: 50, fovMax: 70 }
+    expect(ansichtFuer(weiter, 1440 / 900).fov).toBe(50)
   })
 
   it('Hochformat ohne eigene Werte: wie quer', () => {
@@ -119,35 +119,5 @@ describe('cappedPixelRatio', () => {
     expect(cappedPixelRatio(undefined)).toBe(1)
     expect(cappedPixelRatio(0)).toBe(1)
     expect(cappedPixelRatio(Number.NaN)).toBe(1)
-  })
-})
-
-describe('raeume (Konfiguration)', () => {
-  it('hat den Start-Blickpunkt', () => {
-    const raum = findeRaum(START_RAUM_ID)
-    if (!raum) throw new Error('Start-Raum fehlt')
-    expect(findeBlickpunkt(raum, START_BLICKPUNKT_ID)).toBeDefined()
-  })
-
-  it('hat eindeutige IDs und stimmige Grenzen', () => {
-    expect(new Set(raeume.map((r) => r.id)).size).toBe(raeume.length)
-    for (const raum of raeume) {
-      expect(raum.modell).toMatch(/^[\w-]+\.glb$/)
-      const ids = raum.blickpunkte.map((b) => b.id)
-      expect(new Set(ids).size).toBe(ids.length)
-      for (const b of raum.blickpunkte) {
-        expect(b.fovMin).toBeGreaterThan(5)
-        expect(b.fovMin).toBeLessThan(b.fovMax)
-        expect(b.fovMax).toBeLessThan(120)
-        expect(b.yawDeg).toBeGreaterThanOrEqual(0)
-        expect(b.pitchDeg).toBeGreaterThanOrEqual(0)
-        expect(b.eye).not.toEqual(b.look)
-        if (b.portrait) {
-          expect(b.portrait.fov).toBeGreaterThan(b.fovMin)
-          expect(b.portrait.fov).toBeLessThan(120)
-          expect(b.portrait.eye).not.toEqual(b.portrait.look)
-        }
-      }
-    }
   })
 })

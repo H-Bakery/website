@@ -10,6 +10,9 @@ Public website, static export to GitHub Pages (xn--bckerei-heusser-0kb.de) on ev
   Without `hq` (CI) it falls back to the bundled JSON in `src/mocks/products/` and logs
   `HQ products directory not found` - check for that log before suspecting a cache when a product
   edit doesn't show up.
+  Reading and parsing the files lives once in the lib `@bakery/shared/hq-products`
+  (`libs/shared/hq-products`, CommonJS, also used by the Digitale Bäckerei's `sync-products`);
+  `products.ts` keeps only the landing mapping (fallback images, category labels, mock fallback).
 - **Opening hours** have one source, `src/config/openingHours.ts`, mirrored into
   `libs/shared/ui/src/lib/footer/footer-openings.tsx` and the shop's
   `libs/bakery-shop/feature-cart/src/lib/pickup.ts` - change all three together.

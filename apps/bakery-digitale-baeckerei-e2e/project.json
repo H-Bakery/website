@@ -1,0 +1,26 @@
+{
+  "name": "bakery-digitale-baeckerei-e2e",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/bakery-digitale-baeckerei-e2e/src",
+  "projectType": "application",
+  "tags": ["type:e2e"],
+  "implicitDependencies": ["bakery-digitale-baeckerei"],
+  "targets": {
+    "e2e": {
+      "executor": "@nx/playwright:playwright",
+      "outputs": [
+        "{workspaceRoot}/dist/.playwright/apps/bakery-digitale-baeckerei-e2e"
+      ],
+      "options": {
+        "config": "apps/bakery-digitale-baeckerei-e2e/playwright.config.ts"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "outputs": ["{options.outputFile}"],
+      "options": {
+        "lintFilePatterns": ["apps/bakery-digitale-baeckerei-e2e/**/*.{ts,js}"]
+      }
+    }
+  }
+}

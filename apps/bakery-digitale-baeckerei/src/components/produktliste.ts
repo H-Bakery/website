@@ -1,0 +1,29 @@
+import type { ListenEintrag } from '../lib/produkte/zuordnung'
+
+/**
+ * Leerer Abschnitt in „Alles hier“ und im Ersatz ohne WebGL. Bewusst nicht
+ * „hier liegt nichts“: An den Regalen steht Ware, zu der es (noch) keine
+ * Produktinfos gibt - der Text behauptet nur, was die Daten hergeben.
+ */
+export const KEINE_PRODUKTINFOS_TEXT =
+  'Für diesen Bereich gibt es noch keine Produktinfos.'
+
+/**
+ * Macht aus den belegten Plätzen eine Produktliste: Dasselbe Produkt auf
+ * mehreren Plätzen wird eine Zeile (der erste Platz bleibt), sortiert nach Name.
+ * Die einzige Stelle für diese Regel - „Alles hier“ und der Ersatz ohne WebGL
+ * nutzen beide sie.
+ */
+export function gruppiereEintraege(
+  eintraege: ListenEintrag[]
+): ListenEintrag[] {
+  const jeProdukt = new Map<string, ListenEintrag>()
+  for (const eintrag of eintraege) {
+    if (!jeProdukt.has(eintrag.produkt.id)) {
+      jeProdukt.set(eintrag.produkt.id, eintrag)
+    }
+  }
+  return [...jeProdukt.values()].sort((a, b) =>
+    a.produkt.name.localeCompare(b.produkt.name, 'de')
+  )
+}

@@ -1,0 +1,12 @@
+{
+  "extends": ["../../.eslintrc.json"],
+  "ignorePatterns": ["!**/*", "node_modules/**/*"],
+  "overrides": [
+    {
+      "files": ["*.ts", "*.js"],
+      "rules": {
+        "@next/next/no-html-link-for-pages": "off"
+      }
+    }
+  ]
+}

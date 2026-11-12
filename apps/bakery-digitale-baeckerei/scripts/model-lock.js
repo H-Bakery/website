@@ -163,6 +163,19 @@ function planSync(lock, local) {
   })
 }
 
+/**
+ * Was liegt im Zielordner, das nicht (mehr) im Lock steht? public/model/
+ * gehört allein dem Sync-Skript und wird ausgeliefert - ein übrig gebliebener
+ * Katalog mit Preisen darf dort nicht liegen bleiben.
+ * @param {string[]} present Dateinamen im Ordner
+ * @param {string[]} keep Dateinamen aus dem Lock
+ * @returns {string[]}
+ */
+function staleFiles(present, keep) {
+  const wanted = new Set(keep)
+  return present.filter((name) => !wanted.has(name)).sort()
+}
+
 module.exports = {
   LOCK_FORMAT,
   parseLock,
@@ -170,4 +183,5 @@ module.exports = {
   sha256Hex,
   checkFile,
   planSync,
+  staleFiles,
 }

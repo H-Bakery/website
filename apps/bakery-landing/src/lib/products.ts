@@ -1,6 +1,4 @@
-import fs from 'fs'
-import path from 'path'
-import matter from 'gray-matter'
+import { readHqProducts } from '@bakery/shared/hq-products'
 import { Product } from '../types/product'
 
 export interface HQProduct {
@@ -49,75 +47,45 @@ const CATEGORY_ORDER = [
   'torten',
 ]
 
-function findMonorepoRoot(): string {
-  let dir = process.cwd()
-  for (let i = 0; i < 5; i++) {
-    if (fs.existsSync(path.join(dir, 'nx.json'))) return dir
-    dir = path.dirname(dir)
-  }
-  return process.cwd()
-}
-
-function getHQProductsDir(): string {
-  if (process.env.HQ_PRODUCTS_DIR) return process.env.HQ_PRODUCTS_DIR
-  const root = findMonorepoRoot()
-  return path.join(root, '..', 'hq', 'products')
-}
-
 /**
- * Read all product markdown files from HQ and parse their frontmatter.
+ * Read all products from HQ and map them to the landing page's shape
+ * (fallback image per category, defaults for missing fields).
  * This runs at build time (server component / static generation).
+ *
+ * Reading and parsing `hq/products/*.md` (`HQ_PRODUCTS_DIR`, else
+ * `<monorepo>/../hq/products`) lives once in `@bakery/shared/hq-products`.
  */
 export function getHQProducts(): HQProduct[] {
-  const dir = getHQProductsDir()
+  const { dir, found, products } = readHqProducts()
 
-  if (!fs.existsSync(dir)) {
+  if (!found) {
     console.warn(`HQ products directory not found: ${dir}`)
     return []
   }
 
-  const files = fs
-    .readdirSync(dir)
-    .filter((f) => f.endsWith('.md') && !f.startsWith('_'))
+  return products
+    .map((p): HQProduct => {
+      // Resolve image: use explicit image if it's a real path, otherwise fallback
+      let image: string | null = null
+      if (p.image && p.image !== 'images/' && p.image.length > 10) {
+        image = p.image
+      } else {
+        image = CATEGORY_FALLBACK_IMAGE[p.category] || null
+      }
 
-  return files
-    .map((file) => {
-      try {
-        const raw = fs.readFileSync(path.join(dir, file), 'utf-8')
-        const { data, content } = matter(raw)
-        if (!data.id || !data.name) return null
-
-        // Resolve image: use explicit image if it's a real path, otherwise fallback
-        let image: string | null = null
-        if (data.image && data.image !== 'images/' && data.image.length > 10) {
-          image = data.image
-        } else {
-          image = CATEGORY_FALLBACK_IMAGE[data.category] || null
-        }
-
-        // Extract body text (after frontmatter, strip the h1 heading)
-        const bodyText = content
-          .trim()
-          .replace(/^#{1,6}[^\n]*\n+/, '')
-          .trim()
-
-        return {
-          id: data.id,
-          numeric_id: data.numeric_id ?? 0,
-          name: data.name,
-          category: data.category,
-          price: data.price ?? 0,
-          available: data.available ?? true,
-          seasonal: data.seasonal ?? false,
-          image,
-          short_description: data.short_description || '',
-          description: bodyText || data.short_description || '',
-        } as HQProduct
-      } catch {
-        return null
+      return {
+        id: p.id,
+        numeric_id: p.numeric_id ?? 0,
+        name: p.name,
+        category: p.category,
+        price: p.price ?? 0,
+        available: p.available ?? true,
+        seasonal: p.seasonal ?? false,
+        image,
+        short_description: p.short_description || '',
+        description: p.body || p.short_description || '',
       }
     })
-    .filter((p): p is HQProduct => p !== null)
     .sort((a, b) => a.numeric_id - b.numeric_id)
 }
 

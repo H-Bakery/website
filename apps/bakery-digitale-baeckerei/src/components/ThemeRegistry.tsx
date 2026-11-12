@@ -2,18 +2,20 @@
 import React from 'react'
 import CssBaseline from '@mui/material/CssBaseline'
 import GlobalStyles from '@mui/material/GlobalStyles'
-import { Experimental_CssVarsProvider as CssVarsProvider } from '@mui/material/styles'
+import { ThemeProvider } from '@mui/material/styles'
 import { AppRouterCacheProvider } from '@mui/material-nextjs/v15-appRouter'
-import { digitaleBaeckereiTheme } from './theme'
+import { FARBSCHEMA_CSS, digitaleBaeckereiTheme } from './theme'
 
 /**
  * Die Seite ist ein einziges Bild in voller Höhe: kein Scrollen, kein
- * Gummiband-Effekt beim Ziehen (wichtig, sobald das Kamera-Rig in P1 auf
- * Ziehen reagiert).
+ * Gummiband-Effekt beim Ziehen. Dazu die Farben beider Schemata als
+ * CSS-Variablen - hell/dunkel folgt dem System, nichts wird gespeichert
+ * (siehe theme.ts).
  */
 const globalStyles = (
   <GlobalStyles
     styles={{
+      ...FARBSCHEMA_CSS,
       'html, body': {
         height: '100%',
         margin: 0,
@@ -31,11 +33,11 @@ export default function ThemeRegistry({
 }) {
   return (
     <AppRouterCacheProvider options={{ key: 'mui' }}>
-      <CssVarsProvider theme={digitaleBaeckereiTheme} defaultMode="system">
-        <CssBaseline enableColorScheme />
+      <ThemeProvider theme={digitaleBaeckereiTheme}>
+        <CssBaseline />
         {globalStyles}
         {children}
-      </CssVarsProvider>
+      </ThemeProvider>
     </AppRouterCacheProvider>
   )
 }

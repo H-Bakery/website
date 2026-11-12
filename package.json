@@ -56,6 +56,7 @@
     "test:e2e:management": "nx e2e bakery-management-e2e",
     "test:e2e:landing": "nx e2e bakery-landing-e2e",
     "test:e2e:delivery": "nx e2e bakery-delivery-e2e",
+    "test:e2e:digitale-baeckerei": "nx e2e bakery-digitale-baeckerei-e2e",
     "test:e2e:ci": "nx run-many --target=e2e-ci --all",
     "test:e2e:headed": "nx run-many --target=e2e --all -- --headed",
     "test:e2e:debug": "nx run-many --target=e2e --all -- --debug",

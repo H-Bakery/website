@@ -72,3 +72,12 @@ deleted the six pre-pilot libraries whose specs used to fail (`feature-inventory
 - `deploy-old.yml` (Vercel + Cloud Run) is manual-only and its secrets are not configured.
 - The generated E2E suites `landing-page.spec.ts` and `management-workflows.spec.ts` are skipped
   on purpose ([testing/e2e.md](./testing/e2e.md)).
+- Digitale Bäckerei: Chromium (headless, via DevTools protocol) often reports the model request
+  `model/twin.glb` as `requestfailed net::ERR_ABORTED` although it was answered with 200 and read
+  completely - the app reads it as a stream for the progress bar (`fetchBytes` in
+  `src/lib/scene/loadModel.ts`); a plain `fetch().arrayBuffer()` does not show it. The e2e suite
+  ignores exactly that case (`protokolliere()` in `apps/bakery-digitale-baeckerei-e2e/src/support/app.ts`).
+  It only happens when the server sends `Cache-Control: no-store`, as `tools/e2e/serve-static.js`
+  does: with cacheable headers there was no abort in 24 streamed loads and every repeat load came
+  from the HTTP cache (review of PR #134). Tested in headless Chromium only, not on a real device or
+  in Safari.

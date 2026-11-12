@@ -24,6 +24,7 @@ jobs:
       shop: ${{ steps.filter.outputs.shop }}
       management: ${{ steps.filter.outputs.management }}
       landing: ${{ steps.filter.outputs.landing }}
+      digitale-baeckerei: ${{ steps.filter.outputs.digitale-baeckerei }}
       libs: ${{ steps.filter.outputs.libs }}
       api: ${{ steps.filter.outputs.api }}
     steps:
@@ -65,6 +66,15 @@ jobs:
               - 'apps/bakery-landing/**'
               - 'apps/bakery-landing-e2e/**'
               - 'libs/shared/**'
+              - 'tools/e2e/**'
+              - '.github/workflows/ci.yml'
+              - 'package-lock.json'
+            # Die Digitale Baeckerei hat keine API; von den Libs nutzt nur ihr
+            # Build-Skript sync-products den hq-Produktleser.
+            digitale-baeckerei:
+              - 'apps/bakery-digitale-baeckerei/**'
+              - 'apps/bakery-digitale-baeckerei-e2e/**'
+              - 'libs/shared/hq-products/**'
               - 'tools/e2e/**'
               - '.github/workflows/ci.yml'
               - 'package-lock.json'
@@ -285,6 +295,58 @@ jobs:
           path: dist/.playwright/apps/bakery-landing-e2e/
           retention-days: 7
 
+  # E2E tests for the Digitale Baeckerei (3D shop)
+  test-e2e-digitale-baeckerei:
+    needs: [changes, quality]
+    if: needs.changes.outputs.digitale-baeckerei == 'true'
+    # Dieser Job liest nur: auschecken, bauen, testen, Artefakt hochladen.
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04 # Playwright 1.54 has no chromium build for ubuntu-latest (26.04)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      # Mit DIGITALE_BAECKEREI_FIXTURE=1 nehmen sync-model und sync-products das
+      # synthetische Mini-Modell und den synthetischen Produkt-Snapshot aus
+      # apps/bakery-digitale-baeckerei/src/test/fixtures - kein Download, kein
+      # hq, nie das echte Modell. Gebaut wird fuer den Unterpfad, unter dem die
+      # App spaeter auf der Pages-Seite liegt.
+      - name: Build Digitale Baeckerei with the synthetic fixture
+        env:
+          DIGITALE_BAECKEREI_FIXTURE: '1'
+          DIGITALE_BAECKEREI_BASE_PATH: /digitale-baeckerei
+          # Same pair as in the build job below, for the same two reasons.
+          NX_ISOLATE_PLUGINS: 'false'
+          NODE_ENV: production
+        run: npx nx build bakery-digitale-baeckerei
+
+      # Playwright startet apps/bakery-digitale-baeckerei-e2e/serve-fixture.js
+      # (tools/e2e/servers.js; CI=true: nimmt den Export von eben). Der Server weigert sich, wenn im
+      # Export nicht Fixture-Modell und Fixture-Snapshot liegen - die Artefakte
+      # unten sind oeffentlich. WebGL laeuft ueber SwiftShader (playwright.config.ts).
+      - name: Run E2E tests
+        run: npx nx e2e bakery-digitale-baeckerei-e2e
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results-digitale-baeckerei
+          path: dist/.playwright/apps/bakery-digitale-baeckerei-e2e/
+          retention-days: 7
+
   # Build applications
   build:
     # Bewusst nicht an test-unit gehaengt: ob eine App ueberhaupt baut, ist von
@@ -297,9 +359,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # bakery-digitale-baeckerei laedt vor dem Build sein 3D-Modell
-        # (Target sync-model: oeffentlicher Download am festen Commit, sha256
-        # aus model.lock.json) - das Modell liegt nicht im Repo.
+        # bakery-digitale-baeckerei baut hier mit DIGITALE_BAECKEREI_FIXTURE=1
+        # (siehe env unten): synthetisches Mini-Modell und synthetischer
+        # Produkt-Snapshot aus dem Repo. Das echte Modell (oeffentlicher
+        # Download am festen Commit aus model.lock.json) und das private hq
+        # kommen in CI nie ins Spiel - der Export wird als Artefakt hochgeladen.
         app:
           [
             bakery-shop,
@@ -335,7 +399,22 @@ jobs:
           # dies in prerender with "Cannot read properties of null (reading
           # 'useState')". Pin the production value so the leak cannot reach it.
           NODE_ENV: production
+          # Digitale Baeckerei: CI hat kein hq und braucht das echte Modell nicht -
+          # synthetisches GLB + Snapshot aus src/test/fixtures (kein Download).
+          # Nur diese App liest die Variable.
+          DIGITALE_BAECKEREI_FIXTURE: '1'
         run: npx nx build ${{ matrix.app }} --configuration=production
+
+      # Der Export dieser App wird gleich als oeffentliches Artefakt
+      # hochgeladen. Er muss das synthetische Fixture enthalten, Byte fuer Byte -
+      # nie das echte Modell oder echte Produkttexte (z. B. aus einem Cache).
+      - name: Guard - Digitale Baeckerei export contains only the fixture
+        if: matrix.app == 'bakery-digitale-baeckerei'
+        run: |
+          cmp apps/bakery-digitale-baeckerei/out/model/twin.glb \
+              apps/bakery-digitale-baeckerei/src/test/fixtures/twin.fixture.glb
+          cmp apps/bakery-digitale-baeckerei/out/data/products.snapshot.json \
+              apps/bakery-digitale-baeckerei/src/test/fixtures/products.snapshot.fixture.json
 
       # Boot smoke of the pilot API (roadmap B1): the bundle from the step
       # above starts in production mode on a fresh SQLite file, /health must
@@ -443,6 +522,7 @@ jobs:
         test-e2e-shop,
         test-e2e-management,
         test-e2e-landing,
+        test-e2e-digitale-baeckerei,
         build,
         security,
       ]
