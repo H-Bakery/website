@@ -26,6 +26,7 @@ import {
   backzettelUseText,
   deleteRecipe,
   fetchRecipe,
+  ingredientAmountOpen,
   ingredientAmountText,
   ingredientNoteText,
   pendingHint,
@@ -128,7 +129,7 @@ function IngredientsTable({
           </Box>
           <tbody>
             {part.ingredients.map((ingredient, i) => {
-              const open = ingredient.amount === null && !ingredient.note
+              const open = ingredientAmountOpen(ingredient)
               const note = ingredientNoteText(ingredient)
               return (
                 <tr key={i} data-testid="recipe-ingredient">

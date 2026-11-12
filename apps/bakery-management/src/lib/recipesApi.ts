@@ -284,12 +284,33 @@ export function formatAmount(amount: number): string {
 }
 
 /**
+ * Bei offener Menge kann der Hinweis der Datei selbst die Mengenangabe sein
+ * („3–6 g (nach Geschmack)“, „1 Dose (ca. 3 kg)“) - erkennbar an einer
+ * Ziffer. Ein Hinweis ohne Zahl („zum Bestreichen“, „nach Geschmack“) ist
+ * keine Menge: die bleibt dann „offen“.
+ */
+function noteIsQuantity(ingredient: RecipeIngredient): boolean {
+  return (
+    ingredient.amount === null &&
+    ingredient.note !== null &&
+    /\d/.test(ingredient.note)
+  )
+}
+
+/** Ob in der Mengenspalte „offen“ steht (keine Zahl, kein Mengentext). */
+export function ingredientAmountOpen(ingredient: RecipeIngredient): boolean {
+  return ingredient.amount === null && !noteIsQuantity(ingredient)
+}
+
+/**
  * Menge einer Zutat für die Anzeige: „1.400 g“, „4“ (Stückzahl ohne
- * Einheit), bei offener Menge der Hinweis der Datei („3–6 g (nach
- * Geschmack)“) oder „offen“.
+ * Einheit), bei offener Menge der Mengentext der Datei („3–6 g (nach
+ * Geschmack)“) oder „offen“ - nie ein Hinweis ohne Zahl an Stelle der Menge.
  */
 export function ingredientAmountText(ingredient: RecipeIngredient): string {
-  if (ingredient.amount === null) return ingredient.note || OPEN_LABEL
+  if (ingredient.amount === null) {
+    return noteIsQuantity(ingredient) ? (ingredient.note as string) : OPEN_LABEL
+  }
   const amount = formatAmount(ingredient.amount)
   return ingredient.unit ? `${amount} ${ingredient.unit}` : amount
 }
@@ -298,7 +319,7 @@ export function ingredientAmountText(ingredient: RecipeIngredient): string {
 export function ingredientNoteText(
   ingredient: RecipeIngredient
 ): string | null {
-  return ingredient.amount === null ? null : ingredient.note
+  return noteIsQuantity(ingredient) ? null : ingredient.note || null
 }
 
 /**

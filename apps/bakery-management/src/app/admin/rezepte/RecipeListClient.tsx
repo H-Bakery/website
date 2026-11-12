@@ -200,7 +200,15 @@ export default function RecipeListClient({
       load(q, false)
       return undefined
     }
-    if (q === query) return undefined
+    if (q === query) {
+      // Zurück beim Text der gezeigten Liste (z. B. Suchfeld wieder
+      // geleert): eine Suche, die noch unterwegs ist, gilt nicht mehr -
+      // sonst filterte ihre späte Antwort die Liste nach einem Text, der
+      // nicht mehr im Feld steht.
+      requestRef.current += 1
+      setSearching(false)
+      return undefined
+    }
     const timer = window.setTimeout(() => load(q, true), SEARCH_DELAY_MS)
     return () => window.clearTimeout(timer)
     // `query` ändert sich nur durch `load` selbst.

@@ -182,6 +182,54 @@ describe('Rezeptliste (/admin/rezepte)', () => {
     }
   })
 
+  it('eine Suche, die noch unterwegs ist, gilt nicht mehr, sobald das Feld wieder leer ist', async () => {
+    jest.useFakeTimers()
+    try {
+      mockApi()
+      renderAs('inhaber', <RecipeListClient />)
+      await screen.findByTestId('recipe-group-breads')
+      // die Antwort auf „probemehl“ lässt auf sich warten (langsame Box)
+      let answer: (value: unknown) => void = () => undefined
+      apiClient.get.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            answer = resolve
+          })
+      )
+      const field = screen.getByRole('textbox', {
+        name: 'Rezept oder Zutat suchen',
+      })
+      fireEvent.change(field, { target: { value: 'probemehl' } })
+      await act(async () => {
+        jest.advanceTimersByTime(300)
+      })
+      expect(apiClient.get).toHaveBeenLastCalledWith('/api/recipes', {
+        category: undefined,
+        q: 'probemehl',
+      })
+      // Feld wieder geleert, bevor die Antwort da ist
+      fireEvent.change(field, { target: { value: '' } })
+      await act(async () => {
+        answer({
+          success: true,
+          data: syntheticList({ recipes: [syntheticSummary()] }),
+        })
+        jest.advanceTimersByTime(300)
+      })
+      // die späte Antwort filtert nicht: alle Rezepte bleiben, das Feld ist leer
+      expect(field).toHaveValue('')
+      expect(
+        screen.getByTestId('recipe-row-breads/probelaib')
+      ).toBeInTheDocument()
+      expect(
+        screen.getByTestId('recipe-row-fillings/gefuellte-testkraenze')
+      ).toBeInTheDocument()
+      expect(apiClient.get).toHaveBeenCalledTimes(2)
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
   it('Backstube liest nur: kein „Neues Rezept“, kein „nur lesen“-Marker', async () => {
     mockApi()
     renderAs('backstube', <RecipeListClient />)
@@ -287,6 +335,55 @@ describe('Rezeptansicht (/admin/rezepte/<kategorie>/<kennung>)', () => {
     expect(screen.getByTestId('recipe-section')).toHaveTextContent(
       'FehlerquellenZu kurze Gare'
     )
+  })
+
+  it('offene Menge mit Hinweis: „offen“ in der Mengenspalte, der Hinweis beim Namen', async () => {
+    mockApi({
+      recipes: [
+        syntheticFilling({
+          parts: [
+            {
+              title: 'Testnussfüllung',
+              ingredients: [
+                {
+                  name: 'Probestreiche',
+                  amount: null,
+                  unit: null,
+                  note: 'zum Bestreichen',
+                },
+                {
+                  name: 'Probegewürz',
+                  amount: null,
+                  unit: null,
+                  note: '3–6 g (nach Geschmack)',
+                },
+                { name: 'Musterzucker', amount: 120, unit: 'g', note: 'fein' },
+              ],
+              total: null,
+            },
+          ],
+        }),
+      ],
+    })
+    renderAs(
+      'backstube',
+      <RecipeDetailClient category="fillings" slug="gefuellte-testkraenze" />
+    )
+    const table = await screen.findByRole('table', { name: 'Testnussfüllung' })
+    const amounts = within(table)
+      .getAllByTestId('ingredient-amount')
+      .map((cell) => cell.textContent)
+    // ein Hinweis ohne Zahl ist keine Menge; ein Mengentext der Datei schon
+    expect(amounts).toEqual(['offen', '3–6 g (nach Geschmack)', '120 g'])
+    expect(
+      within(table)
+        .getAllByTestId('recipe-ingredient')
+        .map((row) => row.textContent)
+    ).toEqual([
+      'offenProbestreiche (zum Bestreichen)',
+      '3–6 g (nach Geschmack)Probegewürz',
+      '120 gMusterzucker (fein)',
+    ])
   })
 
   it('Backstube: drucken ja, bearbeiten und löschen nein', async () => {

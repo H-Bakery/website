@@ -5,6 +5,7 @@ import {
   fetchRecipe,
   fetchRecipes,
   formatAmount,
+  ingredientAmountOpen,
   ingredientAmountText,
   ingredientCountText,
   ingredientNoteText,
@@ -155,6 +156,16 @@ describe('recipesApi - Anzeige', () => {
     ).toBe('3–6 g (nach Geschmack)')
     expect(ingredientNoteText(ing(120, 'g', 'nach Bedarf'))).toBe('nach Bedarf')
     expect(ingredientNoteText(ing(null, null, '3–6 g'))).toBeNull()
+    // ein Hinweis ohne Zahl ist keine Menge: „offen“, der Hinweis beim Namen
+    const hint = ing(null, null, 'zum Bestreichen')
+    expect(ingredientAmountText(hint)).toBe('offen')
+    expect(ingredientNoteText(hint)).toBe('zum Bestreichen')
+    expect(ingredientAmountOpen(hint)).toBe(true)
+    expect(ingredientAmountOpen(ing(null, null))).toBe(true)
+    expect(ingredientAmountOpen(ing(null, null, '1 Dose (ca. 3 kg)'))).toBe(
+      false
+    )
+    expect(ingredientAmountOpen(ing(5, 'g'))).toBe(false)
   })
 
   it('„Ergibt“: offen, Freitext, kein doppeltes „Ergibt“', () => {
