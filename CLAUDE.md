@@ -34,6 +34,6 @@ Bäckerei-Box in the shop's LAN; shop and Fahrer-App are not in the pilot.
   Verkaufspartner, Kassenberichte, Finanzen, Produkte, Liefertouren, Rest am Abend, Rezepte). Read
   the one you touch before changing it.
 - `docs/api/*.md` - API internals; `docs/apps/*.md` - landing, shop, Fahrer-App,
-  Partybrezel-Prototyp;
+  Partybrezel-Prototyp, Digitale Bäckerei;
   `docs/known-issues.md` - failures that aren't regressions.
 - `docs/roadmap.md` - the only plan and task list; `docs/runbook.md` - box operation.

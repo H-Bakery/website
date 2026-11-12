@@ -1,6 +1,9 @@
 # Digitale Bäckerei (`apps/bakery-digitale-baeckerei`) - Plan
 
-Status: **P0 und P1 gemergt** (#132, #134, 2026-11-12); **P2 vorbereitet, wartet auf den Inhaber**.
+Status: **P0, P1, P2a, P3 (App-Teil) und P4 (Nahansicht + Pipeline) gemergt** (#132, #134, #136,
+#140, #139; 2026-11-12/13). **Offen beim Inhaber:** Secret + OK für den Deploy (#137), Abnahme am
+Handy, dann Link (#138); echte Scans für P4; Explorer-Branch `feat/bh-intro-kreisel` (lokal, nicht
+gepusht).
 Dieses Dokument ist der Auftrag für die Umsetzung.
 
 Besucher schauen sich die Bäckerei Heusser in 3D an: die Theke mit Vitrine, das Brotregal und die
@@ -323,9 +326,9 @@ und Desktop dazu (lokal, nicht eingecheckt).
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **P0 Spike**  | App-Gerüst, `sync-model` + `model.lock.json`, Modell laden, Morgens-Filter, ein Blickpunkt (Theke)                                                                                                    | Die Theke sieht auf dem Handy aus wie im Explorer. Ladezeit und FPS auf einem echten Handy sind im PR notiert. **Erledigt** (PR #132). Ladezeit und FPS sind nur in der Emulation gemessen (4G + CPU 4×: ≈ 4,9 s bis zum ersten Bild, lokal und unkomprimiert; ≈ 26 FPS mit Software-GPU) - auf echtem Handy ungeprüft                                                                                                                              |
 | **P1 MVP**    | Produktdaten aus hq, Preisschilder im Modell ausgeblendet, 3 Blickpunkte inkl. Hochformat-Werte, Kamera-Rig, Picking + Bottom-Sheet, Liste „Alles hier“, Ladebild, Ersatz ohne WebGL, Quellen-Hinweis | Unit-Tests (Blickpunkt-Grenzen, Produkt-Zuordnung, Morgens-Filter) und Playwright bei 390 px (laden, wechseln, antippen → Sheet) mit dem synthetischen Fixture grün. **Erledigt** (PR #134). Geprüft: Unit-Tests und Playwright bei 390 px und Desktop mit dem Fixture. Am echten Modell nur in der Emulation angesehen und gemessen (4G + CPU 4×: ≈ 4,4 s bis zum ersten Bild des Modells; ≈ 26 FPS mit Software-GPU) - auf echtem Handy ungeprüft |
-| **P2 Live**   | Produkttexte in hq überarbeitet, hq-Zugriff im Deploy (falls entschieden), Deploy unter `/digitale-baeckerei/`, Abnahme durch den Inhaber am Handy, danach der Link von der Landingpage               | Die Seite ist öffentlich erreichbar, und der Inhaber hat zugestimmt                                                                                                                                                                                                                                                                                                                                                                                 |
-| **P3 später** | Intro „Blick vom Kreisel“, Außenraum aus dem GLB schneiden, Backstube als zweiter Raum, Umzug des Generators (DB2), evtl. Feierabend-Umschalter oder „entdeckt x/y“                                   | einzeln entscheiden                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| **P4 später** | Echte 3D-Produkte (DB7), zuerst ein Test mit 3 Produkten                                                                                                                                              | eigener Plan, wenn es losgeht                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **P2 Live**   | Produkttexte in hq überarbeitet, hq-Zugriff im Deploy (falls entschieden), Deploy unter `/digitale-baeckerei/`, Abnahme durch den Inhaber am Handy, danach der Link von der Landingpage               | Die Seite ist öffentlich erreichbar, und der Inhaber hat zugestimmt. **Vorbereitet, wartet auf den Inhaber** (#137, #138)                                                                                                                                                                                                                                                                                                                           |
+| **P3 später** | Intro „Blick vom Kreisel“, Außenraum aus dem GLB schneiden, Backstube als zweiter Raum, Umzug des Generators (DB2), evtl. Feierabend-Umschalter oder „entdeckt x/y“                                   | einzeln entscheiden. **Gebaut** (#140): Flug „Von der Straße zur Theke“ mit Überspringen, „entdeckt x von y“. **Nicht gebaut:** Flug vom Kreisel, „nur beim ersten Besuch“, Feierabend-Umschalter, Backstube, Umzug des Generators - siehe „Stand P3“                                                                                                                                                                                               |
+| **P4 später** | Echte 3D-Produkte (DB7), zuerst ein Test mit 3 Produkten                                                                                                                                              | **Pipeline + Nahansicht gebaut** (#139), Test mit 3 prozeduralen Produkten; echte Scans offen                                                                                                                                                                                                                                                                                                                                                       |
 
 ### Stand P3
 
@@ -443,10 +446,17 @@ kann (im Produkt-Sheet) und das auch die Produktseiten der Landingpage zeigen.
 
 ## Offen (Inhaber)
 
-- Das Secret für den hq-Lesezugriff anlegen: Abschnitt „Anleitung: hq-Lesezugriff für den Deploy“.
-  Erst danach den Deploy-PR mergen.
-- Soll auch die Landingpage aus hq bauen (echte Produkttexte auf allen 103 Produktseiten)? Heute
-  baut sie im Deploy aus den Mock-Produkten.
-- Abnahme am Handy vor dem öffentlichen Deploy (P2) und vor dem Link von der Landingpage.
-- P4: die echten Produkte für den 3-Produkte-Test fotografieren bzw. scannen.
-- Preise: später wieder aufnehmen?
+- **Deploy (#137):** Environment `pages-deploy` (nur Branch `main`) und darin das Secret
+  `HQ_DEPLOY_KEY` anlegen (Abschnitt „Anleitung: hq-Lesezugriff für den Deploy“), dann das OK zum
+  Merge.
+- **Produkttexte in hq:** Texte mit Formulierungen, die wie Gesundheitsversprechen klingen, vor dem
+  Go-live überarbeiten.
+- **Landingpage aus hq oder aus Mocks bauen?** Heute Mocks; mit hq erschienen die echten Texte
+  aller Produkte.
+- **Abnahme am Handy** nach dem Deploy, danach der Link von der Landingpage (#138).
+- **P4:** die echten Produkte scannen bzw. fotografieren (bisher 3 prozedurale Testmodelle).
+- **Flug:** Aussehen der Kreisel-Insel, Tempo des Flugs, Freigabe des Explorer-Stands
+  (`feat/bh-intro-kreisel`, lokal).
+- **Flug „nur beim ersten Besuch“:** bräuchte Speicher auf dem Gerät - erlaubt?
+- **Texte der Regal-Karten** für die neutrale Ware (ohne hq-Produkt).
+- **Preise:** später wieder aufnehmen?
