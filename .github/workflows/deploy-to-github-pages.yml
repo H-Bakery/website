@@ -1,5 +1,12 @@
 name: Deploy to GitHub Pages
 
+# Veröffentlicht die Landingpage und - unter /digitale-baeckerei/ - die Digitale
+# Bäckerei. Ablauf, Wächter und die Anleitung für das Secret:
+# docs/apps/digitale-baeckerei.md (Abschnitte "Deploy" und "Anleitung:
+# hq-Lesezugriff für den Deploy").
+#
+# Nur diese beiden Auslöser. Das Secret HQ_DEPLOY_KEY darf nie in einen
+# Workflow, der auf pull_request oder pull_request_target läuft.
 on:
   push:
     branches:
@@ -21,12 +28,29 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Das Environment hält das Secret HQ_DEPLOY_KEY und ist auf den Branch main
+    # beschränkt (Settings → Environments → pages-deploy). Ein Lauf von einem
+    # anderen Branch (workflow_dispatch) bekommt das Secret damit nicht.
+    environment: pages-deploy
     steps:
+      # Ohne Lesezugriff auf hq gibt es keine Digitale Bäckerei - und eine Seite
+      # ohne den Unterpfad wird nicht mehr veröffentlicht. Darum als Erstes und
+      # mit klarer Meldung abbrechen, statt später im Build zu scheitern.
+      - name: hq-Lesezugriff vorhanden?
+        env:
+          HQ_DEPLOY_KEY: ${{ secrets.HQ_DEPLOY_KEY }}
+        run: |
+          if [ -z "$HQ_DEPLOY_KEY" ]; then
+            echo "::error title=Secret HQ_DEPLOY_KEY fehlt::Das Secret HQ_DEPLOY_KEY fehlt oder ist leer. Ohne Lesezugriff auf hq/products kann die Digitale Bäckerei nicht gebaut werden; es wird nichts veröffentlicht, die Seite bleibt, wie sie ist. Anleitung: docs/apps/digitale-baeckerei.md, Abschnitt 'Anleitung: hq-Lesezugriff für den Deploy'. Das Secret gehört in das Environment 'pages-deploy' (nur Branch main) - läuft dieser Workflow von einem anderen Branch, bekommt er es nicht."
+            exit 1
+          fi
+          echo "Secret HQ_DEPLOY_KEY ist gesetzt."
+
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
           cache: 'npm'
@@ -34,18 +58,100 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      # Die Landingpage baut wie bisher aus den gebündelten Mock-Produkten: hq ist
+      # in diesem Schritt noch nicht ausgecheckt, und HQ_PRODUCTS_DIR ist nicht
+      # gesetzt. Mit hq gebaut zeigte sie die echten Produkttexte aller 103
+      # Produkte - das entscheidet der Inhaber getrennt (siehe Doku).
       - name: Build landing page
         env:
           NX_DAEMON: 'false'
           NX_STANDALONE_BUILD: '1'
         run: NODE_ENV=production npx nx build-static-standalone bakery-landing
 
+      # hq ist privat. Geholt wird nur der Ordner products/ (kein Cone-Modus,
+      # also auch keine Dateien aus der Wurzel), nur der letzte Stand, mit einem
+      # Deploy-Key, der nur lesen darf. Der Schlüssel bleibt nicht auf der
+      # Maschine liegen (persist-credentials: false).
+      - name: Checkout hq (nur products/, nur lesend)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: H-Bakery/hq
+          ssh-key: ${{ secrets.HQ_DEPLOY_KEY }}
+          path: hq
+          sparse-checkout: |
+            /products/
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
+          persist-credentials: false
+
+      # Nur zählen, nie Inhalte ausgeben: Die Logs dieses Repos sind öffentlich.
+      - name: hq - nur products/ ausgecheckt?
+        run: |
+          set -euo pipefail
+          fremd=$(find hq -mindepth 1 -maxdepth 1 ! -name .git ! -name products | wc -l | tr -d ' ')
+          if [ "$fremd" -ne 0 ]; then
+            echo "::error::In hq/ liegt mehr als products/ ($fremd weitere Einträge) - der Checkout ist nicht auf products/ beschränkt."
+            exit 1
+          fi
+          anzahl=$(find hq/products -maxdepth 1 -name '*.md' | wc -l | tr -d ' ')
+          if [ "$anzahl" -eq 0 ]; then
+            echo "::error::hq/products enthält keine Produktdateien."
+            exit 1
+          fi
+          echo "hq/products: $anzahl Produktdateien."
+
+      # Kein Fixture-Build auf der öffentlichen Seite: Mit dieser Variable nähmen
+      # die Sync-Skripte das Test-Modell und erfundene Produkte.
+      - name: Kein Fixture-Modus
+        run: |
+          if [ -n "${DIGITALE_BAECKEREI_FIXTURE:-}" ]; then
+            echo "::error::DIGITALE_BAECKEREI_FIXTURE ist gesetzt - die Digitale Bäckerei wird für die öffentliche Seite nie mit dem Test-Modell gebaut."
+            exit 1
+          fi
+
+      # sync-model lädt das Modell am festen Commit, prüft es und nimmt die
+      # Preisschilder heraus; sync-products schreibt den Snapshot ohne Preise aus
+      # hq/products und bricht ohne hq ab (keine Mocks). Nie aus dem Nx-Cache.
+      - name: Build Digitale Bäckerei
+        env:
+          NX_DAEMON: 'false'
+          NX_ISOLATE_PLUGINS: 'false'
+          NODE_ENV: production
+          HQ_PRODUCTS_DIR: ${{ github.workspace }}/hq/products
+          DIGITALE_BAECKEREI_BASE_PATH: /digitale-baeckerei
+        run: npx nx build bakery-digitale-baeckerei --skip-nx-cache
+
+      # Bricht ab, wenn der Export nicht genau das ist, was raus darf: das Modell
+      # aus dem Lock (ausgeliefert.sha256, ohne Preisschilder), der Snapshot nur
+      # mit den erlaubten Feldern, nirgends ein Euro-Zeichen, kein Fixture.
+      # Meldet nur Dateinamen und Zahlen.
+      - name: Wächter - Export der Digitalen Bäckerei
+        run: node apps/bakery-digitale-baeckerei/scripts/pruefe-export.mjs --base-path /digitale-baeckerei
+
+      # hq wird ab hier nicht mehr gebraucht - weg damit, bevor der Schritt läuft,
+      # der veröffentlicht.
+      - name: hq-Checkout entfernen
+        run: rm -rf hq
+
+      - name: Digitale Bäckerei unter /digitale-baeckerei/ einhängen
+        run: |
+          set -euo pipefail
+          ziel=apps/bakery-landing/out/digitale-baeckerei
+          if [ -e "$ziel" ]; then
+            echo "::error::$ziel gibt es schon - die Landingpage hat selbst einen Pfad /digitale-baeckerei."
+            exit 1
+          fi
+          cp -R apps/bakery-digitale-baeckerei/out "$ziel"
+          test -f apps/bakery-landing/out/index.html
+          test -f "$ziel/index.html"
+          test -f "$ziel/model/twin.glb"
+
       - name: Prepare for GitHub Pages
         run: |
           touch apps/bakery-landing/out/.nojekyll
 
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
+        uses: peaceiris/actions-gh-pages@373f7f263a76c20808c831209c920827a82a2847 # v3.9.3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./apps/bakery-landing/out

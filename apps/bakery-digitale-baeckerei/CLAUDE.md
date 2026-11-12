@@ -71,8 +71,13 @@ Regeln, die am meisten beißen:
   **Nichts auf dem Gerät speichern** (kein `localStorage`): Hell/dunkel folgt allein per CSS
   `prefers-color-scheme` (`theme.ts`) - kein `CssVarsProvider`, der schreibt `mui-mode`.
   Dark Mode nur für die Bedienelemente, Touch-Ziele ≥ 44 px.
-- **Unterpfad:** `DIGITALE_BAECKEREI_BASE_PATH=/digitale-baeckerei` beim Build. Der Deploy-Workflow
-  und ein Link von der Landingpage kommen erst nach der Abnahme durch den Inhaber (P2).
+- **Unterpfad und Deploy:** `DIGITALE_BAECKEREI_BASE_PATH=/digitale-baeckerei` beim Build.
+  `deploy-to-github-pages.yml` baut die App mit hq (Deploy-Key nur lesend, nur `products/`) und hängt
+  sie unter `/digitale-baeckerei/` in den Export der Landingpage. Davor läuft der Wächter
+  `scripts/pruefe-export.mjs` (`export-pruefung.js`): nur das bereinigte Modell aus dem Lock, Snapshot
+  im Vertrag, kein „€“, kein Fixture - sonst kein Deploy. Wer etwas Neues nach `public/` oder in den
+  Snapshot legt, muss es dort erlauben. Logs sind öffentlich: nie Inhalte aus hq ausgeben.
+  Der Link von der Landingpage kommt erst nach der Abnahme durch den Inhaber.
 
 Tests: `npx nx test bakery-digitale-baeckerei`, `npx nx lint bakery-digitale-baeckerei`,
 `npx nx e2e bakery-digitale-baeckerei-e2e`. Plan, Entscheidungen DB1-DB9 und Phasen:

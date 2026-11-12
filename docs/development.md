@@ -190,7 +190,10 @@ same check as the e2e server; the model is compared with the stripped fixture).
 - **Coverage thresholds and `--shard` don't mix**: a shard runs a third of the tests but measures
   all sources. The configs with thresholds drop them when `JEST_SHARDED=true` (set by the shard
   step); Codecov merges the uploads, and a full `npm run test:coverage` is what is judged.
-- `deploy-to-github-pages.yml` publishes the landing export on every push to `main`.
+- `deploy-to-github-pages.yml` publishes the landing export on every push to `main`, with the Digitale Bäckerei under
+  `/digitale-baeckerei/`. That job reads `hq/products` through a read-only deploy key (environment
+  `pages-deploy`, secret `HQ_DEPLOY_KEY`) and fails early without it; steps, guards and the owner
+  instructions are in [apps/digitale-baeckerei.md](./apps/digitale-baeckerei.md#deploy).
   `deploy-old.yml` (Vercel + Cloud Run) is manual-only and has no configured secrets - unused.
 
 ## Task tracking
