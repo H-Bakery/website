@@ -425,6 +425,12 @@ Was passiert:
 
 Während des Neustarts liegt `state/maintenance`, damit der Health-Check nicht Alarm schlägt.
 
+Von wo aus man `deploy.sh` (oder ein anderes Skript aus `/opt/bakery/bin`) startet, ist egal: jedes
+Skript wechselt beim Start nach `/`. Bis 12.11. brach ein Deploy aus `/home/<admin>` mit „DB-Kopie
+vor dem Deploy fehlgeschlagen“ ab, weil `bakery` dieses Verzeichnis nicht betreten darf (`find:
+Failed to restore initial working directory`) – die Kopie war da, nur das Aufräumen scheiterte.
+Relative Pfade (`restore.sh --from-file`, `--target`) gelten weiter ab dem eigenen Verzeichnis.
+
 `npm ci` und der Build laufen als `bakery` mit **geleerter Umgebung** (`env -i`): sie sehen nur
 `PATH`, `HOME`, Locale, die Nx-/Node-Schalter und die Build-Schlüssel aus `bakery.env`
 (`NEXT_PUBLIC_*`, `API_URL`, `HQ_*_DIR`, `TZ`; einstellbar über `DEPLOY_BUILD_ENV_KEYS`) – kein
@@ -471,6 +477,12 @@ Jede Nacht um 23:30 (`bakery-backup.timer`; Backbeginn ist 02:00):
 4. `restic forget --keep-daily 14 --keep-weekly 8 --prune` (nicht bei `RESTIC_FORGET=0`),
    sonntags zusätzlich `restic check`
 5. `backup/last-success` – der Health-Check meldet, wenn es älter als 36 h ist
+
+**Solange das Off-site-Ziel fehlt (Q4, `RESTIC_REPOSITORY` in `ops.env` leer):** die Schritte 1–2
+laufen jede Nacht, dann endet `bakery-backup.service` mit Exit 11 und steht in `systemctl
+--failed` – das ist gewollt, das Log nennt Q4 und die lokale Kopie. Der Health-Check prüft
+währenddessen `backup/current/bakery.db` (jünger als 36 h) und führt das Backup als „OFFEN“ (§8.1).
+Die Daten liegen dann nur auf der Box selbst.
 
 Nicht gesichert, weil reproduzierbar: Code (`/opt/bakery`), hq-Lese-Klon (liegt auf GitHub).
 
@@ -698,6 +710,16 @@ systemctl --failed
 Nicht `sudo -u bakery health.sh` von Hand: als `bakery` ist `ops.env` nicht lesbar, das Skript
 hätte keinen Telegram-Zugang, würde eine Störung aber trotzdem als „gemeldet" vermerken.
 
+**Drei Zustände je Prüfung.** `ok`, `GESTÖRT` (Telegram „STÖRUNG“, der Lauf endet mit Exit 1, die
+Unit steht in `systemctl --failed`) und `OFFEN`: die Box läuft, aber etwas ist noch nicht
+eingerichtet – das Off-site-Ziel des Backups (Q4) oder der Alarmkanal selbst (`TELEGRAM_BOT_TOKEN`
+/ `TELEGRAM_CHAT_ID` in `ops.env` leer; Prüfung „Alarmkanal“, läuft immer mit). `OFFEN` wird einmal
+gemeldet („NICHT EINGERICHTET“, ohne Telegram nur im Journal), steht bei jedem Lauf als eine Zeile
+im Log und macht die Unit nicht rot. Eine rote `bakery-health.service` heißt damit immer: jetzt
+ist etwas gestört. Bis 12.11. war sie wegen des fehlenden Off-site-Ziels bei jedem Lauf rot.
+Sobald Telegram eingetragen ist, kommt beim nächsten Lauf „WIEDER OK … Alarmkanal (jetzt
+eingerichtet)“ – das ist zugleich der Test des Kanals.
+
 Testalarm: `sudo systemctl stop bakery-management`, bis zu 5 Minuten warten → Telegram „STÖRUNG",
 `sudo systemctl start bakery-management` → „WIEDER OK". Gemeldet wird nur der Wechsel, nicht jede
 Minute der Störung.
@@ -720,6 +742,7 @@ Minute der Störung.
 | Backzettel/Vorbestellungen fehlen in hq               | `/api/hq-sync/status` → `snapshots`, `journalctl -u bakery-snapshot-preorders` | §6.1; offline wird alle 15 min nachgeschoben                                            |
 | Alarm „Speicherplatz"                                 | `df -h /var/lib/bakery`, `du -sh /opt/bakery/releases/*`                       | `KEEP_RELEASES` senken, `journalctl --vacuum-time=14d`, alte `backup/snapshots` löschen |
 | Produkte/Preise geändert, App zeigt alten Stand       | `cat /var/lib/bakery/state/hq-sync.ok`                                         | Änderung schon in hq `main` gemerged? Sonst „wartet auf Freigabe" (D6); Sync von Hand   |
+| Health-Log „OFFEN“ / Meldung „NICHT EINGERICHTET“     | `journalctl -u bakery-health -n 20`                                            | kein Ausfall: Q4 bzw. Telegram in `ops.env` eintragen (§8.1); die Unit bleibt grün      |
 | Kein Telegram trotz Störung                           | `journalctl -u bakery-health -n 20`                                            | Token/Chat-ID in `ops.env`; Telegram-Fehler werden beim nächsten Lauf erneut gesendet   |
 
 ## 9. Papierbetrieb (Papier-Fallback)

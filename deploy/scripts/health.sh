@@ -10,7 +10,9 @@
 # Prüfungen (HEALTH_CHECKS, Leerzeichen-getrennt; Vorgabe alle):
 #   api         GET HEALTH_API_URL   (Vorgabe http://127.0.0.1:5000/health)
 #   management  GET HEALTH_MGMT_URL  (Vorgabe http://127.0.0.1:4201/; 3xx zählt als ok)
-#   backup      letztes erfolgreiches Off-site-Backup jünger als BACKUP_MAX_AGE_HOURS (36)
+#   backup      letztes erfolgreiches Off-site-Backup jünger als BACKUP_MAX_AGE_HOURS (36).
+#               Ohne Off-site-Ziel (RESTIC_REPOSITORY leer, Q4) zählt die lokale
+#               Kopie der Nacht (backup/current/bakery.db): frisch = OFFEN, sonst gestört.
 #   hq-sync     letzter erfolgreicher hq-Sync jünger als HQ_SYNC_MAX_AGE_MIN (90)
 #   hq-token    GitHub-App-Token (HQ_GITHUB_TOKEN_FILE) jünger als HQ_TOKEN_MAX_AGE_MIN
 #               (70) - es gilt 60 min, bakery-hq-token.timer erneuert alle 30 min.
@@ -24,12 +26,21 @@
 #               kommt der Alarm Wochen vor dem Ablauf. Ohne HEALTH_TLS_HOST
 #               übersprungen (zählt als ok).
 #
+# Drei Zustände je Prüfung: ok, GESTÖRT (fail) und OFFEN (open). OFFEN heißt:
+# die Box läuft, aber etwas ist noch nicht eingerichtet - das Off-site-Ziel des
+# Backups oder der Alarmkanal selbst (Prüfung "alarm", läuft immer mit: ohne
+# TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID steht jede Meldung nur im Journal).
+# OFFEN wird wie jeder Wechsel einmal gemeldet ("NICHT EINGERICHTET"), steht bei
+# jedem Lauf als eine Zeile im Log und macht den Lauf nicht rot: der Exit-Code
+# - und damit `systemctl --failed` - sagt nur, ob die Box gesund ist.
+#
 # Wartung: existiert $STATE_DIR/maintenance und ist jünger als 30 Minuten
 # (deploy.sh legt sie an), wird geprüft und geloggt, aber nichts gemeldet und
 # kein Zustand gespeichert.
 #
-# Exit-Codes: 0 alles ok, 1 mindestens eine Prüfung gestört oder Meldung nicht
-# zugestellt, 2 Konfiguration falsch.
+# Exit-Codes: 0 nichts gestört (OFFEN zählt nicht), 1 mindestens eine Prüfung
+# gestört oder Meldung nicht zugestellt (Telegram eingerichtet, aber Senden
+# fehlgeschlagen), 2 Konfiguration falsch.
 set -euo pipefail
 
 SCRIPT_NAME="health"
@@ -64,7 +75,8 @@ if ! acquire_lock health; then
   exit 0
 fi
 
-# --- Prüfungen: jede gibt 0/1 zurück und schreibt die Ursache nach stdout ---
+# --- Prüfungen: jede gibt 0 (ok), 1 (gestört) oder 3 (offen, nicht eingerichtet)
+# --- zurück und schreibt die Ursache nach stdout ---
 
 check_http() {
   local url="$1" reason
@@ -92,6 +104,35 @@ check_age() {
     return 1
   fi
   return 0
+}
+
+# Backup: Maßstab ist das Off-site-Backup (backup.sh schreibt last-success erst
+# nach restic). Ist kein Ziel eingerichtet, kann es nie frisch werden - dann
+# zählt, ob wenigstens die lokale Kopie der Nacht entsteht.
+check_backup() {
+  local max=$((BACKUP_MAX_AGE_HOURS * 3600)) reason
+  if reason="$(check_age "$BACKUP_DIR/last-success" "$max" "Backup")"; then
+    return 0
+  fi
+  if [ -n "${RESTIC_REPOSITORY:-}" ]; then
+    echo "$reason"
+    return 1
+  fi
+  if reason="$(check_age "$BACKUP_DIR/current/bakery.db" "$max" "lokale DB-Kopie")"; then
+    echo "Off-site-Backup nicht eingerichtet (RESTIC_REPOSITORY in ops.env leer, Q4) - gesichert wird nur lokal auf der Box"
+    return 3
+  fi
+  echo "$reason - und kein Off-site-Backup eingerichtet (RESTIC_REPOSITORY leer, Q4; journalctl -u bakery-backup)"
+  return 1
+}
+
+# Alarmkanal: ohne Telegram erfährt niemand von einer Störung.
+check_alarm() {
+  if telegram_configured; then
+    return 0
+  fi
+  echo "Telegram nicht eingerichtet (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID in ops.env leer) - Störungen stehen nur im Journal (journalctl -u bakery-health)"
+  return 3
 }
 
 # GitHub-App-Token (Q3): die Datei schreibt hq-token.sh nur nach Erfolg neu,
@@ -163,7 +204,8 @@ run_check() {
   case "$1" in
   api) check_http "$HEALTH_API_URL" ;;
   management) check_http "$HEALTH_MGMT_URL" ;;
-  backup) check_age "$BACKUP_DIR/last-success" $((BACKUP_MAX_AGE_HOURS * 3600)) "Backup" ;;
+  backup) check_backup ;;
+  alarm) check_alarm ;;
   hq-sync) check_age "$STATE_DIR/hq-sync.ok" $((HQ_SYNC_MAX_AGE_MIN * 60)) "hq-Sync" ;;
   hq-token) check_hq_token ;;
   disk) check_disk ;;
@@ -184,6 +226,7 @@ label_for() {
   hq-token) echo "GitHub-Token (hq)" ;;
   disk) echo "Speicherplatz" ;;
   tls) echo "HTTPS/Zertifikat" ;;
+  alarm) echo "Alarmkanal" ;;
   *) echo "$1" ;;
   esac
 }
@@ -199,6 +242,13 @@ new_state=""
 failures=0
 changes_bad=""
 changes_good=""
+changes_open=""
+
+# Der Alarmkanal wird immer geprüft, auch wenn HEALTH_CHECKS in ops.env ihn nicht nennt.
+case " $HEALTH_CHECKS " in
+*" alarm "*) ;;
+*) HEALTH_CHECKS="$HEALTH_CHECKS alarm" ;;
+esac
 
 for name in $HEALTH_CHECKS; do
   status="ok"
@@ -208,7 +258,10 @@ for name in $HEALTH_CHECKS; do
   if [ "$rc" -eq 2 ]; then
     die 2 "HEALTH_CHECKS enthält unbekannte Prüfung: $name"
   fi
-  if [ "$rc" -ne 0 ]; then
+  if [ "$rc" -eq 3 ]; then
+    status="open"
+    log "$(label_for "$name"): OFFEN - $reason"
+  elif [ "$rc" -ne 0 ]; then
     status="fail"
     failures=$((failures + 1))
     log "$(label_for "$name"): GESTÖRT - $reason"
@@ -220,8 +273,12 @@ for name in $HEALTH_CHECKS; do
   prev="$(previous_state "$name")"
   if [ "$status" = "fail" ] && [ "$prev" != "fail" ]; then
     changes_bad="${changes_bad}- $(label_for "$name"): ${reason}"$'\n'
+  elif [ "$status" = "open" ] && [ "$prev" != "open" ]; then
+    changes_open="${changes_open}- $(label_for "$name"): ${reason}"$'\n'
   elif [ "$status" = "ok" ] && [ "$prev" = "fail" ]; then
     changes_good="${changes_good}- $(label_for "$name")"$'\n'
+  elif [ "$status" = "ok" ] && [ "$prev" = "open" ]; then
+    changes_good="${changes_good}- $(label_for "$name") (jetzt eingerichtet)"$'\n'
   fi
 done
 
@@ -245,11 +302,16 @@ if [ -n "$changes_good" ]; then
   message="${message}WIEDER OK auf ${HEALTH_HOST_LABEL}:"$'\n'"${changes_good}"
 fi
 
+if [ -n "$changes_bad" ]; then
+  message="${message}Runbook: docs/runbook.md, Abschnitt Störungen."$'\n'
+fi
+if [ -n "$changes_open" ]; then
+  [ -z "$message" ] || message="${message}"$'\n'
+  message="${message}NICHT EINGERICHTET auf ${HEALTH_HOST_LABEL} (wird nur einmal gemeldet):"$'\n'"${changes_open}"
+fi
+
 notify_failed=0
 if [ -n "$message" ]; then
-  if [ -n "$changes_bad" ]; then
-    message="${message}"$'\n'"Runbook: docs/runbook.md, Abschnitt Störungen."
-  fi
   send_rc=0
   telegram_send "$message" || send_rc=$?
   if [ "$send_rc" -eq 1 ]; then
