@@ -30,6 +30,13 @@
  *   (`data-phase`: laden | bereit | fehler | kein-webgl | unterbrochen); sein
  *   Canvas trägt `role="img"` und „3D-Modell: <Name>“. Messhaken dazu:
  *   `window.__digitaleBaeckereiNahansicht` (nur solange sie offen ist).
+ * - `intro-ueberspringen`: der Knopf „Überspringen“, solange der Flug zum
+ *   Start läuft; das Canvas heißt dann „…, Flug von der Straße zur Theke“.
+ *
+ * **Flug zum Start:** `oeffne()` stellt ihn mit `?intro=0` ab - sonst
+ * dauerte jeder Test die 7,5 s des Flugs länger, und bis zur Ankunft gibt es
+ * weder Leiste noch Antippen. Nur `intro.spec.ts` öffnet mit Flug
+ * (`oeffne(page, { intro: true })`).
  */
 import { expect, type Locator, type Page } from '@playwright/test'
 // Blickpunkte und Fixtures gehören zur App (dort prüft sie jest); die Suite
@@ -39,6 +46,8 @@ import {
   START_RAUM_ID,
   findeRaum,
 } from '../../../bakery-digitale-baeckerei/src/config/raeume'
+// eslint-disable-next-line @nx/enforce-module-boundaries
+import { ansichtFuer } from '../../../bakery-digitale-baeckerei/src/lib/scene/view'
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import {
   MIT_MODELL,
@@ -102,6 +111,14 @@ export interface DebugHaken {
     richtung: number[]
     preisschilder: number
     aussenSichtbar: boolean
+    /** Flug zum Start: läuft er, welcher, wie endete der letzte. */
+    intro: {
+      laeuft: boolean
+      id: string | null
+      ende: 'ende' | 'uebersprungen' | 'langsam' | 'verborgen' | null
+      bilder: number
+      sekunden: number
+    }
   }
   pixelStats: () => {
     samples: number
@@ -202,10 +219,19 @@ export function protokolliere(page: Page): Protokoll {
 /**
  * Öffnet die App mit Messhaken und wartet, bis der Laden steht. Prüft dabei,
  * dass wirklich das synthetische Fixture geladen ist - nie das echte Modell.
+ *
+ * Ohne den Flug zum Start (`?intro=0`): Die App steht gleich an der Theke,
+ * wie vor P3. `{ intro: true }` lässt ihn laufen - dann ist beim Zurückkommen
+ * das Modell da, aber die Kamera fliegt noch.
  */
-export async function oeffne(page: Page): Promise<Protokoll> {
+export async function oeffne(
+  page: Page,
+  optionen: { intro?: boolean } = {}
+): Promise<Protokoll> {
   const protokoll = protokolliere(page)
-  const antwort = await page.goto(`${PFAD}?debug`)
+  const antwort = await page.goto(
+    optionen.intro ? `${PFAD}?debug` : `${PFAD}?debug&intro=0`
+  )
   expect(antwort?.status()).toBe(200)
   await expect(page.locator('main[data-zustand="bereit"]')).toBeVisible({
     timeout: 60_000,
@@ -270,11 +296,43 @@ export function blickpunktKnopf(page: Page, name: string): Locator {
     .or(leiste.getByRole('tab', { name, exact: true }))
 }
 
+/**
+ * Wartet, bis die Kamera am Standort des Blickpunkts `name` steht (für das
+ * aktuelle Bildformat). `ruhe()` allein reicht nach einem Wechsel nicht: Auf
+ * einem ausgelasteten Rechner beginnt die Fahrt manchmal erst nach der ersten
+ * Messung, und „kein neues Bild“ hieße dann fälschlich „angekommen“.
+ */
+export async function angekommen(page: Page, name: string): Promise<void> {
+  const blickpunkt = findeRaum(START_RAUM_ID)?.blickpunkte.find(
+    (b) => b.name === name
+  )
+  if (!blickpunkt) throw new Error(`Blickpunkt ${name} gibt es nicht`)
+  const viewport = page.viewportSize()
+  if (!viewport) throw new Error('kein Viewport')
+  const soll = ansichtFuer(blickpunkt, viewport.width / viewport.height).eye
+  await expect
+    .poll(
+      async () => {
+        const eye = await page.evaluate(
+          () => window.__digitaleBaeckerei?.info().eye ?? []
+        )
+        return Math.hypot(
+          (eye[0] ?? NaN) - soll[0],
+          (eye[1] ?? NaN) - soll[1],
+          (eye[2] ?? NaN) - soll[2]
+        )
+      },
+      { intervals: [100], timeout: 30_000 }
+    )
+    .toBeLessThan(0.001)
+  await ruhe(page)
+}
+
 export async function wechsleZu(page: Page, name: string): Promise<void> {
   await blickpunktKnopf(page, name).click()
   await expect(szene(page, name)).toBeVisible()
   // Die Fahrt dorthin (≈ 0,8 s, auf langsamen Rechnern länger) abwarten.
-  await ruhe(page)
+  await angekommen(page, name)
 }
 
 export const produktSheet = (page: Page): Locator =>

@@ -17,6 +17,7 @@ import {
   ruhe,
   szene,
   tippeAufPlatz,
+  wechsleZu,
   zaehlePreisPrimitive,
 } from './support/app'
 
@@ -146,6 +147,11 @@ test.describe('Umschauen und Zoom', () => {
     const kekse = await position(page, KEKSE)
     expect(kekse).not.toBeNull()
     await doppelt(kekse?.x ?? 0, kekse?.y ?? 0)
+    // Erst auf den Zoom selbst warten: Beginnt er auf einem ausgelasteten
+    // Rechner spät, hielte `ruhe()` die Zeit davor schon für das Ende.
+    await expect
+      .poll(async () => (await info(page)).fov)
+      .toBeLessThan(start.fov * 0.6)
     await ruhe(page)
     const nah = await info(page)
     expect(nah.fov).toBeLessThan(start.fov * 0.6)
@@ -280,12 +286,7 @@ test.describe('Karte bei laufender Szene', () => {
     hasTouch,
   }) => {
     await oeffne(page)
-    await page
-      .getByTestId('blickpunkt-leiste')
-      .getByRole('button', { name: 'Regale', exact: true })
-      .click()
-    await expect(szene(page, 'Regale')).toBeVisible()
-    await ruhe(page)
+    await wechsleZu(page, 'Regale')
 
     await tippeAufPlatz(page, WARE, hasTouch)
     // Das Aufleuchten hängt wirklich am Modell ...

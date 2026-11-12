@@ -583,6 +583,64 @@ describe('createRig: Blickpunkt wechseln', () => {
   })
 })
 
+describe('createRig: sperren (Flug zum Start)', () => {
+  it('gesperrt bewirken Zeiger, Rad und Tasten nichts und zählen nicht als erste Geste', () => {
+    const { rig, kamera, element, taps, wechsel, erste } = aufbau()
+    rig.sperren(true)
+    const yaw = kamera.yaw()
+    const fov = kamera.fov
+
+    zeiger(element, 'pointerdown', 100, 100, { zeit: 0 })
+    zeiger(element, 'pointerup', 100, 100, { zeit: 80 })
+    zeiger(element, 'pointerdown', 100, 100, { zeit: 1000 })
+    zeiger(element, 'pointermove', 220, 100, { zeit: 1050 })
+    zeiger(element, 'pointerup', 220, 100, { zeit: 1100 })
+    const e = rad(element, -400)
+    taste('ArrowRight')
+    taste('+')
+    laufen(500)
+
+    expect(taps).toEqual([])
+    expect(wechsel).toEqual([])
+    expect(erste).not.toHaveBeenCalled()
+    expect(kamera.yaw()).toBeCloseTo(yaw, 9)
+    expect(kamera.fov).toBe(fov)
+    // Die Seite scrollt oder zoomt trotzdem nicht mit.
+    expect(e.defaultPrevented).toBe(true)
+  })
+
+  it('der Tipp, der entsperrt, ist selbst kein Tipp - der nächste schon', () => {
+    const { rig, element, taps, erste } = aufbau()
+    rig.sperren(true)
+    zeiger(element, 'pointerdown', 100, 100, { zeit: 0 })
+    // Der Aufrufer (createViewer) überspringt beim Aufsetzen des Fingers.
+    rig.sperren(false)
+    zeiger(element, 'pointerup', 100, 100, { zeit: 80 })
+    expect(taps).toEqual([])
+    expect(erste).not.toHaveBeenCalled()
+
+    zeiger(element, 'pointerdown', 120, 100, { zeit: 2000 })
+    zeiger(element, 'pointerup', 120, 100, { zeit: 2080 })
+    expect(taps).toEqual(['120,100'])
+    expect(erste).toHaveBeenCalledTimes(1)
+  })
+
+  it('sperren mitten im Ziehen lässt los: kein Tipp, kein Weiterziehen', () => {
+    const { rig, kamera, element, taps } = aufbau()
+    zeiger(element, 'pointerdown', 100, 100, { zeit: 0 })
+    zeiger(element, 'pointermove', 160, 100, { zeit: 50 })
+    zeiger(element, 'pointermove', 200, 100, { zeit: 100 })
+    rig.sperren(true)
+    laufen(500)
+    const yaw = kamera.yaw()
+    zeiger(element, 'pointermove', 300, 100, { zeit: 700 })
+    zeiger(element, 'pointerup', 300, 100, { zeit: 750 })
+    laufen(500)
+    expect(kamera.yaw()).toBeCloseTo(yaw, 9)
+    expect(taps).toEqual([])
+  })
+})
+
 describe('createRig: dispose', () => {
   it('räumt Zuhörer und Takt ab - danach passiert nichts mehr', () => {
     const { rig, element, kamera, taps, wechsel, requestRender } = aufbau()

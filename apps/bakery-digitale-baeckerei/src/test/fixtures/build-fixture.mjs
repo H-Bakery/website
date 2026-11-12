@@ -191,9 +191,17 @@ moebel(
   'verkaufsraum/rasterdecke',
   box([0.22, 246.5, -6.38], [6.84, 246.53, 1.86], 'decke')
 )
-moebel('fassade/wand', box([6.84, 244.1, -6.6], [7.0, 247.5, 2.1], 'fassade'))
-moebel('umgebung/boden', box([-8, 244.0, -16], [20, 244.1, 12], 'gelaende'))
-moebel('umgebung/nachbarhaus', box([10, 244.1, -5], [15, 250, 2], 'nachbar'))
+// Die Wand zur Straße hat eine offene Tür (z −4,5…−3,2, bis 246,4 hoch): Der
+// Flug zum Start (`intros` in raeume.ts) führt dort hindurch. Das Nachbarhaus
+// steht jenseits seines Wegs (der schwenkt bei x ≈ 13 vor dem Laden ein).
+moebel(
+  'fassade/wand',
+  box([6.84, 244.1, -6.6], [7.0, 247.5, -4.5], 'fassade'),
+  box([6.84, 246.4, -4.5], [7.0, 247.5, -3.2], 'fassade'),
+  box([6.84, 244.1, -3.2], [7.0, 247.5, 2.1], 'fassade')
+)
+moebel('umgebung/boden', box([-8, 244.0, -16], [24, 244.1, 12], 'gelaende'))
+moebel('umgebung/nachbarhaus', box([16, 244.1, -5], [21, 250, 2], 'nachbar'))
 
 // --- Theke mit Vitrine (Kundenseite +q) -------------------------------------
 moebel('theke/korpus', theke(1.55, 0, 244.25, [0.8, 0.62, 4.2], 'thekenfront'))
