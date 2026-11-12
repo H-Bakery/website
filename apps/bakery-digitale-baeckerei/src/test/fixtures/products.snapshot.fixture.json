@@ -1,0 +1,160 @@
+{
+  "version": 1,
+  "erstellt": "2026-01-01T00:00:00.000Z",
+  "produkte": {
+    "testbrot-500g": {
+      "id": "testbrot-500g",
+      "name": "Testbrot",
+      "kategorie": "brot",
+      "einheit": "500 g",
+      "kurztext": "Ein erfundenes Mischbrot, das es nur in den Tests gibt.",
+      "text": ""
+    },
+    "testbrot-1000g": {
+      "id": "testbrot-1000g",
+      "name": "Testbrot groß",
+      "kategorie": "brot",
+      "einheit": "1000 g",
+      "kurztext": "Das Testbrot als ganzer Laib.",
+      "text": "Gleicher Teig wie beim kleinen Testbrot, nur doppelt so viel davon."
+    },
+    "musterkruste-750g": {
+      "id": "musterkruste-750g",
+      "name": "Musterkruste",
+      "kategorie": "brot",
+      "einheit": "750 g",
+      "kurztext": "Kräftig gebacken, mit dicker Kruste.",
+      "text": "Die Musterkruste ist ein erfundenes Brot mit langer Teigruhe. Dieser Absatz ist absichtlich lang, damit die Tests das Aufklappen des langen Textes prüfen können: Der Teig ruht über Nacht, wird am Morgen von Hand geformt und im Steinofen kräftig ausgebacken. So bekommt der Laib seine dicke, dunkle Kruste und bleibt innen saftig. Passt zu Suppe, Käse und allem, was auf den Tisch kommt. Nichts davon ist echt - es ist nur ein Mustertext für die Digitale Bäckerei."
+    },
+    "probierlaib-dinkel": {
+      "id": "probierlaib-dinkel",
+      "name": "Probierlaib Dinkel",
+      "kategorie": "brot",
+      "einheit": "750 g",
+      "kurztext": "Mild und locker, aus erfundenem Dinkel.",
+      "text": ""
+    },
+    "testkasten-koerner": {
+      "id": "testkasten-koerner",
+      "name": "Testkasten Körner",
+      "kategorie": "brot",
+      "einheit": "750 g",
+      "kurztext": "Im Kasten gebacken, mit vielen Körnern.",
+      "text": "Sonnenblumenkerne, Leinsamen und Sesam - alles nur ausgedacht."
+    },
+    "probierstange": {
+      "id": "probierstange",
+      "name": "Probierstange",
+      "kategorie": "baguette",
+      "einheit": "250 g",
+      "kurztext": "Eine helle Stange zum Abbrechen.",
+      "text": ""
+    },
+    "musterweck": {
+      "id": "musterweck",
+      "name": "Musterweck",
+      "kategorie": "broetchen",
+      "kurztext": "Das einfache Brötchen für jeden Tag.",
+      "text": ""
+    },
+    "testweck-mohn": {
+      "id": "testweck-mohn",
+      "name": "Testweck Mohn",
+      "kategorie": "broetchen",
+      "kurztext": "Wie der Musterweck, mit Mohn bestreut.",
+      "text": ""
+    },
+    "musterbrezel": {
+      "id": "musterbrezel",
+      "name": "Musterbrezel",
+      "kategorie": "broetchen",
+      "kurztext": "Laugenbrezel mit grobem Salz.",
+      "text": "Außen dunkel und knusprig, innen weich. Am besten frisch."
+    },
+    "probierschnecke": {
+      "id": "probierschnecke",
+      "name": "Probierschnecke",
+      "kategorie": "teilchen",
+      "kurztext": "Gerollt, gefüllt und mit Zuckerguss.",
+      "text": "Die Probierschnecke ist ein ausgedachtes Hefeteilchen mit einer Füllung aus Nüssen und Zimt."
+    },
+    "testhoernchen": {
+      "id": "testhoernchen",
+      "name": "Testhörnchen",
+      "kategorie": "teilchen",
+      "kurztext": "Blättrig und buttrig.",
+      "text": ""
+    },
+    "musterplunder-apfel": {
+      "id": "musterplunder-apfel",
+      "name": "Musterplunder Apfel",
+      "kategorie": "teilchen",
+      "kurztext": "Plunderteig mit Apfelstücken.",
+      "text": ""
+    },
+    "probierstange-kaese": {
+      "id": "probierstange-kaese",
+      "name": "Probierstange Käse",
+      "kategorie": "snacks",
+      "kurztext": "Herzhaft, mit Käse überbacken.",
+      "text": ""
+    },
+    "testkuchen-streusel": {
+      "id": "testkuchen-streusel",
+      "name": "Testkuchen Streusel",
+      "kategorie": "kuchen",
+      "einheit": "1 Stück",
+      "kurztext": "Blechkuchen mit dicken Streuseln.",
+      "text": ""
+    },
+    "mustertorte-nuss": {
+      "id": "mustertorte-nuss",
+      "name": "Mustertorte Nuss",
+      "kategorie": "torten",
+      "einheit": "1 Stück",
+      "kurztext": "Nussboden, Sahne und ein Hauch Kakao.",
+      "text": ""
+    },
+    "testkekse": {
+      "id": "testkekse",
+      "name": "Testkekse",
+      "kategorie": "snacks",
+      "einheit": "200 g",
+      "kurztext": "Mürbe Kekse im Glas, stehen auf der Vitrine.",
+      "text": "Zum Mitnehmen oder gleich zum Kaffee.",
+      "seite": "https://www.example.org/products/testkekse"
+    },
+    "probiergebaeck-dose": {
+      "id": "probiergebaeck-dose",
+      "name": "Probiergebäck in der Dose",
+      "kategorie": "snacks",
+      "einheit": "250 g",
+      "kurztext": "Gemischtes Gebäck in der Dose.",
+      "text": ""
+    },
+    "testlimo-zitrone": {
+      "id": "testlimo-zitrone",
+      "name": "Testlimo Zitrone",
+      "kategorie": "snacks",
+      "einheit": "0,33 l",
+      "kurztext": "Kalt aus dem Kühlschrank.",
+      "text": ""
+    },
+    "testknusperstangen": {
+      "id": "testknusperstangen",
+      "name": "Testknusperstangen",
+      "kategorie": "snacks",
+      "einheit": "150 g",
+      "kurztext": "Knusprige Stangen in der Tüte.",
+      "text": ""
+    },
+    "musterzwieback": {
+      "id": "musterzwieback",
+      "name": "Musterzwieback",
+      "kategorie": "snacks",
+      "einheit": "225 g",
+      "kurztext": "Zweimal gebacken, lange haltbar.",
+      "text": ""
+    }
+  }
+}

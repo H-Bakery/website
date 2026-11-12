@@ -41,6 +41,14 @@ The Digitale Bäckerei needs its 3D model, which is **not** in this repo: `dev:`
 build: `DIGITALE_BAECKEREI_BASE_PATH=/digitale-baeckerei`. See
 [apps/digitale-baeckerei.md](./apps/digitale-baeckerei.md) and the app's `CLAUDE.md`.
 
+`npm run test:e2e:digitale-baeckerei` runs its Playwright suite (`apps/bakery-digitale-baeckerei-e2e`,
+Chromium with SwiftShader, projects `phone` 390×844 and `desktop` 1440×900) against the static export
+under `/digitale-baeckerei` on port 4236. It never uses the real model: the suite's server
+(`serve-fixture.js`) builds with `DIGITALE_BAECKEREI_FIXTURE=1` - the synthetic mini model and product
+snapshot from `apps/bakery-digitale-baeckerei/src/test/fixtures/` (see the README there) - and refuses
+to start on any other export. With `E2E_BUILT=1` (or in CI) it serves the export that is already built;
+`BASE_URL=http://localhost:<port>` moves the port.
+
 Ports come from each app's `project.json`. There is one API: since B12 the mock server
 (`serve:api:simple`) is deleted, and management, shop and Fahrer-App all talk to the TypeScript
 API. The shop needs `PUBLIC_CATALOGUE=1` on the API (anonymous `GET /api/products`); shop and
@@ -102,7 +110,7 @@ npx nx test <project> -- -t "name"    # one test case
 npm run test:unit                     # all projects
 NX_DAEMON=false npx nx run-many --target=test --all   # what the known-issues numbers come from
 npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/<file>.test.js   # API core
-npm run test:e2e:management           # Playwright (…:shop, …:landing, …:delivery)
+npm run test:e2e:management           # Playwright (…:shop, …:landing, …:delivery, …:digitale-baeckerei)
 npm run lint:all  |  npm run format:check  |  npm run type-check
 ```
 
