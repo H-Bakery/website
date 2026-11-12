@@ -273,8 +273,12 @@ Die Actions dieses Jobs sind auf Commit-SHAs festgelegt (`actions/checkout`, `ac
 - **Statischer Host:** Die App hat nur die eine Seite `/digitale-baeckerei/`; neu laden geht.
   `/digitale-baeckerei` ohne Schrägstrich leitet GitHub Pages um. Ein unbekannter Pfad darunter
   zeigt die 404-Seite der Landingpage.
-- **`noindex, nofollow` bleibt**, kein Link von der Landingpage, kein Eintrag in der Sitemap - bis
-  zur Abnahme durch den Inhaber am Handy.
+- **Verlinkt und im Index** (nach der Abnahme durch den Inhaber am Handy): Die Startseite der
+  Landingpage hat nach „Frisch aus der Backstube“ einen Einstieg „Ein Blick in unsere Bäckerei“
+  (`apps/bakery-landing/src/components/home/DigitaleBaeckereiTeaser.tsx`) - ein normaler Link auf
+  `/digitale-baeckerei/`, kein `next/link`, denn das Ziel ist keine Route der Landingpage. Die App
+  hat kein `noindex` mehr und nennt als `canonical` ihre Adresse unter der Landingpage; die Sitemap
+  der Landingpage führt sie (`scripts/generate-sitemap.js`).
 - **Service Worker der Landingpage:** `apps/bakery-landing/public/service-worker.js` wird heute
   nirgends registriert. Wer ihn je einschaltet, muss `/digitale-baeckerei/` ausnehmen - sonst legt er
   Modell und Produktdaten auf dem Gerät ab und zeigt alte Texte.
@@ -302,7 +306,7 @@ Gut zu wissen:
 - **Warum nur lesend?** Das Secret liegt beim öffentlichen Repo `website`. Ein Deploy-Key ohne Schreibrecht kann in hq nichts ändern und gilt nur für hq, für kein anderes Repo. Der private Schlüssel der vorhandenen GitHub App gehört deshalb **nicht** hierher: Mit ihm ließe sich alles tun, was die App darf.
 - **Warum nur `products/`?** Der Deploy holt nur diesen Ordner. Finanzen, Kassenberichte, Rezepte und HACCP kommen nie auf die Build-Maschine. Der Schlüssel selbst könnte ganz hq lesen - darum gilt das Environment nur für `main`.
 - **Was ist danach öffentlich?** Aus hq nur Name, Kategorie, Kurztext und Text der 48 Produkte, die im Modell liegen - ohne Preise, ohne Allergene. Dazu das 3D-Modell ohne Preisschilder. Sonst nichts aus hq. Die Landingpage bleibt, wie sie ist.
-- **Noch nicht verlinkt:** Die Seite steht auf `noindex` und ist von der Landingpage aus nicht verlinkt. Wer die Adresse kennt, kann sie aber öffnen.
+- **Verlinkt:** Die Startseite der Landingpage führt zur Digitalen Bäckerei, und Suchmaschinen dürfen sie aufnehmen.
 - **Schlüssel tauschen** (bei Verdacht, sonst etwa einmal im Jahr): Schritte 1, 2, 4 und 5 mit einem neuen Paar, dann den alten Deploy-Key in hq löschen und Schritt 6.
 - **Wenn das Secret fehlt** (oder der Deploy-Key in hq gelöscht ist): Der Deploy bricht mit einer deutschen Meldung ab und veröffentlicht nichts. Die Seite bleibt auf dem letzten Stand - auch Änderungen an der Landingpage gehen dann erst wieder live, wenn der Schlüssel da ist.
 

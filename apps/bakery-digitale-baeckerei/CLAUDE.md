@@ -67,7 +67,8 @@ Regeln, die am meisten beißen:
 - **Leistung:** Pixeldichte ≤ 2, gerendert wird nur bei Bedarf (kein Dauer-Loop; in Ruhe 0 Bilder),
   eigenes Canvas je Mounten (StrictMode), beim Abbauen alles freigeben (Rig und Picker vor dem
   Modell). Messhaken `window.__digitaleBaeckerei` gibt es nur mit `?debug`.
-- **Deutsch, Du-Form.** `noindex, nofollow`, kein Tracking, keine Cookies, keine Fremd-Fonts.
+- **Deutsch, Du-Form.** Im Suchindex (kein `noindex` mehr seit der Abnahme, `canonical` auf die
+  Adresse unter der Landingpage), kein Tracking, keine Cookies, keine Fremd-Fonts.
   **Nichts auf dem Gerät speichern** (kein `localStorage`): Hell/dunkel folgt allein per CSS
   `prefers-color-scheme` (`theme.ts`) - kein `CssVarsProvider`, der schreibt `mui-mode`.
   Dark Mode nur für die Bedienelemente, Touch-Ziele ≥ 44 px.
@@ -77,7 +78,8 @@ Regeln, die am meisten beißen:
   `scripts/pruefe-export.mjs` (`export-pruefung.js`): nur das bereinigte Modell aus dem Lock, Snapshot
   im Vertrag, kein „€“, kein Fixture - sonst kein Deploy. Wer etwas Neues nach `public/` oder in den
   Snapshot legt, muss es dort erlauben. Logs sind öffentlich: nie Inhalte aus hq ausgeben.
-  Der Link von der Landingpage kommt erst nach der Abnahme durch den Inhaber.
+  Die Landingpage verlinkt die App auf der Startseite (`DigitaleBaeckereiTeaser.tsx`, ein normaler
+  Link auf `/digitale-baeckerei/`) und führt sie in der Sitemap.
 
 Tests: `npx nx test bakery-digitale-baeckerei`, `npx nx lint bakery-digitale-baeckerei`,
 `npx nx e2e bakery-digitale-baeckerei-e2e`. Plan, Entscheidungen DB1-DB9 und Phasen:

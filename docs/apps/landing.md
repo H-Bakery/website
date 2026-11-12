@@ -4,7 +4,8 @@ Public website, static export to GitHub Pages (xn--bckerei-heusser-0kb.de) on ev
 `main` (`deploy-to-github-pages.yml`). Not part of the pilot box. The same workflow builds the
 Digitale Bäckerei and copies it into this export as `out/digitale-baeckerei/`
 ([digitale-baeckerei.md](./digitale-baeckerei.md#deploy)); the landing app itself must not get a
-route of that name.
+route of that name. The home page links to it (`components/home/DigitaleBaeckereiTeaser.tsx`, a
+plain `<a href="/digitale-baeckerei/">`, not `next/link`) and the sitemap lists it.
 
 - **Build:** `build-static-standalone` → `apps/bakery-landing/out/` (not `dist/`); delete
   `apps/bakery-landing/.next` first - a stale dev cache breaks the export. Details in

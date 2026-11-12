@@ -31,6 +31,9 @@ const STATIC_ROUTES = [
   { path: '/', changefreq: 'weekly', priority: 1.0 },
   { path: '/products', changefreq: 'weekly', priority: 0.9 },
   { path: '/bestellen', changefreq: 'weekly', priority: 0.9 },
+  // Not a route of this app: the Digitale Bäckerei, which the deploy workflow
+  // copies into the export under this path (docs/apps/digitale-baeckerei.md).
+  { path: '/digitale-baeckerei/', changefreq: 'monthly', priority: 0.7 },
   { path: '/about', changefreq: 'monthly', priority: 0.8 },
   { path: '/news', changefreq: 'weekly', priority: 0.7 },
   { path: '/contact', changefreq: 'monthly', priority: 0.6 },

@@ -86,16 +86,16 @@ test.describe('Laden unter dem Unterpfad', () => {
     expect(fill?.doubled).toEqual([])
   })
 
-  test('bleibt vorerst aus dem Suchindex', async ({ page }) => {
+  test('darf in den Suchindex und nennt ihre Adresse auf der Landingpage', async ({
+    page,
+  }) => {
     await oeffne(page)
 
-    await expect(page.locator('meta[name="robots"]')).toHaveAttribute(
-      'content',
-      /noindex/
-    )
-    await expect(page.locator('meta[name="robots"]')).toHaveAttribute(
-      'content',
-      /nofollow/
+    // Seit der Abnahme (P2) gibt es kein noindex mehr.
+    await expect(page.locator('meta[name="robots"]')).toHaveCount(0)
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+      'href',
+      'https://xn--bckerei-heusser-0kb.de/digitale-baeckerei/'
     )
   })
 
