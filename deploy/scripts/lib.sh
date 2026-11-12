@@ -14,6 +14,24 @@ BAKERY_ETC="${BAKERY_ETC:-/etc/bakery}"
 BAKERY_VAR="${BAKERY_VAR:-/var/lib/bakery}"
 STATE_DIR="${STATE_DIR:-$BAKERY_VAR/state}"
 
+# Arbeitsverzeichnis: nie das des Aufrufers. Wer `sudo /opt/bakery/bin/deploy.sh`
+# aus seinem Home startet, steht in einem Verzeichnis, das der Benutzer bakery
+# nicht betreten darf; Befehle, die als bakery weiterlaufen (GNU find, git, npm),
+# brechen dort ab ("Failed to restore initial working directory") - so galt die
+# DB-Kopie vor dem Deploy als fehlgeschlagen, obwohl sie geschrieben war.
+# Jedes Skript wechselt deshalb beim Laden nach /; Pfade in den Skripten sind
+# absolut, relative Pfad-Argumente löst caller_path gegen BAKERY_CALLER_PWD auf.
+BAKERY_CALLER_PWD="${PWD:-/}"
+cd /
+
+# Pfad-Argument des Aufrufers absolut machen (relativ zu seinem Verzeichnis).
+caller_path() {
+  case "$1" in
+  /*) printf '%s\n' "$1" ;;
+  *) printf '%s/%s\n' "${BAKERY_CALLER_PWD%/}" "$1" ;;
+  esac
+}
+
 log() {
   printf '%s [%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$SCRIPT_NAME" "$*" >&2
 }

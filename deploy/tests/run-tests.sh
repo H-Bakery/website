@@ -467,12 +467,39 @@ rm -f "$STATE_DIR/maintenance"
 
 expect 1 "ohne Telegram: Störung nur im Log" env HEALTH_API_URL="http://127.0.0.1:$P_CLOSED/health" "$SCRIPTS/health.sh"
 check "Log sagt, dass Telegram fehlt" log_has "Telegram nicht konfiguriert"
+# Fehlender Alarmkanal: eigener Zustand OFFEN, einmal gemeldet, macht keinen Lauf rot
+check "Log: Alarmkanal OFFEN" log_has "Alarmkanal: OFFEN - Telegram nicht eingerichtet"
+check "einmal als NICHT EINGERICHTET im Log" log_has "NICHT EINGERICHTET auf testbox"
 expect 0 "ohne Telegram: wieder gesund" "$SCRIPTS/health.sh"
+check "fehlender Alarmkanal wird nicht erneut gemeldet" sh -c "! grep -q 'NICHT EINGERICHTET' '$TEST_TMP/last.log' && grep -q 'Alarmkanal: OFFEN' '$TEST_TMP/last.log'"
+check "Zustand alarm=open" grep -q "^alarm=open" "$STATE_DIR/health.state"
+before="$(tg_count)"
+expect 0 "Telegram eingerichtet -> Bestätigung über den neuen Kanal" env "${TG_ENV[@]}" "$SCRIPTS/health.sh"
+check "eine Nachricht: Alarmkanal jetzt eingerichtet" sh -c "test \"\$(grep -c '^POST' '$TG_LOG')\" = $((before + 1)) && grep -q 'Alarmkanal (jetzt eingerichtet)' '$TG_LOG'"
 
 mkdir -p "$BAKERY_VAR/backup"
 expect 1 "Backup-Prüfung: noch nie gesichert" env HEALTH_CHECKS="backup" "$SCRIPTS/health.sh"
 touch -t 202001010000 "$BAKERY_VAR/backup/last-success"
 expect 1 "Backup-Prüfung: zu alt" env HEALTH_CHECKS="backup" "$SCRIPTS/health.sh"
+# Off-site-Ziel nicht eingerichtet (Q4): entsteht die lokale Kopie der Nacht,
+# ist das OFFEN - einmal gemeldet, der Lauf bleibt grün (sonst wäre die Unit
+# bis zur Antwort des Inhabers alle 5 Minuten rot und ein echter Ausfall unsichtbar).
+mkdir -p "$BAKERY_VAR/backup/current"
+touch "$BAKERY_VAR/backup/current/bakery.db"
+rm -f "$STATE_DIR/health.state"
+before="$(tg_count)"
+expect 0 "Backup ohne Off-site-Ziel, lokale Kopie frisch -> offen, nicht rot" env "${TG_ENV[@]}" HEALTH_CHECKS="backup" "$SCRIPTS/health.sh"
+check "Log: Backup OFFEN, nennt Q4" log_has "Backup: OFFEN - Off-site-Backup nicht eingerichtet .*Q4"
+check "Zustand backup=open" grep -q "^backup=open" "$STATE_DIR/health.state"
+check "einmal gemeldet: NICHT EINGERICHTET" sh -c "test \"\$(grep -c '^POST' '$TG_LOG')\" = $((before + 1)) && grep -q 'NICHT EINGERICHTET auf testbox' '$TG_LOG'"
+expect 0 "nächster Lauf: weiter offen" env "${TG_ENV[@]}" HEALTH_CHECKS="backup" "$SCRIPTS/health.sh"
+check "keine zweite Nachricht" test "$(tg_count)" = "$((before + 1))"
+expect 1 "mit Off-site-Ziel zählt nur last-success -> gestört" env "${TG_ENV[@]}" HEALTH_CHECKS="backup" RESTIC_REPOSITORY="$TEST_TMP/repo" "$SCRIPTS/health.sh"
+check "Meldung: STÖRUNG Backup" grep -q "Backup: Backup: letzter Erfolg vor" "$TG_LOG"
+touch -t 202001010000 "$BAKERY_VAR/backup/current/bakery.db"
+expect 1 "ohne Off-site-Ziel, lokale Kopie zu alt -> gestört" env "${TG_ENV[@]}" HEALTH_CHECKS="backup" "$SCRIPTS/health.sh"
+check "Log nennt die lokale Kopie und journalctl" log_has "lokale DB-Kopie: letzter Erfolg vor .*journalctl -u bakery-backup"
+rm -rf "$BAKERY_VAR/backup/current"
 touch "$BAKERY_VAR/backup/last-success"
 expect 0 "Backup-Prüfung: frisch" env HEALTH_CHECKS="backup" "$SCRIPTS/health.sh"
 expect 0 "hq-Sync-Prüfung: frisch" env HEALTH_CHECKS="hq-sync" "$SCRIPTS/health.sh"
@@ -531,6 +558,35 @@ done
 check "lokale Aufbewahrung: 2 von 3 behalten" test "$(find "$BACKUP_DIR/snapshots" -name 'bakery-probe-*.db' | wc -l | tr -d ' ')" = "2"
 expect 2 "ungültiges Label" "$SCRIPTS/backup.sh" --local-only --label 'a b'
 
+# Aufruf aus einem Verzeichnis, das der ausführende Benutzer nicht betreten darf
+# (auf der Box: `sudo deploy.sh` aus /home/<admin>, backup.sh läuft als bakery).
+# GNU find bricht dort ab ("Failed to restore initial working directory"); die
+# Attrappe verhält sich auf macOS genauso. Die Skripte wechseln deshalb nach /.
+NOCWD="$TEST_TMP/nocwd"
+CWDBIN="$TEST_TMP/cwdbin"
+REAL_FIND="$(command -v find)"
+mkdir -p "$NOCWD" "$CWDBIN"
+cat >"$CWDBIN/find" <<EOF
+#!/bin/sh
+if ! ls . >/dev/null 2>&1; then
+  echo "find: Failed to restore initial working directory: Permission denied" >&2
+  exit 1
+fi
+exec "$REAL_FIND" "\$@"
+EOF
+chmod +x "$CWDBIN/find"
+from_nocwd() {
+  local rc=0
+  (cd "$NOCWD" && chmod 000 "$NOCWD" && PATH="$CWDBIN:$PATH" "$@") || rc=$?
+  chmod 755 "$NOCWD"
+  return "$rc"
+}
+if [ "$(id -u)" -ne 0 ]; then
+  expect 1 "Attrappe: find scheitert im unlesbaren Verzeichnis" from_nocwd find "$BACKUP_DIR/snapshots" -maxdepth 1 -name 'bakery-probe-*.db'
+fi
+expect 0 "backup.sh --local-only aus unlesbarem Verzeichnis" from_nocwd "$SCRIPTS/backup.sh" --local-only --label cwd
+check "Kopie angelegt und als ok gemeldet" sh -c "grep -q 'lokale Kopie ok' '$TEST_TMP/last.log' && ! grep -q 'Failed to restore' '$TEST_TMP/last.log' && ls '$BACKUP_DIR'/snapshots/bakery-cwd-*.db >/dev/null"
+
 # restic-Attrappe: protokolliert die Aufrufe
 FAKEBIN="$TEST_TMP/fakebin"
 mkdir -p "$FAKEBIN"
@@ -573,6 +629,10 @@ SNAP="$(find "$BACKUP_DIR/snapshots" -name 'bakery-nightly-*.db' | sort | tail -
 expect 0 "restore --from-file prüft die Kopie" "$SCRIPTS/restore.sh" --from-file "$SNAP" --target "$TEST_TMP/restore1"
 check "restore zeigt Tabellen" log_has "users"
 expect 6 "restore einer kaputten Datei" "$SCRIPTS/restore.sh" --from-file "$TEST_TMP/broken.db" --target "$TEST_TMP/restore2"
+# relative Pfade gelten ab dem Verzeichnis des Aufrufers, obwohl das Skript nach / wechselt
+restore_relative() { (cd "$TEST_TMP" && "$SCRIPTS/restore.sh" --from-file "${SNAP#"$TEST_TMP"/}" --target restore-relativ); }
+expect 0 "restore mit relativen Pfaden" restore_relative
+check "Kopie liegt im Verzeichnis des Aufrufers" test -f "$TEST_TMP/restore-relativ/bakery.db"
 
 STUB_SYSTEMCTL="$FAKEBIN/systemctl"
 cat >"$STUB_SYSTEMCTL" <<EOF
@@ -732,6 +792,14 @@ cp "$DB" "$TEST_TMP/live.db"
 expect 0 "Deploy mit DB legt pre-deploy-Kopie an" env "${DEPLOY_ENV[@]}" DB_PATH="$TEST_TMP/live.db" APP_DIR="$REPO_ROOT" BACKUP_SQLITE_METHOD=cli "$SCRIPTS/deploy.sh" main
 check "pre-deploy-Kopie vorhanden" sh -c "ls '$BACKUP_DIR'/snapshots/bakery-pre-deploy-*.db >/dev/null"
 check "Pfad der Kopie vermerkt" sh -c "test -f \"\$(cat '$STATE_DIR/deploy-pre-db')\""
+# ... auch wenn deploy.sh aus einem Verzeichnis gestartet wird, das der
+# App-Benutzer nicht betreten darf (Deploy vom 12.11.: "DB-Kopie fehlgeschlagen",
+# obwohl sie geschrieben war)
+PRE_BEFORE="$(cat "$STATE_DIR/deploy-pre-db")"
+sleep 1
+expect 0 "Deploy aus unlesbarem Verzeichnis" from_nocwd env "${DEPLOY_ENV[@]}" DB_PATH="$TEST_TMP/live.db" APP_DIR="$REPO_ROOT" BACKUP_SQLITE_METHOD=cli "$SCRIPTS/deploy.sh" main
+check "DB-Kopie zählt als gelungen" sh -c "! grep -q 'DB-Kopie vor dem Deploy fehlgeschlagen' '$TEST_TMP/last.log' && grep -q 'DB-Kopie vor dem Umschalten' '$TEST_TMP/last.log'"
+check "neue Kopie vermerkt" sh -c "test -f \"\$(cat '$STATE_DIR/deploy-pre-db')\" && test \"\$(cat '$STATE_DIR/deploy-pre-db')\" != '$PRE_BEFORE'"
 
 # Ein Commit, den es nur im Code-Repository der Box gibt (nicht auf origin),
 # wird gebaut, aber nie aktiviert: der root-eigene Klon kennt ihn nicht.

@@ -73,7 +73,7 @@ while [ $# -gt 0 ]; do
     shift
     ;;
   -h | --help)
-    sed -n '2,42p' "$0"
+    sed -n '2,42p' "$SCRIPT_DIR/backup.sh"
     exit 0
     ;;
   *) die 2 "unbekanntes Argument: $1" ;;
