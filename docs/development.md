@@ -199,6 +199,11 @@ same check as the e2e server; the model is compared with the stripped fixture).
   `pages-deploy`, secret `HQ_DEPLOY_KEY`) and fails early without it; steps, guards and the owner
   instructions are in [apps/digitale-baeckerei.md](./apps/digitale-baeckerei.md#deploy).
   `deploy-old.yml` (Vercel + Cloud Run) is manual-only and has no configured secrets - unused.
+- `invoice-conformance.yml` („Rechnungen (ZUGFeRD-Konformität)“) runs when the invoice code, its
+  fonts, fixtures or the lockfile change (and on demand): the invoice unit tests with the XSD check
+  mandatory (`REQUIRE_XMLLINT=1`), then the Mustang validator (veraPDF for PDF/A-3b + the EN 16931
+  Schematron) on the synthetic sample invoices. That is the only place where PDF/A and Schematron
+  are verified - neither the Mac nor the box has Java. See [api/invoices.md](./api/invoices.md#verification).
 
 ## Task tracking
 
