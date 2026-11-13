@@ -65,6 +65,23 @@ API-Details (Endpunkte, Fehlercodes): [`docs/api/partners.md`](../api/partners.m
   `apiClient.getBlob()` (Bearer, 401 → Refresh) und speichert ihn als Blob. Kein schlichter Link -
   ohne Token antwortet die API 401.
 
+## Preisliste für Partner
+
+Der Preislisten-Export der Produktseite ([`produkte.md`](produkte.md#preisliste-export)) hat eine
+Partner-Fassung (`GET /api/price-list?audience=partner&partnerId=…`, nur `inhaber`):
+
+- **Dieselben Preise wie im Laden.** In den Daten gibt es weder Partnerpreis noch Rabatt noch
+  Provisionssatz - `Partner` kennt nur `settlementModel` (Kommission/Festkauf), und der Backschrank
+  wird zu den hq-Preisen abgerechnet (Preis-Snapshot je Besuch). Die Liste erfindet keinen Nachlass;
+  im Kopf steht der Partner und „Abrechnung: Kommission“.
+- **Nur das Sortiment des Partners:** die Produkte seiner aktiven Standard-Bestückung (alle
+  Wochentage), ersatzweise was in den letzten 56 Tagen geliefert wurde (`VISIT_LOOKBACK_DAYS`).
+  Ohne beides antwortet die API 409 `no_assortment` - nie das ganze Sortiment.
+- **Sobald Partnerkonditionen vereinbart sind** (Rabatt je Partner, Preis je Produkt oder
+  Provisionssatz), gehören sie als Daten an den Partner und in `price-list.core.js`; die
+  Partnerliste zeigt dann diese Preise und darf sich nicht mehr aus der Ladenliste ableiten lassen.
+  Bis dahin offen (roadmap §7).
+
 ## Echte API (B6)
 
 14 Routen unter `/api/partners`. Von außen wichtig:

@@ -157,4 +157,59 @@ describe('ProductListClient (admin/products)', () => {
     expect(screen.getByText('Produktliste (1 von 3)')).toBeInTheDocument()
     expect(screen.getByTestId('product-row-stollen')).toBeInTheDocument()
   })
+  describe('Preisliste', () => {
+    const open = () =>
+      fireEvent.click(screen.getByRole('button', { name: 'Preisliste' }))
+
+    it('Inhaber: Dialog mit Kategorien der Liste und Partner-Auswahl', () => {
+      renderWithTheme(
+        <WithSession value={fakeSession({ role: 'inhaber' })}>
+          <ProductListClient products={products} />
+        </WithSession>
+      )
+      open()
+      const dialog = screen.getByRole('dialog', {
+        name: 'Preisliste erstellen',
+      })
+      expect(
+        within(dialog).getByRole('button', { name: 'Brot 2' })
+      ).toBeInTheDocument()
+      expect(
+        within(dialog).getByRole('button', { name: 'Kuchen 1' })
+      ).toBeInTheDocument()
+      expect(
+        within(dialog).getByLabelText('Verkaufspartner')
+      ).toBeInTheDocument()
+      // eine Änderung wartet auf Freigabe - die Liste zeigt sie noch nicht
+      expect(
+        within(dialog).getByText(/1 Änderung wartet auf Freigabe/)
+      ).toBeInTheDocument()
+    })
+
+    it('Verkauf: Ladenliste ja, Partnerliste nein', () => {
+      renderWithTheme(
+        <WithSession value={fakeSession({ role: 'verkauf' })}>
+          <ProductListClient products={products} />
+        </WithSession>
+      )
+      open()
+      const dialog = screen.getByRole('dialog', {
+        name: 'Preisliste erstellen',
+      })
+      expect(
+        within(dialog).queryByLabelText('Verkaufspartner')
+      ).not.toBeInTheDocument()
+    })
+
+    it('Backstube: kein Knopf (die API antwortet 403)', () => {
+      renderWithTheme(
+        <WithSession value={fakeSession({ role: 'backstube' })}>
+          <ProductListClient products={products} />
+        </WithSession>
+      )
+      expect(
+        screen.queryByRole('button', { name: 'Preisliste' })
+      ).not.toBeInTheDocument()
+    })
+  })
 })

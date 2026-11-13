@@ -14,11 +14,18 @@ import { useTheme } from '@mui/material/styles'
 import {
   Add as AddIcon,
   Edit as EditIcon,
+  ReceiptLong as PriceListIcon,
   Search as SearchIcon,
 } from '@mui/icons-material'
 import { useRouter } from 'next/navigation'
 import type { ManagementProduct } from '../../../lib/products'
-import { PENDING_APPROVAL_LABEL } from '../../../lib/products'
+import { CATEGORY_LABELS, PENDING_APPROVAL_LABEL } from '../../../lib/products'
+import {
+  canExportPartnerPriceList,
+  canExportPriceList,
+  type PriceListCategoryOption,
+} from '../../../lib/priceListApi'
+import PriceListDialog from './preisliste/PriceListDialog'
 import { useOptionalSession } from '../../../lib/session'
 import { formatCurrency } from '../../../lib/partnerTypes'
 import { TOUCH_MEDIA } from '../../../lib/muiTheme'
@@ -110,6 +117,10 @@ export default function ProductListClient({
   // Ohne Sitzung (Specs) bleibt alles sichtbar; durchgesetzt wird in der API.
   const role = useOptionalSession()?.user?.role
   const canEdit = !role || role === 'inhaber'
+  // Preisliste: Laden-Liste Inhaber und Verkauf, Partnerliste nur Inhaber
+  // (durchgesetzt in der API, `/api/price-list`).
+  const canExport = !role || canExportPriceList(role)
+  const [priceListOpen, setPriceListOpen] = useState(false)
   const [filter, setFilter] = useState<StatusFilter>('all')
   const [search, setSearch] = useState('')
 
@@ -122,6 +133,24 @@ export default function ProductListClient({
   }, [products])
 
   const pendingProducts = products.filter((p) => p.pendingApproval).length
+  // Kategorien für den Preislisten-Dialog, in der Reihenfolge der Liste.
+  const priceListCategories = useMemo(() => {
+    const byKey = new Map<string, PriceListCategoryOption>()
+    for (const product of products) {
+      const entry = byKey.get(product.categoryKey)
+      if (entry) entry.count += 1
+      else
+        byKey.set(product.categoryKey, {
+          key: product.categoryKey,
+          label: product.category,
+          count: 1,
+        })
+    }
+    const order = Object.keys(CATEGORY_LABELS)
+    const rank = (key: string) =>
+      order.includes(key) ? order.indexOf(key) : order.length
+    return Array.from(byKey.values()).sort((a, b) => rank(a.key) - rank(b.key))
+  }, [products])
   const needle = search.trim().toLocaleLowerCase('de')
   const visible = products.filter(
     (p) =>
@@ -242,17 +271,39 @@ export default function ProductListClient({
       }
       width="default"
       actions={
-        canEdit ? (
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => router.push('/admin/products/new')}
-          >
-            Neues Produkt
-          </Button>
+        canEdit || canExport ? (
+          <>
+            {canExport && products.length > 0 && (
+              <Button
+                variant="outlined"
+                startIcon={<PriceListIcon />}
+                onClick={() => setPriceListOpen(true)}
+              >
+                Preisliste
+              </Button>
+            )}
+            {canEdit && (
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={() => router.push('/admin/products/new')}
+              >
+                Neues Produkt
+              </Button>
+            )}
+          </>
         ) : undefined
       }
     >
+      {priceListOpen && (
+        <PriceListDialog
+          open
+          onClose={() => setPriceListOpen(false)}
+          categories={priceListCategories}
+          canPartner={!role || canExportPartnerPriceList(role)}
+          pendingCount={pendingProducts}
+        />
+      )}
       <PageSection
         title={`Produktliste (${
           filtered
