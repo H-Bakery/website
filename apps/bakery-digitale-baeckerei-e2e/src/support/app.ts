@@ -58,6 +58,7 @@ import { TESTBACKSTUBE } from '../../../bakery-digitale-baeckerei/src/test/fixtu
 import { ansichtFuer } from '../../../bakery-digitale-baeckerei/src/lib/scene/view'
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import {
+  EINGERICHTET,
   MIT_MODELL,
   OHNE_MODELL,
   STATIONEN,
@@ -69,6 +70,7 @@ import {
 } from '../../../bakery-digitale-baeckerei/src/test/fixtures/fixture-info'
 
 export {
+  EINGERICHTET,
   MIT_MODELL,
   OHNE_MODELL,
   STATIONEN,

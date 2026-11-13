@@ -26,6 +26,7 @@ import {
   AdditiveBlending,
   BackSide,
   FrontSide,
+  InstancedMesh,
   LessEqualDepth,
   Mesh,
   ShaderMaterial,
@@ -61,8 +62,14 @@ uniform float uWidth;
 uniform vec2 uRes;
 uniform vec3 uCentre;
 void main() {
-  vec4 clip = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-  vec3 nv = normalize( normalMatrix * normal );
+  vec4 lokal = vec4( position, 1.0 );
+  vec3 nl = normal;
+  #ifdef USE_INSTANCING
+    lokal = instanceMatrix * lokal;
+    nl = mat3( instanceMatrix ) * nl;
+  #endif
+  vec4 clip = projectionMatrix * modelViewMatrix * lokal;
+  vec3 nv = normalize( normalMatrix * nl );
   vec2 nc = ( projectionMatrix * vec4( nv, 0.0 ) ).xy;
   float l = length( nc );
   vec4 cc = projectionMatrix * viewMatrix * vec4( uCentre, 1.0 );
@@ -84,8 +91,14 @@ const RIM_VS = /* glsl */ `
 varying vec3 vN;
 varying vec3 vV;
 void main() {
-  vec4 mv = modelViewMatrix * vec4( position, 1.0 );
-  vN = normalize( normalMatrix * normal );
+  vec4 lokal = vec4( position, 1.0 );
+  vec3 nl = normal;
+  #ifdef USE_INSTANCING
+    lokal = instanceMatrix * lokal;
+    nl = mat3( instanceMatrix ) * nl;
+  #endif
+  vec4 mv = modelViewMatrix * lokal;
+  vN = normalize( normalMatrix * nl );
   vV = -mv.xyz;
   gl_Position = projectionMatrix * mv;
 }`
@@ -208,8 +221,22 @@ export function createHervorhebung(o: {
       if (!mesh.geometry?.attributes.position) continue
       if (!mesh.geometry.attributes.normal) mesh.geometry.computeVertexNormals()
       if (!mesh.geometry.attributes.normal) continue
+      // Gelegte Regal-Modelle (DB12) sind ein InstancedMesh: Der Überzug
+      // zeichnet dieselben Stücke, mit denselben Lagen (geteiltes Attribut).
+      const viele = (mesh as InstancedMesh).isInstancedMesh
+        ? (mesh as InstancedMesh)
+        : null
       materials.forEach((material, i) => {
-        const u = new Mesh(mesh.geometry, material)
+        let u: Mesh
+        if (viele) {
+          const kopie = new InstancedMesh(mesh.geometry, material, viele.count)
+          kopie.instanceMatrix = viele.instanceMatrix
+          kopie.boundingBox = viele.boundingBox
+          kopie.boundingSphere = viele.boundingSphere
+          u = kopie
+        } else {
+          u = new Mesh(mesh.geometry, material)
+        }
         u.userData[UEBERZUG] = true
         u.raycast = () => undefined
         u.renderOrder = 2 + i

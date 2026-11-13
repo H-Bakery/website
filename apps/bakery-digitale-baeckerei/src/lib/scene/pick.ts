@@ -27,7 +27,14 @@
  * Importiert three - nur aus der nachgeladenen Viewer-Komponente verwenden.
  */
 import { Box3, Raycaster, Vector2, Vector3 } from 'three'
-import type { Material, Mesh, Object3D, PerspectiveCamera, Ray } from 'three'
+import type {
+  InstancedMesh,
+  Material,
+  Mesh,
+  Object3D,
+  PerspectiveCamera,
+  Ray,
+} from 'three'
 import { gehoertZu } from '../raeume/rauminfos'
 import { createHervorhebung, UEBERZUG } from './interact'
 import type { HervorhebungsZiel } from './interact'
@@ -43,6 +50,8 @@ import {
   TIPP_RADIUS_PX,
   TIPP_WEITE_M,
   tippWinkel,
+  GELEGT,
+  VERBORGEN,
   waehleTippflaeche,
 } from './treffer'
 import type { Tippflaeche, Treffer } from './treffer'
@@ -112,6 +121,20 @@ export interface Ziele {
   suche(slot: string): HervorhebungsZiel | null
 }
 
+/**
+ * Rahmen eines Meshes in seinem eigenen Rahmen. Gelegte Regal-Modelle sind
+ * ein `InstancedMesh`: Dort zählen alle Stücke, nicht die eine Geometrie.
+ */
+function rahmenVon(mesh: Mesh): Box3 | null {
+  const viele = mesh as InstancedMesh
+  if (viele.isInstancedMesh) {
+    if (!viele.boundingBox) viele.computeBoundingBox()
+    return viele.boundingBox
+  }
+  if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox()
+  return mesh.geometry.boundingBox
+}
+
 const materialsOf = (mesh: Mesh): Material[] =>
   ([] as Material[]).concat(mesh.material ?? [])
 
@@ -135,6 +158,8 @@ export function createZiele(root: Object3D): Ziele {
   root.traverse((node) => {
     const mesh = node as Mesh
     if (!mesh.isMesh || mesh.userData[UEBERZUG]) return
+    // Ware des Modells, die die Einrichtung verborgen hat (DB12).
+    if (mesh.userData[VERBORGEN]) return
     if (!mesh.geometry?.attributes.position) return
     if (!materialsOf(mesh).some(antippbar)) return
     // hinauf zum Knoten mit Kennung
@@ -170,12 +195,9 @@ export function createZiele(root: Object3D): Ziele {
     }
     knoten.meshes.push(mesh)
     knotenVon.set(mesh, knoten)
-    if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox()
-    if (mesh.geometry.boundingBox) {
-      knoten.box.union(
-        tmp.copy(mesh.geometry.boundingBox).applyMatrix4(mesh.matrixWorld)
-      )
-    }
+    const rahmen = rahmenVon(mesh)
+    if (rahmen)
+      knoten.box.union(tmp.copy(rahmen).applyMatrix4(mesh.matrixWorld))
   })
 
   const size = new Vector3()
@@ -187,7 +209,12 @@ export function createZiele(root: Object3D): Ziele {
       box.union(knoten.box)
       if (knoten.produkt === undefined && knoten.ware === undefined) continue
       knoten.box.getSize(size)
-      if (knoten.box.isEmpty() || !istKlein([size.x, size.y, size.z])) continue
+      // Gelegte Regal-Modelle (DB12) sind einzelne Stücke mit Lücken: Auch
+      // ein Tipp zwischen zwei Stücke desselben Platzes meint den Platz -
+      // er bekommt seine Tippfläche unabhängig von der Größe.
+      const gelegt = knoten.meshes.some((m) => m.userData[GELEGT])
+      if (knoten.box.isEmpty()) continue
+      if (!gelegt && !istKlein([size.x, size.y, size.z])) continue
       knoten.box.getCenter(centre)
       knoten.flaeche = {
         c: [centre.x, centre.y, centre.z],
@@ -302,11 +329,8 @@ export function createZiele(root: Object3D): Ziele {
         for (const mesh of knoten.meshes) {
           if (!sichtbar(mesh)) continue
           out.push(mesh)
-          if (mesh.geometry.boundingBox) {
-            box.union(
-              tmp.copy(mesh.geometry.boundingBox).applyMatrix4(mesh.matrixWorld)
-            )
-          }
+          const rahmen = rahmenVon(mesh)
+          if (rahmen) box.union(tmp.copy(rahmen).applyMatrix4(mesh.matrixWorld))
         }
       }
       if (out.length === 0) return null

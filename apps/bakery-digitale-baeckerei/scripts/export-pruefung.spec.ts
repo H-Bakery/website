@@ -1,13 +1,21 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { FIXTURE_ENV, TEST_SPUREN, pruefeExport } from './export-pruefung'
+import {
+  EINRICHTEN_ENV,
+  EINRICHTEN_SPUR,
+  FIXTURE_ENV,
+  TEST_SPUREN,
+  pruefeExport,
+} from './export-pruefung'
 import { LOCK_FORMAT, parseLock, sha256Hex } from './model-lock'
 import {
+  REGAL_GLB_PATH,
   SNAPSHOT_PATH,
   ausgeliefertesModell,
   ladeFixture,
 } from '../src/test/fixtures/fixture-info'
+import { bauePaket } from '../src/test/fixtures/regal-fixture'
 import { belegungAusGlb, fasseZusammen } from './belegung'
 import { alsDatei, leereRauminfos } from './rauminfos'
 import { leererIndex } from './produkte-3d-lock'
@@ -362,5 +370,164 @@ describe('pruefeExport', () => {
     expect(fehler).toHaveLength(1)
     expect(fehler[0]).toMatch(/^_next\/static\/chunks\/seite\.js enthält/)
     expect(fehler[0]).not.toContain('Testbrot')
+  })
+})
+
+describe('pruefeExport: Einrichtung (DB12)', () => {
+  const REGAL = fs.readFileSync(REGAL_GLB_PATH)
+  const NAH = ladeFixture().glb
+  /** Index mit der Nahansicht für ein Produkt und dem Paket der Regal-Modelle. */
+  const indexMit = (
+    regalModelle = bauePaket().regal.modelle,
+    nahansicht: string[] = ['testbrot-500g']
+  ) =>
+    JSON.stringify({
+      version: 1,
+      modelle: Object.fromEntries(
+        nahansicht.map((id) => [
+          id,
+          {
+            datei: `produkte-3d/${id}.glb`,
+            bytes: NAH.byteLength,
+            bbox_m: { min: [-0.1, 0, -0.05], max: [0.1, 0.075, 0.05] },
+          },
+        ])
+      ),
+      regal: {
+        datei: 'produkte-3d/_regal.glb',
+        bytes: REGAL.byteLength,
+        modelle: regalModelle,
+      },
+    })
+  const mit3d = () =>
+    pruefeExport({ outDir, lock, basePath: BASIS, produkte3d: 'erlaubt' })
+
+  it('lehnt den Einrichten-Modus ab: den Schalter, das Werkzeug im Code, seine Daten', () => {
+    expect(pruefe({ [EINRICHTEN_ENV]: '1' })).toEqual([
+      expect.stringMatching(/DIGITALE_BAECKEREI_EINRICHTEN ist gesetzt/),
+    ])
+    expect(pruefe({ [EINRICHTEN_ENV]: '' })).toEqual([])
+
+    schreibe('_next/static/chunks/werkzeug.js', `children:"${EINRICHTEN_SPUR}"`)
+    expect(pruefe()).toEqual([
+      '_next/static/chunks/werkzeug.js enthält das Werkzeug des Einrichten-Modus - das gibt es nur lokal',
+    ])
+    fs.rmSync(path.join(outDir, '_next/static/chunks/werkzeug.js'))
+
+    schreibe('data/einrichtung.quelle.yaml', 'raeume: {}\n')
+    schreibe('data/einrichtung.modell.json', '{}')
+    expect(pruefe()).toEqual([
+      'data/einrichtung.modell.json gehört nicht in den Export',
+      'data/einrichtung.quelle.yaml gehört nicht in den Export',
+    ])
+  })
+
+  it('lässt eine Belegung mit Einrichtung durch: Version 3 mit leeren Plätzen und Rahmen', () => {
+    const datei = JSON.parse(belegungDatei({ laden: MODELL }))
+    const [erster, ...rest] = datei.raeume.laden.slots
+    datei.raeume.laden.slots = rest
+    datei.raeume.laden.leer = [erster.slot]
+    datei.raeume.laden.plaetze = {
+      [erster.slot]: {
+        o: [0, 0, 0],
+        r: [1, 0, 0],
+        n: [0, 1, 0],
+        f: [0, 0, 1],
+        b: 0.2,
+        t: 0.2,
+        h: 0.2,
+        art: 'reihen',
+        neigung: 0,
+      },
+    }
+    schreibe('data/belegung.json', JSON.stringify(datei))
+    expect(pruefe()).toEqual([])
+  })
+
+  it('lehnt die alte Belegung (Version 2) ab', () => {
+    const datei = JSON.parse(belegungDatei({ laden: MODELL }))
+    schreibe('data/belegung.json', JSON.stringify({ ...datei, version: 2 }))
+    expect(pruefe()).toContain(
+      'data/belegung.json hat nicht die erwartete Form'
+    )
+  })
+
+  it('ohne Freigabe (so läuft der Deploy): weder Regal-Modelle im Index noch das Paket im Ordner', () => {
+    schreibe('data/produkte-3d.json', indexMit(undefined, []))
+    schreibe('produkte-3d/_regal.glb', REGAL)
+    const fehler = pruefe()
+    expect(fehler).toEqual([
+      expect.stringMatching(
+        /^data\/produkte-3d\.json nennt 3 Regal-Modell\(e\) .* dürfen nicht raus$/
+      ),
+      expect.stringMatching(/^produkte-3d\/ enthält 1 Datei\(en\)/),
+    ])
+    // nur Zahlen, keine Produkt-ID
+    expect(fehler.join(' ')).not.toContain('testbrot')
+  })
+
+  describe('mit Freigabe (produkte3d: erlaubt)', () => {
+    beforeEach(() => {
+      schreibe('data/produkte-3d.json', indexMit())
+      schreibe('produkte-3d/_regal.glb', REGAL)
+      schreibe('produkte-3d/testbrot-500g.glb', NAH)
+    })
+
+    it('lässt Nahansicht und Regal-Modelle durch, wenn Index, Ordner und Belegung zusammenpassen', () => {
+      expect(mit3d()).toEqual([])
+      // … ohne Freigabe bleibt derselbe Export verboten
+      expect(pruefe().length).toBeGreaterThan(0)
+    })
+
+    it('auch der leere Index bleibt in Ordnung', () => {
+      fs.rmSync(path.join(outDir, 'produkte-3d'), { recursive: true })
+      schreibe('data/produkte-3d.json', `${JSON.stringify(leererIndex())}\n`)
+      expect(mit3d()).toEqual([])
+    })
+
+    it('lehnt ab, was nicht im Index steht, fehlt oder eine andere Größe hat', () => {
+      schreibe('produkte-3d/echtes-brot.glb', 'echt')
+      expect(mit3d()).toEqual([
+        'produkte-3d/echtes-brot.glb steht nicht im Index',
+      ])
+      fs.rmSync(path.join(outDir, 'produkte-3d/echtes-brot.glb'))
+      fs.rmSync(path.join(outDir, 'produkte-3d/testbrot-500g.glb'))
+      expect(mit3d()).toEqual(['produkte-3d/testbrot-500g.glb fehlt'])
+      schreibe('produkte-3d/testbrot-500g.glb', 'kürzer')
+      expect(mit3d()).toEqual([
+        'produkte-3d/testbrot-500g.glb ist nicht so groß wie im Index',
+      ])
+    })
+
+    it('lehnt ein Paket ab, das nicht genau die Regal-Modelle aus dem Index enthält', () => {
+      const zwei = { ...bauePaket().regal.modelle }
+      delete zwei.musterweck
+      schreibe('data/produkte-3d.json', indexMit(zwei))
+      expect(mit3d()).toEqual([
+        'produkte-3d/_regal.glb enthält nicht genau die Regal-Modelle aus dem Index',
+      ])
+    })
+
+    it('lehnt eine Datei ab, die kein Paket von Regal-Modellen ist', () => {
+      schreibe('produkte-3d/_regal.glb', Buffer.alloc(REGAL.byteLength, 1))
+      expect(mit3d()).toEqual([
+        'produkte-3d/_regal.glb ist kein Paket von Regal-Modellen',
+      ])
+    })
+
+    it('lehnt Modelle für Produkte ab, die in keinem Raum liegen', () => {
+      const modelle = bauePaket().regal.modelle
+      schreibe(
+        'data/produkte-3d.json',
+        indexMit({ ...modelle, 'nirgends-im-laden': modelle.musterweck }, [
+          'testbrot-500g',
+        ])
+      )
+      const fehler = mit3d()
+      expect(fehler).toContain(
+        'data/produkte-3d.json nennt 1 Modell(e) für Produkte, die in keinem Raum liegen'
+      )
+      expect(fehler.join(' ')).not.toContain('nirgends')
+    })
   })
 })

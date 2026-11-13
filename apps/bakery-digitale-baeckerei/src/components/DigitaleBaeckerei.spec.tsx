@@ -245,7 +245,7 @@ function antworteMitDaten(modelle: unknown = MODELLE) {
       status: 200,
       json: async () =>
         url.endsWith('/data/belegung.json')
-          ? { version: 2, raeume: { laden: BELEGUNG } }
+          ? { version: 3, raeume: { laden: BELEGUNG } }
           : url.endsWith('/data/rauminfos.json')
           ? RAUMINFOS
           : url.endsWith('/data/produkte-3d.json')

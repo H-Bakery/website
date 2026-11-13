@@ -15,6 +15,9 @@
  *   den synthetischen Snapshot src/test/fixtures/products.snapshot.fixture.json
  *   Byte für Byte.
  * - Ohne die Belegung bricht das Skript ab (zuerst sync-model).
+ * - DIGITALE_BAECKEREI_EINRICHTEN=1 (Einrichten-Modus, nur lokal): alle
+ *   verfügbaren Produkte, nicht nur die im Modell - der Inhaber wählt daraus.
+ *   Der Export-Wächter ließe so einen Snapshot nicht durch.
  * - Meldet (als Warnung, der Build läuft weiter), welche Produkte die Belegung
  *   zeigt, die es in hq nicht gibt.
  *
@@ -131,7 +134,10 @@ if (fixtureMode) {
   }
   // Nur was im Modell auf einem Platz liegt: Den Rest könnte die App nie
   // zeigen, er läge nur als Text zum Herunterladen im Export.
-  const gefiltert = nurBelegte(built.snapshot, belegung)
+  const gefiltert =
+    process.env.DIGITALE_BAECKEREI_EINRICHTEN === '1'
+      ? { snapshot: built.snapshot, entfernt: 0 }
+      : nurBelegte(built.snapshot, belegung)
   try {
     snapshot = pruefeSnapshot(gefiltert.snapshot)
   } catch (err) {

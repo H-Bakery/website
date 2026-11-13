@@ -138,7 +138,7 @@ const SNAPSHOT = {
   produkte: { [TESTBROT.id]: TESTBROT },
 }
 const BELEGUNG = {
-  version: 2,
+  version: 3,
   raeume: {
     laden: {
       quelle: { commit: 'fixture' },

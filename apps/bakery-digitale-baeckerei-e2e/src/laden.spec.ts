@@ -6,6 +6,7 @@
  */
 import { expect, test } from '@playwright/test'
 import {
+  EINGERICHTET,
   PFAD,
   VARIANTE,
   erwarteKeinePreise,
@@ -78,8 +79,12 @@ test.describe('Laden unter dem Unterpfad', () => {
       { name: `produkt/${VARIANTE.slot}`, visible: true },
       { name: `produkt/${VARIANTE.slot}@feierabend`, visible: false },
     ])
-    // Sonst ist jeder Platz zu sehen, und kein Platz ist doppelt belegt.
-    expect(plaetze.filter((n) => !n.visible)).toHaveLength(1)
+    // Sonst ist jeder Platz zu sehen - bis auf den, den die synthetische
+    // Einrichtung leert (DB12) -, und kein Platz ist doppelt belegt.
+    expect(plaetze.filter((n) => !n.visible).map((n) => n.name)).toEqual([
+      `produkt/${VARIANTE.slot}@feierabend`,
+      `produkt/${EINGERICHTET.leer.slot}`,
+    ])
     const fill = await page.evaluate(
       () => window.__digitaleBaeckerei?.info().fill
     )

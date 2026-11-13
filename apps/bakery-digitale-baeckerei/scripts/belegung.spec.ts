@@ -3,8 +3,10 @@ import {
   belegungAusGlb,
   belegungAusGltf,
   fasseZusammen,
+  morgensPlatz,
   parseGlbJson,
 } from './belegung'
+import type { Platz } from './plaetze'
 
 // Winzige, von Hand gebaute GLB-Puffer mit erfundenen Produkten - das echte
 // Modell liegt nie im Repo.
@@ -250,12 +252,64 @@ describe('belegung.json: alle Räume in einer Datei', () => {
 
   it('fasst die Räume zusammen, Schlüssel = id des Raums; ein Raum ohne Produkte steht leer darin', () => {
     expect(fasseZusammen({ laden, werkstatt: leer })).toEqual({
-      version: 2,
+      version: 3,
       raeume: {
-        laden: { quelle: { commit: 'abc' }, slots: laden.slots },
-        werkstatt: { quelle: { commit: 'def' }, slots: [] },
+        laden: {
+          quelle: { commit: 'abc' },
+          slots: laden.slots,
+          leer: [],
+          plaetze: {},
+        },
+        werkstatt: {
+          quelle: { commit: 'def' },
+          slots: [],
+          leer: [],
+          plaetze: {},
+        },
       },
     })
+  })
+
+  it('Version 3: leere Plätze und die Rahmen der Plätze stehen je Raum dabei', () => {
+    const platz: Platz = {
+      o: [1, 2, 3],
+      r: [1, 0, 0],
+      n: [0, 1, 0],
+      f: [0, 0, 1],
+      b: 0.2,
+      t: 0.3,
+      h: 0.1,
+      art: 'reihen',
+      neigung: 0,
+    }
+    const datei = fasseZusammen({
+      laden: { ...laden, leer: ['a/b'], plaetze: { 'a/b': platz } },
+    })
+    expect(datei.raeume.laden.leer).toEqual(['a/b'])
+    expect(datei.raeume.laden.plaetze).toEqual({ 'a/b': platz })
+  })
+
+  it('morgensPlatz: der Platz eines Knotens, auch mit neutraler Ware - nur im Zustand „Morgens“', () => {
+    expect(
+      morgensPlatz('produkt/regal/platz-01', {
+        product: 'x',
+        fills: ['morgens'],
+      })
+    ).toBe('regal/platz-01')
+    expect(
+      morgensPlatz('produkt/regal/platz-02', {
+        ware: 'dose',
+        fills: ['morgens', 'feierabend'],
+      })
+    ).toBe('regal/platz-02')
+    expect(
+      morgensPlatz('produkt/regal/platz-01@feierabend', {
+        product: 'x',
+        fills: ['feierabend'],
+      })
+    ).toBeNull()
+    expect(morgensPlatz('regal/korpus', { id: 'regal/korpus' })).toBeNull()
+    expect(morgensPlatz('produkt/regal/platz-03', undefined)).toBeNull()
   })
 
   it('alleSlots: die Plätze aller Räume hintereinander', () => {
@@ -270,14 +324,18 @@ describe('belegung.json: alle Räume in einer Datei', () => {
       { version: 1, quelle: { commit: 'x' }, slots: [] },
     ],
     ['kein Objekt', null],
-    ['raeume fehlt', { version: 2 }],
+    [
+      'Version 2 (ohne Einrichtung)',
+      { version: 2, raeume: { laden: { quelle: { commit: 'x' }, slots: [] } } },
+    ],
+    ['raeume fehlt', { version: 3 }],
   ])('alleSlots lehnt ab: %s', (_name, datei) => {
     expect(() => alleSlots(datei)).toThrow(/erwartete Form/)
   })
 
   it('alleSlots lehnt einen Raum ohne slots ab', () => {
     expect(() =>
-      alleSlots({ version: 2, raeume: { laden: { quelle: { commit: 'x' } } } })
+      alleSlots({ version: 3, raeume: { laden: { quelle: { commit: 'x' } } } })
     ).toThrow(/slots für Raum laden fehlt/)
   })
 })

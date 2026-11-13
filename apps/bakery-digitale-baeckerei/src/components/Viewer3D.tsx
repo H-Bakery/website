@@ -14,6 +14,7 @@ import {
   createViewer,
   WebGLUnavailableError,
   type Rechteck,
+  type SzenenEinrichtung,
   type Treffer,
   type ViewerHandle,
   type ViewerReadyInfo,
@@ -50,6 +51,16 @@ export interface Viewer3DProps {
   onErsteGeste?: () => void
   /** −1 = voriger, +1 = nächster Blickpunkt (Wischen mit zwei Fingern, Pfeiltasten). */
   onWechselGeste?: (richtung: -1 | 1) => void
+  /**
+   * Einrichtung des Raums (DB12): Belegung, Rahmen der Plätze, Regal-Modelle.
+   * Gelesen beim Aufbau der Szene; sie wartet darauf vor dem ersten Bild.
+   */
+  einrichtung?: Promise<SzenenEinrichtung | null>
+  /**
+   * Einrichten-Modus: eine geänderte Belegung - die laufende Szene richtet die
+   * Plätze neu ein.
+   */
+  belegung?: SzenenEinrichtung['belegung']
   /** Flüge zum Start dieses Raums (raeume.ts). `?intro=0` in der Adresse stellt sie ab. */
   intros?: readonly Intro[]
   /**
@@ -73,6 +84,7 @@ export default function Viewer3D(props: Viewer3DProps) {
   aktuell.current = props
 
   const { modelUrl, modelBytes, blickpunkt, fuellung, label, auswahl } = props
+  const { einrichtung, belegung } = props
   const { intros, introNochmal = 0, introSchluss = 0 } = props
 
   /** Rechteck der Karte im Viewport - für die Szene, immer frisch gemessen. */
@@ -105,6 +117,7 @@ export default function Viewer3D(props: Viewer3DProps) {
         fuellung,
         label: aktuell.current.label,
         debug,
+        einrichtung,
         intros,
         introSpielen,
         onIntro: (laeuft) => aktuell.current.onIntro?.(laeuft),
@@ -130,11 +143,16 @@ export default function Viewer3D(props: Viewer3DProps) {
       else aktuell.current.onError(err)
       return undefined
     }
-  }, [modelUrl, modelBytes, fuellung, intros, karte])
+  }, [modelUrl, modelBytes, fuellung, intros, karte, einrichtung])
 
   useEffect(() => {
     viewerRef.current?.setBlickpunkt(blickpunkt)
   }, [blickpunkt])
+
+  // Nur der Einrichten-Modus gibt eine Belegung herein.
+  useEffect(() => {
+    if (belegung) viewerRef.current?.setzeBelegung(belegung)
+  }, [belegung])
 
   useEffect(() => {
     viewerRef.current?.setLabel(label)

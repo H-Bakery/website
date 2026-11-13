@@ -9,7 +9,7 @@
  *
  * Importiert three - nur aus der nachgeladenen Viewer-Komponente verwenden.
  */
-import type { Material, Mesh, Object3D, Texture } from 'three'
+import type { InstancedMesh, Material, Mesh, Object3D, Texture } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 
@@ -95,11 +95,20 @@ export function countTriangles(root: Object3D, visibleOnly = false): number {
     const mesh = node as Mesh
     // Überzüge der Hervorhebung (interact.ts) teilen die Geometrie ihres Meshes.
     if (mesh.userData?.dbUeberzug) return
-    if (mesh.isMesh) {
+    // Ware des Modells, die die Einrichtung verborgen hat (einrichtung.ts):
+    // zählt nicht zu dem, was zu sehen ist.
+    const verborgen = visibleOnly && mesh.userData?.dbVerborgen
+    if (mesh.isMesh && !verborgen) {
+      // Gelegte Regal-Modelle: eine Geometrie, viele Stücke.
+      const stuecke = (mesh as InstancedMesh).isInstancedMesh
+        ? (mesh as InstancedMesh).count
+        : 1
       triangles +=
-        (mesh.geometry.index?.count ??
+        ((mesh.geometry.index?.count ??
           mesh.geometry.attributes.position?.count ??
-          0) / 3
+          0) /
+          3) *
+        stuecke
     }
     node.children.forEach(visit)
   }
