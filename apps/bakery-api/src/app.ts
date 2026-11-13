@@ -39,6 +39,7 @@ import { AuthRouterOptions } from './routes/auth.routes'
 import { createHqProductsRouters } from './routes/hq-products.routes'
 import { HqProductsOptions } from './services/hq-products.service'
 import { createPreorderRouters } from './routes/preorders.routes'
+import { createPriceListRouter } from './routes/price-list.routes'
 import { PreordersOptions } from './services/preorders.service'
 import { createDeliveryToursRouter } from './routes/delivery-tours.routes'
 import {
@@ -216,6 +217,12 @@ export function createApp(options: CreateAppOptions = {}): Application {
   app.use(createHqDataRouter(options.hq))
   if (!options.publicCatalogue) app.use('/api/products', hqProducts.products)
   app.use('/api/hq-products', hqProducts.hqProducts)
+  // Preisliste (Export der Produktseite): Ladenliste inhaber/verkauf,
+  // Partnerliste inhaber - aus dem freigegebenen Katalog.
+  app.use(
+    '/api/price-list',
+    createPriceListRouter({ productsDir: hqProducts.service.productsDir })
+  )
   // B7: /api/preorders (+ /api/deliveries alias, shop POST /api/orders);
   // roles per route in routes/preorders.routes.ts
   const preorders = createPreorderRouters({

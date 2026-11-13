@@ -119,6 +119,7 @@ Mounted:
 | `/api/partners`                                  | `routes/partner.routes.ts`               | Backschrank, see [partners.md](partners.md)                           |
 | `/api/reports`, `/api/analytics`, `/api/finance` | `routes/hq-data.routes.ts`               | hq read-only data, see [hq-data.md](hq-data.md)                       |
 | `/api/products`, `/api/hq-products`              | `routes/hq-products.routes.ts`           | hq catalogue, see [hq-products.md](hq-products.md)                    |
+| `/api/price-list`                                | `routes/price-list.routes.ts`            | price list export, see [produkte.md](../domains/produkte.md)          |
 | `/api/preorders`                                 | `routes/preorders.routes.ts`             | Vorbestellungen, see [preorders.md](preorders.md)                     |
 | `/api/deliveries`                                | `routes/preorders.routes.ts` (alias)     | the Mörsbach mock contract (pickup points, preorders)                 |
 | `/api/deliveries`                                | `routes/delivery-tours.routes.ts`        | tours, stops, drivers, depot, see [deliveries.md](deliveries.md)      |

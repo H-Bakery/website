@@ -58,6 +58,8 @@ describe('ROLE_ACCESS - die eine Rollen-Tabelle', () => {
     ['verkauf', '/admin/products', true],
     ['verkauf', '/admin/products/new', false],
     ['verkauf', '/admin/products/roggenbrot', false],
+    ['verkauf', '/admin/products/preisliste', true],
+    ['backstube', '/admin/products/preisliste', false],
     ['verkauf', '/admin/partners/1/visit/new', true],
     ['verkauf', '/admin/finance', false],
     ['verkauf', '/admin/users', false],
