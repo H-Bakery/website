@@ -22,6 +22,7 @@
 [Kassenberichte](./domains/kassenberichte.md) ·
 [Liefertouren](./domains/liefertouren.md) ·
 [Produkte](./domains/produkte.md) ·
+[Rechnungen (ZUGFeRD)](./domains/rechnungen.md) ·
 [Rest am Abend](./domains/rest-am-abend.md) ·
 [Rezepte](./domains/rezepte.md) ·
 [Verkaufspartner](./domains/verkaufspartner.md) ·
@@ -32,7 +33,7 @@
 [hq-data](./api/hq-data.md) · [hq-products](./api/hq-products.md) ·
 [partners](./api/partners.md) · [preorders](./api/preorders.md) ·
 [deliveries](./api/deliveries.md) · [backzettel](./api/backzettel.md) · [rest](./api/rest.md) ·
-[dienstplan](./api/dienstplan.md) · [recipes](./api/recipes.md)
+[dienstplan](./api/dienstplan.md) · [recipes](./api/recipes.md) · [invoices](./api/invoices.md)
 
 **Apps:** [landing](./apps/landing.md) · [shop](./apps/shop.md) · [delivery](./apps/delivery.md) ·
 [partybrezel](./apps/partybrezel.md) (Klick-Prototyp, nicht im Pilot) ·

@@ -22,6 +22,7 @@
       "@bakery/shared/data-access": ["libs/shared/data-access/src/index.ts"],
       "@bakery/shared/data-mocks": ["libs/shared/data-mocks/src/index.ts"],
       "@bakery/shared/hq-products": ["libs/shared/hq-products/src/index.js"],
+      "@bakery/shared/legal": ["libs/shared/utils/src/lib/legal.ts"],
       "@bakery/shared/produkte-3d": ["libs/shared/produkte-3d/src/index.js"],
       "@bakery/shared/test-utils": ["libs/shared/test-utils/src/index.ts"],
       "@bakery/shared/types": ["libs/shared/types/src/index.ts"],

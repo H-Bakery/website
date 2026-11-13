@@ -89,4 +89,9 @@ export const MIGRATIONS: MigrationEntry[] = [
     name: '20270310000000-backzettel-none-today.js',
     module: require('../../migrations/20270310000000-backzettel-none-today.js'),
   },
+  {
+    // Ausgangsrechnungen (ZUGFeRD/Factur-X): invoices, invoice_lines
+    name: '20270320000000-invoices.js',
+    module: require('../../migrations/20270320000000-invoices.js'),
+  },
 ]

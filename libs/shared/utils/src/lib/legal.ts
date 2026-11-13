@@ -3,8 +3,16 @@
  * Alle Pflichtangaben an einer Stelle pflegen.
  *
  * Gelesen von der Landing Page (`apps/bakery-landing/src/config/legal.ts`
- * reicht sie durch) und von der Verwaltung als Absender ihrer Dokumente
- * (`apps/bakery-management/src/lib/seller.ts`, Preisliste).
+ * reicht sie durch), von der Verwaltung als Absender ihrer Dokumente
+ * (`apps/bakery-management/src/lib/seller.ts`, Preisliste) und von der API als
+ * Verkäufer auf den Rechnungen (`apps/bakery-api/src/services/
+ * invoice-seller.ts`).
+ *
+ * Diese Datei bleibt ohne Importe: die API bindet sie einzeln ein
+ * (`@bakery/shared/legal` in tsconfig.base.json), nicht das Barrel
+ * `@bakery/shared/utils`, das React mitbringt. Die Bankverbindung steht nicht
+ * hier - sie ist nicht öffentlich und kommt aus der Umgebung der Box
+ * (`INVOICE_IBAN` …, docs/runbook.md).
  */
 export const SITE_URL = 'https://xn--bckerei-heusser-0kb.de' // = https://bäckerei-heusser.de
 export const SITE_DOMAIN_DISPLAY = 'bäckerei-heusser.de'
@@ -18,6 +26,8 @@ export const LEGAL = {
     postalCode: '66424',
     city: 'Homburg/Kirrberg',
     country: 'Deutschland',
+    /** ISO 3166-1 alpha-2, für die Rechnungs-XML (BT-40). */
+    countryCode: 'DE',
   },
   phone: '06841 2229',
   phoneHref: 'tel:+4968412229',

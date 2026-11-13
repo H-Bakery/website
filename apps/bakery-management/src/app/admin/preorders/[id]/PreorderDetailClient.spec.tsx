@@ -23,6 +23,10 @@ import {
 import { WithSession, fakeSession } from '../../../../lib/testing/fakeSession'
 import type { PilotRole } from '../../../../lib/roles'
 
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: jest.fn(), back: jest.fn(), refresh: jest.fn() }),
+  usePathname: () => '/admin/preorders/7',
+}))
 jest.mock('../../../../lib/preordersApi', () => ({
   ...jest.requireActual('../../../../lib/preordersApi'),
   cancelPreorder: jest.fn(),
@@ -81,6 +85,29 @@ beforeEach(() => {
 afterEach(() => jest.useRealTimers())
 
 describe('PreorderDetailClient (P3)', () => {
+  it('„Rechnung erstellen“ sieht nur der Inhaber, nicht bei stornierten', async () => {
+    const view = renderAs('inhaber')
+    expect(
+      await screen.findByRole('button', { name: 'Rechnung erstellen' })
+    ).toBeInTheDocument()
+    view.unmount()
+
+    renderAs('verkauf')
+    await screen.findByRole('heading', { name: 'LA-2026-11-13-01' })
+    expect(
+      screen.queryByRole('button', { name: 'Rechnung erstellen' })
+    ).not.toBeInTheDocument()
+  })
+
+  it('bietet für eine stornierte Vorbestellung keine Rechnung an', async () => {
+    mockGet.mockResolvedValue(preorder({ status: 'storniert' }))
+    renderAs('inhaber')
+    await screen.findByRole('heading', { name: 'LA-2026-11-13-01' })
+    expect(
+      screen.queryByRole('button', { name: 'Rechnung erstellen' })
+    ).not.toBeInTheDocument()
+  })
+
   it('zeigt Code, Status, Kunde, Positionen mit Preis-Snapshot', async () => {
     renderAs('verkauf')
     expect(

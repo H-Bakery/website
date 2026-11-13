@@ -161,6 +161,14 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Auffälligkeiten im Monat',
   },
   {
+    // Ausgangsrechnungen (ZUGFeRD/Factur-X) - nur Inhaber (ROLE_ACCESS; API:
+    // /api/invoices `inhaber`). Im Pilot sichtbar (PILOT_ALLOWED_ROUTES).
+    label: 'Rechnungen',
+    href: '/admin/rechnungen',
+    icon: 'invoices',
+    description: 'Ausstellen, PDF mit ZUGFeRD',
+  },
+  {
     // TASK-042: Schichten (Verkauf), Abwesenheiten und Urlaubskonten - nur
     // Inhaber mit persönlicher Sitzung (PERSONAL_ONLY_ROUTES). Im Pilot für
     // den Inhaber freigegeben (Entscheidung 2026-11-08, PILOT_ALLOWED_ROUTES).

@@ -37,6 +37,7 @@ import {
 } from '@mui/icons-material'
 import PreorderForm from '../PreorderForm'
 import PreorderStatusChip from '../../../../components/preorders/PreorderStatusChip'
+import InvoiceFromPreorderButton from '../../../../components/invoices/InvoiceFromPreorderButton'
 import {
   ErrorState,
   LoadingState,
@@ -811,6 +812,11 @@ export default function PreorderDetailClient({
           </Table>
         </TableContainer>
       </PageSection>
+
+      {/* Rechnungen stellt nur der Inhaber aus (API: /api/invoices `inhaber`). */}
+      {role === 'inhaber' && preorder.status !== 'storniert' && (
+        <InvoiceFromPreorderButton preorderId={preorder.id} />
+      )}
 
       <Dialog
         open={confirmCancel}
