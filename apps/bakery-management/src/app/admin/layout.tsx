@@ -231,6 +231,7 @@ function getBreadcrumb(pathname: string, includeRoot = true): string[] {
       const recipeLabel = recipeBreadcrumbLabel(href)
       if (recipeLabel !== undefined) return recipeLabel
       // W4-verify r2: Produkt-ID (Slug) und Backzettel-Datum nicht roh zeigen
+      if (href === '/admin/products/preisliste') return 'Preisliste'
       if (/^\/admin\/products\/[^/]+$/.test(href)) return 'Bearbeiten'
       // Tage (Backzettel, Kassenbericht …) als „Donnerstag, 05.11.2026“
       if (isIsoDate(segment)) return formatDateLong(segment)

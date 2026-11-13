@@ -165,7 +165,7 @@ const BACKSTUBE_ROUTES: readonly RouteRule[] = [
  * - inhaber: alles, Start Dashboard.
  * - verkauf: Vorbestellungen (M1, inkl. Abholliste darunter), Sammelstelle
  *   Mörsbach (heute die einzige Vorbestell-Erfassung), Produkte nur lesen
- *   (Liste, ohne Bearbeiten/Neu), Backschrank, Backzettel nur lesen (Z5, ohne
+ *   (Liste und Preisliste, ohne Bearbeiten/Neu), Backschrank, Backzettel nur lesen (Z5, ohne
  *   Grundmengen). Start: /admin/preorders (P3); das Dashboard bleibt
  *   Ausweichstart.
  * - backstube: Backzettel, Backstube-Tablet, Rezepte nur lesen (ohne
@@ -184,6 +184,8 @@ export const ROLE_ACCESS: Record<PilotRole, RoleAccess> = {
       '/admin/preorders',
       '/admin/delivery/preorders',
       { path: '/admin/products', exact: true },
+      // Preisliste (Laden) ansehen, drucken, als CSV - ohne Bearbeiten/Neu.
+      '/admin/products/preisliste',
       '/admin/partners',
       // Z5: nur lesen (die API erlaubt jeder Sitzung GET /api/backzettel) -
       // im Laden sieht man, was gebacken wird. Planen/Freigeben verweigert
