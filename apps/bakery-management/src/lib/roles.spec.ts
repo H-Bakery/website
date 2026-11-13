@@ -429,6 +429,17 @@ describe('getNavigationForRole', () => {
     }
   })
 
+  it('Rechnungen: an einer PIN-Station auch für den Inhaber gesperrt', () => {
+    expect(isPersonalOnlyPath('/admin/rechnungen')).toBe(true)
+    expect(isPersonalOnlyPath('/admin/rechnungen/12')).toBe(true)
+    expect(
+      isPathAllowedForRole('/admin/rechnungen/12', 'inhaber', 'station')
+    ).toBe(false)
+    expect(
+      isPathAllowedForRole('/admin/rechnungen/12', 'inhaber', 'personal')
+    ).toBe(true)
+  })
+
   it('Pilotbetrieb und Rolle überlagern sich: gesperrte Seiten fehlen auch dem Inhaber', () => {
     const items = hrefs(getNavigationForRole('inhaber', true))
     expect(items).not.toContain('/admin/cash')

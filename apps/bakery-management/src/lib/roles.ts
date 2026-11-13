@@ -275,6 +275,9 @@ export const PERSONAL_ONLY_ROUTES: readonly string[] = [
   // Dienstplan samt Mitarbeiterprofilen und Urlaub (TASK-042): Personendaten,
   // die API verlangt `requirePersonalSession` auf dem ganzen Router.
   '/admin/dienstplan',
+  // Rechnungen: Kundenanschriften und rechtsverbindliche Belege; die API
+  // verlangt `requirePersonalSession` auf dem ganzen Router.
+  '/admin/rechnungen',
 ]
 
 /** Sitzungsart, wie sie `authSession.ts` speichert (hier ohne Import-Zyklus). */

@@ -23,6 +23,7 @@ const doughDayMigration = require('../../migrations/20270201000000-backzettel-do
 const bakedMigration = require('../../migrations/20270210000000-backzettel-baked.js')
 const dienstplanMigration = require('../../migrations/20270301000000-dienstplan.js')
 const invoicesMigration = require('../../migrations/20270320000000-invoices.js')
+const invoicesPdfMigration = require('../../migrations/20270325000000-invoices-pdf-paid.js')
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const noneTodayMigration = require('../../migrations/20270310000000-backzettel-none-today.js')
 
@@ -102,6 +103,7 @@ describe('pilot baseline on a fresh database', () => {
       '20270301000000-dienstplan.js',
       '20270310000000-backzettel-none-today.js',
       '20270320000000-invoices.js',
+      '20270325000000-invoices-pdf-paid.js',
     ])
   })
 
@@ -1471,6 +1473,104 @@ describe('Rechnungen migration (invoices, invoice_lines)', () => {
     for (const table of invoicesMigration.TABLES) {
       expect(after).not.toContain(table)
     }
+    await sequelize.close()
+  })
+})
+
+describe('Rechnungen: down() verwirft keine ausgestellten Rechnungen', () => {
+  const insert = (sequelize: Sequelize, number: string, status: string) =>
+    sequelize.query(
+      `INSERT INTO invoices (number, status, created_at, updated_at)
+       VALUES (?, ?, '2026-11-15', '2026-11-15')`,
+      { replacements: [number, status] }
+    )
+
+  it('bricht ab, sobald es eine ausgestellte oder stornierte Rechnung gibt', async () => {
+    const sequelize = await freshDb()
+    await runMigrations(sequelize, quiet)
+    const qi = sequelize.getQueryInterface()
+    await insert(sequelize, 'TEST-ENTWURF', 'entwurf')
+    await insert(sequelize, 'TEST-AUSGESTELLT', 'ausgestellt')
+
+    await expect(invoicesMigration.down(qi, Sequelize)).rejects.toThrow(
+      /1 ausgestellte oder stornierte Rechnung/
+    )
+    expect(await tableNames(sequelize)).toEqual(
+      expect.arrayContaining(['invoices', 'invoice_lines'])
+    )
+    const rows = await sequelize.query('SELECT number FROM invoices', {
+      type: QueryTypes.SELECT,
+    })
+    expect(rows).toHaveLength(2)
+
+    // nur mit ausdrücklicher Freigabe
+    process.env.INVOICES_ALLOW_DROP = '1'
+    try {
+      await invoicesMigration.down(qi, Sequelize)
+    } finally {
+      delete process.env.INVOICES_ALLOW_DROP
+    }
+    expect(await tableNames(sequelize)).not.toContain('invoices')
+    await sequelize.close()
+  })
+
+  it('löscht Tabellen, in denen nur Entwürfe liegen', async () => {
+    const sequelize = await freshDb()
+    await runMigrations(sequelize, quiet)
+    await insert(sequelize, 'TEST-ENTWURF', 'entwurf')
+    await invoicesMigration.down(sequelize.getQueryInterface(), Sequelize)
+    expect(await tableNames(sequelize)).not.toContain('invoices')
+    await sequelize.close()
+  })
+})
+
+describe('Rechnungen: PDF, bezahlt, number_key (Migration 20270325)', () => {
+  it('trägt number_key für vorhandene Rechnungen nach und ist idempotent', async () => {
+    const sequelize = await freshDb()
+    const qi = sequelize.getQueryInterface()
+    const before = MIGRATIONS.filter(
+      (m) => m.name < '20270325000000-invoices-pdf-paid.js'
+    )
+    await runMigrations(sequelize, { ...quiet, migrations: before })
+    expect(Object.keys(await qi.describeTable('invoices'))).not.toContain('pdf')
+    await sequelize.query(
+      `INSERT INTO invoices (number, status, created_at, updated_at)
+       VALUES ('  Test 2026/7', 'ausgestellt', '2026-11-15', '2026-11-15'),
+              (NULL, 'entwurf', '2026-11-15', '2026-11-15')`
+    )
+
+    await invoicesPdfMigration.up(qi, Sequelize)
+    await invoicesPdfMigration.up(qi, Sequelize)
+    const columns = Object.keys(await qi.describeTable('invoices'))
+    for (const column of invoicesPdfMigration.COLUMNS) {
+      expect(columns).toContain(column)
+    }
+    const rows = await sequelize.query(
+      'SELECT number, number_key, paid, paid_method, pdf FROM invoices ORDER BY id',
+      { type: QueryTypes.SELECT }
+    )
+    expect(rows).toEqual([
+      {
+        number: '  Test 2026/7',
+        number_key: 'test 2026/7',
+        paid: 0,
+        paid_method: '',
+        pdf: null,
+      },
+      { number: null, number_key: null, paid: 0, paid_method: '', pdf: null },
+    ])
+    // die Vergleichsform ist eindeutig
+    await expect(
+      sequelize.query(
+        `INSERT INTO invoices (number, number_key, created_at, updated_at)
+         VALUES ('TEST 2026/7', 'test 2026/7', '2026-11-15', '2026-11-15')`
+      )
+    ).rejects.toMatchObject({ name: 'SequelizeUniqueConstraintError' })
+
+    await invoicesPdfMigration.down(qi, Sequelize)
+    expect(Object.keys(await qi.describeTable('invoices'))).not.toContain(
+      'number_key'
+    )
     await sequelize.close()
   })
 })

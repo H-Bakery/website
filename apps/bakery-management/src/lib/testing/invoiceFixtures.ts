@@ -29,6 +29,12 @@ export const CONFIG: InvoiceConfig = {
   seller: SELLER,
   bankConfigured: true,
   bankMessage: null,
+  paymentMethods: [
+    { id: 'bar', label: 'bar' },
+    { id: 'karte', label: 'Karte' },
+  ],
+  pdfReady: true,
+  pdfMessage: null,
 }
 
 /** Ausgestellte Rechnung mit zwei Steuersätzen, ohne Rundung. */
@@ -106,7 +112,16 @@ export function issuedInvoice(overrides: Partial<Invoice> = {}): Invoice {
       roundingCents: 0,
       dueCents: 11890,
       grossCents: 11890,
+      prepaidCents: 0,
+      payableCents: 11890,
     },
+    paid: false,
+    paidOn: null,
+    paidMethod: '',
+    preorderPaidCents: null,
+    warnings: [],
+    pdfSha256: null,
+    anonymizedAt: null,
     issuable: false,
     missing: [],
     issuedAt: '2026-11-15T09:30:00.000Z',

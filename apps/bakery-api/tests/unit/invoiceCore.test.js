@@ -339,6 +339,121 @@ describe('Pflichtangaben', () => {
   })
 })
 
+describe('Nachbesserungen: Nummer, Plausibilität, bezahlt', () => {
+  it('bildet die Vergleichsform einer Rechnungsnummer', () => {
+    expect(core.numberKey('RE-7')).toBe('re-7')
+    expect(core.numberKey('  re-7 ')).toBe('re-7')
+    expect(core.numberKey('ＲＥ-７')).toBe('re-7')
+    expect(core.numberKey('RE\u200b-7')).toBe('re -7')
+    expect(core.numberKey('RE   2026 / 7')).toBe('re 2026 / 7')
+    expect(core.numberKey('STRASSE')).toBe(core.numberKey('strasse'))
+    expect(core.numberKey(null)).toBe('')
+  })
+
+  it('lehnt unsichtbare Zeichen in der Nummer ab, gewöhnliche Leerzeichen nicht', () => {
+    expect(core.validateNumber('RE 2026/17')).toBeNull()
+    for (const bad of [
+      'RE\u200b7',
+      'RE\u00a07',
+      '\ufeffRE7',
+      'RE\u202e7',
+      'RE\n7',
+    ]) {
+      expect(core.validateNumber(bad)).toMatch(/unsichtbare Zeichen/)
+    }
+    expect(core.hasUnprintable('Müller & Söhne e. V.')).toBe(false)
+    expect(core.hasUnprintable('Zeile\nzwei')).toBe(true)
+  })
+
+  it('liest gespeicherte Preise verzeihend, aber nie Bruchteile von Cent', () => {
+    expect(core.priceToCents(0.1 + 0.2)).toBe(30)
+    expect(core.priceToCents(12.9)).toBe(1290)
+    expect(core.priceToCents('0.45')).toBe(45)
+    expect(core.priceToCents(0.333)).toBeNull()
+    expect(core.priceToCents(-1)).toBeNull()
+    expect(core.priceToCents(NaN)).toBeNull()
+  })
+
+  it('kennt die ISO-Ländercodes', () => {
+    expect(core.isCountryCode('DE')).toBe(true)
+    expect(core.isCountryCode('FR')).toBe(true)
+    expect(core.isCountryCode('XX')).toBe(false)
+    expect(core.isCountryCode('de')).toBe(false)
+    const invoice = fixture.mixedInvoice()
+    invoice.buyer.countryCode = 'ZZ'
+    expect(core.validateForIssue(invoice)[0].field).toBe('buyer.countryCode')
+  })
+
+  it('meldet zu große Positionen als Eingabefehler, ohne zu werfen', () => {
+    const errors = core.validateLines([line(100000, 99999999)])
+    expect(errors).toHaveLength(1)
+    expect(errors[0].message).toMatch(/zu groß/)
+    expect(core.validateLines([line(1, 99999999)])).toEqual([])
+    expect(core.validateLines([line('1.001', 99999999)])).toHaveLength(1)
+  })
+
+  it('prüft Daten nur mit „heute“ auf Plausibilität', () => {
+    const invoice = fixture.mixedInvoice() // Rechnung und Leistung 15.11.2026
+    expect(core.validateForIssue(invoice)).toEqual([])
+    expect(core.validateForIssue(invoice, { today: '2026-11-13' })).toEqual([])
+    expect(core.validateForIssue(invoice, { today: '2026-11-08' })).toEqual([])
+    expect(
+      core
+        .validateForIssue(invoice, { today: '2026-11-07' })
+        .map((e) => e.field)
+    ).toEqual(['invoiceDate'])
+    expect(
+      core
+        .validateForIssue(invoice, { today: '2027-11-17' })
+        .map((e) => e.field)
+    ).toEqual(['invoiceDate'])
+    invoice.deliveryDate = '2026-12-20'
+    expect(
+      core.validateForIssue(invoice, { today: '2026-11-13' })[0].message
+    ).toMatch(/31 Tage in der Zukunft/)
+  })
+
+  it('weist eine bezahlte Rechnung mit Zahlbetrag 0 aus - ohne Bankverbindung', () => {
+    const invoice = fixture.paidInvoice()
+    expect(core.validateForIssue(invoice, { today: '2026-11-15' })).toEqual([])
+    const totals = core.computeInvoice(invoice.lines).totals
+    expect(core.settlement(invoice, totals)).toEqual({
+      prepaidCents: 481,
+      payableCents: 0,
+    })
+    expect(core.settlement(fixture.roundingInvoice(), totals)).toEqual({
+      prepaidCents: 0,
+      payableCents: 481,
+    })
+    expect(core.paymentTermsText(invoice)).toBe(
+      'Betrag bereits bezahlt am 15.11.2026 (bar).'
+    )
+    const xml = core.buildCiiXml(invoice)
+    // BR-CO-16: 4,82 − 4,81 + (−0,01) = 0,00
+    expect(xml).toContain(
+      '<ram:RoundingAmount>-0.01</ram:RoundingAmount>' +
+        '<ram:GrandTotalAmount>4.82</ram:GrandTotalAmount>' +
+        '<ram:TotalPrepaidAmount>4.81</ram:TotalPrepaidAmount>' +
+        '<ram:DuePayableAmount>0.00</ram:DuePayableAmount>'
+    )
+    expect(xml).toContain('<ram:TypeCode>10</ram:TypeCode>')
+    expect(xml).not.toContain('IBANID')
+    expect(xml).not.toContain('DueDateDateTime')
+    expect(core.buildCiiXml({ ...invoice, paidMethod: 'karte' })).toContain(
+      '<ram:TypeCode>48</ram:TypeCode>'
+    )
+
+    expect(
+      core
+        .validateForIssue({ ...invoice, paidOn: null, paidMethod: '' })
+        .map((e) => e.field)
+    ).toEqual(['paidOn', 'paidMethod'])
+    expect(
+      core.validateForIssue({ ...invoice, paidOn: '2026-11-16' })[0].message
+    ).toMatch(/nach dem Rechnungsdatum/)
+  })
+})
+
 describe('Factur-X-XML (CII, EN 16931)', () => {
   const xml = core.buildCiiXml(fixture.mixedInvoice())
 
@@ -406,6 +521,13 @@ describe('Factur-X-XML (CII, EN 16931)', () => {
         gemischt: xml,
         rundung: core.buildCiiXml(fixture.roundingInvoice()),
         lang: core.buildCiiXml(fixture.longInvoice()),
+        bezahlt: core.buildCiiXml(fixture.paidInvoice()),
+        karte: core.buildCiiXml({
+          ...fixture.mixedInvoice(),
+          paid: true,
+          paidOn: '2026-11-14',
+          paidMethod: 'karte',
+        }),
         notiz: core.buildCiiXml({
           ...fixture.mixedInvoice(),
           note: 'Vielen Dank für Ihre Bestellung.',

@@ -1,6 +1,7 @@
 /**
  * `/api/invoices` - Ausgangsrechnungen mit ZUGFeRD/Factur-X-PDF. Unter dem
- * globalen Sitzungsschutz gemountet; **nur `inhaber`**. Antworten
+ * globalen Sitzungsschutz gemountet; **nur `inhaber` mit persönlicher
+ * Sitzung** (keine PIN-Station). Antworten
  * `{ success, data }`, Fehler `{ success: false, error, message }` (deutsch).
  * Regeln und Formeln: `services/invoice.core.js`.
  *
@@ -13,12 +14,14 @@
  *   DELETE /:id           Entwurf löschen
  *   POST   /:id/issue     ausstellen: Pflichtangaben prüfen, festschreiben
  *   POST   /:id/cancel    `{ reason }` - ausgestellte Rechnung stornieren
- *   GET    /:id/pdf       PDF/A-3 mit eingebetteter `factur-x.xml`
+ *   GET    /:id/pdf       PDF/A-3 mit eingebetteter `factur-x.xml` - die beim
+ *                         Ausstellen festgeschriebenen Bytes (`X-Invoice-Sha256`);
+ *                         `?variant=storniert`: Fassung mit Storno-Aufdruck
  *   GET    /:id/xml       die Factur-X-XML allein
  */
 import { NextFunction, Request, Response, Router } from 'express'
 
-import { requireRole } from '../auth/middleware'
+import { requirePersonalSession, requireRole } from '../auth/middleware'
 import {
   InvoiceError,
   InvoicesOptions,
@@ -59,7 +62,9 @@ export function createInvoicesRouter(options: InvoicesRouterOptions = {}): {
 } {
   const service = new InvoicesService(options)
   const router = Router()
-  router.use(requireRole('inhaber'))
+  // Kundenanschriften und rechtsverbindliche Belege: wie Benutzer und Finanzen
+  // nur mit Passwort-Sitzung, nicht mit der PIN an einer Station.
+  router.use(requireRole('inhaber'), requirePersonalSession)
 
   router.get(
     '/config',
@@ -96,8 +101,13 @@ export function createInvoicesRouter(options: InvoicesRouterOptions = {}): {
   router.get(
     '/:id/pdf',
     handle(async (req, res) => {
-      const { filename, pdf } = await service.pdf(req.params['id'])
+      const { filename, pdf, sha256 } = await service.pdf(
+        req.params['id'],
+        req.query['variant'],
+        req
+      )
       attachment(res, 'application/pdf', filename)
+      res.setHeader('X-Invoice-Sha256', sha256)
       res.send(pdf)
       return undefined
     })

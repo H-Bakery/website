@@ -99,8 +99,13 @@ export interface InvoiceTotals {
   vatCents: number
   grandTotalCents: number
   roundingCents: number
+  /** Rechnungsbetrag brutto (Summe der Positionen). */
   dueCents: number
   grossCents: number
+  /** Bereits gezahlt (bei „bereits bezahlt“ der volle Betrag, sonst 0). */
+  prepaidCents: number
+  /** Noch zu zahlen (0 bei „bereits bezahlt“). */
+  payableCents: number
 }
 
 export interface Invoice {
@@ -122,6 +127,19 @@ export interface Invoice {
   lines: InvoiceLine[]
   vat: InvoiceVatGroup[]
   totals: InvoiceTotals
+  /** „Bereits bezahlt“ - die Rechnung verlangt dann keine Überweisung. */
+  paid: boolean
+  paidOn: string | null
+  /** `bar` | `karte` | '' */
+  paidMethod: string
+  /** Was die Vorbestellung beim Anlegen als bezahlt vermerkt hatte. */
+  preorderPaidCents: number | null
+  /** Entwurf: Hinweise, z. B. wenn die Vorbestellung schon bezahlt war. */
+  warnings: string[]
+  /** SHA-256 des beim Ausstellen festgeschriebenen PDFs. */
+  pdfSha256: string | null
+  /** Entwurf: Name und Anschrift wurden nach 90 Tagen gelöscht. */
+  anonymizedAt: string | null
   /** Entwurf: alle Pflichtangaben sind da. */
   issuable: boolean
   /** Entwurf: was zum Ausstellen noch fehlt (deutsch). */
@@ -158,6 +176,10 @@ export interface InvoiceConfig {
   seller: InvoiceSeller
   bankConfigured: boolean
   bankMessage: string | null
+  paymentMethods: Array<{ id: string; label: string }>
+  /** Falsch, wenn auf der Box die Schriften für das PDF fehlen. */
+  pdfReady: boolean
+  pdfMessage: string | null
 }
 
 /** Eine Position, wie sie gespeichert wird (Preis als Euro-Text, „1,20“). */
@@ -177,6 +199,9 @@ export interface InvoiceInput {
   paymentTermDays?: number | string
   paymentText?: string
   note?: string
+  paid?: boolean
+  paidOn?: string
+  paidMethod?: string
   buyer?: Partial<InvoiceBuyer>
   lines?: InvoiceLineInput[]
 }
@@ -232,16 +257,30 @@ export async function cancelInvoice(
   )
 }
 
-/** Lädt PDF (mit eingebetteter XML) oder die XML allein und bietet sie an. */
+export type InvoiceFileKind = 'pdf' | 'pdf-storniert' | 'xml'
+
+/**
+ * Lädt eine Datei der Rechnung und bietet sie an: `pdf` = das beim Ausstellen
+ * festgeschriebene Original (mit eingebetteter XML), `pdf-storniert` = die
+ * Fassung mit Storno-Aufdruck, `xml` = die XML allein.
+ */
 export async function downloadInvoiceFile(
   invoice: Pick<Invoice, 'id' | 'number'>,
-  kind: 'pdf' | 'xml',
+  kind: InvoiceFileKind,
   save: (blob: Blob, fileName: string) => void = saveBlob
 ): Promise<void> {
+  const path = kind === 'pdf-storniert' ? 'pdf?variant=storniert' : kind
+  const extension = kind === 'xml' ? 'xml' : 'pdf'
   const { blob, filename } = await apiClient.getBlob(
-    `${idPath(invoice.id)}/${kind}`
+    `${idPath(invoice.id)}/${path}`
   )
-  save(blob, filename || `Rechnung-${invoice.number ?? invoice.id}.${kind}`)
+  save(
+    blob,
+    filename ||
+      `Rechnung-${invoice.number ?? invoice.id}${
+        kind === 'pdf-storniert' ? '-storniert' : ''
+      }.${extension}`
+  )
 }
 
 // ------------------------------------------------------------------ Fehler

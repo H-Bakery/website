@@ -1,5 +1,5 @@
 import React from 'react'
-import { screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import InvoiceDetailClient from './InvoiceDetailClient'
@@ -303,6 +303,8 @@ describe('InvoiceDetailClient - ausgestellt', () => {
           roundingCents: -1,
           dueCents: 481,
           grossCents: 481,
+          prepaidCents: 0,
+          payableCents: 481,
         },
       })
     )
@@ -379,8 +381,130 @@ describe('InvoiceDetailClient - ausgestellt', () => {
         screen.queryByRole('button', { name: 'Stornieren' })
       ).not.toBeInTheDocument()
     )
+    // Das Original bleibt abrufbar, die Storno-Fassung liegt daneben
+    await user.click(
+      screen.getByRole('button', { name: 'Original-PDF (ZUGFeRD)' })
+    )
+    await waitFor(() =>
+      expect(mockDownload).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: 12 }),
+        'pdf'
+      )
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'PDF mit Storno-Vermerk' })
+    )
+    await waitFor(() =>
+      expect(mockDownload).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: 12 }),
+        'pdf-storniert'
+      )
+    )
+    expect(banner).toHaveTextContent('Original-PDF bleibt')
+  })
+
+  it('zeigt eine bezahlte Rechnung ohne Zahlungsaufforderung und Konto', async () => {
+    mockGet.mockResolvedValue(
+      issuedInvoice({
+        paid: true,
+        paidOn: '2026-11-15',
+        paidMethod: 'bar',
+        paymentTerms: 'Betrag bereits bezahlt am 15.11.2026 (bar).',
+        totals: {
+          ...issuedInvoice().totals,
+          prepaidCents: 11890,
+          payableCents: 0,
+        },
+      })
+    )
+    renderWithTheme(<InvoiceDetailClient id={12} />)
+    expect(await screen.findByTestId('invoice-prepaid')).toHaveTextContent(
+      'Bereits bezahlt−118,90 €'
+    )
+    expect(screen.getByTestId('invoice-payable')).toHaveTextContent(
+      'Noch zu zahlen0,00 €'
+    )
+    const payment = screen.getByTestId('invoice-payment')
+    expect(payment).toHaveTextContent(
+      'Betrag bereits bezahlt am 15.11.2026 (bar).'
+    )
+    expect(payment).not.toHaveTextContent('IBAN')
+    expect(payment).not.toHaveTextContent('Bankverbindung')
+  })
+})
+
+describe('InvoiceDetailClient - Zahlung und Hinweise am Entwurf', () => {
+  it('warnt bei einer bezahlten Vorbestellung und speichert „bereits bezahlt“', async () => {
+    const user = userEvent.setup()
+    const draft = draftInvoice({
+      paid: true,
+      preorderPaidCents: 11890,
+      warnings: [
+        'Die Vorbestellung ist mit 20,00 € als bezahlt vermerkt, die Rechnung lautet über 118,90 €.',
+      ],
+    })
+    mockGet.mockResolvedValue(draft)
+    mockUpdate.mockResolvedValue(draft)
+    renderWithTheme(<InvoiceDetailClient id={12} />)
+
+    expect(await screen.findByTestId('invoice-warnings')).toHaveTextContent(
+      'als bezahlt vermerkt'
+    )
+    // bezahlt: Datum und Zahlart statt Zahlungsziel
     expect(
-      screen.getByRole('button', { name: 'PDF (ZUGFeRD)' })
-    ).toBeInTheDocument()
+      screen.queryByLabelText('Zahlungsziel (Tage)')
+    ).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Bezahlt am'), {
+      target: { value: '2026-11-15' },
+    })
+    await user.click(screen.getByLabelText('Zahlart'))
+    await user.click(await screen.findByRole('option', { name: 'bar' }))
+    await user.click(screen.getAllByRole('button', { name: 'Speichern' })[0])
+    await waitFor(() =>
+      expect(mockUpdate).toHaveBeenCalledWith(
+        12,
+        expect.objectContaining({
+          paid: true,
+          paidOn: '2026-11-15',
+          paidMethod: 'bar',
+        })
+      )
+    )
+  })
+
+  it('schickt bei „Per Überweisung“ weder Zahlungsdatum noch Zahlart', async () => {
+    const user = userEvent.setup()
+    mockGet.mockResolvedValue(draftInvoice())
+    mockUpdate.mockResolvedValue(draftInvoice())
+    renderWithTheme(<InvoiceDetailClient id={12} />)
+    expect(await screen.findByLabelText('Zahlungsziel (Tage)')).toHaveValue(
+      '14'
+    )
+    expect(screen.queryByTestId('invoice-warnings')).not.toBeInTheDocument()
+    await user.click(screen.getAllByRole('button', { name: 'Speichern' })[0])
+    await waitFor(() =>
+      expect(mockUpdate).toHaveBeenCalledWith(
+        12,
+        expect.objectContaining({ paid: false, paidOn: '', paidMethod: '' })
+      )
+    )
+  })
+
+  it('sagt, wenn die Schriften fehlen oder der Entwurf bereinigt wurde', async () => {
+    mockGet.mockResolvedValue(
+      draftInvoice({ anonymizedAt: '2026-11-15T22:45:00.000Z' })
+    )
+    mockConfig.mockResolvedValue({
+      ...CONFIG,
+      pdfReady: false,
+      pdfMessage: 'Das Rechnungs-PDF kann nicht erzeugt werden.',
+    })
+    renderWithTheme(<InvoiceDetailClient id={12} />)
+    expect(await screen.findByTestId('invoice-pdf-warning')).toHaveTextContent(
+      'kann nicht erzeugt werden'
+    )
+    expect(screen.getByTestId('invoice-anonymized')).toHaveTextContent(
+      'länger als 90 Tage'
+    )
   })
 })

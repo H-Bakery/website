@@ -454,7 +454,8 @@ async function anonymize(flags: Record<string, string>): Promise<void> {
           `mit Abholtag vor ${report.cutoff} anonymisiert; davon ${report.unfinished} ` +
           `nie abgeschlossen (offen/bereit). ${report.deliveryStops.stops.length} ` +
           `Lieferstopp(s) anonymisiert, ${report.deliveryStops.geocacheRemoved} ` +
-          `Adress-Cache-Einträge gelöscht.`
+          `Adress-Cache-Einträge gelöscht. ${report.invoiceDrafts.length} ` +
+          `liegengebliebene(r) Rechnungsentwurf/-entwürfe bereinigt.`
       )
     },
     { migrate: false }

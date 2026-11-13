@@ -99,6 +99,20 @@ describe('PreorderDetailClient (P3)', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('bietet dem Inhaber an einer PIN-Station keine Rechnung an', async () => {
+    renderWithTheme(
+      <WithSession
+        value={{ ...fakeSession({ role: 'inhaber' }), sessionKind: 'station' }}
+      >
+        <PreorderDetailClient id={7} />
+      </WithSession>
+    )
+    await screen.findByRole('heading', { name: 'LA-2026-11-13-01' })
+    expect(
+      screen.queryByRole('button', { name: 'Rechnung erstellen' })
+    ).not.toBeInTheDocument()
+  })
+
   it('bietet für eine stornierte Vorbestellung keine Rechnung an', async () => {
     mockGet.mockResolvedValue(preorder({ status: 'storniert' }))
     renderAs('inhaber')

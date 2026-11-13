@@ -67,6 +67,40 @@ const STATUS = {
   CANCELLED: 'storniert',
 }
 
+/**
+ * „Bereits bezahlt“: Zahlart mit Anzeige und UNTDID-4461-Code für die XML
+ * (10 = bar, 48 = Bankkarte). Eine bezahlte Rechnung weist den vollen Betrag
+ * als bereits gezahlt aus (BT-113), der Zahlbetrag ist 0.
+ */
+const PAYMENT_METHODS = {
+  bar: { label: 'bar', code: '10' },
+  karte: { label: 'Karte', code: '48' },
+}
+
+/** Grenzen für plausible Daten beim Ausstellen (Tage relativ zu heute). */
+const DATE_BOUNDS = {
+  invoiceFutureDays: 7,
+  invoicePastDays: 366,
+  deliveryFutureDays: 31,
+  deliveryPastDays: 731,
+}
+
+/** ISO 3166-1 alpha-2, offiziell zugewiesene Codes. */
+const COUNTRY_CODES = new Set(
+  (
+    'AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ ' +
+    'BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR ' +
+    'CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR ' +
+    'GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ' +
+    'ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ ' +
+    'LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ ' +
+    'MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF ' +
+    'PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI ' +
+    'SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR ' +
+    'TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW'
+  ).split(' ')
+)
+
 const MAX_NUMBER_LENGTH = 40
 const MAX_LINES = 200
 const MAX_CENTS = 99999999 // 999.999,99 €
@@ -124,6 +158,21 @@ function toCents(value) {
   }
   const [euros, fraction = ''] = text.split('.')
   return Number(euros) * 100 + Number((fraction + '00').slice(0, 2))
+}
+
+/**
+ * Ein gespeicherter Preis (Zahl aus der Datenbank, z. B. der Einzelpreis einer
+ * Vorbestellung) in Cent. Anders als `toCents` verzeiht das Gleitkomma-Reste
+ * (`0.1 + 0.2`), aber keine echten Bruchteile von Cent (`0.333`): dann `null`.
+ */
+function priceToCents(value) {
+  const number = typeof value === 'string' ? Number(value) : value
+  if (typeof number !== 'number' || !Number.isFinite(number) || number < 0) {
+    return null
+  }
+  const cents = Math.round(number * 100)
+  if (Math.abs(number * 100 - cents) > 1e-6 || cents > MAX_CENTS) return null
+  return cents
 }
 
 /** Menge (höchstens drei Nachkommastellen) in Tausendstel; sonst `null`. */
@@ -434,6 +483,14 @@ function text(value) {
 
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARS = /[\u0000-\u001f\u007f]/
+/**
+ * Steuerzeichen (auch Tab und Zeilenumbruch), unsichtbare Zeichen (Zero-Width,
+ * Richtungsmarken, BOM, weiches Trennzeichen) und alle Leerzeichen außer dem
+ * gewöhnlichen.
+ */
+const INVISIBLE_CHARS =
+  // eslint-disable-next-line no-control-regex, no-misleading-character-class
+  /[\u0000-\u001f\u007f-\u00a0\u00ad\u034f\u061c\u115f\u1160\u1680\u17b4\u17b5\u180b-\u180f\u2000-\u200f\u2028-\u202f\u205f-\u206f\u3000\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff9-\ufffb]/
 
 /** Prüft eine Rechnungsnummer (frei wählbar, aber druck- und XML-tauglich). */
 function validateNumber(value) {
@@ -442,10 +499,51 @@ function validateNumber(value) {
   if (number.length > MAX_NUMBER_LENGTH) {
     return `Die Rechnungsnummer darf höchstens ${MAX_NUMBER_LENGTH} Zeichen haben.`
   }
-  if (CONTROL_CHARS.test(number) || /[<>&"']/.test(number)) {
+  if (INVISIBLE_CHARS.test(String(value))) {
+    return 'Die Rechnungsnummer enthält unsichtbare Zeichen oder besondere Leerzeichen (z. B. vom Kopieren). Bitte neu eintippen.'
+  }
+  if (/[<>&"']/.test(number)) {
     return 'Die Rechnungsnummer enthält unzulässige Zeichen (< > & " \').'
   }
   return null
+}
+
+/**
+ * Vergleichsform einer Rechnungsnummer: zwei Nummern, die gleich aussehen,
+ * sind dieselbe („re-7“ = „RE-7“ = „ＲＥ-7“ = „RE-7 “). Gespeichert und gedruckt
+ * wird, was der Inhaber getippt hat; eindeutig sein muss diese Form.
+ */
+function numberKey(value) {
+  return String(value === null || value === undefined ? '' : value)
+    .normalize('NFKC')
+    .replace(new RegExp(INVISIBLE_CHARS.source, 'g'), ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase()
+    .toLowerCase()
+}
+
+/** Ob ein einzeiliges Textfeld (Name, Ort …) Steuer- oder unsichtbare Zeichen enthält. */
+function hasUnprintable(value) {
+  return INVISIBLE_CHARS.test(String(value || ''))
+}
+
+function isCountryCode(value) {
+  return COUNTRY_CODES.has(String(value || ''))
+}
+
+function isPaid(invoice) {
+  return !!invoice && invoice.paid === true
+}
+
+/**
+ * Was vom Rechnungsbetrag schon gezahlt ist (BT-113) und was noch zu zahlen
+ * bleibt (BT-115). Bezahlt heißt hier immer: der volle Betrag - Teilzahlungen
+ * weist die Rechnung nicht aus.
+ */
+function settlement(invoice, totals) {
+  const prepaidCents = isPaid(invoice) ? totals.dueCents : 0
+  return { prepaidCents, payableCents: totals.dueCents - prepaidCents }
 }
 
 /**
@@ -498,6 +596,22 @@ function validateLines(lines) {
         message: `${at}: Bitte einen Einzelpreis (brutto) in Euro und Cent eintragen.`,
       })
     }
+    const quantityMilli = toMilli(line.quantity)
+    if (
+      quantityMilli !== null &&
+      Number.isSafeInteger(line.unitPriceGrossCents) &&
+      line.unitPriceGrossCents >= 0 &&
+      line.unitPriceGrossCents <= MAX_CENTS &&
+      // ohne divRound: das Produkt kann den sicheren Ganzzahlbereich verlassen
+      quantityMilli * line.unitPriceGrossCents > (MAX_CENTS + 0.5) * 1000
+    ) {
+      errors.push({
+        field: field('quantity'),
+        message: `${at}: Menge × Einzelpreis ist zu groß (höchstens ${formatEuro(
+          MAX_CENTS
+        )} je Position).`,
+      })
+    }
     if (!isVatRate(line.vatRate)) {
       errors.push({
         field: field('vatRate'),
@@ -519,32 +633,76 @@ function validateLines(lines) {
 /**
  * Was zum Ausstellen fehlt (§ 14 Abs. 4 UStG und EN 16931). `invoice` ist der
  * vollständige Stand: `{ number, invoiceDate, deliveryDate, dueDate,
- * paymentText, buyer, seller, lines }`. Leeres Array = ausstellbar.
+ * paymentText, paid, paidOn, paidMethod, buyer, seller, lines }`. Leeres
+ * Array = ausstellbar. Mit `options.today` (`YYYY-MM-DD`) werden Rechnungs-
+ * und Leistungsdatum zusätzlich auf Plausibilität geprüft (`DATE_BOUNDS`).
  */
-function validateForIssue(invoice) {
+function validateForIssue(invoice, options = {}) {
   const errors = []
   const push = (field, message) => errors.push({ field, message })
   const inv = invoice || {}
+  const paid = isPaid(inv)
+  const today = isIsoDate(options.today) ? options.today : null
 
   const numberError = validateNumber(inv.number)
   if (numberError) push('number', numberError)
 
   if (!isIsoDate(inv.invoiceDate)) {
     push('invoiceDate', 'Bitte das Rechnungsdatum eintragen.')
+  } else if (today) {
+    if (inv.invoiceDate > addDays(today, DATE_BOUNDS.invoiceFutureDays)) {
+      push(
+        'invoiceDate',
+        `Das Rechnungsdatum liegt mehr als ${DATE_BOUNDS.invoiceFutureDays} Tage in der Zukunft.`
+      )
+    } else if (inv.invoiceDate < addDays(today, -DATE_BOUNDS.invoicePastDays)) {
+      push(
+        'invoiceDate',
+        'Das Rechnungsdatum liegt mehr als ein Jahr zurück. Bitte prüfen.'
+      )
+    }
   }
   if (!isIsoDate(inv.deliveryDate)) {
     push(
       'deliveryDate',
       'Bitte das Liefer- bzw. Leistungsdatum eintragen (Tag der Abholung).'
     )
+  } else if (today) {
+    if (inv.deliveryDate > addDays(today, DATE_BOUNDS.deliveryFutureDays)) {
+      push(
+        'deliveryDate',
+        `Das Liefer- bzw. Leistungsdatum liegt mehr als ${DATE_BOUNDS.deliveryFutureDays} Tage in der Zukunft.`
+      )
+    } else if (
+      inv.deliveryDate < addDays(today, -DATE_BOUNDS.deliveryPastDays)
+    ) {
+      push(
+        'deliveryDate',
+        'Das Liefer- bzw. Leistungsdatum liegt mehr als zwei Jahre zurück. Bitte prüfen.'
+      )
+    }
   }
-  if (!isIsoDate(inv.dueDate)) {
-    push('paymentTermDays', 'Bitte ein Zahlungsziel eintragen.')
-  } else if (isIsoDate(inv.invoiceDate) && inv.dueDate < inv.invoiceDate) {
-    push('paymentTermDays', 'Das Zahlungsziel liegt vor dem Rechnungsdatum.')
-  }
-  if (!text(inv.paymentText)) {
-    push('paymentText', 'Bitte die Zahlungsbedingung eintragen.')
+  if (paid) {
+    if (!isIsoDate(inv.paidOn)) {
+      push('paidOn', 'Bitte eintragen, wann die Rechnung bezahlt wurde.')
+    } else if (isIsoDate(inv.invoiceDate) && inv.paidOn > inv.invoiceDate) {
+      push(
+        'paidOn',
+        'Das Zahlungsdatum liegt nach dem Rechnungsdatum - „bereits bezahlt“ passt dann nicht.'
+      )
+    }
+    if (!PAYMENT_METHODS[inv.paidMethod]) {
+      push('paidMethod', 'Bitte die Zahlart wählen (bar oder Karte).')
+    }
+  } else {
+    if (!isIsoDate(inv.dueDate)) {
+      push('paymentTermDays', 'Bitte ein Zahlungsziel eintragen.')
+    } else if (isIsoDate(inv.invoiceDate) && inv.dueDate < inv.invoiceDate) {
+      push('paymentTermDays', 'Das Zahlungsziel liegt vor dem Rechnungsdatum.')
+    }
+    if (!text(inv.paymentText)) {
+      push('paymentText', 'Bitte die Zahlungsbedingung eintragen.')
+    }
   }
 
   const buyer = inv.buyer || {}
@@ -568,8 +726,17 @@ function validateForIssue(invoice) {
   if (!text(buyer.city)) {
     push('buyer.city', 'Bitte den Ort des Empfängers eintragen.')
   }
-  if (!/^[A-Z]{2}$/.test(text(buyer.countryCode))) {
+  if (!isCountryCode(text(buyer.countryCode))) {
     push('buyer.countryCode', 'Bitte das Land des Empfängers wählen.')
+  }
+  for (const key of ['name', 'careOf', 'street', 'postcode', 'city']) {
+    if (hasUnprintable(text(buyer[key]))) {
+      push(
+        `buyer.${key}`,
+        'Die Anschrift des Empfängers enthält Zeilenumbrüche, Tabulatoren oder unsichtbare Zeichen.'
+      )
+      break
+    }
   }
 
   const seller = inv.seller || {}
@@ -585,7 +752,8 @@ function validateForIssue(invoice) {
   if (!text(seller.vatId) && !text(seller.taxNumber)) {
     push('seller.vatId', 'Die USt-IdNr. oder Steuernummer der Bäckerei fehlt.')
   }
-  errors.push(...bankErrors(seller))
+  // Die Bankverbindung braucht nur, wer überweisen soll.
+  if (!paid) errors.push(...bankErrors(seller))
 
   if (!Array.isArray(inv.lines) || inv.lines.length === 0) {
     push('lines', 'Die Rechnung hat keine Positionen.')
@@ -654,6 +822,13 @@ function bankErrors(seller) {
 
 /** `Zahlbar per Überweisung bis 29.11.2026 ohne Abzug.` */
 function paymentTermsText(invoice) {
+  if (isPaid(invoice)) {
+    const method = PAYMENT_METHODS[invoice.paidMethod]
+    const on = formatDate(invoice.paidOn)
+    return `Betrag bereits bezahlt${on ? ` am ${on}` : ''}${
+      method ? ` (${method.label})` : ''
+    }.`
+  }
   const base = text(invoice.paymentText).replace(/[.\s]+$/, '')
   const due = formatDate(invoice.dueDate)
   if (!base) return due ? `Zahlbar bis ${due} ohne Abzug.` : ''
@@ -710,6 +885,8 @@ function postalAddress(party) {
 function buildCiiXml(invoice) {
   const computed = computeInvoice(invoice.lines)
   const { totals } = computed
+  const paid = isPaid(invoice)
+  const paidUp = settlement(invoice, totals)
   const seller = invoice.seller
   const buyer = invoice.buyer
   const out = []
@@ -850,18 +1027,27 @@ function buildCiiXml(invoice) {
   add('<ram:ApplicableHeaderTradeSettlement>')
   add(element('ram:PaymentReference', text(invoice.number)))
   add(element('ram:InvoiceCurrencyCode', CURRENCY))
-  add(
-    '<ram:SpecifiedTradeSettlementPaymentMeans>' +
-      element('ram:TypeCode', PAYMENT_MEANS_SEPA_TRANSFER) +
-      '<ram:PayeePartyCreditorFinancialAccount>' +
-      element('ram:IBANID', normalizeIban(seller.iban)) +
-      element('ram:AccountName', text(seller.accountHolder)) +
-      '</ram:PayeePartyCreditorFinancialAccount>' +
-      '<ram:PayeeSpecifiedCreditorFinancialInstitution>' +
-      element('ram:BICID', text(seller.bic).toUpperCase()) +
-      '</ram:PayeeSpecifiedCreditorFinancialInstitution>' +
-      '</ram:SpecifiedTradeSettlementPaymentMeans>'
-  )
+  if (paid) {
+    // Bereits bezahlt: nur die Zahlart, kein Konto.
+    add(
+      '<ram:SpecifiedTradeSettlementPaymentMeans>' +
+        element('ram:TypeCode', PAYMENT_METHODS[invoice.paidMethod].code) +
+        '</ram:SpecifiedTradeSettlementPaymentMeans>'
+    )
+  } else {
+    add(
+      '<ram:SpecifiedTradeSettlementPaymentMeans>' +
+        element('ram:TypeCode', PAYMENT_MEANS_SEPA_TRANSFER) +
+        '<ram:PayeePartyCreditorFinancialAccount>' +
+        element('ram:IBANID', normalizeIban(seller.iban)) +
+        element('ram:AccountName', text(seller.accountHolder)) +
+        '</ram:PayeePartyCreditorFinancialAccount>' +
+        '<ram:PayeeSpecifiedCreditorFinancialInstitution>' +
+        element('ram:BICID', text(seller.bic).toUpperCase()) +
+        '</ram:PayeeSpecifiedCreditorFinancialInstitution>' +
+        '</ram:SpecifiedTradeSettlementPaymentMeans>'
+    )
+  }
   for (const group of computed.vat) {
     add(
       '<ram:ApplicableTradeTax>' +
@@ -876,9 +1062,11 @@ function buildCiiXml(invoice) {
   add(
     '<ram:SpecifiedTradePaymentTerms>' +
       element('ram:Description', paymentTermsText(invoice)) +
-      `<ram:DueDateDateTime>${dateElement(
-        invoice.dueDate
-      )}</ram:DueDateDateTime>` +
+      (paid
+        ? ''
+        : `<ram:DueDateDateTime>${dateElement(
+            invoice.dueDate
+          )}</ram:DueDateDateTime>`) +
       '</ram:SpecifiedTradePaymentTerms>'
   )
   add(
@@ -894,7 +1082,10 @@ function buildCiiXml(invoice) {
         ? element('ram:RoundingAmount', centsToDecimal(totals.roundingCents))
         : '') +
       element('ram:GrandTotalAmount', centsToDecimal(totals.grandTotalCents)) +
-      element('ram:DuePayableAmount', centsToDecimal(totals.dueCents)) +
+      (paid
+        ? element('ram:TotalPrepaidAmount', centsToDecimal(paidUp.prepaidCents))
+        : '') +
+      element('ram:DuePayableAmount', centsToDecimal(paidUp.payableCents)) +
       '</ram:SpecifiedTradeSettlementHeaderMonetarySummation>'
   )
   add('</ram:ApplicableHeaderTradeSettlement>')
@@ -916,8 +1107,17 @@ module.exports = {
   STATUS,
   MAX_NUMBER_LENGTH,
   MAX_LINES,
+  MAX_CENTS,
+  PAYMENT_METHODS,
+  DATE_BOUNDS,
   divRound,
   toCents,
+  priceToCents,
+  numberKey,
+  hasUnprintable,
+  isCountryCode,
+  isPaid,
+  settlement,
   toMilli,
   centsToDecimal,
   milliToDecimal,

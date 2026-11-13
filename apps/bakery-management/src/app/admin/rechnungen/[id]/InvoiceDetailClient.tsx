@@ -37,6 +37,7 @@ import {
   cancelInvoice,
   deleteInvoice,
   downloadInvoiceFile,
+  InvoiceFileKind,
   fetchInvoiceConfig,
   formatEuro,
   formatInvoiceDate,
@@ -70,6 +71,9 @@ interface DraftState {
   deliveryDate: string
   paymentTermDays: string
   paymentText: string
+  paid: boolean
+  paidOn: string
+  paidMethod: string
   note: string
   buyerName: string
   buyerCareOf: string
@@ -94,6 +98,9 @@ function toDraft(invoice: Invoice): DraftState {
     deliveryDate: invoice.deliveryDate ?? '',
     paymentTermDays: String(invoice.paymentTermDays),
     paymentText: invoice.paymentText,
+    paid: invoice.paid,
+    paidOn: invoice.paidOn ?? '',
+    paidMethod: invoice.paidMethod,
     note: invoice.note,
     buyerName: invoice.buyer.name,
     buyerCareOf: invoice.buyer.careOf,
@@ -119,6 +126,9 @@ function toInput(draft: DraftState): InvoiceInput {
     deliveryDate: draft.deliveryDate,
     paymentTermDays: draft.paymentTermDays,
     paymentText: draft.paymentText,
+    paid: draft.paid,
+    paidOn: draft.paid ? draft.paidOn : '',
+    paidMethod: draft.paid ? draft.paidMethod : '',
     note: draft.note,
     buyer: {
       name: draft.buyerName,
@@ -289,13 +299,17 @@ export default function InvoiceDetailClient({ id }: { id: number }) {
     }
   }
 
-  const download = (kind: 'pdf' | 'xml') =>
+  const download = (kind: InvoiceFileKind) =>
     run(
       () => downloadInvoiceFile(invoice, kind),
-      kind === 'pdf'
-        ? 'Die PDF konnte nicht geladen werden.'
-        : 'Die XML konnte nicht geladen werden.'
+      kind === 'xml'
+        ? 'Die XML konnte nicht geladen werden.'
+        : 'Die PDF konnte nicht geladen werden.'
     )
+  const paymentMethods = config?.paymentMethods ?? [
+    { id: 'bar', label: 'bar' },
+    { id: 'karte', label: 'Karte' },
+  ]
 
   const set = <K extends keyof DraftState>(key: K, value: DraftState[K]) =>
     setDraft((current) => (current ? { ...current, [key]: value } : current))
@@ -336,8 +350,20 @@ export default function InvoiceDetailClient({ id }: { id: number }) {
         onClick={() => download('pdf')}
         disabled={busy}
       >
-        PDF (ZUGFeRD)
+        {invoice.status === 'storniert'
+          ? 'Original-PDF (ZUGFeRD)'
+          : 'PDF (ZUGFeRD)'}
       </Button>
+      {invoice.status === 'storniert' && (
+        <Button
+          variant="outlined"
+          startIcon={<DownloadIcon />}
+          onClick={() => download('pdf-storniert')}
+          disabled={busy}
+        >
+          PDF mit Storno-Vermerk
+        </Button>
+      )}
       <Button
         variant="outlined"
         startIcon={<DownloadIcon />}
@@ -413,13 +439,35 @@ export default function InvoiceDetailClient({ id }: { id: number }) {
           Storniert am {formatTimestamp(invoice.cancelledAt)}
           {invoice.cancelReason ? ` - Grund: ${invoice.cancelReason}` : ''}.
           Diese Rechnung gilt nicht mehr; eine Korrektur ist eine neue Rechnung
-          mit neuer Nummer.
+          mit neuer Nummer. Das Original-PDF bleibt so abrufbar, wie es
+          ausgestellt wurde; die Fassung mit Storno-Vermerk gibt es daneben.
         </Alert>
       )}
 
       {isDraft && draft && (
         <>
-          {config && !config.bankConfigured && (
+          {config && config.pdfReady === false && (
+            <Alert severity="error" data-testid="invoice-pdf-warning">
+              {config.pdfMessage ??
+                'Das Rechnungs-PDF kann auf der Box nicht erzeugt werden.'}
+            </Alert>
+          )}
+          {invoice.anonymizedAt && (
+            <Alert severity="info" data-testid="invoice-anonymized">
+              Dieser Entwurf lag länger als 90 Tage: Name, Anschrift und
+              Bemerkung wurden am {formatTimestamp(invoice.anonymizedAt)}{' '}
+              gelöscht (Datenschutz). Die Positionen sind geblieben.
+            </Alert>
+          )}
+          {invoice.warnings.length > 0 && (
+            <Alert severity="warning" data-testid="invoice-warnings">
+              <AlertTitle>Zahlung prüfen</AlertTitle>
+              {invoice.warnings.map((warning, index) => (
+                <div key={index}>{warning}</div>
+              ))}
+            </Alert>
+          )}
+          {config && !config.bankConfigured && !draft.paid && (
             <Alert severity="warning" data-testid="invoice-bank-warning">
               {config.bankMessage ??
                 'Die Bankverbindung der Bäckerei ist nicht eingerichtet.'}
@@ -467,25 +515,77 @@ export default function InvoiceDetailClient({ id }: { id: number }) {
                 helperText={errorFor('deliveryDate') ?? 'Tag der Abholung'}
                 InputLabelProps={{ shrink: true }}
               />
+            </Box>
+          </PageSection>
+
+          <PageSection
+            title="Zahlung"
+            description="Ist die Ware schon bezahlt (bar oder mit Karte), weist die Rechnung das aus und verlangt keine Überweisung."
+          >
+            <Box sx={formGrid}>
               <TextField
-                label="Zahlungsziel (Tage)"
-                value={draft.paymentTermDays}
-                onChange={(e) => set('paymentTermDays', e.target.value)}
-                error={!!errorFor('paymentTermDays')}
-                helperText={errorFor('paymentTermDays')}
-                inputProps={{ inputMode: 'numeric' }}
-              />
-              <TextField
-                label="Zahlungsbedingung"
-                value={draft.paymentText}
-                onChange={(e) => set('paymentText', e.target.value)}
-                error={!!errorFor('paymentText')}
-                helperText={
-                  errorFor('paymentText') ??
-                  'Das Fälligkeitsdatum wird automatisch angehängt.'
-                }
-                sx={{ gridColumn: { sm: 'span 2' } }}
-              />
+                select
+                label="Zahlung"
+                value={draft.paid ? 'bezahlt' : 'ueberweisung'}
+                onChange={(e) => set('paid', e.target.value === 'bezahlt')}
+                error={!!errorFor('paid')}
+                helperText={errorFor('paid')}
+              >
+                <MenuItem value="ueberweisung">Per Überweisung</MenuItem>
+                <MenuItem value="bezahlt">Bereits bezahlt</MenuItem>
+              </TextField>
+              {draft.paid ? (
+                <>
+                  <TextField
+                    label="Bezahlt am"
+                    type="date"
+                    value={draft.paidOn}
+                    onChange={(e) => set('paidOn', e.target.value)}
+                    error={!!errorFor('paidOn')}
+                    helperText={errorFor('paidOn')}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                  <TextField
+                    select
+                    label="Zahlart"
+                    value={draft.paidMethod}
+                    onChange={(e) => set('paidMethod', e.target.value)}
+                    error={!!errorFor('paidMethod')}
+                    helperText={errorFor('paidMethod')}
+                  >
+                    <MenuItem value="">
+                      <em>bitte wählen</em>
+                    </MenuItem>
+                    {paymentMethods.map((method) => (
+                      <MenuItem key={method.id} value={method.id}>
+                        {method.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </>
+              ) : (
+                <>
+                  <TextField
+                    label="Zahlungsziel (Tage)"
+                    value={draft.paymentTermDays}
+                    onChange={(e) => set('paymentTermDays', e.target.value)}
+                    error={!!errorFor('paymentTermDays')}
+                    helperText={errorFor('paymentTermDays')}
+                    inputProps={{ inputMode: 'numeric' }}
+                  />
+                  <TextField
+                    label="Zahlungsbedingung"
+                    value={draft.paymentText}
+                    onChange={(e) => set('paymentText', e.target.value)}
+                    error={!!errorFor('paymentText')}
+                    helperText={
+                      errorFor('paymentText') ??
+                      'Das Fälligkeitsdatum wird automatisch angehängt.'
+                    }
+                    sx={{ gridColumn: { sm: 'span 3' } }}
+                  />
+                </>
+              )}
             </Box>
           </PageSection>
 

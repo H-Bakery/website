@@ -84,6 +84,16 @@ const FONT_FILES = {
  * Arbeitsbaum (auch auf der Box: ein Release ist ein git-Worktree), Tests
  * laufen aus `src/services/`.
  */
+export class InvoiceFontsError extends Error {
+  constructor(readonly searched: string[]) {
+    super(
+      `Rechnungs-PDF: Schriften nicht gefunden (${Object.values(
+        FONT_FILES
+      ).join(', ')}; gesucht in ${searched.join(', ')})`
+    )
+  }
+}
+
 export function fontsDir(): string {
   const candidates = [
     process.env['INVOICE_FONTS_DIR'],
@@ -92,16 +102,25 @@ export function fontsDir(): string {
     path.join(process.cwd(), 'apps/bakery-api/assets/fonts'),
   ].filter((dir): dir is string => !!dir)
   const found = candidates.find((dir) =>
-    fs.existsSync(path.join(dir, FONT_FILES.regular))
-  )
-  if (!found) {
-    throw new Error(
-      `Rechnungs-PDF: Schriften nicht gefunden (gesucht in ${candidates.join(
-        ', '
-      )})`
+    Object.values(FONT_FILES).every((file) =>
+      fs.existsSync(path.join(dir, file))
     )
-  }
+  )
+  if (!found) throw new InvoiceFontsError(candidates)
   return found
+}
+
+/**
+ * `null`, wenn die Schriften da sind, sonst der Grund - für den Hinweis beim
+ * Start des Servers und in `GET /api/invoices/config`.
+ */
+export function fontsProblem(): string | null {
+  try {
+    fontsDir()
+    return null
+  } catch (error) {
+    return (error as Error).message
+  }
 }
 
 /** Factur-X-Eigenschaften und ihr PDF/A-Erweiterungsschema für die XMP. */
@@ -452,6 +471,17 @@ export function renderInvoicePdf(
       bold: true,
     })
   }
+  if (invoice.paid === true) {
+    sumRows.push({
+      label: 'Bereits bezahlt',
+      value: core.formatEuro(-totals['prepaidCents']),
+    })
+    sumRows.push({
+      label: 'Noch zu zahlen',
+      value: core.formatEuro(totals['payableCents']),
+      bold: true,
+    })
+  }
   ensureSpace(sumRows.length * 15 + 24, false)
   y += 6
   const sumLeft = right - 250
@@ -475,14 +505,17 @@ export function renderInvoicePdf(
   }
 
   // --- Zahlung ------------------------------------------------------------
-  const paymentLines = [
-    invoice.paymentTerms,
-    `Bitte überweisen Sie ${core.formatEuro(
-      totals['dueCents']
-    )} unter Angabe der Rechnungsnummer ${
-      invoice.number ?? ''
-    } auf folgendes Konto:`,
-  ]
+  const paid = invoice.paid === true
+  const paymentLines = paid
+    ? [invoice.paymentTerms]
+    : [
+        invoice.paymentTerms,
+        `Bitte überweisen Sie ${core.formatEuro(
+          totals['payableCents']
+        )} unter Angabe der Rechnungsnummer ${
+          invoice.number ?? ''
+        } auf folgendes Konto:`,
+      ]
   const bankLines = [
     `Kontoinhaber: ${seller.accountHolder}`,
     `IBAN: ${core.formatIban(seller.iban)}`,
@@ -490,18 +523,24 @@ export function renderInvoicePdf(
   ]
   ensureSpace(110, false)
   y += 14
-  doc.font('regular').fontSize(9.5).fillColor(BLACK)
+  doc
+    .font(paid ? 'bold' : 'regular')
+    .fontSize(9.5)
+    .fillColor(BLACK)
   doc.text(paymentLines.join('\n'), MARGIN.left, y, {
     width: CONTENT_WIDTH,
     lineGap: 2,
   })
   y = doc.y + 6
-  doc.font('bold').fontSize(9.5)
-  doc.text(bankLines.join('\n'), MARGIN.left, y, {
-    width: CONTENT_WIDTH,
-    lineGap: 2,
-  })
-  y = doc.y + 12
+  if (!paid) {
+    doc.font('bold').fontSize(9.5)
+    doc.text(bankLines.join('\n'), MARGIN.left, y, {
+      width: CONTENT_WIDTH,
+      lineGap: 2,
+    })
+    y = doc.y
+  }
+  y += 12
   if (invoice.note) {
     doc.font('regular').fontSize(9.5)
     ensureSpace(
@@ -535,11 +574,13 @@ export function renderInvoicePdf(
       seller.email,
       seller.vatId ? `USt-IdNr. ${seller.vatId}` : '',
     ],
-    [
-      seller.bankName || 'Bankverbindung',
-      `IBAN ${core.formatIban(seller.iban)}`,
-      `BIC ${seller.bic}`,
-    ],
+    seller.iban
+      ? [
+          seller.bankName || 'Bankverbindung',
+          `IBAN ${core.formatIban(seller.iban)}`,
+          `BIC ${seller.bic}`,
+        ]
+      : [],
   ]
   for (let index = 0; index < range.count; index += 1) {
     doc.switchToPage(range.start + index)

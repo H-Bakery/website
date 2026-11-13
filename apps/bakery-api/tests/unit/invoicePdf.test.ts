@@ -149,10 +149,23 @@ describe('Rechnungs-PDF (PDF/A-3 + Factur-X)', () => {
     expect(pages.length).toBeGreaterThan(1)
   })
 
-  it('rendert den Rundungsfall und die stornierte Rechnung', async () => {
+  it('rendert den Rundungsfall, die bezahlte und die stornierte Rechnung', async () => {
     const rounding = await render(fixture.roundingInvoice())
     save('rechnung-rundung', rounding.pdf, rounding.xml)
     expect(rounding.xml).toContain('<ram:RoundingAmount>')
+
+    const paid = await render(fixture.paidInvoice())
+    save('rechnung-bezahlt', paid.pdf, paid.xml)
+    expect(paid.xml).toContain(
+      '<ram:TotalPrepaidAmount>4.81</ram:TotalPrepaidAmount>' +
+        '<ram:DuePayableAmount>0.00</ram:DuePayableAmount>'
+    )
+    // keine Zahlungsaufforderung und kein Konto in einer bezahlten Rechnung
+    const paidText = streams(paid.pdf)
+      .map((s) => s.toString('latin1'))
+      .join('\n')
+    expect(paid.xml).not.toContain('IBANID')
+    expect(paidText).not.toContain('IBAN')
 
     const cancelled = await render(fixture.mixedInvoice(), {
       status: 'storniert',

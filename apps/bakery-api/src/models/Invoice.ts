@@ -59,6 +59,23 @@ export class Invoice extends Model<
   declare cancelledAt: CreationOptional<Date | null>
   declare cancelledBy: CreationOptional<number | null>
   declare cancelReason: CreationOptional<string>
+  /** Vergleichsform der Nummer (`numberKey()`), eindeutig. */
+  declare numberKey: CreationOptional<string | null>
+  /** Das beim Ausstellen festgeschriebene PDF; nie neu erzeugt. */
+  declare pdf: CreationOptional<Buffer | null>
+  declare pdfSha256: CreationOptional<string | null>
+  declare pdfStoredAt: CreationOptional<Date | null>
+  /** Die Fassung mit Storno-Aufdruck, getrennt vom Original. */
+  declare cancelPdf: CreationOptional<Buffer | null>
+  declare cancelPdfSha256: CreationOptional<string | null>
+  /** „Bereits bezahlt“ (voller Betrag) mit Datum und Zahlart `bar` | `karte`. */
+  declare paid: CreationOptional<boolean>
+  declare paidOn: CreationOptional<string | null>
+  declare paidMethod: CreationOptional<string>
+  /** Was die Vorbestellung beim Anlegen als bezahlt vermerkt hatte (Cent). */
+  declare preorderPaidCents: CreationOptional<number | null>
+  /** Entwurf: Name und Anschrift vom 90-Tage-Lauf gelöscht. */
+  declare anonymizedAt: CreationOptional<Date | null>
   declare createdBy: CreationOptional<number | null>
   declare updatedBy: CreationOptional<number | null>
   declare createdAt: CreationOptional<Date>
@@ -134,6 +151,25 @@ export class Invoice extends Model<
           allowNull: false,
           defaultValue: '',
         },
+        numberKey: { type: DataTypes.STRING(80), allowNull: true },
+        pdf: { type: DataTypes.BLOB, allowNull: true },
+        pdfSha256: { type: DataTypes.STRING(64), allowNull: true },
+        pdfStoredAt: { type: DataTypes.DATE, allowNull: true },
+        cancelPdf: { type: DataTypes.BLOB, allowNull: true },
+        cancelPdfSha256: { type: DataTypes.STRING(64), allowNull: true },
+        paid: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: false,
+        },
+        paidOn: { type: DataTypes.DATEONLY, allowNull: true },
+        paidMethod: {
+          type: DataTypes.STRING(8),
+          allowNull: false,
+          defaultValue: '',
+        },
+        preorderPaidCents: { type: DataTypes.INTEGER, allowNull: true },
+        anonymizedAt: { type: DataTypes.DATE, allowNull: true },
         createdBy: { type: DataTypes.INTEGER, allowNull: true },
         updatedBy: { type: DataTypes.INTEGER, allowNull: true },
         createdAt: DataTypes.DATE,

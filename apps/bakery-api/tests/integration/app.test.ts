@@ -58,6 +58,7 @@ describe('createTestApp', () => {
       '20270301000000-dienstplan.js',
       '20270310000000-backzettel-none-today.js',
       '20270320000000-invoices.js',
+      '20270325000000-invoices-pdf-paid.js',
     ])
   })
 })

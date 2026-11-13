@@ -226,11 +226,26 @@ export default function InvoiceView({ invoice }: { invoice: Invoice }) {
             testId="invoice-due"
           />
         )}
+        {invoice.paid && (
+          <>
+            <Row
+              label="Bereits bezahlt"
+              value={formatEuro(-(totals.prepaidCents ?? totals.dueCents))}
+              testId="invoice-prepaid"
+            />
+            <Row
+              label="Noch zu zahlen"
+              value={formatEuro(totals.payableCents ?? 0)}
+              strong
+              testId="invoice-payable"
+            />
+          </>
+        )}
       </Box>
 
       <Box sx={{ mt: 3, breakInside: 'avoid' }} data-testid="invoice-payment">
         {invoice.paymentTerms && <div>{invoice.paymentTerms}</div>}
-        {seller.iban ? (
+        {invoice.paid ? null : seller.iban ? (
           <Box sx={{ mt: 1, fontWeight: 600 }}>
             <div>Kontoinhaber: {seller.accountHolder}</div>
             <div>IBAN: {formatIban(seller.iban)}</div>
