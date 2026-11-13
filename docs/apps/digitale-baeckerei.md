@@ -17,17 +17,21 @@ Landingpage auf GitHub Pages). Nicht im Pilot, nicht auf der Box.
 
 ## Entscheidungen (mit dem Inhaber, 2026-11-12)
 
-| #   | Entscheidung                                                                                                                                                                                                                                                                                           |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| DB1 | Name **„Digitale Bäckerei“**, Pfad `/digitale-baeckerei/`, App `bakery-digitale-baeckerei`.                                                                                                                                                                                                            |
-| DB2 | **Modell zuerst übernehmen, später vielleicht umziehen.** Quelle ist der fertige Zwilling aus dem Saar LiDAR Explorer. Der Generator bleibt dort, und Verbesserungen am Modell passieren dort. Ob er in die Bäckerei-Repos umzieht, entscheiden wir erst, wenn wir oft am Modell arbeiten (→ Phase 3). |
-| DB3 | Drei Blickpunkte: **Theke + Vitrine**, **Brotregal**, **Regale + Kühlschrank**.                                                                                                                                                                                                                        |
-| DB4 | Kamera: **fester Standort, leicht umschauen (≈ ±20°) und zoomen**. Kein Laufen, kein freier Orbit.                                                                                                                                                                                                     |
-| DB5 | **Start direkt an der Theke**, ohne Fassade: Straße und Nachbarhäuser fehlen im Modell noch. Ein Intro „Blick vom Kreisel“ kommt später (P3).                                                                                                                                                          |
-| DB6 | **Echte, aktuelle Produktdaten aus `hq/products`** (Name, Preis, Einheit, Text) statt des Standes im Modell. Die Texte werden vorher in hq überarbeitet (Gesundheitsversprechen).                                                                                                                      |
-| DB7 | Später bekommt jedes Produkt ein **eigenes, teilrealistisches 3D-Modell**, das auch die Landingpage nutzen kann (P4).                                                                                                                                                                                  |
-| DB8 | **Vorerst keine Preise**, weder auf der Karte noch in der Liste noch im Bild. Produktdaten kommen als Snapshot aus hq, der beim Build entsteht. Der Deploy-Workflow darf hq dafür lesen.                                                                                                               |
-| DB9 | Die 3D-Produkte (P4) kommen in ein **eigenes Daten-Repo**, zuerst **nur lokal**: `../produkte-3d` neben `website` und `hq`, ohne Remote.                                                                                                                                                               |
+| #    | Entscheidung                                                                                                                                                                                                                                                                                           |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| DB1  | Name **„Digitale Bäckerei“**, Pfad `/digitale-baeckerei/`, App `bakery-digitale-baeckerei`.                                                                                                                                                                                                            |
+| DB2  | **Modell zuerst übernehmen, später vielleicht umziehen.** Quelle ist der fertige Zwilling aus dem Saar LiDAR Explorer. Der Generator bleibt dort, und Verbesserungen am Modell passieren dort. Ob er in die Bäckerei-Repos umzieht, entscheiden wir erst, wenn wir oft am Modell arbeiten (→ Phase 3). |
+| DB3  | Drei Blickpunkte: **Theke + Vitrine**, **Brotregal**, **Regale + Kühlschrank**.                                                                                                                                                                                                                        |
+| DB4  | Kamera: **fester Standort, leicht umschauen (≈ ±20°) und zoomen**. Kein Laufen, kein freier Orbit.                                                                                                                                                                                                     |
+| DB5  | **Start direkt an der Theke**, ohne Fassade: Straße und Nachbarhäuser fehlen im Modell noch. Ein Intro „Blick vom Kreisel“ kommt später (P3).                                                                                                                                                          |
+| DB6  | **Echte, aktuelle Produktdaten aus `hq/products`** (Name, Preis, Einheit, Text) statt des Standes im Modell. Die Texte werden vorher in hq überarbeitet (Gesundheitsversprechen).                                                                                                                      |
+| DB7  | Später bekommt jedes Produkt ein **eigenes, teilrealistisches 3D-Modell**, das auch die Landingpage nutzen kann (P4).                                                                                                                                                                                  |
+| DB8  | **Vorerst keine Preise**, weder auf der Karte noch in der Liste noch im Bild. Produktdaten kommen als Snapshot aus hq, der beim Build entsteht. Der Deploy-Workflow darf hq dafür lesen.                                                                                                               |
+| DB9  | Die 3D-Produkte (P4) kommen in ein **eigenes Daten-Repo**, zuerst **nur lokal**: `../produkte-3d` neben `website` und `hq`, ohne Remote.                                                                                                                                                               |
+| DB10 | **Produkt-Modelle sind prozedural, nicht gescannt** (2026-11-13). Stil „teilrealistisch-digital“: der heutige Comic-Look, etwas realistischer, aber klar als digitale Zeichnung zu erkennen. Scans sind vorerst vom Tisch.                                                                             |
+| DB11 | **Weitere Räume** (2026-11-13). Die App ist für weitere Räume bereit, zuerst die Backstube. Ein Modell der Backstube gibt es noch nicht; gebaut und getestet ist alles an einem synthetischen zweiten Raum. Abschnitt „Weitere Räume (Backstube)“.                                                     |
+| DB12 | **Der Laden ist „einrichtbar“** (2026-11-13). Was in Theke, Brotregal und Regalen liegt, ist Konfiguration und nicht ins Modell gebacken. Die App legt leichte Produkt-Modelle selbst auf die Plätze.                                                                                                  |
+| DB13 | **Die Landingpage nutzt Bilder, die aus den 3D-Produkt-Modellen gerendert sind** (2026-11-13).                                                                                                                                                                                                         |
 
 ## Quelle: der Zwilling im Explorer
 
@@ -135,10 +139,12 @@ react-three-fiber (das bräuchte React 19). Sie läuft in einer Client-Komponent
 
 ```
 apps/bakery-digitale-baeckerei/
-  scripts/sync-model.mjs     GLB laden, prüfen, Preisschilder entfernen, nach public/model/; Belegung nach public/data/
+  scripts/sync-model.mjs     je Raum: GLB laden, prüfen, Preisschilder entfernen, nach public/model/; Belegung nach public/data/
   scripts/sync-products.mjs  hq lesen, Snapshot ohne Preise nach public/data/ (beides git-ignoriert)
-  model.lock.json            Quelle (Commit des Daten-Repos), sha256 der Quelle und der ausgelieferten Datei, Abrufdatum
-  src/config/raeume.ts       Räume → Blickpunkte (eye, look, Grenzen, Hoch-/Querformat, Möbel)
+  scripts/sync-rauminfos.mjs Infopunkte der Räume aus hq nach public/data/rauminfos.json (git-ignoriert)
+  model.lock.json            je Raum: Quelle (Commit des Daten-Repos), sha256 der Quelle und der ausgelieferten Datei, Abrufdatum
+  src/config/raeume.ts       Räume → Blickpunkte (eye, look, Grenzen, Hoch-/Querformat, Möbel), Flüge, Türen
+  src/lib/raeume/            welche Räume es gibt (Lock), Raum in der Adresse, Infopunkte
   src/lib/scene/             Laden, Morgens-Filter, Kamera-Rig, Picking, Hervorhebung (aus dem Explorer)
   src/lib/produkte/          Typen, Zuordnung Platz → Produkt, Laden von Snapshot und Belegung
   src/components/            Viewer, Blickpunkt-Leiste, Produkt-Sheet, Liste, Ladebild, Ersatz ohne WebGL
@@ -153,8 +159,9 @@ apps/bakery-digitale-baeckerei-e2e/   Playwright (390×844 und Desktop), nur mit
   Commit und beide Prüfsummen in `model.lock.json` ändern, das Modell ansehen, dann PR.
   Die Nx-Targets `build` und `serve` hängen von `sync-model` und `sync-products` ab. CI lädt
   nichts herunter, sondern baut mit dem Fixture.
-- **Räume als Datenmodell:** `raeume.ts` = `[{ id: 'laden', name, blickpunkte: [...] }]`. Die
-  Backstube ist später nur ein weiterer Eintrag mit eigenem Modell, Blickpunkte und UI bleiben.
+- **Räume als Datenmodell:** `raeume.ts` = `[{ id: 'laden', name, modell, blickpunkte: [...] }]`. Die
+  Backstube ist später nur ein weiterer Eintrag mit eigenem Modell, Blickpunkte und UI bleiben -
+  siehe „Weitere Räume (Backstube)“.
 - **Blickpunkt:** `{ id, name, eye, look, yawDeg: 20, pitchDeg: 12, fovMin, fovMax, portrait?:
 { eye, look, fov, grenzenUm?, yawDeg?, pitchDeg? } }`. Hochformat bekommt eigene Werte, damit
   das ganze Regal ins Bild passt - auch eigene Grenzen um einen anderen Punkt als das Startbild
@@ -252,9 +259,12 @@ Befehle in derselben Reihenfolge gelaufen (ohne Secret und ohne den hq-Checkout)
    `DIGITALE_BAECKEREI_BASE_PATH=/digitale-baeckerei`, ohne Nx-Cache, nie mit
    `DIGITALE_BAECKEREI_FIXTURE` (eigener Schritt, der sonst abbricht).
 5. **Wächter** `scripts/pruefe-export.mjs` (Logik und Specs: `export-pruefung.js`): bricht ab, wenn
-   `out/model/twin.glb` nicht genau die bereinigte Datei aus dem Lock ist (`ausgeliefert.sha256`),
+   das Modell eines Raums (`out/model/twin.glb`) nicht genau die bereinigte Datei aus dem Lock ist
+   (`ausgeliefert.sha256`),
    wenn noch ein Preisschild darin steckt, wenn in `model/` oder `data/` etwas Fremdes liegt, wenn der
    Snapshot ein Feld außerhalb des Vertrags hat oder ein Produkt nennt, das nicht im Modell liegt,
+   wenn Belegung oder Infopunkte einen Raum nennen, der nicht im Lock steht, wenn die Infopunkte
+   ihren Vertrag nicht einhalten, wenn irgendwo eine Spur der synthetischen Test-Räume liegt,
    wenn irgendwo im Export ein „€“ steht, wenn der Export nicht für den Unterpfad gebaut ist oder der
    Fixture-Schalter gesetzt ist. Ebenso, wenn 3D-Modelle einzelner Produkte im Export liegen: Die
    sind vorerst nur lokal (DB9), der Runner hat das Daten-Repo `produkte-3d` nicht - erwartet wird
@@ -312,6 +322,159 @@ Gut zu wissen:
 - **Noch nicht verlinkt:** Die Seite steht auf `noindex` und ist von der Landingpage aus nicht verlinkt. Wer die Adresse kennt, kann sie aber öffnen.
 - **Schlüssel tauschen** (bei Verdacht, sonst etwa einmal im Jahr): Schritte 1, 2, 4 und 5 mit einem neuen Paar, dann den alten Deploy-Key in hq löschen und Schritt 6.
 - **Wenn das Secret fehlt** (oder der Deploy-Key in hq gelöscht ist): Der Deploy bricht mit einer deutschen Meldung ab und veröffentlicht nichts. Die Seite bleibt auf dem letzten Stand - auch Änderungen an der Landingpage gehen dann erst wieder live, wenn der Schlüssel da ist.
+
+## Weitere Räume (Backstube)
+
+Seit DB11 ist die App für mehrere Räume gebaut. **Heute gibt es nur den Verkaufsraum** - mit nur
+ihm im Lock sieht und verhält sich die Seite wie vorher (kein Raumwechsel in der Leiste, dasselbe
+HTML). Alles Weitere ist an einem erfundenen zweiten Raum gebaut und getestet (der „Testbackstube“
+des Fixtures, vier Kisten als Stationen); eine echte Backstube hat die App noch nie gezeigt.
+
+### Was die App kann
+
+- **Ein Raum = ein Modell.** `model.lock.json` nennt je Raum eine Datei mit eigener Quelle und
+  beiden Prüfsummen (Format `bakery-model-lock-v2`, Schlüssel = id des Raums; das alte Format mit
+  einem Modell wird weiter gelesen). `sync-model` lädt und bereinigt alle, der Wächter prüft jedes.
+  **Ein Raum, der in `raeume.ts` steht, aber nicht im Lock, wird nicht gebaut und nicht gezeigt** -
+  es gibt keinen Platzhalter.
+- **Raum wechseln:** Gibt es mehr als einen Raum, steht unten in der Leiste ein Knopf („In die
+  Backstube“ / „In den Laden“; ab drei Räumen „Raum wechseln“ mit Auswahl). Das Modell des anderen
+  Raums wird erst dann geladen (mit Ladebild und Fortschritt), die Szene des alten Raums wird ganz
+  abgebaut, man steht am Start-Blickpunkt des neuen. Karte, Liste und Nahansicht gehen zu.
+- **Link und „Zurück“:** `…/digitale-baeckerei/?raum=<id>` öffnet einen Raum direkt (der Laden steht
+  ohne Parameter da; eine unbekannte id landet im Laden). Jeder Wechsel ist ein Schritt im Verlauf
+  des Browsers, „Zurück“ führt in den vorigen Raum. Gespeichert wird nichts.
+- **Infopunkte statt Produkte:** Eine Backstube hat Stationen (Ofen, Kneter …). Ein Tipp auf eine
+  Station mit Infopunkt öffnet dieselbe Karte wie bei einem Produkt (Titel, Kurztext, „Mehr
+  lesen“), die Station wird hervorgehoben; sie steht in „Alles hier“ und im Ersatz ohne WebGL (dort
+  stehen alle Räume untereinander). Die Texte kommen aus hq (unten). Ohne Datei gibt es keine
+  Infopunkte - erfunden wird nichts.
+- **Türen:** Ein Stück des Modells kann in einen anderen Raum führen (`tueren` in `raeume.ts`). Gibt
+  es den Zielraum nicht, bleibt die Tür ein Stück Wand.
+- **Flug zum Start** gibt es nur in Räumen, die einen haben (`intros`), je Raum einmal je
+  Seitenaufruf.
+
+Wie die Daten je Raum fließen (hier hängt sich später DB12, „einrichtbar“, ein):
+
+| Was                 | Quelle                                                             | Datei im Export                       | In der App                                         |
+| ------------------- | ------------------------------------------------------------------ | ------------------------------------- | -------------------------------------------------- |
+| Modell              | `model.lock.json` → `raeume.<id>`                                  | `model/<datei>`                       | `raum.modell`, `src/lib/raeume/verfuegbar.ts`      |
+| Belegung (Produkte) | `extras` im GLB des Raums (`sync-model`)                           | `data/belegung.json` → `raeume.<id>`  | `belegungVon()` in `src/lib/produkte/zuordnung.ts` |
+| Produkttexte        | `hq/products` (`sync-products`), alle Räume zusammen               | `data/products.snapshot.json`         | `eintraegeFuer()`                                  |
+| Infopunkte          | `hq/config/digitale-baeckerei/raeume/<id>.yaml` (`sync-rauminfos`) | `data/rauminfos.json` → `raeume.<id>` | `src/lib/raeume/rauminfos.ts`                      |
+
+`DigitaleBaeckerei.tsx` setzt daraus je Raum **eine** Liste je Blickpunkt zusammen (`listen`: erst
+die Produkte, dann die Infopunkte, zugeordnet über `moebel` des Blickpunkts). Karte, „Alles hier“,
+Ersatz ohne WebGL und der Tipp ins Bild leben alle von dieser einen Stelle.
+
+### Einen Raum ergänzen
+
+Kein Code - drei Einträge, in dieser Reihenfolge:
+
+1. **Modell sperren:** in `model.lock.json` unter `raeume` einen Eintrag mit der id des Raums:
+
+   ```json
+   "backstube": {
+     "datei": "backstube.glb",
+     "source": { "repo": "Open-Kirrberg/saar-lidar-data", "commit": "<40 Hex-Zeichen>",
+                 "path": "zones/<zone>/built", "datei": "twin.glb" },
+     "fetched": "JJJJ-MM-TT",
+     "sha256": "…", "bytes": 0,
+     "ausgeliefert": { "sha256": "…", "bytes": 0 }
+   }
+   ```
+
+   `datei` ist der Name unter `public/model/` (je Raum ein anderer), `source.datei` der Name an der
+   Quelle (weglassen, wenn gleich). `sync-model` nennt die Ist-Werte für `ausgeliefert`, wenn sie
+   nicht passen. Kennt die Bereinigung den Aufbau des Modells nicht (Texturen, fremde Extensions),
+   bricht sie ab.
+
+2. **Raum konfigurieren:** in `src/config/raeume.ts` einen Eintrag in `raeume`: `id` (wie im Lock),
+   `name`, `wechsel` („In die Backstube“), `modell` (= `datei` aus dem Lock), `produkte: false`,
+   `start` und die `blickpunkte` (Standort, Blickziel, Grenzen, `moebel` = Anfang der Knoten-IDs der
+   Stationen, die man von dort sieht). Optional `tueren` und `intros`. Die Kamerawerte am echten
+   Modell bestimmen und in allen drei Formaten ansehen (390×844, 844×390, 1440×900). Soll eine Tür
+   aus dem Laden in die Backstube führen, bekommt der Laden `tueren: [{ knoten, ziel }]`.
+
+3. **Infopunkte (optional):** in hq die Datei `config/digitale-baeckerei/raeume/<id>.yaml`:
+
+   ```yaml
+   infopunkte:
+     - knoten: ofen # Anfang der Knoten-ID im Modell: trifft „ofen“ und „ofen/…“
+       titel: Der Ofen
+       kurz: Ein, zwei Sätze für die Karte.
+       text: | # optional - der lange Text hinter „Mehr lesen“
+         Mehr dazu, auch in mehreren Absätzen.
+   ```
+
+   Erlaubt sind genau diese Felder. `titel` höchstens 80 Zeichen, `kurz` 400, `text` 4000; keine
+   Preise („€“ bricht den Build ab). Ein Infopunkt gehört zu dem Blickpunkt, dessen `moebel` zu
+   seinem `knoten` passt. Passen zwei Infopunkte auf ein Stück, gewinnt der genauere (`ofen/tuer`
+   vor `ofen`). Eine Datei außerhalb des Vertrags bricht den Build ab; die Meldung nennt Datei,
+   Stelle und Feld, nie den Text. Gelesen werden nur Dateien von Räumen, die im Lock stehen.
+   Der Ordner kommt aus `HQ_DIGITALE_BAECKEREI_DIR`, sonst liegt er neben `HQ_PRODUCTS_DIR`
+   (`<hq>/config/digitale-baeckerei`). Auch der Laden kann so Infopunkte bekommen (z. B. für die
+   Regale mit neutraler Ware); ein Produkt auf demselben Platz hat Vorrang.
+
+Danach `npx nx build bakery-digitale-baeckerei`, ansehen, PR.
+
+**Für den Deploy fehlt dann noch ein Schritt** (bewusst nicht gebaut, solange es keinen zweiten Raum
+gibt): `deploy-to-github-pages.yml` holt aus hq nur `products/` und bricht ab, wenn mehr da ist. Mit
+Infopunkten muss der Sparse-Checkout `config/digitale-baeckerei/raeume/` mitnehmen und der Schritt
+danach das erlauben - sonst geht der Raum ohne Infopunkte live (kein Fehler, aber leere Karten gibt
+es nicht: Stationen wären dann nicht antippbar).
+
+### Was noch nicht geht
+
+- „Entdeckt x von y“ sagt „im Laden“ - richtig, solange nur der Laden Produkte hat.
+- Doppeltipp zoomt nur auf Produkte und Ware, nicht auf Stationen.
+- Der Fortschrittsbalken kennt die Größe eines Modells nur aus dem Lock.
+- Die Blickpunkte eines neuen Raums stehen in `raeume.ts` - ein Raum ganz ohne PR geht also nicht.
+- Auf einem echten Handy ist der Raumwechsel ungeprüft (wie alles andere: nur Chromium, emuliert).
+
+### Was der Inhaber für die Backstube liefern muss
+
+**So ist der Laden entstanden** (nachgesehen im Explorer-Repo, `tools/capture/zones/baeckerei-heusser.toml`
+und `zones/baeckerei-heusser/plan/`): nicht aus einem LiDAR-Scan, sondern aus **einem Video** - ein
+Rundgang mit der Action-Cam, knapp zwei Minuten, von der Straße durch den Laden. Daraus wurden
+Einzelbilder gezogen, Personen und Kennzeichen unkenntlich gemacht und ein grobes 3D-Abbild
+gerechnet. Dieses Abbild sieht kein Besucher: Es dient nur zum Abmessen. Der Laden, den man sieht,
+ist danach **von Hand im Code nachgebaut** - aus einem Grundriss mit Maßen und einer Liste der Möbel
+mit Größe und Standort, dazu Fotos für Farben und Aussehen. Weil ein Video keinen Maßstab hat,
+stimmen die Maße des Ladens bisher nur auf etwa ± 11 %; die Messliste mit zehn Bandmaß-Messungen
+(`plan/messliste.md`) ist noch offen.
+
+Für die Backstube dasselbe, mit einem Maß von Anfang an:
+
+1. **Zustimmung.** Die Einwilligung der Inhaber gilt bisher für den Laden und außen. Für die
+   Backstube braucht es ein kurzes schriftliches Ja (wer, was, ab wann öffentlich).
+2. **Ein Video, ein Rundgang** (2-3 Minuten, Handy quer oder Action-Cam, höchste Auflösung):
+   langsam und ohne Schwenk-Hektik einmal an den Wänden entlang, jede Station von vorn und schräg
+   von beiden Seiten, einmal Boden bis Decke, und der Weg von der Tür zum Laden. Alle Lampen an,
+   kein Gegenlicht aus dem Fenster. Am besten nach dem Putzen, wenn niemand arbeitet.
+3. **Fotos:** je Station eines von vorn und eines schräg (ganze Station im Bild), dazu je eine
+   Aufnahme jeder Wand.
+4. **Maße** (Bandmaß, 15 Minuten): Länge, Breite und Höhe des Raums; Türen und Fenster (Breite,
+   Höhe, Abstand zur Ecke); je Station Breite × Tiefe × Höhe und der Abstand zu zwei Wänden.
+   **Eine lange Strecke genügt für den Maßstab** - sie fehlt beim Laden bis heute.
+5. **Stationen benennen:** eine Liste, was gezeigt werden soll, mit ein bis zwei Sätzen je Station
+   (das werden die Karten), z. B. Ofen, Kneter, Teigteiler/Ausrollmaschine, Gärschrank, Arbeitstisch,
+   Kühlung, Mehllager, Spüle. Was nicht auf der Liste steht, wird Kulisse ohne Karte.
+
+**Datenschutz - vor dem Filmen prüfen:**
+
+- **Keine Personen**, auch nicht gespiegelt (Ofentür, Edelstahl, Fenster).
+- **Nichts Lesbares:** keine Rezepte, Zettel, Backzettel, Bestell- oder Lieferscheine, Dienstpläne,
+  Telefonlisten, Kalender; keine Lieferantennamen auf Säcken, Kartons und Eimern (wegdrehen oder
+  wegräumen); Bildschirme und Displays aus.
+- **Aufgeräumte Flächen:** Was auf dem Tisch liegt, landet im Bild - nur stehen lassen, was man
+  zeigen möchte. Keine privaten Sachen (Jacken, Taschen, Handys).
+- Video, Fotos und Maße **nicht in ein Repo und nicht in einen Chat** legen, sondern wie beim Laden
+  in den privaten Ordner neben dem Explorer. Öffentlich wird nur das nachgebaute Modell.
+
+Danach, im Explorer: Der Generator baut heute nur den Verkaufsraum (und außen den Eingang der
+Backstube mit geschlossener Tür). Für die Backstube braucht er dort neuen Code und einen neuen Stand
+des Modells; erst dann folgen hier die drei Schritte aus „Einen Raum ergänzen“.
 
 ## Phasen
 
@@ -455,4 +618,8 @@ kann (im Produkt-Sheet) und das auch die Produktseiten der Landingpage zeigen.
   (`feat/bh-intro-kreisel`, lokal).
 - **Flug „nur beim ersten Besuch“:** bräuchte Speicher auf dem Gerät - erlaubt?
 - **Texte der Regal-Karten** für die neutrale Ware (ohne hq-Produkt).
+- **Backstube (DB11):** Zustimmung, Video, Fotos, Maße und die Liste der Stationen mit Texten -
+  siehe „Was der Inhaber für die Backstube liefern muss“. Soll eine Tür im Laden in die Backstube
+  führen, und soll die Backstube als eigener Raum oder im selben Modell wie der Laden entstehen
+  (Entscheidung im Explorer)?
 - **Preise:** später wieder aufnehmen?
