@@ -5,19 +5,23 @@ Produkte wie „Testbrot“, keine Preise. Das echte Modell (`twin.glb`), die da
 und der echte Produkt-Snapshot gehören nicht ins Repo; die Sync-Skripte schreiben sie nach `public/`
 (git-ignoriert). Den Katalog des Explorers (`catalogue.json`, mit Preisen) lädt die App gar nicht.
 
-| Datei                            | Inhalt                                                                        |
-| -------------------------------- | ----------------------------------------------------------------------------- |
-| `twin.fixture.glb`               | Mini-Modell des Ladens (≈ 59 kB, 60 Knoten). Erzeugt, nicht von Hand ändern.  |
-| `build-fixture.mjs`              | Generator des Mini-Modells (nur Node-Bordmittel, deterministisch).            |
-| `products.snapshot.fixture.json` | 20 erfundene Produkte in der Form `ProduktSnapshot`.                          |
-| `produkt.fixture.glb`            | Ein Produkt-Modell für die Nahansicht (≈ 15 kB): kantiger Laib. Erzeugt.      |
-| `build-produkt-fixture.mjs`      | Generator dazu (nur Node-Bordmittel, deterministisch, ohne Winkelfunktionen). |
-| `produkte-3d.fixture.json`       | Index der Nahansicht: nur `testbrot-500g` hat ein Modell.                     |
-| `fixture-info.js`                | Liest die Dateien (GLB-Container, Plätze, erwartete Listen) - für die Tests.  |
-| `testbackstube.fixture.glb`      | Mini-Modell eines zweiten, erfundenen Raums (≈ 13 kB, 11 Knoten). Erzeugt.    |
-| `testraeume.ts`                  | Dessen Konfiguration (Blickpunkte, Tür) in der Form `Raum` der App.           |
-| `raeume/testbackstube.yaml`      | Dessen synthetische Infopunkte, in der Form der Dateien in hq.                |
-| `fixture.spec.ts`                | Prüft, was unten steht.                                                       |
+| Datei                            | Inhalt                                                                            |
+| -------------------------------- | --------------------------------------------------------------------------------- |
+| `twin.fixture.glb`               | Mini-Modell des Ladens (≈ 59 kB, 60 Knoten). Erzeugt, nicht von Hand ändern.      |
+| `build-fixture.mjs`              | Generator des Mini-Modells (nur Node-Bordmittel, deterministisch).                |
+| `products.snapshot.fixture.json` | 20 erfundene Produkte in der Form `ProduktSnapshot`.                              |
+| `produkt.fixture.glb`            | Ein Produkt-Modell für die Nahansicht (≈ 15 kB): kantiger Laib. Erzeugt.          |
+| `build-produkt-fixture.mjs`      | Generator dazu (nur Node-Bordmittel, deterministisch, ohne Winkelfunktionen).     |
+| `produkte-3d.fixture.json`       | Index der Nahansicht: nur `testbrot-500g` hat ein Modell.                         |
+| `regal.fixture.glb`              | Drei Regal-Modelle für die Einrichtung (≈ 3 kB), gepackt wie die echten. Erzeugt. |
+| `regal-fixture.js`               | Die drei erfundenen Formen und ihr Paket (CommonJS: Generator und Specs).         |
+| `build-regal-fixture.mjs`        | Schreibt `regal.fixture.glb` und den Abschnitt `regal` des Index.                 |
+| `einrichtung.yaml`               | Synthetische Einrichtung, in der Form der Datei in hq.                            |
+| `fixture-info.js`                | Liest die Dateien (GLB-Container, Plätze, erwartete Listen) - für die Tests.      |
+| `testbackstube.fixture.glb`      | Mini-Modell eines zweiten, erfundenen Raums (≈ 13 kB, 11 Knoten). Erzeugt.        |
+| `testraeume.ts`                  | Dessen Konfiguration (Blickpunkte, Tür) in der Form `Raum` der App.               |
+| `raeume/testbackstube.yaml`      | Dessen synthetische Infopunkte, in der Form der Dateien in hq.                    |
+| `fixture.spec.ts`                | Prüft, was unten steht.                                                           |
 
 Mit `DIGITALE_BAECKEREI_FIXTURE=1` nehmen `sync-model` und `sync-products` diese Dateien statt der
 echten (`public/model/twin.glb`, `public/data/products.snapshot.json`, `public/data/belegung.json`).
@@ -69,6 +73,25 @@ Den Aufbau des echten Modells, damit dieselben Code-Pfade laufen:
   Playwright-Suite wirklich läuft. Die übrigen Brote haben ein Primitiv.
 - **Glas:** Material `glas` (`alphaMode: BLEND`, doppelseitig): Frontscheibe, Glasboden und Deckel
   der Vitrine, Tür des Kühlschranks. Tippen muss hindurchgehen.
+
+## Einrichtung (DB12)
+
+Der Fixture-Build läuft durch dieselben Wege wie ein Build mit Regal-Modellen und einer
+Einrichtung aus hq - mit erfundenen Daten:
+
+- **Regal-Modelle** für `testbrot-500g`, `musterbrezel` und `musterweck` (`MIT_REGAL`): kantige
+  Pyramidenstümpfe mit einer hellen Kerbe, im Vertrag der echten (`regal.glb` des Daten-Repos:
+  Meter, steht auf y = 0, ein Mesh, Float-Positionen, 16-Bit-Farben, unlit, unkomprimiert), gepackt
+  mit `scripts/regal-modelle.js`. Alle Plätze dieser Produkte zeigen gelegte Stücke statt der Kiste
+  des Mini-Modells - auch die Brezeln am Ständer (Haken) und die Wecken im Korb (gehäuft).
+- **`einrichtung.yaml`** (`EINGERICHTET` in `fixture-info.js`): `brotregal/ebene-1/platz-04` bekommt
+  ein anderes Produkt mit Regal-Modell (gelegt), `gitterregal/platz-04` (neutrale Ware) eines ohne
+  Regal-Modell (im Bild leer, in der Liste), `theke/vitrine/ebene-2/platz-04` ist leer.
+  `erwarteteEintraege()` rechnet die Listen aus Modell **und** Einrichtung.
+- **Einrichten-Modus:** Im Fixture-Build steckt das Werkzeug zum Testen (`?einrichten=1`); dafür
+  schreibt `sync-model` die synthetische Einrichtung und die Belegung der Modelle nach
+  `data/einrichtung.quelle.yaml` und `data/einrichtung.modell.json`. `exportFehler` prüft beide
+  Byte für Byte - eine Datei aus hq darf dort nie liegen.
 
 ## Der zweite Raum: „Testbackstube“ (DB11)
 

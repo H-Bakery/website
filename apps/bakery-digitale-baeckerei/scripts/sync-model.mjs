@@ -26,27 +26,67 @@
  * Die Modelle gehören NICHT in dieses öffentliche Repo
  * (docs/apps/digitale-baeckerei.md, „Rechte und Datenschutz“).
  *
+ * Einrichtung (DB12): Aus der Ware jedes Platzes leitet das Skript dessen
+ * Rahmen ab (plaetze.js; das echte Modell ist meshopt-komprimiert, dafür der
+ * Decoder aus three) und legt, wenn es sie gibt, die Einrichtung aus hq über
+ * die Belegung des Modells: `<hq>/config/digitale-baeckerei/einrichtung.yaml`
+ * (einrichtung.js; der Ordner kommt aus HQ_DIGITALE_BAECKEREI_DIR, sonst liegt
+ * er neben HQ_PRODUCTS_DIR). Ohne Datei gilt das Modell. Ein unbekannter Raum,
+ * Platz oder ein unbekanntes Produkt bricht ab. Im Fixture-Modus:
+ * src/test/fixtures/einrichtung.yaml. Nur mit DIGITALE_BAECKEREI_EINRICHTEN=1
+ * (Einrichten-Modus, lokal) liegt die Datei zusätzlich als
+ * public/data/einrichtung.quelle.yaml da, daneben die Belegung der Modelle
+ * ohne Einrichtung (einrichtung.modell.json) - sonst wird beides dort
+ * gelöscht, und der Export-Wächter ließe es nicht durch.
+ *
  * Aufruf: node scripts/sync-model.mjs   (Nx: `nx run bakery-digitale-baeckerei:sync-model`)
- * Nur Node-Bordmittel (fetch ab Node 18); die Logik steht in model-lock.js,
- * glb-bereinigen.js und belegung.js.
+ * Die Logik steht in model-lock.js, glb-bereinigen.js, belegung.js,
+ * plaetze.js und einrichtung.js.
  */
 import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import hqProducts from '../../../libs/shared/hq-products/src/index.js'
 import modelLock from './model-lock.js'
 import belegungLib from './belegung.js'
 import bereinigen from './glb-bereinigen.js'
+import einrichtungLib from './einrichtung.js'
+import geometrie from './glb-geometrie.js'
+import plaetzeLib from './plaetze.js'
+import productSnapshot from './product-snapshot.js'
 
 const { parseLock, planSync, checkFile, sha256Hex, staleFiles, lockDateien } =
   modelLock
 const { bereinigeGlb, zaehlePreisPrimitive } = bereinigen
-const { belegungAusGlb, fasseZusammen } = belegungLib
+const { belegungAusGlb, fasseZusammen, morgensPlatz, parseGlbJson } =
+  belegungLib
+const { leitePlaetzeAb, wareVon } = plaetzeLib
+const { brauchtDecoder, knotenGeometrie } = geometrie
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const lockPath = path.join(appDir, 'model.lock.json')
 const targetDir = path.join(appDir, 'public', 'model')
 const belegungPath = path.join(appDir, 'public', 'data', 'belegung.json')
+/** Nur im Einrichten-Modus: die Datei aus hq, damit die App sie fortschreibt. */
+const quellePath = path.join(
+  appDir,
+  'public',
+  'data',
+  'einrichtung.quelle.yaml'
+)
+/** Nur im Einrichten-Modus: was die Modelle zeigen, bevor die Einrichtung gilt. */
+const modellPath = path.join(
+  appDir,
+  'public',
+  'data',
+  'einrichtung.modell.json'
+)
+// Auch im Fixture-Modus: Dort gibt es den Einrichten-Modus zum Testen
+// (`?einrichten=1`), mit der synthetischen Einrichtung.
+const einrichtenModus =
+  process.env.DIGITALE_BAECKEREI_EINRICHTEN === '1' ||
+  process.env.DIGITALE_BAECKEREI_FIXTURE === '1'
 const TIMEOUT_MS = 120_000
 const fixtureMode = process.env.DIGITALE_BAECKEREI_FIXTURE === '1'
 
@@ -94,8 +134,50 @@ function bereinige(data, name) {
 /** Belegung je Raum, in der Reihenfolge des Baus. */
 const belegungen = {}
 
+let decoder = null
+/** Der meshopt-Decoder aus three - nur geladen, wenn ein Modell ihn braucht. */
+async function decoderFuer(glb) {
+  if (!brauchtDecoder(parseGlbJson(glb))) return null
+  if (!decoder) {
+    try {
+      const modul = await import(
+        'three/examples/jsm/libs/meshopt_decoder.module.js'
+      )
+      await modul.MeshoptDecoder.ready
+      decoder = modul.MeshoptDecoder
+    } catch (err) {
+      fail(
+        `Der meshopt-Decoder aus three lässt sich nicht laden (${
+          err instanceof Error ? err.message : String(err)
+        })`
+      )
+    }
+  }
+  return decoder
+}
+
+/** Rahmen der Plätze eines Raums, abgeleitet aus der Ware im GLB. */
+async function leitePlaetze(name, glb) {
+  try {
+    const knoten = knotenGeometrie(
+      glb,
+      (knotenName, extras) => morgensPlatz(knotenName, extras) !== null,
+      await decoderFuer(glb)
+    )
+    return leitePlaetzeAb(
+      knoten.map((k) => wareVon(morgensPlatz(k.name, k.extras), k.teile))
+    )
+  } catch (err) {
+    return fail(
+      `Die Plätze lassen sich nicht aus ${name} ableiten (${
+        err instanceof Error ? err.message : String(err)
+      })`
+    )
+  }
+}
+
 /** Leitet die Belegung eines Raums aus seinem ausgelieferten GLB ab. */
-function merkeBelegung(raum, name, glb, commit) {
+async function merkeBelegung(raum, name, glb, commit) {
   let result
   try {
     result = belegungAusGlb(glb, commit)
@@ -111,14 +193,142 @@ function merkeBelegung(raum, name, glb, commit) {
       `sync-model: WARNUNG Platz ${slot} ist im Modell ${name} doppelt belegt`
     )
   }
-  belegungen[raum] = result.belegung
+  const plaetze = await leitePlaetze(name, glb)
+  belegungen[raum] = { ...result.belegung, leer: [], plaetze }
   const produkte = new Set(result.belegung.slots.map((s) => s.produkt))
   console.log(
-    `  belegung.json: Raum ${raum} - ${result.belegung.slots.length} Plätze, ${produkte.size} Produkte (morgens)`
+    `  belegung.json: Raum ${raum} - ${
+      result.belegung.slots.length
+    } Plätze mit ${produkte.size} Produkten (morgens), ${
+      Object.keys(plaetze).length
+    } Plätze zum Einrichten`
   )
 }
 
+const fixtureInfo = () =>
+  createRequire(import.meta.url)('../src/test/fixtures/fixture-info.js')
+
+/** Wo die Einrichtung liegt: im Fixture-Modus die synthetische, sonst in hq. */
+function einrichtungsPfad() {
+  if (fixtureMode) return fixtureInfo().EINRICHTUNG_PATH
+  const dir =
+    process.env.HQ_DIGITALE_BAECKEREI_DIR ||
+    path.join(
+      hqProducts.resolveHqProductsDir(),
+      '..',
+      'config',
+      'digitale-baeckerei'
+    )
+  return path.join(dir, einrichtungLib.DATEI)
+}
+
+/** Alle Produkt-IDs, die eine Einrichtung nennen darf. */
+function bekannteProdukte() {
+  if (fixtureMode) {
+    return Object.keys(
+      JSON.parse(fs.readFileSync(fixtureInfo().SNAPSHOT_PATH, 'utf8')).produkte
+    )
+  }
+  const hq = hqProducts.readHqProducts()
+  if (!hq.found) {
+    fail(
+      `${einrichtungLib.DATEI} nennt Produkte, aber das hq-Produktverzeichnis fehlt: ${hq.dir}`
+    )
+  }
+  return Object.keys(
+    productSnapshot.baueSnapshot(hq.products, { erstellt: '' }).snapshot
+      .produkte
+  )
+}
+
+/**
+ * Legt die Einrichtung aus hq über die Belegung der Modelle. Ohne Datei
+ * bleibt alles wie im Modell.
+ */
+function wendeEinrichtungAn() {
+  // Der Einrichten-Modus braucht den Stand der Modelle, um Plätze wieder
+  // „wie im Modell“ zu zeigen.
+  if (einrichtenModus) {
+    const modell = {}
+    for (const [raum, b] of Object.entries(belegungen)) {
+      modell[raum] = { quelle: b.quelle, slots: b.slots }
+    }
+    writeAtomic(modellPath, `${JSON.stringify(fasseZusammen(modell))}\n`)
+  } else {
+    fs.rmSync(modellPath, { force: true })
+  }
+  const datei = einrichtungsPfad()
+  let text = null
+  try {
+    text = fs.readFileSync(datei, 'utf8')
+  } catch (err) {
+    // Nur „gibt es nicht“ heißt: keine Einrichtung, das Modell gilt. Jeder
+    // andere Lesefehler (Rechte, ein Ordner an der Stelle …) bricht ab -
+    // sonst ginge der Laden still ohne die Einrichtung des Inhabers live.
+    const code = err && typeof err === 'object' ? err.code : undefined
+    if (code !== 'ENOENT' && code !== 'ENOTDIR') {
+      fail(
+        `${einrichtungLib.DATEI} lässt sich nicht lesen (${
+          code ?? (err instanceof Error ? err.message : String(err))
+        }). Nichts geschrieben.`
+      )
+    }
+  }
+  if (einrichtenModus && text !== null) writeAtomic(quellePath, text)
+  else fs.rmSync(quellePath, { force: true })
+  if (text === null) {
+    console.log(
+      `  ${einrichtungLib.DATEI}: keine Datei - die Belegung aus dem Modell gilt`
+    )
+    return
+  }
+  let einrichtung
+  try {
+    einrichtung = einrichtungLib.leseEinrichtung(text)
+  } catch (err) {
+    fail(err instanceof Error ? err.message : String(err))
+  }
+  const fremd = Object.keys(einrichtung.raeume).filter(
+    (raum) => !Object.prototype.hasOwnProperty.call(belegungen, raum)
+  )
+  if (fremd.length > 0) {
+    fail(
+      `${einrichtungLib.DATEI}: den Raum "${
+        fremd[0]
+      }" gibt es nicht (gebaut: ${Object.keys(belegungen).join(
+        ', '
+      )}). Nichts geschrieben.`
+    )
+  }
+  const hatEintraege = Object.values(einrichtung.raeume).some(
+    (plaetze) => Object.keys(plaetze).length > 0
+  )
+  const produkte = hatEintraege ? bekannteProdukte() : []
+  for (const [raum, belegung] of Object.entries(belegungen)) {
+    let ergebnis
+    try {
+      ergebnis = einrichtungLib.wendeAn(belegung, einrichtung.raeume[raum], {
+        raum,
+        bekannt: Object.keys(belegung.plaetze),
+        produkte,
+      })
+    } catch (err) {
+      fail(err instanceof Error ? err.message : String(err))
+    }
+    belegungen[raum] = {
+      ...belegung,
+      slots: ergebnis.slots,
+      leer: ergebnis.leer,
+    }
+    // Nur Zahlen: Die Logs eines öffentlichen Repos sind öffentlich.
+    console.log(
+      `  ${einrichtungLib.DATEI}: Raum ${raum} - ${ergebnis.geaendert} Plätze eingerichtet, davon ${ergebnis.leer.length} leer`
+    )
+  }
+}
+
 function schreibeBelegung() {
+  wendeEinrichtungAn()
   writeAtomic(belegungPath, `${JSON.stringify(fasseZusammen(belegungen))}\n`)
 }
 
@@ -158,7 +368,7 @@ if (fixtureMode) {
     )
     writeAtomic(path.join(targetDir, raum.datei), glb)
     console.log(`  ${raum.datei}: ${glb.byteLength} Bytes geschrieben`)
-    merkeBelegung(raum.id, raum.datei, glb, 'fixture')
+    await merkeBelegung(raum.id, raum.datei, glb, 'fixture')
   }
   schreibeBelegung()
   process.exit(0)
@@ -251,6 +461,6 @@ for (const item of plan) {
   if (rest.primitive !== 0 || rest.materialien !== 0) {
     fail(`${item.name}: im ausgelieferten Modell stecken Preisschilder`)
   }
-  merkeBelegung(item.raum, item.name, glb, source.commit)
+  await merkeBelegung(item.raum, item.name, glb, source.commit)
 }
 schreibeBelegung()

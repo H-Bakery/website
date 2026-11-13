@@ -15,6 +15,13 @@ const {
   zaehlePreisPrimitive,
 } = require('../../../scripts/glb-bereinigen')
 const { alsDatei, leseVerzeichnis } = require('../../../scripts/rauminfos')
+const {
+  belegungAusGltf,
+  fasseZusammen,
+  morgensPlatz,
+} = require('../../../scripts/belegung')
+const { leseEinrichtung, wendeAn } = require('../../../scripts/einrichtung')
+const { PAKET_DATEI } = require('../../../scripts/regal-modelle')
 
 const GLB_PATH = path.join(__dirname, 'twin.fixture.glb')
 const SNAPSHOT_PATH = path.join(__dirname, 'products.snapshot.fixture.json')
@@ -23,6 +30,29 @@ const GENERATOR_PATH = path.join(__dirname, 'build-fixture.mjs')
 const PRODUKT_GLB_PATH = path.join(__dirname, 'produkt.fixture.glb')
 const PRODUKT_INDEX_PATH = path.join(__dirname, 'produkte-3d.fixture.json')
 const PRODUKT_GENERATOR_PATH = path.join(__dirname, 'build-produkt-fixture.mjs')
+/** Synthetische Regal-Modelle (DB12), gepackt wie die echten, und ihr Generator. */
+const REGAL_GLB_PATH = path.join(__dirname, 'regal.fixture.glb')
+const REGAL_GENERATOR_PATH = path.join(__dirname, 'build-regal-fixture.mjs')
+/** Synthetische Einrichtung, in der Form der Datei in hq. */
+const EINRICHTUNG_PATH = path.join(__dirname, 'einrichtung.yaml')
+/**
+ * Was die synthetische Einrichtung im Laden ändert - für die Tests:
+ * ein anderes Produkt mit Regal-Modell (wird gelegt), neutrale Ware wird zu
+ * einem Produkt ohne Regal-Modell (im Bild leer, in der Liste), ein Platz ist
+ * leer.
+ */
+const EINGERICHTET = {
+  gelegt: {
+    slot: 'brotregal/ebene-1/platz-04',
+    produkt: 'testbrot-500g',
+    anzahl: 2,
+    imModell: 'probierlaib-dinkel',
+  },
+  ohneModell: { slot: 'gitterregal/platz-04', produkt: 'testkekse', anzahl: 2 },
+  leer: { slot: 'theke/vitrine/ebene-2/platz-04' },
+}
+/** Die Fixture-Produkte mit Regal-Modell. */
+const MIT_REGAL = ['musterbrezel', 'musterweck', 'testbrot-500g']
 /** Mini-Modell des zweiten, erfundenen Raums („Testbackstube“, DB11). */
 const BACKSTUBE_GLB_PATH = path.join(__dirname, 'testbackstube.fixture.glb')
 /** Synthetische Infopunkte: `<raum>.yaml`, in der Form der Dateien in hq. */
@@ -125,6 +155,47 @@ function rauminfosDatei() {
   return Buffer.from(alsDatei(rauminfos), 'utf8')
 }
 
+/** Die synthetische Einrichtung, gelesen mit dem Leser der Sync-Skripte. */
+function einrichtung() {
+  return leseEinrichtung(fs.readFileSync(EINRICHTUNG_PATH, 'utf8'))
+}
+
+/**
+ * Die Belegung eines Fixture-Raums, wie sie gilt: das Modell, darüber die
+ * synthetische Einrichtung (ohne die Rahmen der Plätze).
+ * @param {string} [raum]
+ * @returns {{ slots: { slot: string, produkt: string, anzahl?: number, quelle?: string }[], leer: string[], geaendert: number }}
+ */
+function belegung(raum = 'laden') {
+  const { json } = leseGlb(ausgeliefertesModell(raum))
+  const modell = belegungAusGltf(json, 'fixture').belegung
+  const bekannt = json.nodes
+    .map((node) => morgensPlatz(node.name, node.extras))
+    .filter((slot) => slot !== null)
+  const snapshot = JSON.parse(fs.readFileSync(SNAPSHOT_PATH, 'utf8'))
+  return wendeAn(modell, einrichtung().raeume[raum], {
+    raum,
+    bekannt,
+    produkte: Object.keys(snapshot.produkte),
+  })
+}
+
+/**
+ * `data/einrichtung.modell.json`, wie `sync-model` sie im Fixture-Modus
+ * schreibt: die Belegung der Modelle ohne Einrichtung (für den
+ * Einrichten-Modus, den es im Fixture-Build zum Testen gibt).
+ * @returns {Buffer}
+ */
+function modellBelegungDatei() {
+  const jeRaum = {}
+  for (const raum of RAEUME) {
+    const { json } = leseGlb(ausgeliefertesModell(raum.id))
+    const { quelle, slots } = belegungAusGltf(json, 'fixture').belegung
+    jeRaum[raum.id] = { quelle, slots }
+  }
+  return Buffer.from(`${JSON.stringify(fasseZusammen(jeRaum))}\n`, 'utf8')
+}
+
 /**
  * Enthält ein Export (`out/`) genau die synthetischen Fixtures - das bereinigte
  * Mini-Modell, den Fixture-Snapshot und das eine Produkt-Modell der Nahansicht
@@ -168,26 +239,47 @@ function exportFehler(outDir) {
   ) {
     return `${snapshot} ist nicht der synthetische Snapshot. Nur mit DIGITALE_BAECKEREI_FIXTURE=1 gebaut - nie mit echten Produkttexten.`
   }
-  // Nahansicht: genau das eine synthetische Produkt-Modell und sein Index -
-  // nie ein echtes Modell aus dem Daten-Repo produkte-3d.
+  // Modelle einzelner Produkte: genau das eine synthetische der Nahansicht, das
+  // Paket der synthetischen Regal-Modelle (DB12) und ihr Index - nie ein
+  // echtes Modell aus dem Daten-Repo produkte-3d.
   const produktDir = path.join(outDir, 'produkte-3d')
   const dateien = fs.existsSync(produktDir)
     ? fs.readdirSync(produktDir).sort()
     : []
-  const erwartet = `${MIT_MODELL.produkt}.glb`
+  const erwartet = {
+    [PAKET_DATEI]: REGAL_GLB_PATH,
+    [`${MIT_MODELL.produkt}.glb`]: PRODUKT_GLB_PATH,
+  }
   const index = path.join(outDir, 'data', 'produkte-3d.json')
   if (
-    dateien.length !== 1 ||
-    dateien[0] !== erwartet ||
-    !fs
-      .readFileSync(path.join(produktDir, erwartet))
-      .equals(fs.readFileSync(PRODUKT_GLB_PATH)) ||
+    dateien.join(',') !== Object.keys(erwartet).sort().join(',') ||
+    dateien.some(
+      (name) =>
+        !fs
+          .readFileSync(path.join(produktDir, name))
+          .equals(fs.readFileSync(erwartet[name]))
+    ) ||
     !fs.existsSync(index) ||
     !fs.readFileSync(index).equals(fs.readFileSync(PRODUKT_INDEX_PATH))
   ) {
-    return `${produktDir} enthält nicht genau das synthetische Produkt-Modell samt Index (gefunden: ${
+    return `${produktDir} enthält nicht genau die synthetischen Produkt-Modelle samt Index (gefunden: ${
       dateien.join(', ') || 'nichts'
     }). Nur mit DIGITALE_BAECKEREI_FIXTURE=1 gebaut - nie mit echten Produkt-Modellen.`
+  }
+  // Einrichten-Modus (im Fixture-Build zum Testen): die synthetische
+  // Einrichtung und die Belegung der Fixture-Modelle - nie eine Datei aus hq.
+  const quelle = path.join(outDir, 'data', 'einrichtung.quelle.yaml')
+  const modell = path.join(outDir, 'data', 'einrichtung.modell.json')
+  if (
+    !fs.existsSync(quelle) ||
+    !fs.readFileSync(quelle).equals(fs.readFileSync(EINRICHTUNG_PATH)) ||
+    !fs.existsSync(modell) ||
+    !fs.readFileSync(modell).equals(modellBelegungDatei())
+  ) {
+    return `${path.join(
+      outDir,
+      'data'
+    )} enthält nicht die synthetische Einrichtung (einrichtung.quelle.yaml, einrichtung.modell.json). Nur mit DIGITALE_BAECKEREI_FIXTURE=1 gebaut - nie mit der Einrichtung aus hq.`
   }
   return null
 }
@@ -201,17 +293,16 @@ function ladeFixture() {
 
 /**
  * Was die Liste „Alles hier“ für Möbel mit diesen Slot-Präfixen morgens zeigt:
- * Plätze mit `product`, das es im Snapshot gibt - in der Reihenfolge des Modells.
+ * die Belegung, wie sie gilt (Modell + synthetische Einrichtung), soweit der
+ * Snapshot das Produkt kennt - in der Reihenfolge der Belegung.
  * @param {string[]} moebel  z. B. ['theke/']
  * @returns {{ slot: string, produkt: string, name: string, einheit?: string }[]}
  */
 function erwarteteEintraege(moebel) {
-  const { snapshot, plaetze: alle } = ladeFixture()
-  return alle
-    .filter(
+  const { snapshot } = ladeFixture()
+  return belegung('laden')
+    .slots.filter(
       (p) =>
-        p.fills.includes('morgens') &&
-        p.produkt &&
         snapshot.produkte[p.produkt] &&
         moebel.some((prefix) => p.slot.startsWith(prefix))
     )
@@ -225,6 +316,14 @@ function erwarteteEintraege(moebel) {
 
 module.exports = {
   BACKSTUBE_GLB_PATH,
+  EINGERICHTET,
+  EINRICHTUNG_PATH,
+  MIT_REGAL,
+  REGAL_GENERATOR_PATH,
+  REGAL_GLB_PATH,
+  belegung,
+  einrichtung,
+  modellBelegungDatei,
   RAEUME,
   RAUMINFOS_DIR,
   STATIONEN,

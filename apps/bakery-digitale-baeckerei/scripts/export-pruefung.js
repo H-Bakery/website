@@ -18,10 +18,22 @@
  *   Rauminfos halten ihren Vertrag ein (`pruefeRauminfos`);
  * - keine Spur der synthetischen Test-Räume (`TEST_SPUREN`): Die gibt es nur
  *   im Fixture-Build;
- * - keine 3D-Modelle einzelner Produkte (Nahansicht): die liegen vorerst nur
- *   lokal (DB9) und gehören nicht in einen öffentlichen Export. Der Index
- *   `data/produkte-3d.json` muss da und leer sein, `produkte-3d/` leer oder
- *   nicht vorhanden - so baut der Deploy ohne das Daten-Repo;
+ * - 3D-Modelle einzelner Produkte (Nahansicht, Regal-Modelle der
+ *   Einrichtung), zwei Fälle:
+ *   - **ohne** (`produkte3d: 'verboten'`, die Vorgabe - so läuft der Deploy
+ *     heute, DB9: die Modelle liegen nur lokal): Der Index
+ *     `data/produkte-3d.json` muss da und leer sein (keine Nahansicht, kein
+ *     `regal`), `produkte-3d/` leer oder nicht vorhanden. Die App zeigt dann
+ *     die Ware, die im Modell des Ladens steckt;
+ *   - **mit** (`produkte3d: 'erlaubt'` - erst, wenn der Inhaber die Modelle
+ *     freigibt und der Deploy das Daten-Repo erreicht): Index und Ordner
+ *     müssen zusammenpassen - jede genannte Datei liegt da und ist so groß wie
+ *     im Index, sonst liegt nichts im Ordner; das Paket der Regal-Modelle
+ *     enthält genau die Produkte aus dem Index, jedes höchstens 250 Dreiecke;
+ *     und es gibt nur Modelle für Produkte, die in einem Raum liegen;
+ * - kein Einrichten-Modus: weder der Schalter DIGITALE_BAECKEREI_EINRICHTEN
+ *   noch das Werkzeug im Code (`EINRICHTEN_SPUR`) noch seine Daten
+ *   (`data/einrichtung.*`, ein Snapshot mit allen Produkten);
  * - in keiner Datei des Exports steht ein „€“ (DB8).
  *
  * CommonJS, nur Node-Bordmittel; getestet in export-pruefung.spec.ts.
@@ -34,8 +46,17 @@ const { pruefeRauminfos } = require('./rauminfos')
 const { zaehlePreisPrimitive } = require('./glb-bereinigen')
 const { pruefeSnapshot } = require('./product-snapshot')
 const { ZIEL_ORDNER, pruefeIndex } = require('./produkte-3d-lock')
+const { MAX_DREIECKE, PAKET_DATEI, lesePaket } = require('./regal-modelle')
 
 const FIXTURE_ENV = 'DIGITALE_BAECKEREI_FIXTURE'
+const EINRICHTEN_ENV = 'DIGITALE_BAECKEREI_EINRICHTEN'
+/**
+ * Woran man das Werkzeug des Einrichten-Modus im Code erkennt: die
+ * Beschriftung seines Knopfs (src/components/einrichten/Einrichten.tsx;
+ * fixture.spec.ts hält beide gleich). Steht sie im Export, ist das Werkzeug
+ * mitgebaut - das ist kein öffentlicher Build.
+ */
+const EINRICHTEN_SPUR = 'Einrichtung herunterladen'
 const EURO = Buffer.from('€', 'utf8')
 const MODELL_INDEX = 'produkte-3d.json'
 const RAUMINFOS = 'rauminfos.json'
@@ -85,12 +106,26 @@ function namenIn(dir) {
  *   lock: import('./model-lock').ModelLock,
  *   env?: Record<string, string | undefined>,
  *   basePath?: string,
- * }} o  `basePath` z. B. '/digitale-baeckerei' ('' oder weglassen: nicht prüfen)
+ *   produkte3d?: 'verboten' | 'erlaubt',
+ * }} o  `basePath` z. B. '/digitale-baeckerei' ('' oder weglassen: nicht prüfen);
+ *   `produkte3d`: dürfen 3D-Modelle einzelner Produkte im Export liegen? (Vorgabe: nein, DB9)
  * @returns {string[]} Meldungen - leer heißt: darf raus
  */
-function pruefeExport({ outDir, lock, env = {}, basePath = '' }) {
+function pruefeExport({
+  outDir,
+  lock,
+  env = {},
+  basePath = '',
+  produkte3d = 'verboten',
+}) {
   /** @type {string[]} */
   const fehler = []
+
+  if (env[EINRICHTEN_ENV] !== undefined && env[EINRICHTEN_ENV] !== '') {
+    fehler.push(
+      `${EINRICHTEN_ENV} ist gesetzt - der Einrichten-Modus ist ein lokales Werkzeug und darf nicht veröffentlicht werden`
+    )
+  }
 
   if (env[FIXTURE_ENV] !== undefined && env[FIXTURE_ENV] !== '') {
     fehler.push(
@@ -219,31 +254,104 @@ function pruefeExport({ outDir, lock, env = {}, basePath = '' }) {
     }
   }
 
-  // Nahansicht: Die 3D-Modelle einzelner Produkte sind vorerst nur lokal (DB9).
-  // Ein öffentlicher Export hat einen leeren Index und keine Datei im Ordner.
-  const modellIndex = liesJson(MODELL_INDEX)
-  if (modellIndex !== null) {
+  // 3D-Modelle einzelner Produkte (Nahansicht, Regal-Modelle der Einrichtung).
+  const modellIndexRaw = liesJson(MODELL_INDEX)
+  /** @type {import('./produkte-3d-lock').Produkte3dIndex | null} */
+  let modellIndex = null
+  if (modellIndexRaw !== null) {
     try {
-      const anzahl = Object.keys(pruefeIndex(modellIndex).modelle).length
-      if (anzahl > 0) {
-        fehler.push(
-          `data/${MODELL_INDEX} nennt ${anzahl} 3D-Modell(e) - die Modelle einzelner Produkte sind vorerst nur lokal (DB9) und dürfen nicht raus`
-        )
-      }
+      modellIndex = pruefeIndex(modellIndexRaw)
     } catch {
       // Ohne die Meldung von pruefeIndex: Sie könnte eine Produkt-ID nennen.
       fehler.push(`data/${MODELL_INDEX} hat nicht die erwartete Form`)
     }
   }
   const modellOrdner = path.join(outDir, ZIEL_ORDNER)
-  if (fs.existsSync(modellOrdner)) {
-    const anzahl = fs.statSync(modellOrdner).isDirectory()
-      ? alleDateien(modellOrdner).length
-      : 1
-    if (anzahl > 0) {
+  const imOrdner = fs.existsSync(modellOrdner)
+    ? fs.statSync(modellOrdner).isDirectory()
+      ? alleDateien(modellOrdner)
+      : ['']
+    : []
+  if (produkte3d !== 'erlaubt') {
+    // Vorerst nur lokal (DB9): leerer Index, keine Datei im Ordner. Die App
+    // zeigt dann die Ware, die im Modell des Ladens steckt.
+    if (modellIndex) {
+      const anzahl = Object.keys(modellIndex.modelle).length
+      if (anzahl > 0) {
+        fehler.push(
+          `data/${MODELL_INDEX} nennt ${anzahl} 3D-Modell(e) - die Modelle einzelner Produkte sind vorerst nur lokal (DB9) und dürfen nicht raus`
+        )
+      }
+      if (modellIndex.regal) {
+        fehler.push(
+          `data/${MODELL_INDEX} nennt ${
+            Object.keys(modellIndex.regal.modelle).length
+          } Regal-Modell(e) - die Modelle einzelner Produkte sind vorerst nur lokal (DB9) und dürfen nicht raus`
+        )
+      }
+    }
+    if (imOrdner.length > 0) {
       fehler.push(
-        `${ZIEL_ORDNER}/ enthält ${anzahl} Datei(en) - die 3D-Modelle einzelner Produkte sind vorerst nur lokal (DB9) und dürfen nicht raus`
+        `${ZIEL_ORDNER}/ enthält ${imOrdner.length} Datei(en) - die 3D-Modelle einzelner Produkte sind vorerst nur lokal (DB9) und dürfen nicht raus`
       )
+    }
+  } else if (modellIndex) {
+    // Freigegeben: Index und Ordner müssen zusammenpassen, und es gibt nur
+    // Modelle für Produkte, die in einem Raum liegen.
+    const belegt = new Set(belegung ? belegung.slots.map((s) => s.produkt) : [])
+    /** @type {Map<string, number>} erwartete Datei → Bytes */
+    const erwartet = new Map()
+    for (const [id, eintrag] of Object.entries(modellIndex.modelle)) {
+      erwartet.set(`${id}.glb`, eintrag.bytes)
+    }
+    if (modellIndex.regal) erwartet.set(PAKET_DATEI, modellIndex.regal.bytes)
+    for (const name of imOrdner) {
+      if (!erwartet.has(name)) {
+        fehler.push(`${ZIEL_ORDNER}/${name} steht nicht im Index`)
+      }
+    }
+    for (const [name, bytes] of erwartet) {
+      const datei = path.join(modellOrdner, name)
+      if (!fs.existsSync(datei)) {
+        fehler.push(`${ZIEL_ORDNER}/${name} fehlt`)
+      } else if (fs.statSync(datei).size !== bytes) {
+        fehler.push(`${ZIEL_ORDNER}/${name} ist nicht so groß wie im Index`)
+      }
+    }
+    const ids = [
+      ...Object.keys(modellIndex.modelle),
+      ...Object.keys(modellIndex.regal ? modellIndex.regal.modelle : {}),
+    ]
+    const ohnePlatz = new Set(ids.filter((id) => !belegt.has(id)))
+    if (ohnePlatz.size > 0) {
+      fehler.push(
+        `data/${MODELL_INDEX} nennt ${ohnePlatz.size} Modell(e) für Produkte, die in keinem Raum liegen`
+      )
+    }
+    const paket = path.join(modellOrdner, PAKET_DATEI)
+    if (modellIndex.regal && fs.existsSync(paket)) {
+      try {
+        const inhalt = lesePaket(new Uint8Array(fs.readFileSync(paket)))
+        const imPaket = Object.keys(inhalt).sort().join(',')
+        const imIndex = Object.keys(modellIndex.regal.modelle).sort().join(',')
+        if (imPaket !== imIndex) {
+          fehler.push(
+            `${ZIEL_ORDNER}/${PAKET_DATEI} enthält nicht genau die Regal-Modelle aus dem Index`
+          )
+        }
+        const zuGross = Object.values(inhalt).filter(
+          (m) => !(m.dreiecke <= MAX_DREIECKE)
+        ).length
+        if (zuGross > 0) {
+          fehler.push(
+            `${ZIEL_ORDNER}/${PAKET_DATEI}: ${zuGross} Regal-Modell(e) mit mehr als ${MAX_DREIECKE} Dreiecken`
+          )
+        }
+      } catch {
+        fehler.push(
+          `${ZIEL_ORDNER}/${PAKET_DATEI} ist kein Paket von Regal-Modellen`
+        )
+      }
     }
   }
 
@@ -252,6 +360,11 @@ function pruefeExport({ outDir, lock, env = {}, basePath = '' }) {
     const inhalt = fs.readFileSync(path.join(outDir, rel))
     if (inhalt.includes(EURO)) {
       fehler.push(`${rel} enthält „€“ - vorerst keine Preise (DB8)`)
+    }
+    if (inhalt.includes(Buffer.from(EINRICHTEN_SPUR))) {
+      fehler.push(
+        `${rel} enthält das Werkzeug des Einrichten-Modus - das gibt es nur lokal`
+      )
     }
     if (
       TEST_SPUREN.some(
@@ -267,4 +380,10 @@ function pruefeExport({ outDir, lock, env = {}, basePath = '' }) {
   return fehler
 }
 
-module.exports = { FIXTURE_ENV, TEST_SPUREN, pruefeExport }
+module.exports = {
+  EINRICHTEN_ENV,
+  EINRICHTEN_SPUR,
+  FIXTURE_ENV,
+  TEST_SPUREN,
+  pruefeExport,
+}

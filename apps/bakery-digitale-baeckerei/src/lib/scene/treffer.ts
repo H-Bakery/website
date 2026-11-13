@@ -55,6 +55,16 @@ export function artVon(userData: Record<string, unknown>): {
   return {}
 }
 
+// ---- Einrichtung (DB12) -----------------------------------------------------
+
+/**
+ * `userData` eines Meshes: Die Einrichtung hat diese Ware des Modells
+ * verborgen (einrichtung.ts) - sie ist weder zu sehen noch anzutippen.
+ */
+export const VERBORGEN = 'dbVerborgen'
+/** `userData` eines Meshes: Die Einrichtung hat es gelegt (Regal-Modelle). */
+export const GELEGT = 'dbGelegt'
+
 // ---- Materialien ------------------------------------------------------------
 
 /** Materialnamen der Preisschilder im Modell (DB8: keine Preise im Bild). */

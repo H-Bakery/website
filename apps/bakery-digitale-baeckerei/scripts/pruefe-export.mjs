@@ -5,8 +5,11 @@
  * wenn etwas nicht stimmt - dann wird nichts veröffentlicht. Die Logik steht in
  * export-pruefung.js.
  *
- * Aufruf: node scripts/pruefe-export.mjs [--base-path /digitale-baeckerei] [outDir]
+ * Aufruf: node scripts/pruefe-export.mjs [--base-path /digitale-baeckerei] [--mit-produkte-3d] [outDir]
  *   outDir: Standard `out` neben diesem Ordner.
+ *   --mit-produkte-3d: 3D-Modelle einzelner Produkte (Nahansicht, Regal-Modelle)
+ *     dürfen im Export liegen und müssen dann zum Index passen. Ohne den
+ *     Schalter (so läuft der Deploy, DB9) darf keines darin sein.
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -18,6 +21,8 @@ const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
 const at = args.indexOf('--base-path')
 const basePath = at >= 0 ? args.splice(at, 2)[1] ?? '' : ''
+const mit3d = args.indexOf('--mit-produkte-3d')
+if (mit3d >= 0) args.splice(mit3d, 1)
 const outDir = path.resolve(args[0] ?? path.join(appDir, 'out'))
 
 let lock
@@ -37,6 +42,7 @@ const fehler = pruefung.pruefeExport({
   lock,
   env: process.env,
   basePath,
+  produkte3d: mit3d >= 0 ? 'erlaubt' : 'verboten',
 })
 if (fehler.length > 0) {
   console.error(
@@ -53,5 +59,9 @@ const modelle = Object.entries(lock.raeume)
   )
   .join('; ')
 console.log(
-  `pruefe-export: in Ordnung - Modell ${modelle}, ohne Preisschilder; Snapshot und Rauminfos im Vertrag; keine 3D-Modelle einzelner Produkte; kein Test-Raum; kein „€“ im Export.`
+  `pruefe-export: in Ordnung - Modell ${modelle}, ohne Preisschilder; Snapshot und Rauminfos im Vertrag; ${
+    mit3d >= 0
+      ? '3D-Modelle einzelner Produkte passen zum Index'
+      : 'keine 3D-Modelle einzelner Produkte'
+  }; kein Einrichten-Modus; kein Test-Raum; kein „€“ im Export.`
 )

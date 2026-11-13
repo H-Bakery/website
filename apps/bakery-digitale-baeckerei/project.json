@@ -31,6 +31,7 @@
     "sync-produkte-3d": {
       "executor": "nx:run-commands",
       "cache": false,
+      "dependsOn": ["sync-model"],
       "options": {
         "cwd": "apps/bakery-digitale-baeckerei",
         "command": "node scripts/sync-produkte-3d.mjs"
@@ -82,6 +83,17 @@
       },
       "metadata": {
         "description": "Development server on http://localhost:4222"
+      }
+    },
+    "einrichten": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "cwd": "apps/bakery-digitale-baeckerei",
+        "command": "node scripts/einrichten.mjs"
+      },
+      "metadata": {
+        "description": "Einrichten-Modus (DB12), local only: fills public/ with DIGITALE_BAECKEREI_EINRICHTEN=1 (all hq products, all shelf models, the Einrichtung from hq) and starts the dev server on http://localhost:4223 with the tool that lets the owner decide what lies on which slot and export einrichtung.yaml for hq/config/digitale-baeckerei/. Cannot be built as an export (next.config.js aborts); the export guard rejects its data."
       }
     },
     "serve-static": {

@@ -1,18 +1,7 @@
 {
   "quelle": "lokal: ../produkte-3d",
-  "commit": "a97ed9dfd7d9d3e101962afd8b075efce7b5b783",
-  "modelle": {
-    "brezel": {
-      "sha256": "d395838b1bad332431f52352ec8084e1eaf45232b4df9776e4c3fe485a055755",
-      "bytes": 315888
-    },
-    "croissant": {
-      "sha256": "f7ddd22d5782c28afe6117e37191ed4f516c73c2799775a0e54042cb96b3506e",
-      "bytes": 214020
-    },
-    "kornbrot-500g": {
-      "sha256": "f0596f7ca6c09e532f7f83d44a4eae597e1f89d92c4434bafd15616c5695169e",
-      "bytes": 350108
-    }
+  "commit": "a57b2cd1cefe17b44a595fdeeaebee53e43dedac",
+  "manifest": {
+    "sha256": "27f543921d534b29183ad320285640af1917b927b6c55e447134d8962e22b62c"
   }
 }

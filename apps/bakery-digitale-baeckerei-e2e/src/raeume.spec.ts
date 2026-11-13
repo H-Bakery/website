@@ -92,7 +92,8 @@ test.describe('Raum wechseln', () => {
     const protokoll = await oeffne(page)
     const modelle = () =>
       protokoll.anfragen
-        .filter((url) => url.endsWith('.glb'))
+        // nur die Modelle der Räume - nicht das Paket der Regal-Modelle (DB12)
+        .filter((url) => url.endsWith('.glb') && url.includes('/model/'))
         .map((url) => url.split('/').pop())
     expect(modelle()).toEqual([LADEN.modell])
     await raumWechsel(page).click()

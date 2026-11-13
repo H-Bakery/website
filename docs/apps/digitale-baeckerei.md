@@ -50,7 +50,7 @@ Landingpage auf GitHub Pages). Nicht im Pilot, nicht auf der Box.
 - Knotennamen sind Katalog-IDs: `theke/vitrine/ebene-1`, `brotregal/ebene-3`,
   `gitterregal/…`, `getraenkekuehlschrank/…`, `fassade/…`, `umgebung/…`.
 - **Produkte:** Jeder belegte Platz ist ein Knoten `produkt/<slot>` mit `extras.product` (die
-  hq-Produkt-ID ohne Nummer, z. B. `kornbrot-500g`) und `extras.fills`. Ein Knoten
+  hq-Produkt-ID ohne Nummer, z. B. `testbrot-500g`) und `extras.fills`. Ein Knoten
   `produkt/<slot>@<fill>` ist die Variante für einen anderen Zustand. Knoten mit `extras.ware`
   sind neutrale Waren (Gläser, Dosen) ohne eigene Karte. Im MVP öffnet ein Tipp darauf **keine**
   Karte (auch keine „Regal-Karte“ - ob es die geben soll, ist eine offene Frage an den Inhaber).
@@ -101,8 +101,8 @@ Landingpage auf GitHub Pages). Nicht im Pilot, nicht auf der Box.
   und `sync-products` nutzen ihn.
 - **Einheit** = das hq-Feld `weight` (`750g` → „750 g“). Heute hat kein hq-Produkt dieses Feld,
   die Karten zeigen also keine Einheit - sie wird nicht erfunden.
-- Zuordnung: `extras.product` im Modell = die hq-ID ohne Nummer (`1-kornbrot-500g.md` →
-  `kornbrot-500g`). Zeigt das Modell ein Produkt, das es in hq nicht (mehr) gibt, bleibt es
+- Zuordnung: `extras.product` im Modell = die hq-ID ohne Nummer (`1-testbrot-500g.md` →
+  `testbrot-500g`). Zeigt das Modell ein Produkt, das es in hq nicht (mehr) gibt, bleibt es
   sichtbar, aber ohne Karte, und der Build meldet es.
 - **Preisschilder im Modell:** Auf den zwei unteren Brotebenen sind Preiskarten mit dem alten
   Preisstand ins Modell gebacken (Materialien `preiskarte` / `preisschrift` in den
@@ -476,6 +476,186 @@ Danach, im Explorer: Der Generator baut heute nur den Verkaufsraum (und außen d
 Backstube mit geschlossener Tür). Für die Backstube braucht er dort neuen Code und einen neuen Stand
 des Modells; erst dann folgen hier die drei Schritte aus „Einen Raum ergänzen“.
 
+## Einrichtung des Verkaufsraums
+
+Seit DB12 ist der Laden „einrichtbar“: Was in Theke, Brotregal und Regalen liegt, steht in einer
+Datei in hq, und die App legt leichte Produkt-Modelle selbst auf die Plätze. **Live ändert sich
+damit noch nichts** - der Deploy hat weder die Datei noch die Regal-Modelle und zeigt weiter die
+Ware, die im Modell des Ladens steckt (unten: „Was das Veröffentlichen braucht“).
+
+### Die Datei
+
+`hq/config/digitale-baeckerei/einrichtung.yaml` (der Ordner kommt aus `HQ_DIGITALE_BAECKEREI_DIR`,
+sonst liegt er neben `HQ_PRODUCTS_DIR` - wie bei den Infopunkten):
+
+```yaml
+raeume:
+  laden: # id des Raums
+    brotregal/ebene-1/platz-01: # Platz: Name des Knotens im Modell ohne „produkt/“
+      produkt: testbrot-500g # hq-ID ohne Nummer
+      anzahl: 2
+    theke/vitrine/ebene-1/platz-02: leer
+```
+
+- Ein Platz, der **nicht** in der Datei steht, bleibt wie im Modell. Ohne Datei gilt überall das
+  Modell - genau wie vorher.
+- `leer`: Der Platz zeigt nichts und steht in keiner Liste.
+- Auch Plätze mit neutraler Ware (Dosen, Gläser, Flaschen) lassen sich belegen oder leeren. Plätze,
+  die im Modell leer sind, kennt die App nicht.
+- Erlaubt sind genau diese Felder; `anzahl` ist eine ganze Zahl von 1 bis 500. Keine Preise, keine
+  Texte. Kommentare sind erlaubt und bleiben beim Einrichten erhalten.
+- **Ein unbekannter Raum, Platz oder ein Produkt, das es in hq nicht gibt (oder das nicht verfügbar
+  ist), bricht den Build ab** - die Meldung nennt Raum, Platz und ID.
+
+### Wie die Daten fließen
+
+1. `sync-model` leitet aus dem GLB die Belegung ab (wie bisher) und aus der Geometrie der Ware den
+   **Rahmen jedes Platzes** (`scripts/plaetze.js`): Mitte der Standfläche, rechts/oben/vorn, Breite,
+   Tiefe, lichte Höhe. Das Modell bringt diese Rahmen nicht mit (die Plätze des Explorers sind nicht
+   veröffentlicht); am echten Modell treffen sie die Plätze des Explorers auf ≈ 0,1° in der Richtung,
+   ≈ 0,3° in der Neigung und wenige Millimeter im Brotregal. Dann legt es die Einrichtung darüber
+   (`scripts/einrichtung.js`, der eine Leser und Schreiber). Ergebnis ist **`data/belegung.json`
+   (Version 3)** - weiter das Einzige, was die App zur Belegung liest:
+   `slots` (Modell + Einrichtung; eingerichtete tragen `quelle: "einrichtung"`), `leer`, `plaetze`.
+2. `sync-products` schreibt den Snapshot für die Produkte dieser Belegung.
+3. `sync-produkte-3d` liest das Manifest des Daten-Repos (Version 1 oder 2) am Commit aus
+   `produkte-3d.lock.json` und holt **nur für Produkte, die in einem Raum liegen** die Nahansicht
+   und das Regal-Modell (`regal.glb`: ≤ 250 Dreiecke, unlit, Vertex-Farben; geprüft gegen die
+   Prüfsumme im Manifest und gegen den Vertrag). **Das Lock nennt kein Produkt** (dieses Repo ist
+   öffentlich): nur `quelle`, `commit` und die Prüfsumme von `manifest.json`; die Prüfsummen der
+   einzelnen Dateien stehen im Manifest und werden beim Sync dagegen geprüft. Alle Regal-Modelle
+   kommen in **eine** Datei
+   `produkte-3d/_regal.glb` (48 Modelle ≈ 210 kB, gzip ≈ 140 kB - eine Anfrage statt 48); der Index
+   `data/produkte-3d.json` nennt sie unter `regal`. Ohne Daten-Repo: der leere Index von vorher.
+   Das Skript meldet, wo eine Stückzahl nicht passt („nur 10 von 12 passen“, „zu groß für den
+   Platz“) und wo ein eingerichtetes Produkt kein Regal-Modell hat.
+4. Die Szene (`src/lib/scene/einrichtung.ts`) lädt das Paket zusammen mit dem Modell des Raums und
+   richtet vor dem ersten Bild ein - es springt nichts um. **Das erste Bild wartet darauf aber nicht
+   beliebig:** Ist das Modell da, bekommen Belegung und Paket noch 1,5 s (`EINRICHTUNG_FRIST_MS`);
+   danach steht der Laden mit der Ware seines Modells und wird eingerichtet, sobald die Daten
+   kommen. Eine Anfrage, die hängt, gilt nach 8 s als gescheitert (`DATEN_ZEIT_MS`,
+   `MODELL_INDEX_ZEIT_MS`) - mit denselben Meldungen wie ein Netzfehler.
+
+### Was man sieht
+
+- **Gibt es Regal-Modelle, liegen sie auf allen Plätzen ihres Produkts** - nicht nur auf den
+  geänderten. Entschieden an Bildern des echten Ladens (drei Blickpunkte, Hoch-, Querformat,
+  Desktop): Die Regal-Modelle sind anders geformt als die Formen des Modells; gemischt stünden zwei
+  Bildsprachen im selben Regal. Größen und Lagen passen: Die Stücke liegen an den Stellen der
+  bisherigen Ware, nichts schwebt oder steckt im Regal. Die Farben sind seit dem Stand `a57b2cd`
+  des Daten-Repos warm und passen zum Laden. **Offen für die Abnahme der Modelle im Daten-Repo:**
+  Gebäck hinter dem Vitrinenglas ist noch blass, und die Torten zeigen in der Mitte einen
+  graubraunen Fleck. Beides steckt in den Regal-Modellen (ihr Licht ist eingebacken), nicht in der
+  App.
+- **Wie die Stücke liegen** (`scripts/auslage.js`, nach `fill.layout` und `auslage.py` des
+  Explorers; dieselbe Rechnung für Szene, Build-Meldung und Werkzeug): in Reihen von vorn, je Reihe
+  gleichmäßig verteilt; passt ein Stück nur längs, wird es gedreht (Baguettes stehen im schmalen
+  Fach nebeneinander); ein einzelnes Brot rutscht auf dem geneigten Boden nach vorn; in den Körben
+  gehäuft in bis zu drei Lagen (dort bis 10 % kleiner); am Brezelständer hängt je Haken ein Stück.
+  Jedes Stück weicht ein wenig in Lage und Drehung ab - fest aus dem Namen des Platzes, nie aus dem
+  Zufall. Tabletts aus dem Modell bleiben liegen.
+- **Passt die Stückzahl nicht, liegen so viele wie passen** - der Build meldet es. Skaliert wird
+  nicht (außer in den Körben).
+- **Hat das Produkt kein Regal-Modell** (oder passt kein einziges Stück): Liegt es im Modell auf
+  diesem Platz, bleibt die Ware des Modells. Sonst bleibt der Platz **im Bild leer**; das Produkt
+  steht in „Alles hier“ und lässt sich von dort öffnen. Nie die Form eines anderen Produkts.
+- Antippen, Hervorheben, „Alles hier“, „entdeckt“, Doppeltipp und der Ersatz ohne WebGL gehen für
+  gelegte Plätze wie bisher; auch ein Tipp zwischen zwei Stücke desselben Platzes trifft ihn.
+
+### Einrichten-Modus (für den Inhaber, nur lokal)
+
+```bash
+npx nx run bakery-digitale-baeckerei:einrichten   # http://localhost:4223
+```
+
+Der Lauf füllt die App mit allen Produkten aus hq und den Regal-Modellen aller Produkte und startet
+sie mit dem Werkzeug „Einrichten“ (oben rechts):
+
+1. **Platz wählen:** im Bild antippen oder unter „Plätze“ aus der Liste (dort stehen auch Plätze,
+   die gerade leer sind).
+2. **Belegen:** Produkt suchen und antippen (die Zeile sagt, ob es ein Regal-Modell gibt), Stückzahl
+   mit − und + einstellen (1 bis 500), oder „Leer“, oder „Wie im Modell“. Das Bild zeigt jede
+   Änderung sofort. Ein neu gewähltes Produkt übernimmt die bisherige Stückzahl nur, soweit sie
+   passt - sonst setzt das Werkzeug sie auf das, was passt, und sagt es. Wer danach mehr einstellt,
+   liest den Hinweis „nur n von m passen“. Eine Eingabe, die nicht gilt, wird gemeldet; der Entwurf
+   bleibt dabei erhalten.
+3. **Änderungen ansehen:** „Änderungen (n)“ listet sie, jede lässt sich zurücknehmen.
+4. **Datei holen:** „Einrichtung herunterladen“ oder „Kopieren“ liefert die **vollständige**
+   `einrichtung.yaml`. Sie gehört nach `hq/config/digitale-baeckerei/einrichtung.yaml` (committen
+   wie jede Änderung in hq). Beim nächsten Build gilt sie.
+
+- Der Entwurf beginnt mit der Datei, die in hq liegt. **Ohne Änderung kommt sie Zeichen für Zeichen
+  wieder heraus**. Mit Änderung ändern sich nur die Zeichen des betroffenen Eintrags: Kommentare
+  (auch die des geänderten Eintrags), Reihenfolge, Leerzeilen, Zeilenenden (auch CRLF) und alle
+  anderen Zeilen bleiben; ändern und zurückändern ergibt wieder dieselbe Datei. Wird ein Eintrag
+  gelöscht, gehen die Kommentarzeilen direkt über ihm mit. Nur wo das nicht geht (Schreibweise in
+  geschweiften Klammern, ein neuer oder leer gewordener Raum, uneinheitliche Einrückung), schreibt
+  das Werkzeug die Datei über den YAML-Baum neu - Inhalt und Kommentare bleiben, Abstände können
+  sich ändern (`scripts/einrichtung.js`, dort steht die Zusage genau). „Datei laden“ nimmt eine
+  andere Datei als Ausgangspunkt.
+- **Der Entwurf lebt nur im Arbeitsspeicher des Tabs.** Gespeichert wird nichts, weder auf dem
+  Gerät noch in hq - neu laden heißt neu anfangen. Erst herunterladen, dann schließen.
+- Am Handy im selben WLAN: die Adresse des Rechners mit Port 4223 öffnen.
+- **Nie öffentlich:** Das Werkzeug steckt nur in diesem Lauf. Ein Export lässt sich mit dem Schalter
+  nicht bauen, und der Wächter weist ihn, das Werkzeug im Code und seine Daten ab. Ein normaler
+  Build danach räumt `public/` wieder auf.
+
+### Leistung
+
+Gemessen am echten Modell mit den 48 Regal-Modellen auf allen 84 Plätzen (324 Stück), in der
+Emulation (Pixel 7, 4G + CPU 4×, Software-GPU; **auf echtem Handy ungeprüft**):
+
+|                                   | vorher (Ware des Modells) | mit Regal-Modellen |
+| --------------------------------- | ------------------------- | ------------------ |
+| Dreiecke, sichtbar (ganzer Laden) | 144 976                   | 156 510            |
+| Dreiecke im Bild, Theke hoch      | ≈ 82 000                  | ≈ 87 000           |
+| Zeichenaufrufe, Theke hoch        | 287                       | 214                |
+| Zeichenaufrufe, Theke Desktop     | 401                       | 276                |
+| erstes Bild                       | ≈ 4,3 s                   | ≈ 4,6 s            |
+| Bilder/s beim Schwenken           | ≈ 28                      | ≈ 25               |
+| Bilder in Ruhe                    | 0                         | 0                  |
+| übertragen                        | 4,50 MB                   | 4,76 MB            |
+
+- Je Platz ein `InstancedMesh` am Knoten des Platzes: eine Geometrie je Produkt, ein Material für
+  alle, ein Aufruf je Platz - weniger Aufrufe als die Ware des Modells (ein Aufruf je Material je
+  Platz), und ein Platz außerhalb des Bildes wird weiter nicht gezeichnet. Ein `InstancedMesh` je
+  Produkt für den ganzen Raum sparte noch einmal ≈ 35 Aufrufe, nähme aber dem Antippen, Hervorheben
+  und Ausblenden den Platz als Einheit.
+- Etwas mehr Dreiecke: Ein Regal-Modell hat höchstens 250 (im Mittel ≈ 230 je gelegtem Stück), die
+  bisherige Form im Mittel ≈ 195 je Stück. Die Software-GPU der Messung hängt an den Dreiecken,
+  darum die etwas niedrigere Bildrate; ob ein echtes Handy das merkt, ist offen.
+- Das Paket lädt **mit** dem Modell, nicht danach: ≈ 0,3 s später das erste Bild, dafür kein
+  sichtbares Umspringen der ganzen Auslage. Die Rahmen der Plätze kosten 30 kB in `belegung.json`
+  (gzip ≈ 4 kB).
+
+### Grenzen
+
+- **Die App kennt nur so viel Platz, wie die Ware des Modells einnimmt.** Wo im Modell nur vorn eine
+  Reihe steht (Dosenregal, Getränkekühlschrank, Gitter- und Würfelregal), ist der Platz für die App
+  so tief wie diese Reihe - ein Brot ist dort „zu groß“. Theke, Brotregal und Körbe sind voll belegt
+  und darum genau.
+- Die App kennt die Möbel nicht: Trennwände zwischen Fächern und das Glas der Vitrine sieht sie nur
+  als Lücke zwischen der Ware. In Fächern ohne Raster (Vitrine) kann ein Platz bis ≈ 5 cm breiter
+  geschätzt sein, als er ist.
+- Plätze, die im Modell leer sind (die Ablage auf der Theke, freie Stellen auf der Vitrine), lassen
+  sich nicht belegen - dafür muss der Platz im Explorer belegt sein.
+- Die Art eines Platzes folgt seinem Namen wie im Explorer (`brezelstaender` → Haken, `koerbe` →
+  gehäuft, sonst Reihen).
+- Wo „vorn“ ist, leitet der Sync aus der Ware ab (Gefälle; gefüllt wird von vorn); die App richtet
+  es am Standort des Blickpunkts aus, zu dem das Möbel gehört.
+- Das Werkzeug ist nur in Chromium ausprobiert (Handy emuliert), nicht auf einem echten Handy.
+
+### Was das Veröffentlichen braucht
+
+Damit die Einrichtung live gilt, muss der Deploy zwei Dinge erreichen, die er heute nicht hat: aus
+hq zusätzlich `config/digitale-baeckerei/` (Sparse-Checkout, und der Schritt danach muss den Ordner
+erlauben) und das Daten-Repo `produkte-3d` oder seine Artefakte am gesperrten Commit (heute nur
+lokal, DB9) - dann läuft der Wächter mit `--mit-produkte-3d`. Der Workflow ist unverändert; ohne
+beides bleibt die Seite, wie sie ist (nachgewiesen: Export dieses Stands ohne Daten-Repo gegen den
+von `main` - sichtbares HTML, Dateiliste, Modell, Belegung und Snapshot gleich, 14 von 15
+Standbildern Byte für Byte, das fünfzehnte weicht in 64 Pixeln der Leiste ab). Mit nur der Datei,
+ohne Regal-Modelle, bliebe jeder umbelegte Platz im Bild leer.
+
 ## Phasen
 
 Jede Phase endet mit einem grünen PR. Bei sichtbaren Änderungen kommen Screenshots bei 390 px
@@ -579,16 +759,17 @@ kann (im Produkt-Sheet) und das auch die Produktseiten der Landingpage zeigen.
   WebGL-Kontext; die Nahansicht legt ihren erst beim Öffnen an (Code und Modell werden erst dann
   geladen) und gibt beim Schließen alles frei.
 - **Daten:** `scripts/sync-produkte-3d.mjs` liest beim Bauen genau den Commit aus
-  `produkte-3d.lock.json` (`quelle`, `commit`, je Modell `sha256` und `bytes`) mit `git show` aus
-  `../produkte-3d` (`PRODUKTE_3D_DIR`), prüft jede Datei und schreibt `public/produkte-3d/<id>.glb`
+  `produkte-3d.lock.json` (`quelle`, `commit`, Prüfsumme von `manifest.json` - **keine
+  Produkt-IDs**, die Prüfsummen der Dateien stehen im Manifest) mit `git show` aus
+  `../produkte-3d` (`PRODUKTE_3D_DIR`), prüft jede Datei gegen das Manifest und schreibt `public/produkte-3d/<id>.glb`
   und `public/data/produkte-3d.json` (beides git-ignoriert). **Gibt es das Daten-Repo nicht - CI,
   Deploy, andere Rechner -, entsteht ein leerer Index, und die App bietet keine Nahansicht an.** Die
   veröffentlichte Seite hat sie also erst, wenn das Daten-Repo ein Remote bekommt (dann wechselt nur
   die Quelle von `git show` auf eine Adresse mit dem Commit im Pfad). CI und die Playwright-Suite
   bauen mit einem synthetischen Laib für „Testbrot“ und prüfen, dass im Export nur der liegt.
 - **Ein neues Modell** kommt so hinein: im Daten-Repo verarbeiten und committen (`npm run process`,
-  `check`) → in `produkte-3d.lock.json` `commit` und für jedes Modell `sha256` und `bytes` aus dem
-  Manifest eintragen → PR. Die ID ist die hq-ID ohne Nummer; erreichbar ist die Nahansicht nur für
+  `check`) → in `produkte-3d.lock.json` `commit` und `manifest.sha256` (Prüfsumme von
+  `manifest.json` an diesem Commit) eintragen → PR. Die ID ist die hq-ID ohne Nummer; erreichbar ist die Nahansicht nur für
   Produkte, die im Laden-Modell auf einem Platz liegen.
 - **Stand des 3-Produkte-Tests** (Commit `a97ed9d` des Daten-Repos, prozedural erzeugte
   Testmodelle, keine Scans): Brezel (Brezelständer), Croissant (Vitrine) und Kornbrot 500 g

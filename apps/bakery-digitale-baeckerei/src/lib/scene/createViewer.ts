@@ -28,7 +28,19 @@ import {
 } from 'three'
 import type { Object3D } from 'three'
 import type { Blickpunkt, Intro, Vec3 } from '../../config/raeume'
+import { planeRaum } from '../einrichtung/plan'
+import type { RegalModell } from '../produkte/modelle'
+import type { Belegung } from '../produkte/types'
 import { setzeAussenraum } from './aussenraum'
+import {
+  ladeRegale,
+  leseImModell,
+  raeumeEinrichtungAb,
+  rahmenOhneVerborgenes,
+  richteEin,
+  type Eingerichtet,
+  type Regale,
+} from './einrichtung'
 import {
   IM_BILD_RAND_PX,
   freierBereich,
@@ -72,6 +84,14 @@ export type { IntroEnde } from './intro'
  */
 export const MAUS_RADIUS_PX = 8
 
+/**
+ * So lange wartet das erste Bild auf die Einrichtung (DB12), wenn das Modell
+ * schon da ist. Eine Daten-Anfrage, die hängt, hält die Szene nicht auf: Dann
+ * steht der Laden erst so da, wie er im Modell ist, und wird eingerichtet,
+ * sobald die Daten doch noch kommen.
+ */
+export const EINRICHTUNG_FRIST_MS = 1500
+
 /** Horizontfarbe des Explorer-Himmels (sRGB), dort Hintergrund des Zwillings. */
 const HORIZON: Vec3 = [0.74, 0.8, 0.86]
 /** So oft wird das Laden des Modells nach einem Netzfehler wiederholt, mit dieser Pause. */
@@ -88,6 +108,17 @@ export class WebGLUnavailableError extends Error {
     this.name = 'WebGLUnavailableError'
     this.cause = cause
   }
+}
+
+/**
+ * Was die Szene zum Einrichten des Raums braucht (DB12): die Belegung mit den
+ * Rahmen der Plätze, die Regal-Modelle (wenn es welche gibt) und die
+ * Blickpunkte des Raums (wo steht der Besucher?).
+ */
+export interface SzenenEinrichtung {
+  belegung: Belegung
+  regal?: { url: string; modelle: Record<string, RegalModell> }
+  blickpunkte: readonly Blickpunkt[]
 }
 
 export interface ViewerReadyInfo {
@@ -113,6 +144,12 @@ export interface ViewerOptions {
   label: string
   /** Legt `window.__digitaleBaeckerei` zum Messen an (nur mit `?debug`). */
   debug?: boolean
+  /**
+   * Die Einrichtung des Raums - die Szene wartet darauf, bevor sie das erste
+   * Bild zeigt (sonst sprängen die Regale sichtbar um). `null` oder ein
+   * Fehler: Der Raum bleibt, wie er im Modell ist.
+   */
+  einrichtung?: Promise<SzenenEinrichtung | null>
   /** Flüge zum Start (aus raeume.ts), in der Reihenfolge des Vorrangs. */
   intros?: readonly Intro[]
   /** `false`: nach dem Laden gleich am Blickpunkt stehen (`?intro=0`). */
@@ -166,6 +203,11 @@ export interface ViewerHandle {
   spieleIntro: () => boolean
   /** Einen laufenden Flug beenden: gleich am Blickpunkt stehen. */
   ueberspringeIntro: () => void
+  /**
+   * Eine andere Belegung zeigen (Einrichten-Modus): Die Plätze werden neu
+   * eingerichtet, mit den schon geladenen Regal-Modellen.
+   */
+  setzeBelegung: (belegung: Belegung) => void
   dispose: () => void
 }
 
@@ -189,6 +231,8 @@ export interface ViewerDebug {
     richtung: number[]
     /** Ausgeblendete Preisschild-Meshes (DB8). */
     preisschilder: number
+    /** Einrichtung (DB12): gelegte Plätze und Stücke; `null`: Raum wie im Modell. */
+    einrichtung: Eingerichtet | null
     aussenSichtbar: boolean
     /** Flug zum Start: läuft er, welcher, wie endete der letzte, Bilder des letzten. */
     intro: {
@@ -311,6 +355,10 @@ export function createViewer(
   let picker: Picker | null = null
   let blickpunkt = options.blickpunkt
   let preisschilder = 0
+  /** Einrichtung (DB12): die Daten, die geladenen Regal-Modelle, das Ergebnis. */
+  let einrichtung: SzenenEinrichtung | null = null
+  let regale: Regale | null = null
+  let eingerichtet: Eingerichtet | null = null
   let aussenSichtbar = true
   /** Dauerhaft hervorgehobener Platz (gewähltes Produkt). */
   let gewaehlt: string | null = null
@@ -401,7 +449,11 @@ export function createViewer(
     for (const child of model.children) {
       if (!child.visible) continue
       if (parseProduktName(child.userData.name)?.slot !== slot) continue
-      box.setFromObject(child)
+      // Eingerichtet (DB12): die Mitte dessen, was dort jetzt liegt - nicht
+      // der verborgenen Ware des Modells. Liegt nichts dort (Produkt ohne
+      // Regal-Modell), bleibt es die Stelle im Modell.
+      rahmenOhneVerborgenes(child, box)
+      if (box.isEmpty()) box.setFromObject(child)
       if (box.isEmpty()) continue
       return box.getCenter(new Vector3())
     }
@@ -639,6 +691,56 @@ export function createViewer(
     lauf.raf = requestAnimationFrame(introTakt)
   }
 
+  /** Legt die Regal-Modelle nach der Belegung auf die Plätze des Modells. */
+  const richteRaumEin = (root: Object3D) => {
+    if (!einrichtung) return
+    eingerichtet = richteEin(
+      root,
+      planeRaum({
+        belegung: einrichtung.belegung,
+        regal: regale ? einrichtung.regal?.modelle : undefined,
+        imModell: leseImModell(root),
+        blickpunkte: einrichtung.blickpunkte,
+      }),
+      regale
+    )
+  }
+
+  /** Die laufende Szene neu einrichten (späte Daten, Einrichten-Modus). */
+  const richteNeuEin = () => {
+    if (disposed || !model) return
+    // Die Überzüge der Hervorhebung hängen an Meshes, die gleich verschwinden.
+    picker?.dispose()
+    richteRaumEin(model)
+    picker = createPicker({
+      root: model,
+      camera,
+      element: canvas,
+      requestRender,
+    })
+    if (gewaehlt) picker.highlight(gewaehlt)
+    requestRender()
+  }
+
+  /**
+   * Einrichtung und Regal-Modelle, parallel zum Modell geladen. Scheitert
+   * etwas davon, bleibt der Raum, wie er im Modell ist - kein Ladefehler.
+   */
+  const ladeEinrichtung = async (): Promise<void> => {
+    if (!options.einrichtung) return
+    try {
+      einrichtung = await options.einrichtung
+    } catch {
+      einrichtung = null
+    }
+    if (!einrichtung?.regal || disposed) return
+    try {
+      regale = await ladeRegale(einrichtung.regal.url, abort.signal)
+    } catch {
+      regale = null
+    }
+  }
+
   const resize = () => {
     if (disposed) return
     const rect = container.getBoundingClientRect()
@@ -697,16 +799,37 @@ export function createViewer(
         setTimeout(weiter, MODELL_NOCHMAL_MS)
       ).then(() => ladeModell(rest - 1))
     })
+  // Parallel dazu die Einrichtung (DB12) - sie lässt das Laden nie scheitern
+  // und hält es höchstens um eine kurze Frist auf.
+  const einrichtungGeladen = ladeEinrichtung()
   ladeModell(MODELL_NOCHMAL)
-    .then((root) => {
+    .then(async (root) => {
+      let fristUhr: ReturnType<typeof setTimeout> | undefined
+      const rechtzeitig = await Promise.race([
+        einrichtungGeladen.then(() => true),
+        new Promise<boolean>((fertig) => {
+          fristUhr = setTimeout(() => fertig(false), EINRICHTUNG_FRIST_MS)
+        }),
+      ])
+      clearTimeout(fristUhr)
+      if (!rechtzeitig) {
+        // Kommt sie doch noch: dann einrichten, in der laufenden Szene.
+        void einrichtungGeladen.then(() => {
+          if (!disposed && model === root) richteNeuEin()
+        })
+      }
       if (disposed) {
         disposeTree(root)
+        regale?.dispose()
+        regale = null
         return
       }
       // Reihenfolge: Morgens-Filter, Preisschilder weg (DB8), dann das
       // Verzeichnis der antippbaren Flächen über dem fertigen Baum.
       fill = applyFill(root as unknown as FillNode, options.fuellung)
       preisschilder = blendePreiskartenAus(root)
+      // Einrichtung (DB12): vor dem Verzeichnis der antippbaren Flächen.
+      if (rechtzeitig) richteRaumEin(root)
       model = root
       scene.add(root)
       zeigeAussenraum(blickpunkt.aussenSichtbar !== false)
@@ -767,6 +890,7 @@ export function createViewer(
         eye: camera.position.toArray(),
         richtung: camera.getWorldDirection(new Vector3()).toArray(),
         preisschilder,
+        einrichtung: eingerichtet,
         aussenSichtbar,
         intro: {
           laeuft: introLauf !== null,
@@ -945,6 +1069,15 @@ export function createViewer(
       return true
     },
     ueberspringeIntro: () => beendeIntro('uebersprungen'),
+    setzeBelegung: (belegung) => {
+      if (disposed) return
+      einrichtung = {
+        belegung,
+        regal: einrichtung?.regal,
+        blickpunkte: einrichtung?.blickpunkte ?? [],
+      }
+      richteNeuEin()
+    },
     dispose: () => {
       if (disposed) return
       // Erst abgebaut, dann den Flug beenden: So meldet er der App kein
@@ -963,9 +1096,12 @@ export function createViewer(
       canvas.removeEventListener('webglcontextlost', onContextLost)
       if (model) {
         scene.remove(model)
+        raeumeEinrichtungAb(model)
         disposeTree(model)
         model = null
       }
+      regale?.dispose()
+      regale = null
       scene.clear()
       renderer.dispose()
       renderer.forceContextLoss()

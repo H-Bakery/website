@@ -17,11 +17,31 @@ export interface ProduktModell {
   bbox_m: { min: number[]; max: number[] }
 }
 
+/** Ein leichtes Regal-Modell (DB12): sein Rahmen in Metern, y oben, steht auf y = 0. */
+export interface RegalModell {
+  bbox_m: { min: number[]; max: number[] }
+  dreiecke: number
+}
+
+/** Alle Regal-Modelle liegen in einer Datei (scripts/regal-modelle.js). */
+export interface RegalPaket {
+  /** Pfad relativ zum Basis-Pfad: `produkte-3d/_regal.glb` */
+  datei: string
+  bytes: number
+  /** Schlüssel = hq-ID ohne Nummer = Name des Meshes im Paket */
+  modelle: Record<string, RegalModell>
+}
+
 export interface ProduktModellIndex {
   version: 1
   /** Schlüssel = hq-ID ohne Nummer (wie `ProduktInfo.id`) */
   modelle: Record<string, ProduktModell>
+  /** Nur wenn es Regal-Modelle gibt - sonst zeigt der Laden die Ware seines Modells. */
+  regal?: RegalPaket
 }
+
+/** Die eine Datei, die ein Regal-Paket sein darf. */
+export const REGAL_DATEI = 'produkte-3d/_regal.glb'
 
 export const LEERER_MODELL_INDEX: ProduktModellIndex = {
   version: 1,
@@ -70,8 +90,43 @@ export function leseModellIndex(raw: unknown): ProduktModellIndex {
       }
     }
   }
-  return { version: 1, modelle }
+  const regal = leseRegalPaket(raw.regal)
+  return regal ? { version: 1, modelle, regal } : { version: 1, modelle }
 }
+
+function leseRegalPaket(raw: unknown): RegalPaket | undefined {
+  if (
+    !isRecord(raw) ||
+    // Nur die eigene Datei - nie eine fremde Adresse.
+    raw.datei !== REGAL_DATEI ||
+    typeof raw.bytes !== 'number' ||
+    !(raw.bytes > 0) ||
+    !isRecord(raw.modelle)
+  ) {
+    return undefined
+  }
+  const modelle: Record<string, RegalModell> = {}
+  for (const [id, eintrag] of Object.entries(raw.modelle)) {
+    if (
+      /^[a-z0-9]+(-[a-z0-9]+)*$/.test(id) &&
+      isRecord(eintrag) &&
+      isRecord(eintrag.bbox_m) &&
+      istVec3(eintrag.bbox_m.min) &&
+      istVec3(eintrag.bbox_m.max) &&
+      typeof eintrag.dreiecke === 'number'
+    ) {
+      modelle[id] = {
+        bbox_m: { min: [...eintrag.bbox_m.min], max: [...eintrag.bbox_m.max] },
+        dreiecke: eintrag.dreiecke,
+      }
+    }
+  }
+  if (Object.keys(modelle).length === 0) return undefined
+  return { datei: REGAL_DATEI, bytes: raw.bytes, modelle }
+}
+
+/** So lange darf der Index auf sich warten lassen (wie die Produktdaten). */
+export const MODELL_INDEX_ZEIT_MS = 8000
 
 /**
  * Lädt `${basePath}/data/produkte-3d.json`. Wirft nie: Ohne Index gibt es
@@ -80,12 +135,23 @@ export function leseModellIndex(raw: unknown): ProduktModellIndex {
 export async function ladeModellIndex(
   basePath: string
 ): Promise<ProduktModellIndex> {
+  let uhr: ReturnType<typeof setTimeout> | undefined
+  // Die Szene wartet vor dem ersten Bild auch auf diesen Index (Regal-Modelle,
+  // DB12): Hängt die Anfrage, gibt es nach kurzer Zeit eben keine Modelle.
+  const zuSpaet = new Promise<null>((fertig) => {
+    uhr = setTimeout(() => fertig(null), MODELL_INDEX_ZEIT_MS)
+  })
   try {
-    const res = await fetch(`${basePath}/data/produkte-3d.json`)
-    if (!res.ok) return LEERER_MODELL_INDEX
-    return leseModellIndex(await res.json())
+    const laden = async (): Promise<ProduktModellIndex> => {
+      const res = await fetch(`${basePath}/data/produkte-3d.json`)
+      if (!res.ok) return LEERER_MODELL_INDEX
+      return leseModellIndex(await res.json())
+    }
+    return (await Promise.race([laden(), zuSpaet])) ?? LEERER_MODELL_INDEX
   } catch {
     return LEERER_MODELL_INDEX
+  } finally {
+    clearTimeout(uhr)
   }
 }
 

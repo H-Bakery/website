@@ -55,20 +55,46 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
+/**
+ * So lange darf eine Daten-Datei auf sich warten lassen. Die Szene wartet vor
+ * dem ersten Bild auf die Einrichtung (DB12) - eine Anfrage, die hängt, darf
+ * sie nicht aufhalten: Danach gilt sie als nicht ladbar, und der Laden zeigt
+ * die Ware seines Modells.
+ */
+export const DATEN_ZEIT_MS = 8000
+
 async function ladeJson(url: string, was: string): Promise<unknown> {
-  let res: Response
-  try {
-    res = await fetch(url)
-  } catch {
-    throw new Error(`${was} konnten nicht geladen werden.`)
+  let uhr: ReturnType<typeof setTimeout> | undefined
+  // Ein Wettlauf: Die Frist gilt für Antwort und Inhalt zusammen. Die Anfrage
+  // selbst läuft im Hintergrund aus - ihr Ergebnis braucht dann niemand mehr.
+  const zuSpaet = new Promise<never>((_, ablehnen) => {
+    uhr = setTimeout(
+      () => ablehnen(new Error(`${was} konnten nicht geladen werden.`)),
+      DATEN_ZEIT_MS
+    )
+  })
+  const laden = async (): Promise<unknown> => {
+    let res: Response
+    try {
+      res = await fetch(url)
+    } catch {
+      throw new Error(`${was} konnten nicht geladen werden.`)
+    }
+    if (!res.ok) {
+      throw new Error(
+        `${was} konnten nicht geladen werden (HTTP ${res.status}).`
+      )
+    }
+    try {
+      return await res.json()
+    } catch {
+      throw new Error(`${was} sind nicht lesbar.`)
+    }
   }
-  if (!res.ok) {
-    throw new Error(`${was} konnten nicht geladen werden (HTTP ${res.status}).`)
-  }
   try {
-    return await res.json()
-  } catch {
-    throw new Error(`${was} sind nicht lesbar.`)
+    return await Promise.race([laden(), zuSpaet])
+  } finally {
+    clearTimeout(uhr)
   }
 }
 
@@ -85,7 +111,7 @@ function istEintrag(v: unknown): v is BelegungEintrag {
 function istBelegung(v: unknown): v is BelegungDatei {
   return (
     isRecord(v) &&
-    v.version === 2 &&
+    v.version === 3 &&
     isRecord(v.raeume) &&
     Object.values(v.raeume).every(
       (raum) =>
@@ -109,6 +135,8 @@ export function belegungVon(datei: BelegungDatei, raumId: string): Belegung {
     version: 1,
     quelle: raum?.quelle ?? { commit: '' },
     slots: raum?.slots ?? [],
+    leer: Array.isArray(raum?.leer) ? raum.leer : [],
+    plaetze: isRecord(raum?.plaetze) ? raum.plaetze : {},
   }
 }
 

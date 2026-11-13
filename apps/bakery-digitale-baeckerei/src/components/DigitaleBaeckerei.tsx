@@ -14,7 +14,11 @@ import {
 } from '../config/raeume'
 import { BASE_PATH, modelUrl } from '../lib/basePath'
 import type { Karte, ListenZeile } from '../lib/karte'
-import type { BelegungDatei, ProduktSnapshot } from '../lib/produkte/types'
+import type {
+  Belegung,
+  BelegungDatei,
+  ProduktSnapshot,
+} from '../lib/produkte/types'
 import { raumAusAdresse, sucheFuerRaum } from '../lib/raeume/adresse'
 import {
   findeFuerKnoten,
@@ -44,7 +48,11 @@ import {
   eintraegeFuer,
   ladeProduktdaten,
 } from '../lib/produkte/zuordnung'
-import type { Treffer, ViewerReadyInfo } from '../lib/scene/createViewer'
+import type {
+  SzenenEinrichtung,
+  Treffer,
+  ViewerReadyInfo,
+} from '../lib/scene/createViewer'
 import AllesHierListe from './AllesHierListe'
 import BlickpunktLeiste from './BlickpunktLeiste'
 import Hinweis from './Hinweis'
@@ -60,6 +68,32 @@ import OhneWebGL, {
 import { KEINE_INFOS_TEXT } from './produktliste'
 import ProduktSheet from './ProduktSheet'
 import { SCENE_BACKDROP } from './theme'
+
+/**
+ * Einrichten-Modus (DB12): das lokale Werkzeug des Inhabers. Es steckt nur in
+ * einem Build, der dafür gestartet wurde (`nx run
+ * bakery-digitale-baeckerei:einrichten`), und - zum Testen, erst mit
+ * `?einrichten=1` - im Fixture-Build. Die Bedingung steht wörtlich hier: Nur
+ * so rechnet webpack sie beim Bauen aus und lässt im öffentlichen Export das
+ * Werkzeug samt `require` weg (der Export-Wächter prüft das nach).
+ */
+const Einrichten: React.ComponentType<
+  import('./einrichten/Einrichten').EinrichtenProps
+> | null =
+  process.env.NEXT_PUBLIC_DIGITALE_BAECKEREI_EINRICHTEN === '1' ||
+  process.env.NEXT_PUBLIC_DIGITALE_BAECKEREI_FIXTURE === '1'
+    ? // eslint-disable-next-line @typescript-eslint/no-var-requires
+      (
+        require('./einrichten/Einrichten') as {
+          default: React.ComponentType<
+            import('./einrichten/Einrichten').EinrichtenProps
+          >
+        }
+      ).default
+    : null
+/** Im Einrichten-Build ist das Werkzeug immer an, im Fixture-Build auf Wunsch. */
+const EINRICHTEN_IMMER =
+  process.env.NEXT_PUBLIC_DIGITALE_BAECKEREI_EINRICHTEN === '1'
 
 export const TITEL = 'Digitale Bäckerei'
 export const FEHLER_TEXT =
@@ -79,6 +113,9 @@ export const DATEN_FEHLER_TEXT =
 /** An einem Blickpunkt ohne Produktinfos: einmal sagen, dass Tippen hier nichts öffnet. */
 export const KEINE_INFOS_HINWEIS =
   'Hier gibt es noch keine Infos zum Antippen – schau dich einfach um.'
+/** Der Hinweis beim Start im Einrichten-Modus (dort öffnet ein Tipp keine Infos). */
+export const EINRICHTEN_HINWEIS =
+  'Ziehen zum Umschauen · Platz antippen zum Einrichten'
 /**
  * Das gewählte Produkt lässt sich von diesem Blickpunkt aus nicht ins Bild
  * drehen. Bewusst ohne Richtung: Die Grenze des Umschauens ist dann schon
@@ -183,6 +220,18 @@ export default function DigitaleBaeckerei({
   /** 3D-Modelle einzelner Produkte; leer = keine Nahansicht (kein Fehler). */
   const [modelle, setModelle] =
     useState<ProduktModellIndex>(LEERER_MODELL_INDEX)
+  /**
+   * Produktdaten und Modell-Index als ein Versprechen: Die Szene wartet
+   * darauf, bevor sie das erste Bild zeigt - sie legt damit die Regal-Modelle
+   * auf die Plätze (DB12). `null` als Produktdaten: nicht ladbar.
+   */
+  const [ladung, setLadung] = useState<Promise<
+    [Produktdaten | null, ProduktModellIndex]
+  > | null>(null)
+  /** Einrichten-Modus: an? Der Entwurf je Raum, der gewählte Platz. */
+  const [einrichtenAn, setEinrichtenAn] = useState(false)
+  const [entwurf, setEntwurf] = useState<Record<string, Belegung> | null>(null)
+  const [einrichtenPlatz, setEinrichtenPlatz] = useState<string | null>(null)
   const [auswahl, setAuswahl] = useState<Auswahl | null>(null)
   const [nahansicht, setNahansicht] = useState<OffeneNahansicht | null>(null)
   /** Platz, der sich von hier nicht ins freie Bild drehen lässt. */
@@ -236,13 +285,22 @@ export default function DigitaleBaeckerei({
   // auch der Ersatz ohne WebGL braucht sie.
   useEffect(() => {
     let aktuell = true
-    ladeProduktdaten(BASE_PATH)
-      .then((geladen) => {
-        if (aktuell) setDaten(geladen)
-      })
-      .catch(() => {
-        if (aktuell) setDatenFehler(true)
-      })
+    const produktdaten = ladeProduktdaten(BASE_PATH).then(
+      (geladen): Produktdaten | null => geladen,
+      () => null
+    )
+    // Welche Produkte ein 3D-Modell haben (Nahansicht, Regal-Modelle). Fehlt
+    // der Index oder ist er leer, gibt es beides einfach nicht.
+    const index = ladeModellIndex(BASE_PATH)
+    setLadung(Promise.all([produktdaten, index]))
+    produktdaten.then((geladen) => {
+      if (!aktuell) return
+      if (geladen) setDaten(geladen)
+      else setDatenFehler(true)
+    })
+    index.then((geladen) => {
+      if (aktuell) setModelle(geladen)
+    })
     return () => {
       aktuell = false
     }
@@ -254,18 +312,6 @@ export default function DigitaleBaeckerei({
     let aktuell = true
     ladeRauminfos(BASE_PATH).then((geladen) => {
       if (aktuell) setRauminfos(geladen)
-    })
-    return () => {
-      aktuell = false
-    }
-  }, [])
-
-  // Welche Produkte ein 3D-Modell für die Nahansicht haben. Fehlt der Index
-  // oder ist er leer, gibt es den Knopf „In 3D ansehen“ einfach nicht.
-  useEffect(() => {
-    let aktuell = true
-    ladeModellIndex(BASE_PATH).then((index) => {
-      if (aktuell) setModelle(index)
     })
     return () => {
       aktuell = false
@@ -293,6 +339,53 @@ export default function DigitaleBaeckerei({
     }
   }, [zustand, modelle, daten])
 
+  /**
+   * Die Einrichtung des Raums für die Szene (DB12): seine Belegung mit den
+   * Rahmen der Plätze und die Regal-Modelle. Ohne Produktdaten oder in einem
+   * Raum ohne Produkte: `null` - der Raum bleibt, wie er im Modell ist.
+   */
+  const einrichtung = useMemo(
+    () =>
+      ladung && raum
+        ? ladung.then(([geladen, index]): SzenenEinrichtung | null =>
+            geladen && raum.produkte
+              ? {
+                  belegung: belegungVon(geladen.belegung, raum.id),
+                  regal: index.regal
+                    ? {
+                        url: `${BASE_PATH}/${index.regal.datei}`,
+                        modelle: index.regal.modelle,
+                      }
+                    : undefined,
+                  blickpunkte: raum.blickpunkte,
+                }
+              : null
+          )
+        : undefined,
+    [ladung, raum]
+  )
+
+  useEffect(() => {
+    if (!Einrichten) return
+    if (EINRICHTEN_IMMER) setEinrichtenAn(true)
+    else {
+      try {
+        const parameter = new URLSearchParams(window.location.search)
+        setEinrichtenAn(parameter.get('einrichten') === '1')
+      } catch {
+        /* ohne Werkzeug */
+      }
+    }
+  }, [])
+  const einrichten = Einrichten !== null && einrichtenAn
+  /** Die Belegung eines Raums, wie sie gilt - im Einrichten-Modus der Entwurf. */
+  const belegungFuer = useCallback(
+    (id: string): Belegung | null =>
+      (einrichten && entwurf?.[id]) ||
+      (daten ? belegungVon(daten.belegung, id) : null),
+    [einrichten, entwurf, daten]
+  )
+
   const blickpunkte = useMemo(() => raum?.blickpunkte ?? [], [raum])
   const blickpunkt = raum && findeBlickpunkt(raum, aktivId)
 
@@ -309,13 +402,10 @@ export default function DigitaleBaeckerei({
         const infopunkte = rauminfos ? infopunkteVon(rauminfos, r.id) : []
         const eintraegeJe: Record<string, ListenZeile[]> = {}
         for (const b of r.blickpunkte) {
+          const belegung = r.produkte ? belegungFuer(r.id) : null
           eintraegeJe[b.id] = [
-            ...(r.produkte && daten
-              ? eintraegeFuer(
-                  belegungVon(daten.belegung, r.id),
-                  daten.snapshot,
-                  b.moebel
-                )
+            ...(belegung && daten
+              ? eintraegeFuer(belegung, daten.snapshot, b.moebel)
               : []),
             ...infoEintraegeFuer(infopunkte, b.moebel),
           ]
@@ -328,7 +418,7 @@ export default function DigitaleBaeckerei({
           leerText: r.produkte ? undefined : KEINE_INFOS_TEXT,
         }
       }),
-    [raeume, daten, rauminfos]
+    [raeume, daten, rauminfos, belegungFuer]
   )
   /** Die Liste des Raums, in dem man steht. */
   const raumListe = useMemo(
@@ -468,6 +558,19 @@ export default function DigitaleBaeckerei({
   const onTreffer = useCallback(
     (treffer: Treffer | null) => {
       setKeineInfosAn(null)
+      // Einrichten-Modus: Ein Tipp wählt den Platz, keine Karte.
+      if (einrichten) {
+        const plaetze = raum ? belegungFuer(raum.id)?.plaetze : undefined
+        if (
+          treffer &&
+          plaetze &&
+          Object.prototype.hasOwnProperty.call(plaetze, treffer.slot)
+        ) {
+          setBedient(true)
+          setEinrichtenPlatz(treffer.slot)
+        }
+        return
+      }
       if (!treffer || !raum) {
         waehle(null)
         return
@@ -505,7 +608,7 @@ export default function DigitaleBaeckerei({
           : null
       )
     },
-    [daten, rauminfos, raum, raeume, waehle, betrete]
+    [daten, rauminfos, raum, raeume, waehle, betrete, einrichten, belegungFuer]
   )
 
   // Solange die Nahansicht offen ist, gehört Escape ihr - die Karte bleibt.
@@ -538,18 +641,14 @@ export default function DigitaleBaeckerei({
   }
 
   // „Entdeckt x von y“ zählt die Produkte des Raums, in dem man steht.
-  const entdecktZeile = useMemo(
-    () =>
-      daten && raum?.produkte
-        ? entdecktText(
-            zaehleEntdeckt(
-              entdeckt,
-              entdeckbare(belegungVon(daten.belegung, raum.id), daten.snapshot)
-            )
-          )
-        : null,
-    [daten, entdeckt, raum]
-  )
+  const entdecktZeile = useMemo(() => {
+    const belegung = raum?.produkte ? belegungFuer(raum.id) : null
+    return daten && belegung
+      ? entdecktText(
+          zaehleEntdeckt(entdeckt, entdeckbare(belegung, daten.snapshot))
+        )
+      : null
+  }, [daten, entdeckt, raum, belegungFuer])
 
   const bereit = zustand === 'bereit'
   const eintraege = useMemo(
@@ -664,9 +763,11 @@ export default function DigitaleBaeckerei({
         backgroundColor: SCENE_BACKDROP,
       }}
     >
-      {zeigtSzene && Viewer3D && (
+      {zeigtSzene && Viewer3D && einrichtung && (
         <Viewer3D
           key={versuch}
+          einrichtung={einrichtung}
+          belegung={(einrichten && entwurf?.[raum.id]) || undefined}
           modelUrl={modelUrl(raum.modell)}
           modelBytes={modellBytes(raum)}
           blickpunkt={blickpunkt}
@@ -681,7 +782,7 @@ export default function DigitaleBaeckerei({
           introNochmal={introNochmal}
           introSchluss={introSchluss}
           onIntro={onIntro}
-          auswahl={auswahl?.slot ?? null}
+          auswahl={einrichten ? einrichtenPlatz : auswahl?.slot ?? null}
           verdecktVon={produktKarte}
           onProgress={onProgress}
           onReady={onReady}
@@ -730,8 +831,20 @@ export default function DigitaleBaeckerei({
       {bereit && !fliegt && (
         <>
           <Hinweis
-            sichtbar={keineInfos || (!bedient && !auswahl)}
-            text={keineInfos ? KEINE_INFOS_HINWEIS : undefined}
+            // Im Einrichten-Modus öffnet ein Tipp keine Infos: eigener Text,
+            // und nie der Hinweis „keine Infos zum Antippen“.
+            sichtbar={
+              einrichten
+                ? !bedient && !einrichtenPlatz
+                : keineInfos || (!bedient && !auswahl)
+            }
+            text={
+              einrichten
+                ? EINRICHTEN_HINWEIS
+                : keineInfos
+                ? KEINE_INFOS_HINWEIS
+                : undefined
+            }
           />
           <BlickpunktLeiste
             blickpunkte={[...blickpunkte]}
@@ -848,6 +961,21 @@ export default function DigitaleBaeckerei({
           ansage
         )}
       </Box>
+
+      {/* Einrichten-Modus (nur lokal): als letztes Kind - im normalen Build
+          bleibt das HTML davor genau, wie es war (auch die ids von React). */}
+      {Einrichten && einrichten && bereit && !fliegt && daten && (
+        <Einrichten
+          basePath={BASE_PATH}
+          raum={raum}
+          gebaut={daten.belegung}
+          snapshot={daten.snapshot}
+          regal={modelle.regal?.modelle}
+          platz={einrichtenPlatz}
+          onPlatz={setEinrichtenPlatz}
+          onEntwurf={setEntwurf}
+        />
+      )}
     </Box>
   )
 }

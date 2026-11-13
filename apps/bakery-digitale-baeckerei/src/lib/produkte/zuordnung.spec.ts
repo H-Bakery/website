@@ -4,7 +4,12 @@ import type {
   ProduktInfo,
   ProduktSnapshot,
 } from './types'
-import { belegungVon, eintraegeFuer, ladeProduktdaten } from './zuordnung'
+import {
+  DATEN_ZEIT_MS,
+  belegungVon,
+  eintraegeFuer,
+  ladeProduktdaten,
+} from './zuordnung'
 
 // Nur erfundene Produkte, keine Preise.
 const produkt = (id: string, name: string): ProduktInfo => ({
@@ -121,7 +126,7 @@ describe('ladeProduktdaten', () => {
 
   /** `belegung.json`, wie sync-model sie schreibt: je Raum eine Belegung. */
   const DATEI = {
-    version: 2,
+    version: 3,
     raeume: {
       laden: { quelle: BELEGUNG.quelle, slots: BELEGUNG.slots },
       backstube: { quelle: { commit: 'x' }, slots: [] },
@@ -195,15 +200,19 @@ describe('ladeProduktdaten', () => {
 
   it.each([
     ['altes Format (ein Raum, Version 1)', BELEGUNG],
-    ['raeume fehlt', { version: 2 }],
+    [
+      'Version 2 (ohne Einrichtung)',
+      { version: 2, raeume: { laden: { quelle: { commit: 'x' }, slots: [] } } },
+    ],
+    ['raeume fehlt', { version: 3 }],
     [
       'slots fehlt',
-      { version: 2, raeume: { laden: { quelle: { commit: 'x' } } } },
+      { version: 3, raeume: { laden: { quelle: { commit: 'x' } } } },
     ],
     [
       'Eintrag ohne Produkt',
       {
-        version: 2,
+        version: 3,
         raeume: { laden: { quelle: { commit: 'x' }, slots: [{ slot: 'a' }] } },
       },
     ],
@@ -218,10 +227,64 @@ describe('ladeProduktdaten', () => {
   })
 
   it('belegungVon: die Belegung eines Raums - leer, wenn die Datei ihn nicht nennt', () => {
-    expect(belegungVon(DATEI as BelegungDatei, 'laden')).toEqual(BELEGUNG)
+    expect(belegungVon(DATEI as BelegungDatei, 'laden')).toEqual({
+      ...BELEGUNG,
+      leer: [],
+      plaetze: {},
+    })
     expect(belegungVon(DATEI as BelegungDatei, 'backstube').slots).toEqual([])
     expect(belegungVon(DATEI as BelegungDatei, 'keller').slots).toEqual([])
     // Ein Name aus dem Prototyp ist kein Raum.
     expect(belegungVon(DATEI as BelegungDatei, 'toString').slots).toEqual([])
+  })
+})
+
+describe('ladeProduktdaten: eine Anfrage, die hängt, hält nichts auf', () => {
+  afterEach(() => jest.useRealTimers())
+
+  it('gilt nach der Frist als nicht ladbar - mit derselben deutschen Meldung', async () => {
+    jest.useFakeTimers()
+    // Die Belegung antwortet nie, der Snapshot sofort.
+    global.fetch = jest.fn((url: string) =>
+      url.endsWith('/data/belegung.json')
+        ? new Promise(() => undefined)
+        : Promise.resolve({ ok: true, status: 200, json: async () => ({}) })
+    ) as unknown as typeof fetch
+    const ergebnis = ladeProduktdaten('').then(
+      () => 'geladen',
+      (err: Error) => err.message
+    )
+    let fertig = false
+    void ergebnis.then(() => {
+      fertig = true
+    })
+    await jest.advanceTimersByTimeAsync(DATEN_ZEIT_MS - 1)
+    expect(fertig).toBe(false)
+    await jest.advanceTimersByTimeAsync(2)
+    await expect(ergebnis).resolves.toBe(
+      'Die Plätze im Regal konnten nicht geladen werden.'
+    )
+  })
+
+  it('auch ein Inhalt, der nie zu Ende kommt, läuft in die Frist', async () => {
+    jest.useFakeTimers()
+    global.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: () => new Promise(() => undefined),
+    })) as unknown as typeof fetch
+    const ergebnis = ladeProduktdaten('').catch((err: Error) => err.message)
+    await jest.advanceTimersByTimeAsync(DATEN_ZEIT_MS + 1)
+    await expect(ergebnis).resolves.toMatch(/konnten nicht geladen werden/)
+  })
+
+  it('eine schnelle Antwort lässt keine Uhr zurück', async () => {
+    jest.useFakeTimers()
+    global.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 404,
+    })) as unknown as typeof fetch
+    await expect(ladeProduktdaten('')).rejects.toThrow(/HTTP 404/)
+    expect(jest.getTimerCount()).toBe(0)
   })
 })

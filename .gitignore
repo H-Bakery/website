@@ -38,6 +38,7 @@ dist/
 !/apps/bakery-digitale-baeckerei/src/test/fixtures/twin.fixture.glb
 !/apps/bakery-digitale-baeckerei/src/test/fixtures/testbackstube.fixture.glb
 !/apps/bakery-digitale-baeckerei/src/test/fixtures/produkt.fixture.glb
+!/apps/bakery-digitale-baeckerei/src/test/fixtures/regal.fixture.glb
 # Playwright-Berichte (HTML mit Screenshots und Spuren)
 playwright-report/
 /out/
