@@ -100,6 +100,21 @@ function roundingInvoice() {
   }
 }
 
+/**
+ * Bereits bar bezahlt: voller Betrag als gezahlt (BT-113), Zahlbetrag 0, keine
+ * Bankverbindung nötig. Mit dem Rundungsfall, damit BR-CO-16 beides trägt.
+ */
+function paidInvoice() {
+  return {
+    ...roundingInvoice(),
+    number: 'TEST-2026-0045',
+    paid: true,
+    paidOn: '2026-11-15',
+    paidMethod: 'bar',
+    seller: { ...SELLER, iban: '', bic: '', accountHolder: '', bankName: '' },
+  }
+}
+
 /** So viele Positionen, dass die PDF mehrere Seiten braucht. */
 function longInvoice() {
   const lines = []
@@ -151,9 +166,19 @@ function toDto(invoice, overrides = {}) {
       netBasisQuantity: line.netBasisQuantity,
     })),
     vat: computed.vat,
-    totals: computed.totals,
+    totals: {
+      ...computed.totals,
+      ...core.settlement(invoice, computed.totals),
+    },
+    paid: invoice.paid === true,
+    paidOn: invoice.paidOn || null,
+    paidMethod: invoice.paidMethod || '',
+    preorderPaidCents: null,
+    warnings: [],
     issuable: false,
     missing: [],
+    pdfSha256: null,
+    anonymizedAt: null,
     issuedAt: '2026-11-15T09:30:00.000Z',
     cancelledAt: null,
     cancelReason: '',
@@ -168,6 +193,7 @@ module.exports = {
   BUYER,
   mixedInvoice,
   roundingInvoice,
+  paidInvoice,
   longInvoice,
   toDto,
 }

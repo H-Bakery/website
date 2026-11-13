@@ -190,8 +190,29 @@ module.exports = {
     )
   },
 
+  /**
+   * Löscht die Tabellen - und damit jede Rechnung. Ausgestellte Rechnungen
+   * sind aufbewahrungspflichtig (§ 14b UStG): gibt es welche, bricht `down`
+   * ab, statt sie stillschweigend zu verwerfen. Wer das wirklich will (nie auf
+   * der Box ohne gesicherte Datenbank), setzt `INVOICES_ALLOW_DROP=1`.
+   */
   async down(queryInterface) {
     const tables = await tableNames(queryInterface)
+    if (
+      tables.includes('invoices') &&
+      process.env.INVOICES_ALLOW_DROP !== '1'
+    ) {
+      const [rows] = await queryInterface.sequelize.query(
+        "SELECT COUNT(*) AS n FROM invoices WHERE status <> 'entwurf'"
+      )
+      const issued = Number(rows[0] && rows[0].n) || 0
+      if (issued > 0) {
+        throw new Error(
+          `Migration invoices.down abgebrochen: ${issued} ausgestellte oder stornierte Rechnung(en) würden gelöscht (Aufbewahrungspflicht). ` +
+            'Erst die Datenbank sichern; nur mit INVOICES_ALLOW_DROP=1 wird trotzdem gelöscht.'
+        )
+      }
+    }
     if (tables.includes('invoice_lines')) {
       await queryInterface.dropTable('invoice_lines')
     }

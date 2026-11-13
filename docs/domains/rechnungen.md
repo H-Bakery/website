@@ -2,10 +2,13 @@
 
 Der Inhaber stellt unter `/admin/rechnungen` Rechnungen aus - frei oder aus einer Vorbestellung -
 und lädt sie als PDF, in dem dieselbe Rechnung zusätzlich als XML steckt (ZUGFeRD/Factur-X, Profil
-EN 16931). Nur die Rolle `inhaber` sieht und darf das.
+EN 16931). Nur die Rolle `inhaber` sieht und darf das - und nur mit persönlicher Anmeldung
+(Benutzername und Passwort), nicht mit der PIN an einer Station: es geht um Kundenanschriften und
+rechtsverbindliche Belege (`requirePersonalSession`, `PERSONAL_ONLY_ROUTES`).
 
 **Code:** Regeln und Formeln `apps/bakery-api/src/services/invoice.core.js` · DB, Transaktion, Audit
-`invoices.service.ts` · PDF `invoice-pdf.ts` · Verkäufer `invoice-seller.ts` · Routen
+`invoices.service.ts` · PDF `invoice-pdf.ts` · Verkäufer `invoice-seller.ts` · Bereinigung alter
+Entwürfe `invoice-anonymize.ts` · Routen
 `src/routes/invoices.routes.ts` (`/api/invoices`) · Management-App `src/lib/invoicesApi.ts`,
 `src/app/admin/rechnungen/`, `src/components/invoices/`.
 API-Details (Endpunkte, Fehlercodes, Tabellen, PDF-Aufbau, Prüfung):
@@ -15,16 +18,22 @@ API-Details (Endpunkte, Fehlercodes, Tabellen, PDF-Aufbau, Prüfung):
 
 - **Die Rechnungsnummer trägt der Inhaber ein.** Das alte System läuft parallel und vergibt die
   Nummern; die App zählt **nicht** selbst. Sie prüft nur: Pflicht beim Ausstellen, eindeutig, höchstens
-  40 Zeichen, ohne `< > & " '`. Ein eigener Nummernkreis kommt erst, wenn das alte System abgelöst
+  40 Zeichen, ohne `< > & " '` und ohne unsichtbare Zeichen oder besondere Leerzeichen (kommen beim
+  Kopieren mit; die App lehnt sie ab, statt sie still zu entfernen). **Eindeutig heißt: gleich
+  aussehend ist gleich** - „RE-7“, „re-7“ und „RE-7 “ sind dieselbe Nummer (`numberKey()`:
+  Unicode-NFKC, Leerzeichen zusammengefasst, Groß-/Kleinschreibung egal). Gespeichert und gedruckt
+  wird, was getippt wurde. Ein eigener Nummernkreis kommt erst, wenn das alte System abgelöst
   ist (Frage an den Steuerberater, `docs/roadmap.md` §7).
 - **7 % ist eine Annahme.** Vorgabe je Position ist der ermäßigte Satz (Backwaren zum Mitnehmen),
   19 % ist je Position wählbar. Die Vorgabe steht an genau einer Stelle
   (`DEFAULT_VAT_RATE` in `invoice.core.js`) und ist vom Steuerberater **noch nicht bestätigt**. hq
   kennt keinen Steuersatz je Produkt - wer Getränke oder Verzehr im Laden berechnet, stellt die
   Position selbst auf 19 %.
-- **Kein Stornobeleg.** „Stornieren“ markiert die Rechnung (mit Grund und Datum, Aufdruck im PDF).
-  Eine förmliche Stornorechnung mit eigener Nummer (Typ 381) erzeugt die App nicht.
-- **Nicht gebaut:** Anzahlungen/„bereits bezahlt“, Rabatte und Zuschläge, Lieferanschrift,
+- **Kein Stornobeleg.** „Stornieren“ markiert die Rechnung (mit Grund und Datum) und legt eine
+  zweite PDF-Fassung mit Storno-Vermerk an. Eine förmliche Stornorechnung mit eigener Nummer
+  (Typ 381) erzeugt die App nicht.
+- **Nicht gebaut:** Anzahlungen und Teilzahlungen (nur „ganz bezahlt“ oder „per Überweisung“),
+  Rabatte und Zuschläge, Lieferanschrift,
   USt-IdNr. des Empfängers, Versand per E-Mail, Sammel- und Monatsrechnungen (CAP), Kunden-Stammdaten,
   andere Währungen und Länderregeln als Deutschland.
 
@@ -37,24 +46,59 @@ API-Details (Endpunkte, Fehlercodes, Tabellen, PDF-Aufbau, Prüfung):
   sich ändern oder löschen. **„Ausstellen“** verlangt Nummer, Rechnungs- und Leistungsdatum, die
   vollständige Anschrift des Empfängers (Name, Straße, PLZ, Ort), mindestens eine Position, einen
   Betrag über 0 und die Bankverbindung der Bäckerei. Die App zeigt am Entwurf, was noch fehlt.
-- **Ausgestellt ist unveränderlich.** Beim Ausstellen werden Verkäufer (mit Bankverbindung), Summen
-  und die XML festgeschrieben; PDF und XML kommen danach nur noch aus diesem Stand. Ändern und
-  Löschen antworten mit 409. **Korrektur = stornieren und eine neue Rechnung mit neuer Nummer
-  ausstellen.** Eine vergebene Nummer bleibt vergeben, auch nach dem Storno.
+- **Ausgestellt ist unveränderlich.** Beim Ausstellen werden Verkäufer (mit Bankverbindung), Summen,
+  die XML **und das PDF** festgeschrieben. Ändern und Löschen antworten mit 409. **Korrektur =
+  stornieren und eine neue Rechnung mit neuer Nummer ausstellen.** Eine vergebene Nummer bleibt
+  vergeben, auch nach dem Storno.
+- **Das PDF entsteht genau einmal.** Die Bytes liegen mit ihrem SHA-256 in der Datenbank
+  (`invoices.pdf`, `pdf_sha256`) und werden bei jedem Abruf unverändert ausgeliefert - eine spätere
+  Änderung an Layout, Schrift oder pdfkit ändert keine ausgestellte Rechnung. In der Datenbank statt
+  als Datei, damit sie ohne weiteres Zutun im Backup der Box sind. Lässt sich das PDF beim
+  Ausstellen nicht erzeugen (z. B. fehlende Schriften: 503 `invoice_fonts_missing`), wird nichts
+  ausgestellt.
+- **Stornieren überschreibt das Original nicht.** „Original-PDF“ liefert weiter genau das, was
+  verschickt wurde; „PDF mit Storno-Vermerk“ ist eine eigene, ebenfalls festgeschriebene Fassung
+  (`cancel_pdf`).
+- **Rechnungen von vor dieser Regel** (ausgestellt, aber ohne gespeichertes PDF - auf der Box gab es
+  keine): beim ersten Abruf oder beim Stornieren wird das PDF einmal aus dem festgeschriebenen Stand
+  erzeugt, gespeichert und im Audit-Log vermerkt (`pdf_freeze`); ab da gilt dasselbe.
+- **Bereits bezahlt.** Unter „Zahlung“ wählt der Inhaber „Per Überweisung“ (Zahlungsziel, Bankverbindung)
+  oder „Bereits bezahlt“ mit Datum und Zahlart (bar/Karte). Eine bezahlte Rechnung weist den vollen
+  Betrag als gezahlt aus („Bereits bezahlt −X, Noch zu zahlen 0,00 €“; in der XML BT-113 und
+  BT-115 = 0, Zahlart 10 bzw. 48), druckt **keine** Zahlungsaufforderung und kein Konto und braucht
+  die Bankverbindung nicht. Das Zahlungsdatum darf nicht nach dem Rechnungsdatum liegen.
+- **Bezahlte Vorbestellung:** Ist die Vorbestellung in voller Höhe als bezahlt vermerkt, startet der
+  Entwurf als „Bereits bezahlt“; Datum und Zahlart trägt der Inhaber ein (die Vorbestellung kennt
+  beides nicht) - vorher lässt er sich nicht ausstellen. Stellt er auf „Per Überweisung“ um oder
+  weicht der bezahlte Betrag vom Rechnungsbetrag ab (Teilzahlung, nachträglich geänderte Positionen),
+  warnt der Entwurf („Zahlung prüfen“, `warnings` in der API). Teilzahlungen weist die Rechnung
+  nicht aus.
 - **Aus einer Vorbestellung** („Rechnung erstellen“ auf der Detailseite, nur Inhaber, nicht bei
   stornierten): Positionen mit den Preisen der Vorbestellung (die aus dem hq-Katalog stammen), Name
   des Kunden, Leistungsdatum = Abholtag, Bestellcode als Bezug. Die Anschrift trägt der Inhaber
   nach - die Vorbestellung kennt nur einen Namen. Je Vorbestellung gibt es höchstens eine nicht
   stornierte Rechnung.
-- **Rechnungen werden nicht anonymisiert.** Die 90-Tage-Anonymisierung betrifft nur Vorbestellungen
-  und Lieferstopps. Die Rechnung hält Name und Anschrift selbst (kein Fremdschlüssel) und bleibt
-  vollständig - Aufbewahrungspflicht nach § 14b UStG. Das Audit-Log bekommt nur Nummer und Betrag.
+- **Ausgestellte Rechnungen werden nicht anonymisiert.** Die Rechnung hält Name und Anschrift selbst
+  (kein Fremdschlüssel) und bleibt vollständig - Aufbewahrungspflicht nach § 14b UStG. Das
+  Audit-Log bekommt nur Nummer und Betrag.
+- **Entwürfe schon.** Ein Entwurf ist kein Beleg. Der nächtliche 90-Tage-Lauf
+  (`anonymize-preorders`) leert bei liegengebliebenen Entwürfen Name, Zusatz, Straße, PLZ, Ort und
+  Bemerkung und setzt `anonymized_at`; Positionen und Beträge bleiben. Stichtag: bei einem Entwurf
+  aus einer Vorbestellung deren Abholtag (er wird im selben Lauf bereinigt wie die Vorbestellung),
+  sonst das Liefer-/Leistungsdatum, sonst der Tag der letzten Änderung. Der Entwurf zeigt einen
+  Hinweis; wer ihn doch noch braucht, trägt die Anschrift neu ein und stellt am selben Tag aus.
+- **Plausibilität beim Ausstellen:** Rechnungsdatum höchstens 7 Tage voraus und höchstens ein Jahr
+  zurück; Liefer-/Leistungsdatum höchstens 31 Tage voraus und höchstens zwei Jahre zurück
+  (`DATE_BOUNDS`). Name, Zusatz, Straße, PLZ und Ort sind einzeilig (kein Zeilenumbruch, kein
+  Tabulator, keine unsichtbaren Zeichen); das Land ist ein gültiger ISO-Code (die Oberfläche setzt
+  DE). Menge × Einzelpreis je Position höchstens 999.999,99 €. Ein Preis aus der Vorbestellung mit
+  Bruchteilen von Cent wird nicht gerundet: die App nennt das Produkt und legt keinen Entwurf an.
 - **Verkäuferangaben aus einer Quelle.** Name, Anschrift, USt-IdNr., Telefon und E-Mail kommen aus
   den Impressumsangaben (`LEGAL` in `libs/shared/utils/src/lib/legal.ts`, von der API einzeln als
   `@bakery/shared/legal` eingebunden; dieselbe Quelle wie Impressum und Preisliste) - nie abgetippt. Auf der Rechnung steht „Bäckerei …, Inh. …“.
 - **Die Bankverbindung steht nicht im Repo.** IBAN, BIC und Kontoinhaber kommen aus der Umgebung der
   Box (`INVOICE_IBAN`, `INVOICE_BIC`, `INVOICE_ACCOUNT_HOLDER`; `docs/runbook.md` §3.6). Fehlt etwas
-  oder ist die IBAN ungültig, wird **nicht ausgestellt** (409 `bank_not_configured`, deutsche
+  oder ist die IBAN ungültig, wird eine Rechnung per Überweisung **nicht ausgestellt** (409 `bank_not_configured`, deutsche
   Meldung, Hinweis schon am Entwurf) - es gibt keinen Platzhalter.
 - **Zahlungsziel:** Vorgabe 14 Tage ab Rechnungsdatum, „Zahlbar per Überweisung“. Auf der Rechnung:
   „Zahlbar per Überweisung bis TT.MM.JJJJ ohne Abzug.“

@@ -813,10 +813,14 @@ export default function PreorderDetailClient({
         </TableContainer>
       </PageSection>
 
-      {/* Rechnungen stellt nur der Inhaber aus (API: /api/invoices `inhaber`). */}
-      {role === 'inhaber' && preorder.status !== 'storniert' && (
-        <InvoiceFromPreorderButton preorderId={preorder.id} />
-      )}
+      {/* Rechnungen stellt nur der Inhaber aus, und nur mit persönlicher
+          Anmeldung - nicht mit der PIN an einer Station (API: /api/invoices
+          `inhaber` + `requirePersonalSession`). */}
+      {role === 'inhaber' &&
+        session?.sessionKind !== 'station' &&
+        preorder.status !== 'storniert' && (
+          <InvoiceFromPreorderButton preorderId={preorder.id} />
+        )}
 
       <Dialog
         open={confirmCancel}

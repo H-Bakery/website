@@ -280,7 +280,24 @@ einen Entwurf anlegen; fehlt etwas oder ist die IBAN falsch (Prüfziffer), steht
 „Die Bankverbindung der Bäckerei ist auf der Box nicht eingerichtet …“ und „Ausstellen“ wird
 abgelehnt. Die Tabellen `invoices` / `invoice_lines` legt die Migration beim ersten Start der API
 nach dem Deploy an (wie jede Migration, §4). Die Rechnungen liegen in der SQLite-Datenbank und sind
-damit im Backup (§5); sie werden **nicht** nach 90 Tagen anonymisiert (Aufbewahrung § 14b UStG).
+damit im Backup (§5) - **auch die ausgestellten PDF-Dateien selbst** (Spalte `invoices.pdf` mit
+SHA-256, etwa 40 kB je Rechnung): es gibt kein eigenes Verzeichnis, das zusätzlich gesichert werden
+müsste. Ausgestellte Rechnungen werden **nicht** nach 90 Tagen anonymisiert (Aufbewahrung § 14b
+UStG); liegengebliebene Entwürfe verlieren im nächtlichen Lauf Name und Anschrift.
+
+- **Schriften:** das PDF braucht `apps/bakery-api/assets/fonts/LiberationSans-*.ttf` aus dem
+  Release (kommen mit dem Repo, nichts zu installieren). Fehlen sie, steht beim Start der API
+  `[WARN] Rechnungs-PDF: Schriften nicht gefunden …` im Journal
+  (`journalctl -u bakery-api | grep Rechnungs-PDF`), der Entwurf zeigt einen roten Hinweis und
+  „Ausstellen“ antwortet mit 503 `invoice_fonts_missing` - es wird nichts halb ausgestellt.
+  Abhilfe: Release prüfen bzw. neu deployen; notfalls `INVOICE_FONTS_DIR` auf ein Verzeichnis mit
+  beiden Dateien setzen.
+- **Anmeldung:** Rechnungen gibt es nur mit Benutzername und Passwort, nicht mit der PIN am
+  Laden-Tablet.
+- **Rollback:** die Migration der Rechnungstabellen lässt sich nicht zurückrollen, solange es
+  ausgestellte oder stornierte Rechnungen gibt (`down` bricht ab). Das ist Absicht. Nur mit
+  gesicherter Datenbank und `INVOICES_ALLOW_DROP=1` wird trotzdem gelöscht. Ein Rollback des
+  Releases (§4.1) braucht das nicht: ältere Releases lassen die Tabellen einfach unbenutzt.
 
 ### 3.7 Zertifikat (DNS-01, Q2)
 

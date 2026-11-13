@@ -94,4 +94,10 @@ export const MIGRATIONS: MigrationEntry[] = [
     name: '20270320000000-invoices.js',
     module: require('../../migrations/20270320000000-invoices.js'),
   },
+  {
+    // Rechnungen: festgeschriebenes PDF, „bereits bezahlt“, number_key,
+    // anonymized_at für liegengebliebene Entwürfe
+    name: '20270325000000-invoices-pdf-paid.js',
+    module: require('../../migrations/20270325000000-invoices-pdf-paid.js'),
+  },
 ]

@@ -81,7 +81,7 @@ Gelöscht sind die Demo-Seiten, die nicht auf der „Keep"-Liste standen (`baker
   Seiten sind 404 - **auch im Pilotbetrieb**: der Proxy schreibt nur noch vorhandene, gesperrte Seiten
   auf „Im Pilotbetrieb nicht verfügbar" um (`PILOT_HIDDEN_ROUTES`, heute nur
   `/admin/sitzung-pruefen`; Dienstplan (nur Inhaber) und Rest am Abend sind im Pilot freigegeben,
-  Entscheidung 2026-11-08, ebenso Rechnungen (nur Inhaber, 2026-11-13, [rechnungen.md](rechnungen.md)), und stehen in `PILOT_ALLOWED_ROUTES`). `pilotMode.spec.ts` fällt um, wenn eine `page.tsx` unter `app/admin`
+  Entscheidung 2026-11-08, ebenso Rechnungen (nur Inhaber mit persönlicher Anmeldung, 2026-11-13, [rechnungen.md](rechnungen.md)), und stehen in `PILOT_ALLOWED_ROUTES`). `pilotMode.spec.ts` fällt um, wenn eine `page.tsx` unter `app/admin`
   weder freigegeben noch dort gesperrt ist; `src/lib/oldPageRedirects.spec.ts` prüft die
   Weiterleitungen (Ziele im Pilotbetrieb erlaubt, keine fängt eine vorhandene Seite).
 

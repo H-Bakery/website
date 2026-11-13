@@ -6,21 +6,30 @@
  * - Ein **Entwurf** braucht keine Nummer und darf unvollständig sein.
  * - **Ausstellen** verlangt Nummer, vollständige Empfängeranschrift, Datum,
  *   Positionen und die Bankverbindung der Bäckerei. Dabei werden Verkäufer,
- *   Summen und die Factur-X-XML festgeschrieben. Danach ändert nichts mehr
- *   die Rechnung; PDF und XML kommen aus dem festgeschriebenen Stand.
+ *   Summen, die Factur-X-XML **und das PDF** festgeschrieben (`invoices.pdf`
+ *   mit SHA-256). Danach ändert nichts mehr die Rechnung; ausgeliefert werden
+ *   genau die gespeicherten Bytes, nie ein neu erzeugtes PDF.
  * - **Stornieren** markiert eine ausgestellte Rechnung; die Korrektur ist
- *   eine neue Rechnung mit neuer Nummer.
+ *   eine neue Rechnung mit neuer Nummer. Das Original-PDF bleibt abrufbar,
+ *   die Fassung mit Storno-Aufdruck liegt getrennt daneben (`cancel_pdf`).
+ * - **Bereits bezahlt** (`paid`, Datum, bar/Karte): die Rechnung weist den
+ *   vollen Betrag als gezahlt aus und verlangt keine Überweisung.
  *
  * Fehler sind `InvoiceError`s (Status, Code, deutsche Meldung); der Router
  * antwortet damit über `sendError`.
  */
+import { createHash } from 'crypto'
 import type { Request } from 'express'
 import { Op, Transaction, UniqueConstraintError } from 'sequelize'
 
 import { audit } from '../auth/audit'
 import { getSequelize, Invoice, InvoiceLine } from '../models'
 import { currentSeller, InvoiceSeller } from './invoice-seller'
-import { renderInvoicePdf } from './invoice-pdf'
+import {
+  fontsProblem,
+  InvoiceFontsError,
+  renderInvoicePdf,
+} from './invoice-pdf'
 import { isFailure, PreordersService } from './preorders.service'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
@@ -75,6 +84,19 @@ interface DraftFields {
   paymentTermDays: number
   paymentText: string
   note: string
+  paid: boolean
+  paidOn: string | null
+  paidMethod: string
+}
+
+/** Die PDF-Bytes werden nur für den Download geladen, nie für Listen. */
+const WITHOUT_FILES = { exclude: ['pdf', 'cancelPdf'] }
+
+const FONTS_MESSAGE =
+  'Das Rechnungs-PDF kann nicht erzeugt werden: auf der Box fehlen die Schriftdateien (apps/bakery-api/assets/fonts). Es wurde nichts verändert - bitte den Betreuer verständigen.'
+
+function sha256(data: Buffer): string {
+  return createHash('sha256').update(data).digest('hex')
 }
 
 const TEXT_LIMITS: Record<string, number> = {
@@ -152,8 +174,25 @@ function parseLines(raw: unknown): {
   return { lines, errors: core.validateLines(lines) as FieldError[] }
 }
 
+/** `computeInvoice`, aber ein Zahlenfehler ist eine Eingabe (422), kein 500. */
+function compute(lines: LineInput[]) {
+  try {
+    return core.computeInvoice(lines)
+  } catch (error) {
+    if (error instanceof RangeError) {
+      throw invalid([
+        {
+          field: 'lines',
+          message: `Die Positionen lassen sich nicht berechnen (${error.message}). Bitte Mengen und Preise prüfen.`,
+        },
+      ])
+    }
+    throw error
+  }
+}
+
 function lineRows(invoiceId: number, lines: LineInput[]) {
-  const computed = core.computeInvoice(lines)
+  const computed = compute(lines)
   return {
     rows: computed.lines.map(
       (line: Record<string, unknown>, index: number) => ({
@@ -196,6 +235,9 @@ export interface InvoiceSnapshot {
   dueDate: string | null
   paymentText: string
   note: string
+  paid: boolean
+  paidOn: string | null
+  paidMethod: string
   preorderCode: string
   seller: InvoiceSeller
   buyer: {
@@ -240,6 +282,12 @@ export class InvoicesService {
       seller,
       bankConfigured: bank.length === 0,
       bankMessage: bank[0]?.message ?? null,
+      paymentMethods: Object.entries(
+        core.PAYMENT_METHODS as Record<string, { label: string }>
+      ).map(([id, method]) => ({ id, label: method.label })),
+      // Fehlen die Schriften, lässt sich nichts ausstellen (PDF/A).
+      pdfReady: fontsProblem() === null,
+      pdfMessage: fontsProblem() === null ? null : FONTS_MESSAGE,
     }
   }
 
@@ -248,6 +296,7 @@ export class InvoicesService {
     const row =
       Number.isSafeInteger(key) && key > 0
         ? await Invoice.findByPk(key, {
+            attributes: WITHOUT_FILES,
             include: [{ model: InvoiceLine, as: 'lines' }],
             transaction,
           })
@@ -272,6 +321,9 @@ export class InvoicesService {
       dueDate: invoice.dueDate ?? null,
       paymentText: invoice.paymentText,
       note: invoice.note,
+      paid: invoice.paid === true,
+      paidOn: invoice.paidOn ?? null,
+      paidMethod: invoice.paidMethod ?? '',
       preorderCode: invoice.preorderCode ?? '',
       seller: frozen
         ? (invoice.seller as unknown as InvoiceSeller)
@@ -296,10 +348,16 @@ export class InvoicesService {
       vat: unknown[]
       totals: Record<string, number>
     } | null
-    const computed =
-      draft || !stored ? core.computeInvoice(snapshot.lines) : stored
+    const computed = draft || !stored ? compute(snapshot.lines) : stored
+    // BT-113 / BT-115; bei älteren festgeschriebenen Summen nachgerechnet.
+    const totals: Record<string, number> = {
+      ...core.settlement(snapshot, computed.totals),
+      ...computed.totals,
+    }
     const missing = draft
-      ? (core.validateForIssue(snapshot) as FieldError[])
+      ? (core.validateForIssue(snapshot, {
+          today: this.today(),
+        }) as FieldError[])
       : []
     return {
       id: invoice.id,
@@ -332,9 +390,16 @@ export class InvoicesService {
           netBasisQuantity: line.netBasisQuantity,
         })),
       vat: computed.vat,
-      totals: computed.totals,
+      totals,
+      paid: snapshot.paid,
+      paidOn: snapshot.paidOn,
+      paidMethod: snapshot.paidMethod,
+      preorderPaidCents: invoice.preorderPaidCents ?? null,
+      warnings: draft ? paymentWarnings(invoice, totals['dueCents']) : [],
       issuable: draft && missing.length === 0,
       missing,
+      pdfSha256: invoice.pdfSha256 ?? null,
+      anonymizedAt: iso(invoice.anonymizedAt),
       issuedAt: iso(invoice.issuedAt),
       cancelledAt: iso(invoice.cancelledAt),
       cancelReason: invoice.cancelReason,
@@ -369,6 +434,7 @@ export class InvoicesService {
     }
     const rows = await Invoice.findAll({
       where,
+      attributes: WITHOUT_FILES,
       include: [{ model: InvoiceLine, as: 'lines' }],
       order: [
         ['invoiceDate', 'DESC'],
@@ -388,6 +454,7 @@ export class InvoicesService {
         deliveryDate: dto.deliveryDate,
         dueDate: dto.dueDate,
         dueCents: dto.totals['dueCents'],
+        paid: dto.paid,
         issuable: dto.issuable,
         issuedAt: dto.issuedAt,
         cancelledAt: dto.cancelledAt,
@@ -420,14 +487,24 @@ export class InvoicesService {
     ) => {
       if (!has(source, sourceKey)) return
       const value = asText(source[sourceKey])
-      // eslint-disable-next-line no-control-regex
-      if (
-        value.length > TEXT_LIMITS[key] ||
-        /[\u0000-\u0008\u000b-\u001f]/.test(value)
-      ) {
+      if (value.length > TEXT_LIMITS[key]) {
         errors.push({
           field,
-          message: `${FIELD_LABELS[key]} ist zu lang oder enthält Steuerzeichen.`,
+          message: `${FIELD_LABELS[key]} ist zu lang (höchstens ${TEXT_LIMITS[key]} Zeichen).`,
+        })
+        return
+      }
+      // Die Bemerkung darf Zeilen haben; alles andere ist einzeilig: kein
+      // Zeilenumbruch, kein Tabulator, keine unsichtbaren Zeichen.
+      const unprintable =
+        key === 'note'
+          ? // eslint-disable-next-line no-control-regex
+            /[\u0000-\u0008\u000b-\u001f\u007f]/.test(value)
+          : (core.hasUnprintable(value) as boolean)
+      if (unprintable) {
+        errors.push({
+          field,
+          message: `${FIELD_LABELS[key]} enthält Zeilenumbrüche, Tabulatoren oder unsichtbare Zeichen.`,
         })
         return
       }
@@ -443,10 +520,11 @@ export class InvoicesService {
 
     if (has(buyer, 'countryCode')) {
       const country = asText(buyer['countryCode']).toUpperCase()
-      if (!/^[A-Z]{2}$/.test(country)) {
+      if (!core.isCountryCode(country)) {
         errors.push({
           field: 'buyer.countryCode',
-          message: 'Das Land ist als zweistelliger Code anzugeben (z. B. DE).',
+          message:
+            'Das Land ist als gültiger zweistelliger Ländercode anzugeben (z. B. DE).',
         })
       } else {
         fields.buyerCountry = country
@@ -458,14 +536,20 @@ export class InvoicesService {
       if (!number) {
         fields.number = null
       } else {
-        const message = core.validateNumber(number) as string | null
+        // die rohe Eingabe prüfen: `asText` hätte ein geschütztes Leerzeichen
+        // am Rand schon abgeschnitten
+        const message = core.validateNumber(
+          typeof body['number'] === 'string'
+            ? body['number'].replace(/^ +| +$/g, '')
+            : number
+        ) as string | null
         if (message) errors.push({ field: 'number', message })
         else fields.number = number
       }
     }
 
     const dateField = (
-      key: 'invoiceDate' | 'deliveryDate',
+      key: 'invoiceDate' | 'deliveryDate' | 'paidOn',
       message: string
     ) => {
       if (!has(body, key)) return
@@ -480,6 +564,34 @@ export class InvoicesService {
     }
     dateField('invoiceDate', 'Das Rechnungsdatum ist ungültig.')
     dateField('deliveryDate', 'Das Liefer- bzw. Leistungsdatum ist ungültig.')
+    dateField('paidOn', 'Das Zahlungsdatum ist ungültig.')
+
+    if (has(body, 'paid')) {
+      if (typeof body['paid'] !== 'boolean') {
+        errors.push({
+          field: 'paid',
+          message: 'Bitte wählen: per Überweisung oder bereits bezahlt.',
+        })
+      } else {
+        fields.paid = body['paid']
+      }
+    }
+    if (has(body, 'paidMethod')) {
+      const method = asText(body['paidMethod'])
+      if (method && !core.PAYMENT_METHODS[method]) {
+        errors.push({
+          field: 'paidMethod',
+          message: 'Die Zahlart muss bar oder Karte sein.',
+        })
+      } else {
+        fields.paidMethod = method
+      }
+    }
+    // „Per Überweisung“ trägt weder Zahlungsdatum noch Zahlart.
+    if (!fields.paid) {
+      fields.paidOn = null
+      fields.paidMethod = ''
+    }
 
     if (has(body, 'paymentTermDays')) {
       const days = Number(body['paymentTermDays'])
@@ -506,9 +618,12 @@ export class InvoicesService {
     transaction: Transaction
   ): Promise<void> {
     if (!number) return
+    // Verglichen wird die Vergleichsform: „RE-7“, „re-7“ und „ＲＥ-7“ sind
+    // dieselbe Nummer.
     const taken = await Invoice.findOne({
+      attributes: ['id'],
       where: {
-        number,
+        numberKey: core.numberKey(number) as string,
         ...(exceptId !== null ? { id: { [Op.ne]: exceptId } } : {}),
       },
       transaction,
@@ -536,9 +651,13 @@ export class InvoicesService {
       paymentTermDays: core.DEFAULT_PAYMENT_TERM_DAYS,
       paymentText: core.DEFAULT_PAYMENT_TEXT,
       note: '',
+      paid: false,
+      paidOn: null,
+      paidMethod: '',
     }
     let preorderId: number | null = null
     let preorderCode: string | null = null
+    let preorderPaidCents: number | null = null
     let lines: LineInput[] = []
 
     if (has(input, 'preorderId') && input['preorderId'] !== null) {
@@ -570,14 +689,48 @@ export class InvoicesService {
       // Nach 90 Tagen steht dort nur noch „anonymisiert“ - kein Name.
       base.buyerName = preorder.anonymizedAt ? '' : preorder.customerName ?? ''
       base.deliveryDate = preorder.pickupDate
-      lines = preorder.items.map((item) => ({
-        productId: item.productId,
-        name: item.variant ? `${item.name} (${item.variant})` : item.name,
-        unit: item.unit || 'Stück',
-        quantity: String(item.quantity),
-        unitPriceGrossCents: core.toCents(item.unitPrice) as number,
-        vatRate: core.DEFAULT_VAT_RATE as number,
-      }))
+      lines = preorder.items.map((item) => {
+        const name = item.variant ? `${item.name} (${item.variant})` : item.name
+        const cents = core.priceToCents(item.unitPrice) as number | null
+        if (cents === null) {
+          // z. B. 0,333 € aus einem Import: nicht stillschweigend runden.
+          throw new InvoiceError(
+            422,
+            'preorder_price_invalid',
+            `Der Preis von „${name}“ in der Vorbestellung (${String(
+              item.unitPrice
+            ).replace(
+              '.',
+              ','
+            )} €) lässt sich nicht in ganzen Cent ausdrücken. Bitte die Rechnung leer anlegen und die Positionen von Hand eintragen.`,
+            { productId: item.productId }
+          )
+        }
+        return {
+          productId: item.productId,
+          name,
+          unit: item.unit || 'Stück',
+          quantity: String(item.quantity),
+          unitPriceGrossCents: cents,
+          vatRate: core.DEFAULT_VAT_RATE as number,
+        }
+      })
+      // Schon bezahlt? Dann verlangt die Rechnung keine Überweisung: der
+      // Entwurf startet als „bereits bezahlt“ (Datum und Zahlart trägt der
+      // Inhaber ein - die Vorbestellung kennt beides nicht). Eine Teilzahlung
+      // kann die Rechnung nicht ausweisen; sie bleibt „per Überweisung“ und
+      // der Entwurf warnt.
+      if (preorder.paid) {
+        preorderPaidCents = core.priceToCents(
+          preorder.paidAmount ?? preorder.total
+        ) as number | null
+        const linesValid =
+          (core.validateLines(lines) as FieldError[]).length === 0
+        base.paid =
+          linesValid &&
+          preorderPaidCents !== null &&
+          preorderPaidCents === compute(lines).totals.dueCents
+      }
     }
 
     const { fields, errors } = this.parseFields(input, base)
@@ -615,10 +768,12 @@ export class InvoicesService {
         const created = await Invoice.create(
           {
             ...fields,
+            numberKey: keyOf(fields.number),
             dueDate: dueDate(fields),
             status: core.STATUS.DRAFT,
             preorderId,
             preorderCode,
+            preorderPaidCents,
             createdBy: req?.user?.id ?? null,
             updatedBy: req?.user?.id ?? null,
           },
@@ -665,6 +820,9 @@ export class InvoicesService {
           paymentTermDays: invoice.paymentTermDays,
           paymentText: invoice.paymentText,
           note: invoice.note,
+          paid: invoice.paid === true,
+          paidOn: invoice.paidOn ?? null,
+          paidMethod: invoice.paidMethod ?? '',
         })
         let lines: LineInput[] | null = null
         if (has(input, 'lines')) {
@@ -677,7 +835,10 @@ export class InvoicesService {
 
         const changes: Record<string, unknown> = {
           ...fields,
+          numberKey: keyOf(fields.number),
           dueDate: dueDate(fields),
+          // wer einen bereinigten Entwurf wieder ausfüllt, hat ihn in Arbeit
+          anonymizedAt: null,
           updatedBy: req?.user?.id ?? null,
         }
         if (lines) {
@@ -720,7 +881,8 @@ export class InvoicesService {
 
   /**
    * Stellt einen Entwurf aus: prüft die Pflichtangaben, schreibt Verkäufer,
-   * Summen und XML fest. Ab hier ist die Rechnung unveränderlich.
+   * Summen, XML und das PDF fest. Ab hier ist die Rechnung unveränderlich.
+   * Lässt sich das PDF nicht erzeugen, wird nichts ausgestellt (Rollback).
    */
   async issue(id: unknown, req: Request | null) {
     await getSequelize()
@@ -734,13 +896,18 @@ export class InvoicesService {
           )
         }
         const snapshot = this.snapshot(invoice)
-        const bank = core.bankErrors(snapshot.seller) as FieldError[]
+        // Die Bankverbindung braucht nur, wer überweisen soll.
+        const bank = snapshot.paid
+          ? []
+          : (core.bankErrors(snapshot.seller) as FieldError[])
         if (bank.length > 0) {
           throw new InvoiceError(409, 'bank_not_configured', bank[0].message, {
             fields: bank,
           })
         }
-        const errors = core.validateForIssue(snapshot) as FieldError[]
+        const errors = core.validateForIssue(snapshot, {
+          today: this.today(),
+        }) as FieldError[]
         if (errors.length > 0) {
           throw new InvoiceError(
             422,
@@ -751,7 +918,7 @@ export class InvoicesService {
         }
         await this.assertNumberFree(invoice.number, invoice.id, transaction)
 
-        const computed = core.computeInvoice(snapshot.lines)
+        const computed = compute(snapshot.lines)
         const { rows } = lineRows(invoice.id, snapshot.lines)
         await InvoiceLine.destroy({
           where: { invoiceId: invoice.id },
@@ -761,8 +928,15 @@ export class InvoicesService {
         await invoice.update(
           {
             status: core.STATUS.ISSUED,
+            numberKey: keyOf(invoice.number ?? null),
             seller: snapshot.seller as unknown as Record<string, unknown>,
-            totals: { vat: computed.vat, totals: computed.totals },
+            totals: {
+              vat: computed.vat,
+              totals: {
+                ...computed.totals,
+                ...core.settlement(snapshot, computed.totals),
+              },
+            },
             xml: core.buildCiiXml(snapshot) as string,
             issuedAt: this.clock(),
             issuedBy: req?.user?.id ?? null,
@@ -770,13 +944,20 @@ export class InvoicesService {
           },
           { transaction }
         )
+        // Das PDF entsteht genau einmal, aus dem eben festgeschriebenen Stand.
+        const pdf = await this.freezePdf(invoice.id, false, transaction)
         // Ohne Namen und Anschrift: das Audit-Log wird nie bereinigt.
         await audit(
           req,
           'issue',
           'invoice',
           invoice.id,
-          { number: invoice.number, dueCents: computed.totals.dueCents },
+          {
+            number: invoice.number,
+            dueCents: computed.totals.dueCents,
+            paid: snapshot.paid,
+            pdfSha256: pdf.sha256,
+          },
           { transaction }
         )
       })
@@ -784,18 +965,23 @@ export class InvoicesService {
     return this.get(id)
   }
 
-  /** Storniert eine ausgestellte Rechnung (Korrektur = neue Rechnung). */
+  /**
+   * Storniert eine ausgestellte Rechnung (Korrektur = neue Rechnung). Das
+   * Original-PDF bleibt unverändert abrufbar; die Fassung mit Storno-Aufdruck
+   * wird daneben festgeschrieben.
+   */
   async cancel(
     id: unknown,
     body: Record<string, unknown>,
     req: Request | null
   ) {
     const reason = asText((body ?? {})['reason'])
-    if (!reason || reason.length > 200) {
+    if (!reason || reason.length > 200 || core.hasUnprintable(reason)) {
       throw invalid([
         {
           field: 'reason',
-          message: 'Bitte einen kurzen Grund für die Stornierung eintragen.',
+          message:
+            'Bitte einen kurzen Grund für die Stornierung eintragen (eine Zeile, höchstens 200 Zeichen).',
         },
       ])
     }
@@ -815,6 +1001,8 @@ export class InvoicesService {
           'Diese Rechnung ist schon storniert.'
         )
       }
+      // Vor dieser Fassung ausgestellt: erst das Original festschreiben.
+      await this.freezePdf(invoice.id, false, transaction)
       await invoice.update(
         {
           status: core.STATUS.CANCELLED,
@@ -824,12 +1012,13 @@ export class InvoicesService {
         },
         { transaction }
       )
+      const stamped = await this.freezePdf(invoice.id, true, transaction)
       await audit(
         req,
         'cancel',
         'invoice',
         invoice.id,
-        { number: invoice.number },
+        { number: invoice.number, cancelPdfSha256: stamped.sha256 },
         { transaction }
       )
     })
@@ -859,20 +1048,155 @@ export class InvoicesService {
     }
   }
 
-  /** Das PDF/A-3 mit eingebetteter XML, aus dem festgeschriebenen Stand. */
-  async pdf(id: unknown): Promise<{ filename: string; pdf: Buffer }> {
-    const invoice = await this.issued(id)
+  /**
+   * Erzeugt das PDF aus dem festgeschriebenen Stand. `stamped` = mit
+   * Storno-Aufdruck; sonst so, wie die Rechnung ausgestellt wurde - auch wenn
+   * sie inzwischen storniert ist.
+   */
+  private async render(invoice: Invoice, stamped: boolean): Promise<Buffer> {
     const dto = this.toDto(invoice)
-    const pdf = await renderInvoicePdf({
-      invoice: dto,
-      xml: invoice.xml as string,
-      createdAt: invoice.issuedAt ?? invoice.createdAt,
+    const view = stamped
+      ? dto
+      : {
+          ...dto,
+          status: core.STATUS.ISSUED as typeof dto.status,
+          cancelledAt: null,
+          cancelReason: '',
+        }
+    try {
+      return await renderInvoicePdf({
+        invoice: view,
+        xml: invoice.xml as string,
+        createdAt: invoice.issuedAt ?? invoice.createdAt,
+      })
+    } catch (error) {
+      if (error instanceof InvoiceFontsError) {
+        console.error(`[ERROR] ${error.message}`)
+        throw new InvoiceError(503, 'invoice_fonts_missing', FONTS_MESSAGE)
+      }
+      throw error
+    }
+  }
+
+  /**
+   * Liefert die festgeschriebenen Bytes des Originals bzw. der Storno-Fassung
+   * und schreibt sie fest, falls sie noch fehlen. Sie fehlen nur bei
+   * Rechnungen, die vor der Festschreibung ausgestellt wurden: dann wird das
+   * PDF beim ersten Zugriff einmal erzeugt und ab da nie wieder.
+   */
+  private async freezePdf(
+    id: number,
+    stamped: boolean,
+    transaction: Transaction
+  ): Promise<{ pdf: Buffer; sha256: string; created: boolean }> {
+    const column = stamped ? 'cancelPdf' : 'pdf'
+    const hashColumn = stamped ? 'cancelPdfSha256' : 'pdfSha256'
+    const stored = await Invoice.findByPk(id, {
+      attributes: ['id', column, hashColumn],
+      transaction,
     })
-    return { filename: `${fileStem(invoice.number)}.pdf`, pdf }
+    const existing = stored?.[column]
+    if (existing) {
+      const pdf = Buffer.from(existing)
+      return { pdf, sha256: stored[hashColumn] ?? sha256(pdf), created: false }
+    }
+    const invoice = await this.find(id, transaction)
+    const pdf = await this.render(invoice, stamped)
+    const hash = sha256(pdf)
+    await invoice.update(
+      stamped
+        ? { cancelPdf: pdf, cancelPdfSha256: hash }
+        : { pdf, pdfSha256: hash, pdfStoredAt: this.clock() },
+      { transaction, silent: true }
+    )
+    return { pdf, sha256: hash, created: true }
+  }
+
+  /**
+   * Das PDF/A-3 mit eingebetteter XML - genau die beim Ausstellen
+   * festgeschriebenen Bytes. `variant: 'storniert'` liefert stattdessen die
+   * Fassung mit Storno-Aufdruck (nur bei stornierten Rechnungen).
+   */
+  async pdf(
+    id: unknown,
+    variant: unknown = 'original',
+    req: Request | null = null
+  ): Promise<{ filename: string; pdf: Buffer; sha256: string }> {
+    const wanted =
+      variant === undefined || variant === '' ? 'original' : variant
+    if (wanted !== 'original' && wanted !== 'storniert') {
+      throw new InvoiceError(
+        400,
+        'invalid_variant',
+        'Diese Fassung der Rechnung gibt es nicht.'
+      )
+    }
+    const stamped = wanted === 'storniert'
+    const invoice = await this.issued(id)
+    if (stamped && invoice.status !== core.STATUS.CANCELLED) {
+      throw new InvoiceError(
+        409,
+        'invoice_not_cancelled',
+        'Die Storno-Fassung gibt es nur bei einer stornierten Rechnung.'
+      )
+    }
+    const frozen = await getSequelize().transaction(async (transaction) => {
+      const result = await this.freezePdf(invoice.id, stamped, transaction)
+      if (result.created) {
+        await audit(
+          req,
+          'pdf_freeze',
+          'invoice',
+          invoice.id,
+          { number: invoice.number, stamped, sha256: result.sha256 },
+          { transaction }
+        )
+      }
+      return result
+    })
+    return {
+      filename: `${fileStem(invoice.number)}${stamped ? '-storniert' : ''}.pdf`,
+      pdf: frozen.pdf,
+      sha256: frozen.sha256,
+    }
   }
 }
 
 export type InvoiceDto = Awaited<ReturnType<InvoicesService['get']>>
+
+function keyOf(number: string | null): string | null {
+  return number ? (core.numberKey(number) as string) : null
+}
+
+function euro(cents: number): string {
+  return core.formatEuro(cents) as string
+}
+
+/**
+ * Hinweise am Entwurf, wenn die Vorbestellung (ganz oder teilweise) schon
+ * bezahlt war und die Rechnung dazu nicht passt.
+ */
+function paymentWarnings(invoice: Invoice, dueCents: number): string[] {
+  const paidCents = invoice.preorderPaidCents
+  if (paidCents === null || paidCents === undefined) return []
+  if (paidCents !== dueCents) {
+    return [
+      `Die Vorbestellung ist mit ${euro(
+        paidCents
+      )} als bezahlt vermerkt, die Rechnung lautet über ${euro(
+        dueCents
+      )}. Teilzahlungen und Differenzen weist die Rechnung nicht aus - bitte vor dem Ausstellen klären.`,
+    ]
+  }
+  if (!invoice.paid) {
+    return [
+      `Die Vorbestellung ist als bezahlt vermerkt (${euro(
+        paidCents
+      )}), diese Rechnung verlangt aber eine Überweisung. Wenn schon bezahlt ist: unter „Zahlung“ „bereits bezahlt“ wählen.`,
+    ]
+  }
+  return []
+}
 
 function dueDate(fields: DraftFields): string | null {
   return fields.invoiceDate
