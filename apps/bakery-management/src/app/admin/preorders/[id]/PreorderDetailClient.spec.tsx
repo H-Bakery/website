@@ -6,6 +6,7 @@ import PreorderDetailClient from './PreorderDetailClient'
 import {
   cancelPreorder,
   changePreorderStatus,
+  downloadPreorderPdf,
   fetchCatalogue,
   fetchPickupPointInfo,
   fetchPickupPoints,
@@ -31,6 +32,7 @@ jest.mock('../../../../lib/preordersApi', () => ({
   ...jest.requireActual('../../../../lib/preordersApi'),
   cancelPreorder: jest.fn(),
   changePreorderStatus: jest.fn(),
+  downloadPreorderPdf: jest.fn(),
   fetchCatalogue: jest.fn(),
   fetchPickupPointInfo: jest.fn(),
   fetchPickupPoints: jest.fn(),
@@ -41,6 +43,9 @@ jest.mock('../../../../lib/preordersApi', () => ({
 }))
 
 const mockGet = getPreorder as jest.MockedFunction<typeof getPreorder>
+const mockPdf = downloadPreorderPdf as jest.MockedFunction<
+  typeof downloadPreorderPdf
+>
 const mockUpdate = updatePreorder as jest.MockedFunction<typeof updatePreorder>
 const mockCancel = cancelPreorder as jest.MockedFunction<typeof cancelPreorder>
 const mockStatus = changePreorderStatus as jest.MockedFunction<
@@ -578,7 +583,48 @@ describe('PreorderDetailClient (P3)', () => {
     ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Bearbeiten' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Stornieren' })).toBeNull()
-    expect(screen.queryByRole('group', { name: 'Aktionen' })).toBeNull()
+    // … bis auf den Bestellschein: den darf laden, wer die Bestellung sieht.
+    const group = screen.getByRole('group', { name: 'Aktionen' })
+    expect(
+      within(group)
+        .getAllByRole('button')
+        .map((b) => b.textContent)
+    ).toEqual(['Als PDF drucken'])
+  })
+
+  it('„Als PDF drucken“ lädt den Bestellschein über die API - auch bei stornierten', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    mockGet.mockResolvedValue(preorder({ status: 'storniert' }))
+    mockPdf.mockResolvedValue(undefined)
+    renderAs('verkauf')
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Als PDF drucken' })
+    )
+    await waitFor(() => expect(mockPdf).toHaveBeenCalledTimes(1))
+    expect(mockPdf.mock.calls[0][0]).toMatchObject({
+      id: 7,
+      code: 'LA-2026-11-13-01',
+    })
+    // Lesen ändert nichts
+    expect(mockStatus).not.toHaveBeenCalled()
+  })
+
+  it('zeigt die Meldung der API, wenn der Bestellschein nicht erzeugt werden kann', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    mockPdf.mockRejectedValue(
+      Object.assign(new Error('Der Bestellschein kann nicht erzeugt werden.'), {
+        status: 503,
+        code: 'pdf_fonts_missing',
+      })
+    )
+    renderAs('verkauf')
+    await user.click(
+      await screen.findByRole('button', { name: 'Als PDF drucken' })
+    )
+    expect(
+      await screen.findByText('Der Bestellschein kann nicht erzeugt werden.')
+    ).toBeInTheDocument()
   })
 
   it('meldet eine fehlende Bestellung', async () => {

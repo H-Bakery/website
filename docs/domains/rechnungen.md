@@ -7,7 +7,7 @@ EN 16931). Nur die Rolle `inhaber` sieht und darf das - und nur mit persönliche
 rechtsverbindliche Belege (`requirePersonalSession`, `PERSONAL_ONLY_ROUTES`).
 
 **Code:** Regeln und Formeln `apps/bakery-api/src/services/invoice.core.js` · DB, Transaktion, Audit
-`invoices.service.ts` · PDF `invoice-pdf.ts` · Verkäufer `invoice-seller.ts` · Bereinigung alter
+`invoices.service.ts` · PDF `invoice-pdf.ts` (Bausteine `pdf-kit.ts`) · Verkäufer `invoice-seller.ts` · Bereinigung alter
 Entwürfe `invoice-anonymize.ts` · Routen
 `src/routes/invoices.routes.ts` (`/api/invoices`) · Management-App `src/lib/invoicesApi.ts`,
 `src/app/admin/rechnungen/`, `src/components/invoices/`.
@@ -46,6 +46,13 @@ API-Details (Endpunkte, Fehlercodes, Tabellen, PDF-Aufbau, Prüfung):
   sich ändern oder löschen. **„Ausstellen“** verlangt Nummer, Rechnungs- und Leistungsdatum, die
   vollständige Anschrift des Empfängers (Name, Straße, PLZ, Ort), mindestens eine Position, einen
   Betrag über 0 und die Bankverbindung der Bäckerei. Die App zeigt am Entwurf, was noch fehlt.
+- **„Entwurf als PDF“ ist eine Vorschau, keine Rechnung.** Am Entwurf lädt der Knopf das Bild der
+  künftigen Rechnung als PDF - zum Durchsehen, Ausdrucken oder Vorab-Zeigen. Quer über jeder Seite
+  steht „ENTWURF – keine Rechnung“, der Titel heißt „Rechnungsentwurf“, die Fußzeile wiederholt es.
+  Die Vorschau enthält **keine** ZUGFeRD-XML, ist kein PDF/A, wird nie gespeichert und vergibt keine
+  Nummer; was noch fehlt (Nummer, Datum, Anschrift, Positionen, Bankverbindung), steht als „offen“
+  da. Der Knopf speichert zuerst die Eingaben, das PDF zeigt also, was auf dem Bildschirm steht.
+  Für ausgestellte Rechnungen gibt es sie nicht (409) - dort gilt das festgeschriebene PDF.
 - **Ausgestellt ist unveränderlich.** Beim Ausstellen werden Verkäufer (mit Bankverbindung), Summen,
   die XML **und das PDF** festgeschrieben. Ändern und Löschen antworten mit 409. **Korrektur =
   stornieren und eine neue Rechnung mit neuer Nummer ausstellen.** Eine vergebene Nummer bleibt

@@ -11,6 +11,7 @@ on:
   pull_request:
     paths:
       - 'apps/bakery-api/src/services/invoice*'
+      - 'apps/bakery-api/src/services/pdf-kit.ts'
       - 'apps/bakery-api/src/services/invoices.service.ts'
       - 'apps/bakery-api/assets/fonts/**'
       - 'apps/bakery-api/tests/unit/invoice*'
@@ -22,6 +23,7 @@ on:
     branches: [main]
     paths:
       - 'apps/bakery-api/src/services/invoice*'
+      - 'apps/bakery-api/src/services/pdf-kit.ts'
       - 'apps/bakery-api/assets/fonts/**'
       - 'package-lock.json'
       - '.github/workflows/invoice-conformance.yml'

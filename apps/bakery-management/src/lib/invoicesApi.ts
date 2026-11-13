@@ -283,6 +283,21 @@ export async function downloadInvoiceFile(
   )
 }
 
+/**
+ * Lädt die Vorschau eines Entwurfs als PDF („Entwurf als PDF“): das Bild der
+ * Rechnung mit dem Aufdruck „ENTWURF – keine Rechnung“. Zeigt den
+ * gespeicherten Stand; die API speichert dabei nichts.
+ */
+export async function downloadInvoiceDraftPdf(
+  invoice: Pick<Invoice, 'id' | 'number'>,
+  save: (blob: Blob, fileName: string) => void = saveBlob
+): Promise<void> {
+  const { blob, filename } = await apiClient.getBlob(
+    `${idPath(invoice.id)}/preview`
+  )
+  save(blob, filename || `Rechnungsentwurf-${invoice.number || invoice.id}.pdf`)
+}
+
 // ------------------------------------------------------------------ Fehler
 
 export function invoiceErrorCode(error: unknown): string | undefined {

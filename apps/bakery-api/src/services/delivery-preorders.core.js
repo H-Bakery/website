@@ -1946,6 +1946,13 @@ function variantLabel(variant) {
     .join('-')
 }
 
+/** Position zum Lesen: „Zopf gefüllt (Nuss)“ bzw. nur der Name ohne Sorte
+ * (wie `itemName` der Verwaltung; Abholliste des Alias, Bestellschein). */
+function itemLabel(item) {
+  const name = String((item && item.name) || '')
+  return item && item.variant ? `${name} (${variantLabel(item.variant)})` : name
+}
+
 function isoOrNull(value) {
   if (value === null || value === undefined) return null
   const d = value instanceof Date ? value : new Date(value)
@@ -1970,9 +1977,7 @@ function toLegacyPreorder(preorder, pickupPoint, now) {
     items: (p.items || []).map((item) => {
       const out = {
         productId: item.productId,
-        name: item.variant
-          ? `${item.name} (${variantLabel(item.variant)})`
-          : item.name,
+        name: itemLabel(item),
         qty: item.quantity,
         unit: item.unit,
         unitPrice: Number(item.unitPrice),
@@ -2153,6 +2158,7 @@ module.exports = {
   fromLegacyStatus,
   fromLegacyInput,
   legacyItemsLoseVariants,
+  itemLabel,
   toLegacyPreorder,
   legacyPreorderToRecord,
   anonymizeCutoff,

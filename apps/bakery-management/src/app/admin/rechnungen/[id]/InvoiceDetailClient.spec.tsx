@@ -6,6 +6,7 @@ import InvoiceDetailClient from './InvoiceDetailClient'
 import {
   cancelInvoice,
   deleteInvoice,
+  downloadInvoiceDraftPdf,
   downloadInvoiceFile,
   fetchInvoiceConfig,
   getInvoice,
@@ -27,6 +28,7 @@ jest.mock('../../../../lib/invoicesApi', () => ({
   ...jest.requireActual('../../../../lib/invoicesApi'),
   cancelInvoice: jest.fn(),
   deleteInvoice: jest.fn(),
+  downloadInvoiceDraftPdf: jest.fn(),
   downloadInvoiceFile: jest.fn(),
   fetchInvoiceConfig: jest.fn(),
   getInvoice: jest.fn(),
@@ -42,6 +44,9 @@ const mockUpdate = updateInvoice as jest.MockedFunction<typeof updateInvoice>
 const mockIssue = issueInvoice as jest.MockedFunction<typeof issueInvoice>
 const mockCancel = cancelInvoice as jest.MockedFunction<typeof cancelInvoice>
 const mockDelete = deleteInvoice as jest.MockedFunction<typeof deleteInvoice>
+const mockDraftPdf = downloadInvoiceDraftPdf as jest.MockedFunction<
+  typeof downloadInvoiceDraftPdf
+>
 const mockDownload = downloadInvoiceFile as jest.MockedFunction<
   typeof downloadInvoiceFile
 >
@@ -161,6 +166,52 @@ describe('InvoiceDetailClient - Entwurf', () => {
       await screen.findByRole('button', { name: 'PDF (ZUGFeRD)' })
     ).toBeInTheDocument()
     expect(screen.queryByLabelText('Rechnungsnummer')).not.toBeInTheDocument()
+  })
+
+  it('„Entwurf als PDF“ speichert erst und lädt dann die Vorschau - ohne auszustellen', async () => {
+    const user = userEvent.setup()
+    mockGet.mockResolvedValue(draftInvoice())
+    mockUpdate.mockResolvedValue(draftInvoice({ number: 'TEST-7' }))
+    mockDraftPdf.mockResolvedValue(undefined)
+    renderWithTheme(<InvoiceDetailClient id={12} />)
+
+    await user.type(await screen.findByLabelText('Rechnungsnummer'), 'TEST-7')
+    await user.click(screen.getByRole('button', { name: 'Entwurf als PDF' }))
+
+    await waitFor(() => expect(mockDraftPdf).toHaveBeenCalledTimes(1))
+    // das PDF zeigt, was auf dem Bildschirm steht
+    expect(mockUpdate).toHaveBeenCalledTimes(1)
+    expect(mockUpdate.mock.calls[0][1].number).toBe('TEST-7')
+    expect(mockDraftPdf.mock.calls[0][0]).toMatchObject({
+      id: 12,
+      number: 'TEST-7',
+    })
+    expect(mockUpdate.mock.invocationCallOrder[0]).toBeLessThan(
+      mockDraftPdf.mock.invocationCallOrder[0]
+    )
+    expect(mockIssue).not.toHaveBeenCalled()
+    expect(mockDownload).not.toHaveBeenCalled()
+    // weiterhin ein Entwurf
+    expect(screen.getByLabelText('Rechnungsnummer')).toBeInTheDocument()
+  })
+
+  it('lädt keine Vorschau, wenn das Speichern scheitert, und zeigt die Meldung', async () => {
+    const user = userEvent.setup()
+    mockGet.mockResolvedValue(draftInvoice())
+    mockUpdate.mockRejectedValue(
+      Object.assign(new Error('Diese Rechnungsnummer ist schon vergeben.'), {
+        status: 409,
+        code: 'number_taken',
+      })
+    )
+    renderWithTheme(<InvoiceDetailClient id={12} />)
+    await user.click(
+      await screen.findByRole('button', { name: 'Entwurf als PDF' })
+    )
+    expect(
+      await screen.findByText('Diese Rechnungsnummer ist schon vergeben.')
+    ).toBeInTheDocument()
+    expect(mockDraftPdf).not.toHaveBeenCalled()
   })
 
   it('zeigt Feldfehler der API am Feld', async () => {
