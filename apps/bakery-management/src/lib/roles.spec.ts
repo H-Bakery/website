@@ -83,6 +83,13 @@ describe('ROLE_ACCESS - die eine Rollen-Tabelle', () => {
     ['backstube', '/admin/rest', true],
     ['backstube', '/admin/rest/auswertung', false],
     ['fahrer', '/admin/rest', false],
+    // Rechnungen (ZUGFeRD): nur Inhaber
+    ['inhaber', '/admin/rechnungen', true],
+    ['inhaber', '/admin/rechnungen/12', true],
+    ['verkauf', '/admin/rechnungen', false],
+    ['verkauf', '/admin/rechnungen/12', false],
+    ['backstube', '/admin/rechnungen', false],
+    ['fahrer', '/admin/rechnungen/12', false],
     // TASK-042 Dienstplan: nur Inhaber
     ['inhaber', '/admin/dienstplan', true],
     ['inhaber', '/admin/dienstplan/mitarbeiter/3', true],
@@ -400,6 +407,25 @@ describe('getNavigationForRole', () => {
         '/admin/dienstplan'
       )
       expect(isPathAllowedForRole('/admin/dienstplan', role)).toBe(false)
+    }
+  })
+
+  it('Rechnungen: im Pilotbetrieb und außerhalb nur im Menü des Inhabers', () => {
+    for (const pilot of [true, false]) {
+      expect(hrefs(getNavigationForRole('inhaber', pilot))).toContain(
+        '/admin/rechnungen'
+      )
+      for (const role of [
+        'verkauf',
+        'backstube',
+        'backstubenleiter',
+        'fahrer',
+      ] as PilotRole[]) {
+        expect(hrefs(getNavigationForRole(role, pilot))).not.toContain(
+          '/admin/rechnungen'
+        )
+        expect(isPathAllowedForRole('/admin/rechnungen', role)).toBe(false)
+      }
     }
   })
 

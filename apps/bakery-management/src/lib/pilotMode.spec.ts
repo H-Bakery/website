@@ -146,6 +146,16 @@ describe('isPilotPathAllowed', () => {
     )
   })
 
+  it('gibt die Rechnungen im Pilot frei (Inhaber, ZUGFeRD)', () => {
+    for (const path of ['/admin/rechnungen', '/admin/rechnungen/12']) {
+      expect(isPilotPathAllowed(path, true)).toBe(true)
+    }
+    expect(PILOT_ALLOWED_ROUTES).toContain('/admin/rechnungen')
+    expect(isPilotPathAllowed('/admin/rechnungenx', true)).toBe(false)
+    expect(hrefs(getNavigation(true))).toContain('/admin/rechnungen')
+    expect(hrefs(getNavigation(false))).toContain('/admin/rechnungen')
+  })
+
   it('gibt den Dienstplan im Pilot frei (TASK-042, Entscheidung 2026-11-08)', () => {
     for (const route of [
       '/admin/dienstplan',

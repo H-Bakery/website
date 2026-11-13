@@ -22,6 +22,7 @@ const restMigration = require('../../migrations/20261201000000-rest-am-abend.js'
 const doughDayMigration = require('../../migrations/20270201000000-backzettel-dough-day.js')
 const bakedMigration = require('../../migrations/20270210000000-backzettel-baked.js')
 const dienstplanMigration = require('../../migrations/20270301000000-dienstplan.js')
+const invoicesMigration = require('../../migrations/20270320000000-invoices.js')
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const noneTodayMigration = require('../../migrations/20270310000000-backzettel-none-today.js')
 
@@ -100,6 +101,7 @@ describe('pilot baseline on a fresh database', () => {
       '20270210000000-backzettel-baked.js',
       '20270301000000-dienstplan.js',
       '20270310000000-backzettel-none-today.js',
+      '20270320000000-invoices.js',
     ])
   })
 
@@ -112,6 +114,7 @@ describe('pilot baseline on a fresh database', () => {
         ...deliveriesMigration.TABLES,
         ...restMigration.TABLES,
         ...dienstplanMigration.TABLES,
+        ...invoicesMigration.TABLES,
         'SequelizeMeta',
       ].sort()
     )
@@ -643,6 +646,7 @@ describe('pilot baseline down()', () => {
   it('drops every baseline table (after B7 and B3 auth are undone)', async () => {
     const sequelize = await freshDb()
     await runMigrations(sequelize, quiet)
+    await invoicesMigration.down(sequelize.getQueryInterface(), Sequelize)
     await dienstplanMigration.down(sequelize.getQueryInterface(), Sequelize)
     await deliveriesMigration.down(sequelize.getQueryInterface(), Sequelize)
     await restMigration.down(sequelize.getQueryInterface(), Sequelize)
@@ -1422,6 +1426,50 @@ describe('TASK-042 Dienstplan migration', () => {
     await dienstplanMigration.down(sequelize.getQueryInterface(), Sequelize)
     for (const table of dienstplanMigration.TABLES) {
       expect(await tableNames(sequelize)).not.toContain(table)
+    }
+    await sequelize.close()
+  })
+})
+
+describe('Rechnungen migration (invoices, invoice_lines)', () => {
+  it('is idempotent, keeps numbers unique and lets drafts go without one', async () => {
+    const sequelize = await freshDb()
+    await runMigrations(sequelize, quiet)
+    const qi = sequelize.getQueryInterface()
+    // a second run changes nothing
+    await invoicesMigration.up(qi, Sequelize)
+    const tables = await tableNames(sequelize)
+    for (const table of invoicesMigration.TABLES) {
+      expect(tables).toContain(table)
+    }
+
+    const insert = (number: string | null) =>
+      sequelize.query(
+        `INSERT INTO invoices (number, created_at, updated_at)
+         VALUES (?, '2026-11-15', '2026-11-15')`,
+        { replacements: [number] }
+      )
+    await insert(null)
+    await insert(null)
+    await insert('TEST-1')
+    await expect(insert('TEST-1')).rejects.toMatchObject({
+      name: 'SequelizeUniqueConstraintError',
+    })
+    const rows = await sequelize.query(
+      'SELECT status, buyer_country, payment_term_days FROM invoices',
+      { type: QueryTypes.SELECT }
+    )
+    expect(rows).toHaveLength(3)
+    expect(rows[0]).toEqual({
+      status: 'entwurf',
+      buyer_country: 'DE',
+      payment_term_days: 14,
+    })
+
+    await invoicesMigration.down(qi, Sequelize)
+    const after = await tableNames(sequelize)
+    for (const table of invoicesMigration.TABLES) {
+      expect(after).not.toContain(table)
     }
     await sequelize.close()
   })

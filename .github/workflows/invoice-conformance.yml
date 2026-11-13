@@ -1,0 +1,131 @@
+name: Rechnungen (ZUGFeRD-Konformität)
+
+# Prüft die Ausgangsrechnungen mit fremdem Werkzeug, das auf dem Entwickler-Mac
+# und auf der Box nicht installiert ist:
+#   - XML gegen das offizielle XSD (xmllint, hier Pflicht statt übersprungen)
+#   - PDF/A-3b (veraPDF) und die Geschäftsregeln der EN 16931 (Schematron),
+#     beides über den Validator des Mustangprojekts (ZUGFeRD-Referenzwerkzeug).
+# Geprüft werden die synthetischen Beispielrechnungen aus
+# apps/bakery-api/tests/unit/invoicePdf.test.ts (erfundene Daten).
+on:
+  pull_request:
+    paths:
+      - 'apps/bakery-api/src/services/invoice*'
+      - 'apps/bakery-api/src/services/invoices.service.ts'
+      - 'apps/bakery-api/assets/fonts/**'
+      - 'apps/bakery-api/tests/unit/invoice*'
+      - 'apps/bakery-api/tests/fixtures/invoice*'
+      - 'apps/bakery-api/tests/fixtures/facturx-en16931/**'
+      - 'package-lock.json'
+      - '.github/workflows/invoice-conformance.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/bakery-api/src/services/invoice*'
+      - 'apps/bakery-api/assets/fonts/**'
+      - 'package-lock.json'
+      - '.github/workflows/invoice-conformance.yml'
+  workflow_dispatch:
+
+env:
+  HUSKY: 0
+  MUSTANG_VERSION: '2.26.0'
+  MUSTANG_SHA256: 42d7868cb68264874a7b8cab4c3587b03b23ccc7cd72373da917f66758bb9736
+
+jobs:
+  conformance:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install xmllint
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-utils
+
+      - name: Kern- und PDF-Tests, XSD ist Pflicht, Beispielrechnungen schreiben
+        env:
+          REQUIRE_XMLLINT: '1'
+          INVOICE_SAMPLE_OUT: ${{ runner.temp }}/rechnungen
+        run: npx jest -c apps/bakery-api/jest.config.js --testPathPattern 'unit/invoice(Core|Pdf)'
+
+      - name: Mustang-Validator laden
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/mustang.jar" \
+            "https://github.com/ZUGFeRD/mustangproject/releases/download/core-${MUSTANG_VERSION}/Mustang-CLI-${MUSTANG_VERSION}.jar"
+          echo "${MUSTANG_SHA256}  $RUNNER_TEMP/mustang.jar" | sha256sum -c -
+
+      - name: PDF/A-3 und EN 16931 prüfen (Mustang, veraPDF, Schematron)
+        run: |
+          set -u
+          out="$RUNNER_TEMP/rechnungen"
+          ls -la "$out"
+          failed=0
+          count=0
+          for pdf in "$out"/*.pdf; do
+            count=$((count + 1))
+            name="$(basename "$pdf" .pdf)"
+            report="$out/$name.report.xml"
+            echo "::group::$name"
+            java -Xmx1g -jar "$RUNNER_TEMP/mustang.jar" --no-notices \
+              --action validate --source "$pdf" > "$report" 2> "$out/$name.log" || true
+            cat "$report"
+            tail -n 20 "$out/$name.log" || true
+            echo "::endgroup::"
+            # Jeder Teil (pdf, xml) und das Gesamturteil tragen ein eigenes
+            # <summary status=…>: keines darf "invalid" sein.
+            if grep -q 'status="invalid"' "$report" || ! grep -q '<summary status="valid"' "$report"; then
+              echo "::error::$name ist nicht konform (siehe Bericht)"
+              failed=1
+            else
+              echo "OK      $name"
+            fi
+            # Der Bericht muss beide Teile wirklich enthalten - sonst hat der
+            # Validator die PDF nicht als hybride Rechnung erkannt.
+            grep -q '<pdf' "$report" || { echo "::error::$name: kein PDF-Teil im Bericht"; failed=1; }
+            grep -q '<xml' "$report" || { echo "::error::$name: kein XML-Teil im Bericht"; failed=1; }
+          done
+          test "$count" -ge 3 || { echo "::error::zu wenige Beispielrechnungen ($count)"; exit 1; }
+          exit "$failed"
+
+      - name: Gegenprobe - eine kaputte Rechnung muss durchfallen
+        run: |
+          set -u
+          out="$RUNNER_TEMP/rechnungen"
+          sed 's#<ram:GrandTotalAmount>244.05#<ram:GrandTotalAmount>244.15#' \
+            "$out/rechnung-gemischt.xml" > "$out/kaputt.xml"
+          ! cmp -s "$out/rechnung-gemischt.xml" "$out/kaputt.xml"
+          java -Xmx1g -jar "$RUNNER_TEMP/mustang.jar" --no-notices \
+            --action validate --source "$out/kaputt.xml" > "$out/kaputt.report.xml" 2>/dev/null || true
+          cat "$out/kaputt.report.xml"
+          if ! grep -q 'status="invalid"' "$out/kaputt.report.xml"; then
+            echo "::error::Der Validator hat eine falsche Summe durchgelassen"
+            exit 1
+          fi
+          # ... und die unveränderte XML besteht auch allein
+          java -Xmx1g -jar "$RUNNER_TEMP/mustang.jar" --no-notices \
+            --action validate --source "$out/rechnung-gemischt.xml" > "$out/gemischt-xml.report.xml" 2>/dev/null || true
+          cat "$out/gemischt-xml.report.xml"
+          ! grep -q 'status="invalid"' "$out/gemischt-xml.report.xml"
+          grep -q '<summary status="valid"' "$out/gemischt-xml.report.xml"
+
+      - name: Berichte und Beispielrechnungen aufheben
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rechnungen-konformitaet
+          path: ${{ runner.temp }}/rechnungen
+          retention-days: 14

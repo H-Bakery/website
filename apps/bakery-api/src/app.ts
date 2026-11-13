@@ -8,7 +8,7 @@
  * Mounted (roadmap §4): health, auth, users, partners (B6), the hq read-only
  * data (B4: reports, analytics, finance, targets), products (B5), preorders
  * (B7), the Backzettel (Z3), the delivery tours (B8), Rest am Abend (M4),
- * the Dienstplan (TASK-042) and the recipes.
+ * the Dienstplan (TASK-042), the recipes and the invoices (ZUGFeRD).
  * The other pilot domains get their mount points below as their tasks land.
  *
  * Every `/api` route needs a session (D5, B3) except the public auth
@@ -51,6 +51,10 @@ import {
   createBackzettel,
 } from './routes/backzettel.routes'
 import { createHqSyncRouter } from './routes/hq-sync.routes'
+import {
+  createInvoicesRouter,
+  InvoicesRouterOptions,
+} from './routes/invoices.routes'
 import { createRecipesRouter } from './routes/recipes.routes'
 import { RecipesOptions } from './services/recipes.service'
 import { createRestRouter, RestRouterOptions } from './routes/rest.routes'
@@ -136,6 +140,11 @@ export interface CreateAppOptions {
    * next to the Backzettel master data; written like the products.
    */
   recipes?: RecipesOptions
+  /**
+   * Ausgangsrechnungen: Verkäufer samt Bankverbindung (default: Impressum +
+   * `INVOICE_IBAN` …) und die Uhr, für Tests.
+   */
+  invoices?: Omit<InvoicesRouterOptions, 'preorders'>
 }
 
 export function createApp(options: CreateAppOptions = {}): Application {
@@ -344,6 +353,15 @@ export function createApp(options: CreateAppOptions = {}): Application {
     ...options.recipes,
   })
   app.use('/api/recipes', recipes.router)
+  // Ausgangsrechnungen (ZUGFeRD/Factur-X), inhaber only; ein Entwurf kann
+  // aus einer Vorbestellung vorbelegt werden
+  app.use(
+    '/api/invoices',
+    createInvoicesRouter({
+      preorders: preorders.service,
+      ...options.invoices,
+    }).router
+  )
   // B5b/Z9 status + retry, inhaber only
   app.use('/api/hq-sync', createHqSyncRouter({ edits, snapshots }))
 

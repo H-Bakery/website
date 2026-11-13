@@ -260,6 +260,28 @@ Telegram: mit @BotFather einen eigenen Bot „Bäckerei Box" anlegen (nicht Anna
 gewünschten Chat schreiben, die Chat-ID über `https://api.telegram.org/bot<TOKEN>/getUpdates`
 ablesen.
 
+**Bankverbindung für Rechnungen.** Die Ausgangsrechnungen (`/admin/rechnungen`,
+[domains/rechnungen.md](domains/rechnungen.md)) drucken die Bankverbindung der Bäckerei und
+schreiben sie in die ZUGFeRD-XML. Sie steht nicht im öffentlichen Repo, sondern in
+`/etc/bakery/bakery.env`:
+
+```bash
+sudoedit /etc/bakery/bakery.env
+#   INVOICE_IBAN="DE.. .... .... .... .... .."     Leerzeichen erlaubt, dann in Anführungszeichen
+#   INVOICE_BIC=........
+#   INVOICE_ACCOUNT_HOLDER="Vorname Nachname"
+#   INVOICE_BANK_NAME="Name der Bank"              optional, nur Fußzeile
+sudo systemctl restart bakery-api                  # kein Rebuild nötig
+```
+
+Eine Box, deren `bakery.env` älter ist als diese Funktion, hat die Zeilen noch nicht - von Hand
+ergänzen (Vorlage: `deploy/bakery.env.example`). Prüfen: als Inhaber `/admin/rechnungen` öffnen und
+einen Entwurf anlegen; fehlt etwas oder ist die IBAN falsch (Prüfziffer), steht dort
+„Die Bankverbindung der Bäckerei ist auf der Box nicht eingerichtet …“ und „Ausstellen“ wird
+abgelehnt. Die Tabellen `invoices` / `invoice_lines` legt die Migration beim ersten Start der API
+nach dem Deploy an (wie jede Migration, §4). Die Rechnungen liegen in der SQLite-Datenbank und sind
+damit im Backup (§5); sie werden **nicht** nach 90 Tagen anonymisiert (Aufbewahrung § 14b UStG).
+
 ### 3.7 Zertifikat (DNS-01, Q2)
 
 **LAN-HTTP bis Q2 (Entscheidung 2026-11-08).** Bis das Zertifikat da ist, läuft Caddy mit

@@ -22,7 +22,9 @@ Invariants:
 - **hq is read, never invented:** missing hq data answers `no-data` / `no-config`, never samples
   or estimates. Writes go to the `app/edits` worktree with a pathspec commit, never the read clone.
 - **Personal data expires:** names, phones and notes of preorders and delivery stops are wiped 90
-  days after the date (`anonymize-preorders`, P4); the audit log never holds them.
+  days after the date (`anonymize-preorders`, P4); the audit log never holds them. Invoices are the
+  exception: they keep name and address (retention, § 14b UStG) and an issued invoice is never
+  changed (`docs/api/invoices.md`).
 - **Tests use synthetic fixtures only** - this repo is public; never copy real reports, finance
   data, names or prices from `hq` into tests, fixtures, snapshots or commit messages.
 
@@ -31,4 +33,5 @@ tests) · [auth](../../docs/api/auth.md) · [hq-data](../../docs/api/hq-data.md)
 [hq-products](../../docs/api/hq-products.md) · [partners](../../docs/api/partners.md) ·
 [preorders](../../docs/api/preorders.md) · [deliveries](../../docs/api/deliveries.md) ·
 [backzettel](../../docs/api/backzettel.md) · [rest](../../docs/api/rest.md) ·
-[dienstplan](../../docs/api/dienstplan.md) · [recipes](../../docs/api/recipes.md).
+[dienstplan](../../docs/api/dienstplan.md) · [recipes](../../docs/api/recipes.md) ·
+[invoices](../../docs/api/invoices.md).
