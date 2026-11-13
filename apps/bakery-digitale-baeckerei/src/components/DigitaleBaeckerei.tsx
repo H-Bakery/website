@@ -164,6 +164,8 @@ export default function DigitaleBaeckerei({
   const raum = findeRaum(raumId, raeume) ?? startRaum
   const raumRef = useRef(raumId)
   raumRef.current = raumId
+  /** Beim Raumwechsel stand der Fokus auf einem Bedienelement, das dabei verschwindet. */
+  const fokusNachWechsel = useRef(false)
 
   const [zustand, setZustand] = useState<Zustand>('laden')
   const [fortschritt, setFortschritt] = useState(0)
@@ -354,6 +356,11 @@ export default function DigitaleBaeckerei({
     (id: string, verlauf: 'neu' | 'keiner') => {
       const ziel = findeRaum(id, raeume)
       if (!ziel || id === raumRef.current) return
+      // Der Knopf, auf dem der Fokus steht, verschwindet mit der Leiste: Ist
+      // der neue Raum da, bekommt ihn der Raumwechsel wieder.
+      fokusNachWechsel.current =
+        document.activeElement !== null &&
+        document.activeElement !== document.body
       if (verlauf === 'neu') {
         try {
           const { pathname, search, hash } = window.location
@@ -566,6 +573,19 @@ export default function DigitaleBaeckerei({
     const timer = setTimeout(() => setKeineInfosAn(null), KEINE_INFOS_MS)
     return () => clearTimeout(timer)
   }, [ohneInfos, ortId])
+
+  // Nach einem Raumwechsel stünde der Fokus im Nichts (BODY) - Tastatur und
+  // Screenreader fingen oben auf der Seite neu an.
+  const leisteDa = bereit && !introLaeuft
+  useEffect(() => {
+    if (!leisteDa || !fokusNachWechsel.current) return
+    fokusNachWechsel.current = false
+    const aktiv = document.activeElement
+    if (aktiv && aktiv !== document.body) return
+    document
+      .querySelector<HTMLElement>('[data-testid="raum-wechsel"]')
+      ?.focus({ preventScroll: true })
+  }, [leisteDa, raumId])
 
   const raumZiele = useMemo(
     () =>

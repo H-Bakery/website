@@ -150,6 +150,187 @@ test.describe('Raum wechseln', () => {
   })
 })
 
+test.describe('Raum wechseln: Randfälle', () => {
+  /** Jeden Zustand der App mitschreiben - auch einen, der nur kurz aufblitzt. */
+  const schreibeZustaendeMit = (page: import('@playwright/test').Page) =>
+    page.evaluate(() => {
+      const main = document.querySelector('main') as HTMLElement
+      const w = window as unknown as { zustaende: string[] }
+      w.zustaende = []
+      new MutationObserver(() =>
+        w.zustaende.push(main.getAttribute('data-zustand') ?? '')
+      ).observe(main, { attributes: true, attributeFilter: ['data-zustand'] })
+    })
+  const zustaende = (page: import('@playwright/test').Page) =>
+    page.evaluate(
+      () => (window as unknown as { zustaende: string[] }).zustaende
+    )
+
+  test('schnelles „Zurück“/„Vor“ mitten im Laden endet nie im Ladefehler', async ({
+    page,
+  }) => {
+    // Die Modelle kommen verzögert: So überholt jeder Schritt das Laden des vorigen.
+    await page.route('**/*.glb', async (route) => {
+      await new Promise((weiter) => setTimeout(weiter, 200))
+      await route.continue().catch(() => undefined)
+    })
+    const protokoll = await oeffne(page)
+    await raumWechsel(page).click()
+    await imRaum(page, TESTBACKSTUBE, NUR_BACKSTUBE)
+    await schreibeZustaendeMit(page)
+    for (const pause of [0, 40, 150, 300]) {
+      await page.evaluate(async (ms) => {
+        const schritt = (wie: () => void) =>
+          new Promise<void>((fertig) => {
+            window.addEventListener('popstate', () => fertig(), { once: true })
+            wie()
+          })
+        for (let i = 0; i < 6; i += 1) {
+          await schritt(() => window.history.back())
+          await new Promise((weiter) => setTimeout(weiter, ms))
+          await schritt(() => window.history.forward())
+          await new Promise((weiter) => setTimeout(weiter, ms))
+        }
+      }, pause)
+      await imRaum(page, TESTBACKSTUBE, NUR_BACKSTUBE)
+    }
+    const alle = await zustaende(page)
+    expect(alle.length).toBeGreaterThan(0)
+    expect(alle.filter((z) => z !== 'laden' && z !== 'bereit')).toEqual([])
+    await expect(page.locator('canvas')).toHaveCount(1)
+    expect(protokoll.ausnahmen).toEqual([])
+  })
+
+  // Verlässt man die Seite mitten im Laden (oder bricht eine ältere Szene
+  // ihren Abruf derselben Datei ab), scheitert der laufende Abruf mit einem
+  // Netzfehler, obwohl ihn niemand abgebrochen hat. Das darf kein Ladefehler
+  // werden: Die Szene versucht es noch einmal.
+  test('ein Netzfehler beim Modell des neuen Raums wird wiederholt, nicht gemeldet', async ({
+    page,
+  }) => {
+    await oeffne(page)
+    await schreibeZustaendeMit(page)
+    let abgebrochen = 0
+    await page.route(`**/${TESTBACKSTUBE.modell}`, (route) => {
+      abgebrochen += 1
+      return abgebrochen === 1 ? route.abort('failed') : route.continue()
+    })
+    await raumWechsel(page).click()
+    await imRaum(page, TESTBACKSTUBE, NUR_BACKSTUBE)
+    expect(abgebrochen).toBe(2)
+    expect(await zustaende(page)).toEqual(['laden', 'bereit'])
+  })
+
+  test('bleibt das Netz weg, kommt der Ladefehler - mit den Listen und „Noch einmal versuchen“', async ({
+    page,
+  }) => {
+    await oeffne(page)
+    let anfragen = 0
+    await page.route(`**/${TESTBACKSTUBE.modell}`, (route) => {
+      anfragen += 1
+      return route.abort('failed')
+    })
+    await raumWechsel(page).click()
+    await expect(page.locator('main[data-zustand="fehler"]')).toBeVisible()
+    // Dreimal versucht, dann gemeldet.
+    expect(anfragen).toBe(3)
+    await page.unroute(`**/${TESTBACKSTUBE.modell}`)
+    await page.getByRole('button', { name: 'Noch einmal versuchen' }).click()
+    await imRaum(page, TESTBACKSTUBE, NUR_BACKSTUBE)
+  })
+
+  test('nach dem Wechsel steht der Fokus wieder auf dem Raumwechsel, nicht im Nichts', async ({
+    page,
+  }) => {
+    await oeffne(page)
+    await raumWechsel(page).focus()
+    await page.keyboard.press('Enter')
+    await imRaum(page, TESTBACKSTUBE, NUR_BACKSTUBE)
+    await expect(raumWechsel(page)).toBeFocused()
+    await expect(raumWechsel(page)).toHaveText(LADEN.wechsel)
+    // Und mit der Tastatur gleich wieder zurück.
+    await page.keyboard.press('Enter')
+    await imRaum(page, LADEN, NUR_LADEN)
+    await expect(raumWechsel(page)).toBeFocused()
+  })
+
+  test('ein Link in einen Raum nimmt beim Laden keinen Fokus', async ({
+    page,
+  }) => {
+    await oeffneRaum(page, TESTBACKSTUBE)
+    expect(
+      await page.evaluate(() => document.activeElement === document.body)
+    ).toBe(true)
+  })
+
+  test('Wechsel mitten im Flug zum Start: Die Ansage nennt den neuen Raum', async ({
+    page,
+  }) => {
+    await oeffne(page, { intro: true })
+    await expect(page.getByTestId('intro-ueberspringen')).toBeVisible()
+    await page.evaluate((id) => {
+      window.history.pushState(null, '', `?debug&raum=${id}`)
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    }, TESTBACKSTUBE.id)
+    await imRaum(page, TESTBACKSTUBE, NUR_BACKSTUBE)
+    await expect(page.getByTestId('status')).toHaveText(
+      'Testbackstube ist geladen. Blickpunkt Ofen.'
+    )
+  })
+
+  for (const breite of [320, 360, 390]) {
+    test(`die Leiste hält bei ${breite} px: nichts abgeschnitten, nichts übereinander`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: breite, height: 700 })
+      await oeffne(page)
+      const leiste = page.getByTestId('blickpunkt-leiste')
+      const rahmen = await leiste.boundingBox()
+      expect(rahmen?.x).toBeGreaterThanOrEqual(0)
+      expect((rahmen?.x ?? 0) + (rahmen?.width ?? 0)).toBeLessThanOrEqual(
+        breite
+      )
+      const knoepfe = await leiste.locator('button').evaluateAll((alle) =>
+        alle.map((knopf) => {
+          const r = knopf.getBoundingClientRect()
+          return {
+            text: knopf.textContent ?? '',
+            links: r.left,
+            rechts: r.right,
+            oben: r.top,
+            unten: r.bottom,
+            abgeschnitten:
+              knopf.scrollWidth > knopf.clientWidth + 1 ||
+              knopf.scrollHeight > knopf.clientHeight + 1,
+          }
+        })
+      )
+      expect(knoepfe.map((k) => k.text)).toContain(TESTBACKSTUBE.wechsel)
+      for (const knopf of knoepfe) {
+        expect(knopf.abgeschnitten, knopf.text).toBe(false)
+        expect(knopf.unten - knopf.oben, knopf.text).toBeGreaterThanOrEqual(44)
+        expect(knopf.links, knopf.text).toBeGreaterThanOrEqual(rahmen?.x ?? 0)
+        expect(knopf.rechts, knopf.text).toBeLessThanOrEqual(
+          (rahmen?.x ?? 0) + (rahmen?.width ?? 0)
+        )
+        for (const anderer of knoepfe) {
+          if (anderer === knopf) continue
+          const ueberlappt =
+            knopf.links < anderer.rechts - 0.5 &&
+            anderer.links < knopf.rechts - 0.5 &&
+            knopf.oben < anderer.unten - 0.5 &&
+            anderer.oben < knopf.unten - 0.5
+          expect(ueberlappt, `${knopf.text} / ${anderer.text}`).toBe(false)
+        }
+      }
+      // Keine waagerechte Schieberei der Seite.
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth)
+      ).toBeLessThanOrEqual(breite)
+    })
+  }
+})
+
 test.describe('Link in einen Raum', () => {
   test('?raum=<id> öffnet die Testbackstube - ohne das Modell des Ladens zu laden', async ({
     page,

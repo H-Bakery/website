@@ -21,12 +21,17 @@ export interface RaumWechselProps {
   onWechsel: (id: string) => void
 }
 
+// Die Beschriftung darf umbrechen und der Knopf in die nächste Zeile der
+// Leiste rutschen (BlickpunktLeiste): Auf schmalen Handys (320-360 px) passt
+// „In die Backstube“ nicht neben „Alles hier“ und „Quellen“.
 const KNOPF = {
   borderRadius: 999,
-  whiteSpace: 'nowrap',
   px: 2,
   minHeight: TOUCH_TARGET,
   minWidth: 0,
+  maxWidth: '100%',
+  lineHeight: 1.2,
+  textAlign: 'left',
 } as const
 
 /**
