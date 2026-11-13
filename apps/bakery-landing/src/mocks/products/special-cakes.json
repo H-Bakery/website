@@ -11,21 +11,21 @@
     "name": "Tortenboden",
     "category": "Torten",
     "image": "images/",
-    "price": 5.5
+    "price": 10
   },
   {
     "id": 98,
     "name": "Sahnerollen",
     "category": "Torten",
     "image": "/assets/images/products/rolle.svg",
-    "price": 20
+    "price": 22
   },
   {
     "id": 99,
     "name": "Sahnerollen (1 Stück)",
     "category": "Torten",
     "image": "/assets/images/products/rolle.svg",
-    "price": 2
+    "price": 2.2
   },
   {
     "id": 100,
@@ -39,20 +39,20 @@
     "name": "Sahne-Torte",
     "category": "Torten",
     "image": "images/",
-    "price": 36
+    "price": 35
   },
   {
     "id": 102,
     "name": "Buttercreme-Torte",
     "category": "Torten",
     "image": "images/",
-    "price": 45
+    "price": 40
   },
   {
     "id": 103,
     "name": "Buttercreme-Rolle",
     "category": "Torten",
     "image": "/assets/images/products/rolle.svg",
-    "price": 28
+    "price": 25
   }
 ]

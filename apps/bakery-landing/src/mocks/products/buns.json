@@ -39,14 +39,14 @@
     "name": "Knusperweck",
     "category": "Brötchen",
     "image": "/assets/images/products/broetchen.svg",
-    "price": 0.6
+    "price": 0.5
   },
   {
     "id": 37,
     "name": "Roggenweck",
     "category": "Brötchen",
     "image": "/assets/images/products/broetchen.svg",
-    "price": 0.7
+    "price": 0.8
   },
   {
     "id": 38,
