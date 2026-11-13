@@ -75,6 +75,7 @@ jobs:
               - 'apps/bakery-digitale-baeckerei/**'
               - 'apps/bakery-digitale-baeckerei-e2e/**'
               - 'libs/shared/hq-products/**'
+              - 'libs/shared/produkte-3d/**'
               - 'tools/e2e/**'
               - '.github/workflows/ci.yml'
               - 'package-lock.json'
@@ -286,6 +287,27 @@ jobs:
       # about.html, Unbekanntes -> 404.html mit Status 404).
       - name: Run E2E tests
         run: npx nx e2e bakery-landing-e2e
+
+      # Zweiter Export fuer die aus den 3D-Modellen gerenderten Produktbilder
+      # (DB13): Der Export oben hat keine - das Daten-Repo produkte-3d gibt es
+      # nur lokal. Hier kommen die synthetischen Bilder aus
+      # apps/bakery-landing/src/test/fixtures/produktbilder dazu, mit dem
+      # erfundenen Katalog tools/e2e/hq-products (die Bilder haengen an den
+      # hq-IDs, die der gebuendelte Fallback nicht hat).
+      - name: Build landing with synthetic product images
+        env:
+          NX_ISOLATE_PLUGINS: 'false'
+          NODE_ENV: production
+          LANDING_PRODUKTBILDER_FIXTURE: '1'
+          HQ_PRODUCTS_DIR: ${{ github.workspace }}/tools/e2e/hq-products
+        run: |
+          rm -rf apps/bakery-landing/.next
+          npx nx build bakery-landing --configuration=production
+
+      - name: Run E2E tests (product images)
+        env:
+          LANDING_PRODUKTBILDER_FIXTURE: '1'
+        run: npx nx e2e bakery-landing-e2e --grep=Produktbilder
 
       - name: Upload test results
         if: always()

@@ -1,5 +1,11 @@
-import { readHqProducts } from '@bakery/shared/hq-products'
-import { Product } from '../types/product'
+import path from 'path'
+import { findMonorepoRoot, readHqProducts } from '@bakery/shared/hq-products'
+import {
+  bildVarianten,
+  readBilderIndex,
+  type BilderIndex,
+} from '@bakery/shared/produkte-3d'
+import { Product, RenderedProductImage } from '../types/product'
 
 export interface HQProduct {
   id: string
@@ -10,6 +16,8 @@ export interface HQProduct {
   available: boolean
   seasonal: boolean
   image: string | null
+  /** Set only when `image` is an image rendered from the product's 3D model. */
+  renderedImage?: RenderedProductImage
   short_description: string
   description: string
 }
@@ -47,6 +55,82 @@ const CATEGORY_ORDER = [
   'torten',
 ]
 
+/** Where `scripts/sync-produktbilder.js` serves the data repo's files from. */
+const RENDERED_IMAGE_BASE = '/produkte-3d/'
+
+/**
+ * The index of product images rendered from the 3D models (DB13), written by
+ * `scripts/sync-produktbilder.js` before the build. No file (no sync ran, CI
+ * and the deploy have no data repo) = no images.
+ */
+export function loadRenderedImageIndex(): BilderIndex {
+  return readBilderIndex(
+    process.env.LANDING_PRODUKTBILDER_INDEX ||
+      path.join(
+        findMonorepoRoot(),
+        'apps',
+        'bakery-landing',
+        'produkte-3d-bilder.json'
+      )
+  )
+}
+
+/** The rendered image of a product (`haupt` view), or `undefined`. */
+export function renderedImageFor(
+  index: BilderIndex,
+  id: string
+): RenderedProductImage | undefined {
+  const varianten = bildVarianten(index, id)
+  if (varianten.length === 0) return undefined
+  const largest = varianten[varianten.length - 1]
+  return {
+    src: `${RENDERED_IMAGE_BASE}${largest.file}`,
+    srcSet: varianten
+      .map((v) => `${RENDERED_IMAGE_BASE}${v.file} ${v.breite}w`)
+      .join(', '),
+    width: largest.breite,
+    height: largest.hoehe,
+  }
+}
+
+/** A real photo: an explicit raster file. `images/` is hq's empty placeholder. */
+function isPhotoPath(image: string | undefined): boolean {
+  return (
+    !!image &&
+    image !== 'images/' &&
+    image.length > 10 &&
+    !image.toLowerCase().endsWith('.svg')
+  )
+}
+
+/**
+ * Which image a product shows - the one place that decides:
+ *
+ * 1. a real photo set in hq (`image:` with a raster file) always wins,
+ * 2. else the image rendered from the product's 3D model, if there is one,
+ * 3. else the vector illustration set in hq (`image:` with an `.svg`),
+ * 4. else the category illustration.
+ *
+ * Without rendered images (CI, deploy) this is exactly the old behaviour.
+ */
+export function resolveProductImage(
+  product: { id: string; category: string; image?: string },
+  index: BilderIndex
+): { image: string | null; renderedImage?: RenderedProductImage } {
+  if (isPhotoPath(product.image)) return { image: product.image ?? null }
+  const renderedImage = renderedImageFor(index, product.id)
+  if (renderedImage) return { image: renderedImage.src, renderedImage }
+  // Explicit image if it's a real path, otherwise the category fallback.
+  if (
+    product.image &&
+    product.image !== 'images/' &&
+    product.image.length > 10
+  ) {
+    return { image: product.image }
+  }
+  return { image: CATEGORY_FALLBACK_IMAGE[product.category] || null }
+}
+
 /**
  * Read all products from HQ and map them to the landing page's shape
  * (fallback image per category, defaults for missing fields).
@@ -63,15 +147,11 @@ export function getHQProducts(): HQProduct[] {
     return []
   }
 
+  const renderedImages = loadRenderedImageIndex()
+
   return products
     .map((p): HQProduct => {
-      // Resolve image: use explicit image if it's a real path, otherwise fallback
-      let image: string | null = null
-      if (p.image && p.image !== 'images/' && p.image.length > 10) {
-        image = p.image
-      } else {
-        image = CATEGORY_FALLBACK_IMAGE[p.category] || null
-      }
+      const { image, renderedImage } = resolveProductImage(p, renderedImages)
 
       return {
         id: p.id,
@@ -82,6 +162,9 @@ export function getHQProducts(): HQProduct[] {
         available: p.available ?? true,
         seasonal: p.seasonal ?? false,
         image,
+        // Only present with a rendered image: without one the product has
+        // exactly the fields it had before (the export stays the same).
+        ...(renderedImage ? { renderedImage } : {}),
         short_description: p.short_description || '',
         description: p.body || p.short_description || '',
       }
@@ -172,6 +255,7 @@ export function loadProducts(): Product[] {
     price: p.price,
     image: p.image,
     imageUrl: p.image,
+    ...(p.renderedImage ? { renderedImage: p.renderedImage } : {}),
     description: p.description || p.short_description || undefined,
     available: p.available,
     seasonal: p.seasonal,

@@ -18,6 +18,7 @@ import Image from 'next/image'
 
 import { formatPrice } from '../../../utils/formatPrice'
 import { Product } from '../../../types/product'
+import RenderedImage from '../../products/RenderedImage'
 
 // Animation keyframes removed - using simple CSS transitions instead
 
@@ -88,16 +89,26 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
                 Wrappers, und next/image warnt im Dev-Modus nicht mehr, dass
                 nur eine Seite per CSS verändert wurde. `quality` wirkt mit
                 `images.unoptimized` nicht. */}
-            <Image
-              fill
-              src={imageSrc}
-              alt={`Bild von ${product.name}`}
-              loading="lazy"
-              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-              style={{
-                objectFit: imageSrc.endsWith('.svg') ? 'contain' : 'cover',
-              }}
-            />
+            {product.renderedImage ? (
+              // Aus dem 3D-Modell gerendert: quadratisch und transparent, wird
+              // in den 200px-Rahmen eingepasst (höchstens 200px breit).
+              <RenderedImage
+                image={product.renderedImage}
+                alt={product.name}
+                sizes="200px"
+              />
+            ) : (
+              <Image
+                fill
+                src={imageSrc}
+                alt={`Bild von ${product.name}`}
+                loading="lazy"
+                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                style={{
+                  objectFit: imageSrc.endsWith('.svg') ? 'contain' : 'cover',
+                }}
+              />
+            )}
           </Box>
 
           {/* Quick View Overlay */}

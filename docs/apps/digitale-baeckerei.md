@@ -603,6 +603,16 @@ kann (im Produkt-Sheet) und das auch die Produktseiten der Landingpage zeigen.
   Detailstufen bleiben also getrennt. Offen bleibt das Urteil an echten Scans - sie bringen ihr
   eigenes, eingebackenes Licht mit.
 
+### Bilder für die Landingpage (DB13)
+
+Aus denselben Modellen rendert das Daten-Repo je Produkt ein Bild (`bilder/<id>/haupt-800.webp`,
+`haupt-400.webp`, `bilder/index.json`). Die Landingpage holt sie beim Bauen wie diese App die
+Modelle - fester Commit in `apps/bakery-landing/produkte-3d-bilder.lock.json`, geprüft, nach
+`public/` kopiert, git-ignoriert; ohne Daten-Repo bleibt sie, wie sie ist. Modell-ID, Commit-Prüfung
+und `git show` stehen für beide Apps einmal in `libs/shared/produkte-3d`. Ablauf, Vorrang gegenüber
+Fotos aus hq und die zwei Wege zur Veröffentlichung (Remote für `produkte-3d` oder Bilder in `hq`):
+[landing.md](./landing.md#product-images-from-the-3d-models).
+
 ## Offen (Inhaber)
 
 - **Deploy (#137):** Environment `pages-deploy` (nur Branch `main`) und darin das Secret

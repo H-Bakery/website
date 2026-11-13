@@ -1,7 +1,7 @@
 import { screen } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import type { Product } from '../../../types/product'
-import ProductPage from './page'
+import ProductPage, { generateMetadata } from './page'
 
 jest.mock('next/navigation', () => ({
   notFound: jest.fn(),
@@ -43,6 +43,24 @@ const PRODUCTS: Product[] = [
     available: true,
     seasonal: false,
   },
+  // Erfundenes Produkt mit einem aus dem 3D-Modell gerenderten Bild.
+  {
+    id: 6,
+    name: 'Testbrot 500g',
+    category: 'Brot',
+    price: 1.5,
+    image: '/produkte-3d/bilder/testbrot-500g/haupt-800.webp',
+    imageUrl: '/produkte-3d/bilder/testbrot-500g/haupt-800.webp',
+    renderedImage: {
+      src: '/produkte-3d/bilder/testbrot-500g/haupt-800.webp',
+      srcSet:
+        '/produkte-3d/bilder/testbrot-500g/haupt-400.webp 400w, /produkte-3d/bilder/testbrot-500g/haupt-800.webp 800w',
+      width: 800,
+      height: 800,
+    },
+    available: true,
+    seasonal: false,
+  },
 ]
 
 jest.mock('../../../lib/products', () => ({
@@ -79,5 +97,52 @@ describe('Product detail page', () => {
       screen.getByRole('heading', { name: 'Mischbrot 1000g' })
     ).toBeInTheDocument()
     expect(screen.getByText('Handwerksqualität')).toBeInTheDocument()
+  })
+})
+
+describe('Product detail page – aus dem 3D-Modell gerendertes Bild', () => {
+  it('zeigt das Bild sofort (über der Falz), mit srcset und Maßen', async () => {
+    await renderProduct('6')
+
+    const img = screen.getByRole('img', { name: 'Testbrot 500g' })
+    expect(img).toHaveAttribute(
+      'src',
+      '/produkte-3d/bilder/testbrot-500g/haupt-800.webp'
+    )
+    expect(img.getAttribute('srcset')).toMatch(/haupt-400\.webp 400w/)
+    expect(img).toHaveAttribute('width', '800')
+    expect(img).toHaveAttribute('height', '800')
+    expect(img).toHaveAttribute('loading', 'eager')
+  })
+
+  it('sagt dazu, dass es kein Foto ist', async () => {
+    await renderProduct('6')
+
+    expect(
+      screen.getByText('Digitale Darstellung – kein Foto')
+    ).toBeInTheDocument()
+  })
+
+  it('sagt das nicht bei einem Produkt ohne gerendertes Bild', async () => {
+    await renderProduct('3')
+
+    expect(screen.queryByText(/Digitale Darstellung/)).not.toBeInTheDocument()
+  })
+
+  it('zeigt es bei den verwandten Produkten nachgeladen (lazy)', async () => {
+    await renderProduct('3')
+
+    const img = screen.getByRole('img', { name: 'Testbrot 500g' })
+    expect(img).toHaveAttribute('loading', 'lazy')
+    expect(img).toHaveAttribute('srcset')
+  })
+
+  it('nimmt für die Link-Vorschau das allgemeine Bild, nicht das transparente WebP', async () => {
+    const meta = await generateMetadata({
+      params: Promise.resolve({ id: '6' }),
+    })
+
+    expect(JSON.stringify(meta.openGraph)).toMatch(/\/og-image\.jpg/)
+    expect(JSON.stringify(meta)).not.toMatch(/produkte-3d/)
   })
 })
