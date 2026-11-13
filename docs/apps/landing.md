@@ -10,8 +10,8 @@ route of that name.
   `apps/bakery-landing/.next` first - a stale dev cache breaks the export. Details in
   [development.md](../development.md#landing-page-static-export--github-pages).
 - **Products** come from `hq/products` (`src/lib/products.ts`, `HQ_PRODUCTS_DIR`) at build time.
-  Without `hq` (CI, and the deploy: it builds the landing page before it checks out `hq`, on
-  purpose - see the Deploy section of digitale-baeckerei.md) it falls back to the bundled JSON in
+  The deploy builds from `hq/products` since 2026-11-13 (DB14, see the Deploy section of
+  digitale-baeckerei.md). Without `hq` (CI, other machines) it falls back to the bundled JSON in
   `src/mocks/products/` and logs
   `HQ products directory not found` - check for that log before suspecting a cache when a product
   edit doesn't show up.
@@ -44,10 +44,10 @@ index at build time through `@bakery/shared/produkte-3d` (`libs/shared/produkte-
 of `bilder/index.json`, the checks, the one reader; also home of what the Digitale Bäckerei's
 model sync shares - model id, commit pin, `git show`).
 
-- **No data repo, or `"commit": null` in the lock** (CI, the deploy, other machines): empty index,
+- **No data repo, or `"commit": null` in the lock** (CI, other machines): empty index,
   no `public/produkte-3d/`, one info line, exit 0. The export is then the one from before - same
-  files, same HTML and RSC payload apart from build hashes. **So the published site has no rendered
-  images today:** `produkte-3d` has no remote, and the lock names no commit yet.
+  files, same HTML and RSC payload apart from build hashes. The deploy has the images through the
+  export in hq (see "Published" below).
 - **Adopt a new state:** commit the renders in `produkte-3d`, put that commit hash into the lock,
   PR. The real images never go into this repo.
 - **Fixture:** `LANDING_PRODUKTBILDER_FIXTURE=1` uses the synthetic images in
@@ -75,6 +75,7 @@ mounted), the frames are always the light cream surfaces.
 **Published since 2026-11-13** (owner decision DB14): the deploy checks out `hq/products` and the
 export `hq/produkte-3d/` before the landing build, so the public landing page is built from the
 real hq products (names, texts, prices) and shows the rendered images. `sync-produktbilder` reads
-the export exactly like the data repo, but only if its `STAND.json` names the commit pinned in the
-lock. How to publish a new state:
+the export with the same checks as the data repo, but only if its `STAND.json` names the commit
+pinned in the lock. That commit is a label there, not a content hash: the images carry no checksum,
+so whoever can write to `hq/produkte-3d` can change them - the same trust as `hq/products`. How to publish a new state:
 [digitale-baeckerei.md](./digitale-baeckerei.md#veröffentlichen-der-produktmodelle-db14).

@@ -123,9 +123,14 @@ function liesAusCommit(repoDir, commit, pfad, options = {}) {
         )}, verlangt ist ${commit.slice(0, 12)}`
       )
     }
-    const wurzel = path.resolve(repoDir)
+    const wurzel = fs.realpathSync(repoDir)
     const datei = path.resolve(wurzel, pfad)
-    if (!datei.startsWith(wurzel + path.sep)) {
+    // Erst der Pfad selbst, dann sein Ziel: auch ein Symlink im Export darf
+    // nicht hinausführen.
+    if (
+      !datei.startsWith(wurzel + path.sep) ||
+      !fs.realpathSync(datei).startsWith(wurzel + path.sep)
+    ) {
       throw new Error('Pfad führt aus dem Export heraus')
     }
     return fs.readFileSync(datei)

@@ -116,15 +116,25 @@ jobs:
         run: |
           set -euo pipefail
           produkte=$(find hq/products -maxdepth 1 -name '*.md' ! -name '_*' | wc -l | tr -d ' ')
-          seiten=$(find apps/bakery-landing/out/products -mindepth 1 -maxdepth 1 -name '*.html' | wc -l | tr -d ' ')
-          bilder=$(find apps/bakery-landing/out/produkte-3d/bilder -name '*.webp' 2>/dev/null | wc -l | tr -d ' ')
-          echo "hq-Produkte: $produkte, Produktseiten: $seiten, gerenderte Bilder: $bilder"
-          if [ "$seiten" -lt 1 ] || [ "$seiten" -gt "$produkte" ]; then
-            echo "::error::Die Landingpage hat $seiten Produktseiten bei $produkte Produkten in hq - sie ist nicht aus hq gebaut."
+          seiten=0
+          bilder=0
+          mit_bild=0
+          if [ -d apps/bakery-landing/out/products ]; then
+            seiten=$(find apps/bakery-landing/out/products -mindepth 1 -maxdepth 1 -name '*.html' | wc -l | tr -d ' ')
+            mit_bild=$({ grep -l 'produkte-3d/bilder/' apps/bakery-landing/out/products/*.html || true; } | wc -l | tr -d ' ')
+          fi
+          if [ -d apps/bakery-landing/out/produkte-3d/bilder ]; then
+            bilder=$(find apps/bakery-landing/out/produkte-3d/bilder -name '*.webp' | wc -l | tr -d ' ')
+          fi
+          echo "hq-Produkte: $produkte, Produktseiten: $seiten, davon mit gerendertem Bild: $mit_bild, Bilddateien: $bilder"
+          # Genau eine Seite je Produktdatei: Die Beispielprodukte haben eine
+          # andere Anzahl, und eine nicht lesbare Produktdatei fiele sonst still weg.
+          if [ "$seiten" -ne "$produkte" ]; then
+            echo "::error::Die Landingpage hat $seiten Produktseiten bei $produkte Produkten in hq - sie ist nicht (vollständig) aus hq gebaut."
             exit 1
           fi
-          if [ "$bilder" -eq 0 ]; then
-            echo "::error::Die Landingpage enthält keine gerenderten Produktbilder."
+          if [ "$bilder" -eq 0 ] || [ "$mit_bild" -eq 0 ]; then
+            echo "::error::Die Landingpage zeigt keine gerenderten Produktbilder ($bilder Dateien, $mit_bild Seiten damit)."
             exit 1
           fi
 

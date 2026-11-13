@@ -48,7 +48,7 @@ checksum (`ausgeliefert`), writes it to the git-ignored `public/model/` and deri
 for the products the model shows; it aborts when there is no hq - there are no mock products.
 `sync-produkte-3d` copies the per-product 3D models for the close-up ("In 3D ansehen") at the commit
 pinned in `produkte-3d.lock.json` from the local-only data repo `../produkte-3d` (`PRODUKTE_3D_DIR`;
-set it when you build in a worktree) into the git-ignored `public/produkte-3d/`; without that repo it
+set it when you build in a worktree; the deploy points it at the export `hq/produkte-3d`) into the git-ignored `public/produkte-3d/`; without that repo it
 writes an empty index and the app simply offers no close-up. Without hq (or offline), set
 `DIGITALE_BAECKEREI_FIXTURE=1`: all targets then use the synthetic mini model, snapshot and product
 model from `src/test/fixtures/` and download nothing - and only then the app has a second, invented
