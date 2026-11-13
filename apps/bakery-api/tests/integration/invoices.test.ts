@@ -17,6 +17,7 @@ import { anonymizePreorders } from '../../src/services/preorders-maintenance'
 import * as invoicePdf from '../../src/services/invoice-pdf'
 import { currentSeller } from '../../src/services/invoice-seller'
 import { bearer, createUser, login, sessionFor } from '../helpers/auth'
+import { pdfText } from '../helpers/pdfText'
 import { createTestApp, TestApp } from '../helpers/createTestApp'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
@@ -165,6 +166,7 @@ describe('Zugriff', () => {
         as(role).post('/api/invoices/1/cancel').send({ reason: 'x' }),
         as(role).get('/api/invoices/1/pdf'),
         as(role).get('/api/invoices/1/xml'),
+        as(role).get('/api/invoices/1/preview'),
       ]
       for (const call of calls) {
         const res = await call
@@ -193,6 +195,7 @@ describe('Sitzungsart', () => {
       at('post', '/api/invoices/1/cancel').send({ reason: 'x' }),
       at('get', '/api/invoices/1/pdf'),
       at('get', '/api/invoices/1/xml'),
+      at('get', '/api/invoices/1/preview'),
     ]
     for (const call of calls) {
       const res = await call
@@ -838,6 +841,120 @@ describe('Festgeschriebenes PDF', () => {
     const config = await owner().get('/api/invoices/config').expect(200)
     expect(config.body.data).toMatchObject({ pdfReady: true, pdfMessage: null })
     expect(invoicePdf.fontsProblem()).toBeNull()
+  })
+})
+
+/** Lädt eine Datei als Buffer (supertest liest sonst Text). */
+const binary = (path: string) =>
+  owner()
+    .get(path)
+    .buffer(true)
+    .parse((res, callback) => {
+      const chunks: Buffer[] = []
+      res.on('data', (chunk: Buffer) => chunks.push(chunk))
+      res.on('end', () => callback(null, Buffer.concat(chunks)))
+    })
+
+describe('Entwurf als PDF (Vorschau)', () => {
+  it('liefert einen leeren Entwurf als PDF mit Aufdruck - ohne Nummer, Anschrift und Bank', async () => {
+    seller = { ...fixture.SELLER, iban: '', bic: '', accountHolder: '' }
+    try {
+      const created = await owner().post('/api/invoices').send({}).expect(201)
+      const id = created.body.data.id as number
+      expect(created.body.data.issuable).toBe(false)
+      const before = await Invoice.findByPk(id)
+      const audits = await AuditLog.count()
+
+      const res = await binary(`/api/invoices/${id}/preview`).expect(200)
+      expect(res.headers['content-type']).toBe('application/pdf')
+      expect(res.headers['content-disposition']).toBe(
+        `attachment; filename="Rechnungsentwurf-${id}.pdf"`
+      )
+      expect(res.headers['cache-control']).toBe('no-store')
+      expect(res.headers['x-invoice-sha256']).toBeUndefined()
+      const raw = (res.body as Buffer).toString('latin1')
+      expect(raw.startsWith('%PDF-1.7')).toBe(true)
+      expect(raw).not.toContain('/EmbeddedFile')
+      expect(raw).not.toContain('pdfaid:part')
+      const { text } = pdfText(res.body as Buffer)
+      expect(text).toContain('ENTWURF – keine Rechnung')
+      expect(text).toContain('Rechnungsentwurf')
+      expect(text).toContain('IBAN: offen')
+      expect(text).not.toContain('DE02')
+
+      // Nichts gespeichert, keine Nummer vergeben, nichts im Audit-Log.
+      const after = await Invoice.findByPk(id)
+      expect(after?.status).toBe('entwurf')
+      expect(after?.number).toBeNull()
+      expect(after?.pdf).toBeNull()
+      expect(after?.pdfSha256).toBeNull()
+      expect(after?.xml).toBeNull()
+      expect(after?.updatedAt).toEqual(before?.updatedAt)
+      expect(await AuditLog.count()).toBe(audits)
+    } finally {
+      seller = { ...fixture.SELLER }
+    }
+  })
+
+  it('zeigt den gespeicherten Stand und nimmt die eingetragene Nummer in den Dateinamen', async () => {
+    const created = await owner()
+      .post('/api/invoices')
+      .send({
+        number: 'TEST-2026-0301',
+        buyer: BUYER,
+        deliveryDate: '2026-11-15',
+        lines: LINES,
+      })
+      .expect(201)
+    const id = created.body.data.id as number
+    const res = await binary(`/api/invoices/${id}/preview`).expect(200)
+    expect(res.headers['content-disposition']).toBe(
+      'attachment; filename="Rechnungsentwurf-TEST-2026-0301.pdf"'
+    )
+    const { text } = pdfText(res.body as Buffer)
+    expect(text).toContain('Rechnungsentwurf TEST-2026-0301')
+    expect(text).toContain('ENTWURF – keine Rechnung')
+    expect(text).toContain(BUYER.name)
+    expect(text).toContain('Musterweck')
+    expect(text).toContain(core.formatEuro(created.body.data.totals.dueCents))
+    // Die Nummer bleibt frei verwendbar: die Vorschau hat nichts vergeben.
+    expect((await Invoice.findByPk(id))?.status).toBe('entwurf')
+
+    // Nach dem Ausstellen gibt es keine Vorschau mehr - und das echte PDF
+    // trägt keinen Entwurfs-Aufdruck.
+    await owner().post(`/api/invoices/${id}/issue`).expect(200)
+    const gone = await owner().get(`/api/invoices/${id}/preview`).expect(409)
+    expect(gone.body.error).toBe('invoice_not_draft')
+    expect(gone.body.message).toContain('Entwürfe')
+    const issued = await binary(`/api/invoices/${id}/pdf`).expect(200)
+    const issuedText = pdfText(issued.body as Buffer).text
+    expect(issuedText).toContain('Rechnung TEST-2026-0301')
+    expect(issuedText).not.toContain('ENTWURF')
+  })
+
+  it('antwortet 404 für eine unbekannte Rechnung und 503 ohne Schriften', async () => {
+    const missing = await owner()
+      .get('/api/invoices/999999/preview')
+      .expect(404)
+    expect(missing.body.error).toBe('invoice_not_found')
+
+    const created = await owner().post('/api/invoices').send({}).expect(201)
+    const errors = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined)
+    const spy = jest
+      .spyOn(invoicePdf, 'renderInvoiceDraftPdf')
+      .mockRejectedValue(new invoicePdf.InvoiceFontsError(['/nirgendwo']))
+    try {
+      const res = await owner()
+        .get(`/api/invoices/${created.body.data.id}/preview`)
+        .expect(503)
+      expect(res.body.error).toBe('invoice_fonts_missing')
+      expect(res.body.message).toContain('Schriftdateien')
+    } finally {
+      spy.mockRestore()
+      errors.mockRestore()
+    }
   })
 })
 

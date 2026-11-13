@@ -18,6 +18,9 @@
  *                         Ausstellen festgeschriebenen Bytes (`X-Invoice-Sha256`);
  *                         `?variant=storniert`: Fassung mit Storno-Aufdruck
  *   GET    /:id/xml       die Factur-X-XML allein
+ *   GET    /:id/preview   Vorschau eines Entwurfs als PDF mit dem Aufdruck
+ *                         „ENTWURF – keine Rechnung“ (keine XML, kein PDF/A,
+ *                         nie gespeichert); 409 `invoice_not_draft` sonst
  */
 import { NextFunction, Request, Response, Router } from 'express'
 
@@ -118,6 +121,17 @@ export function createInvoicesRouter(options: InvoicesRouterOptions = {}): {
       const { filename, xml } = await service.xml(req.params['id'])
       attachment(res, 'application/xml; charset=utf-8', filename)
       res.send(xml)
+      return undefined
+    })
+  )
+  router.get(
+    '/:id/preview',
+    handle(async (req, res) => {
+      const { filename, pdf } = await service.preview(req.params['id'])
+      attachment(res, 'application/pdf', filename)
+      // Ein Entwurf ändert sich: nie aus einem Zwischenspeicher.
+      res.setHeader('Cache-Control', 'no-store')
+      res.send(pdf)
       return undefined
     })
   )

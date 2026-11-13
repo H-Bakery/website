@@ -36,6 +36,7 @@ import InvoiceView from '../../../../components/invoices/InvoiceView'
 import {
   cancelInvoice,
   deleteInvoice,
+  downloadInvoiceDraftPdf,
   downloadInvoiceFile,
   InvoiceFileKind,
   fetchInvoiceConfig,
@@ -306,6 +307,16 @@ export default function InvoiceDetailClient({ id }: { id: number }) {
         ? 'Die XML konnte nicht geladen werden.'
         : 'Die PDF konnte nicht geladen werden.'
     )
+  // Erst speichern, dann die Vorschau laden: das PDF zeigt, was auf dem
+  // Bildschirm steht (wie beim Ausstellen). Es ist keine Rechnung - Aufdruck
+  // „ENTWURF – keine Rechnung“, keine Nummer vergeben, nichts festgeschrieben.
+  const downloadDraft = () =>
+    run(async () => {
+      if (!draft) return
+      const saved = await updateInvoice(invoice.id, toInput(draft))
+      adopt(saved)
+      await downloadInvoiceDraftPdf(saved)
+    }, 'Die Entwurfs-PDF konnte nicht geladen werden.')
   const paymentMethods = config?.paymentMethods ?? [
     { id: 'bar', label: 'bar' },
     { id: 'karte', label: 'Karte' },
@@ -334,6 +345,18 @@ export default function InvoiceDetailClient({ id }: { id: number }) {
       <Button variant="outlined" onClick={save} disabled={busy}>
         Speichern
       </Button>
+      <Tooltip title="Speichert den Entwurf und lädt ihn als PDF mit dem Aufdruck „ENTWURF – keine Rechnung“.">
+        <span>
+          <Button
+            variant="outlined"
+            startIcon={<DownloadIcon />}
+            onClick={downloadDraft}
+            disabled={busy}
+          >
+            Entwurf als PDF
+          </Button>
+        </span>
+      </Tooltip>
       <Button
         variant="contained"
         onClick={() => setConfirmIssue(true)}

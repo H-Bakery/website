@@ -11,6 +11,7 @@
  */
 
 import { apiClient } from '@bakery/shared/data-access'
+import { saveBlob } from './partnerApi'
 import { ALL_DAYS_PARAM, ALL_DAYS_VALUE } from './preordersTypes'
 import type {
   CatalogueProduct,
@@ -80,6 +81,20 @@ export async function listPreorders(
 export async function getPreorder(id: number | string): Promise<Preorder> {
   const res = await apiClient.get<Preorder>(idPath(id))
   return unwrap(res, null as unknown as Preorder)
+}
+
+/**
+ * Lädt den Bestellschein als PDF („Als PDF drucken“). Ein Link ginge ohne
+ * Token an die API (401) - deshalb `getBlob` wie bei den Rechnungen.
+ */
+export async function downloadPreorderPdf(
+  preorder: Pick<Preorder, 'id' | 'code'>,
+  save: (blob: Blob, fileName: string) => void = saveBlob
+): Promise<void> {
+  const { blob, filename } = await apiClient.getBlob(
+    `${idPath(preorder.id)}/pdf`
+  )
+  save(blob, filename || `Bestellschein-${preorder.code}.pdf`)
 }
 
 export async function createPreorder(input: PreorderInput): Promise<Preorder> {

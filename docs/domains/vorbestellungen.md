@@ -152,6 +152,14 @@ und `/admin/preorders/tag?date=` (Summen je Produkt **und Sorte**, Abholliste, A
   oder neu.
 - **Preis-Snapshot:** Die Summe in der Maske ist eine Vorschau. Ändert sich Tag oder Ort, vergibt der
   Server einen neuen Code - die Oberfläche sagt das an.
+- **„Als PDF drucken“ (Bestellschein):** Die Ansicht einer Vorbestellung lädt die Bestellung als
+  A4-PDF mit dem Briefkopf der Bäckerei: Code, Kunde, Telefon, Abholtag, -ort und -zeit, Bestellweg,
+  Status, Bezahlstand, Positionen mit Einzelpreis und Summe, Gesamtbetrag, Anmerkung. Darauf steht
+  „Dieser Bestellschein ist keine Rechnung.“ - eine Rechnung stellt nur der Inhaber unter
+  `/admin/rechnungen` aus. Stornierte tragen „STORNIERT“; eine anonymisierte Bestellung zeigt auch
+  im PDF weder Name noch Telefon noch Anmerkung. Den Knopf sieht jeder, der die Bestellung sehen
+  darf (auch der Fahrer). `GET /api/preorders/:id/pdf`, Details in
+  [`docs/api/preorders.md`](../api/preorders.md).
 - **Nie löschen:** Stornieren nur über die Rückfrage, `offen`/`bereit` sind bearbeitbar, abgeholt nur
   zurück auf „Offen". Auch „Storno aufheben" fragt nach - die Bestellung zählt danach wieder für die
   Backstube.
