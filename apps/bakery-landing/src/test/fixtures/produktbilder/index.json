@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "bilder": {
+    "musterbrot-hell-500g": {
+      "modellSha256": "a4895ae47986d0c498e4058a33d430f3644806f752c5e5228d8944a6de7ac949",
+      "varianten": [
+        {
+          "file": "bilder/musterbrot-hell-500g/haupt-800.webp",
+          "ansicht": "haupt",
+          "breite": 800,
+          "hoehe": 800
+        },
+        {
+          "file": "bilder/musterbrot-hell-500g/haupt-400.webp",
+          "ansicht": "haupt",
+          "breite": 400,
+          "hoehe": 400
+        }
+      ]
+    },
+    "musterbrezel": {
+      "modellSha256": "e09847eb6b50bfdb19b8858c9968befb3ce53dd9f9c4accf3d3acba3efa09a89",
+      "varianten": [
+        {
+          "file": "bilder/musterbrezel/haupt-800.webp",
+          "ansicht": "haupt",
+          "breite": 800,
+          "hoehe": 800
+        },
+        {
+          "file": "bilder/musterbrezel/haupt-400.webp",
+          "ansicht": "haupt",
+          "breite": 400,
+          "hoehe": 400
+        }
+      ]
+    }
+  }
+}

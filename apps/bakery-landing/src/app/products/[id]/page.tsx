@@ -25,6 +25,7 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import GrainIcon from '@mui/icons-material/Grain'
 import Image from 'next/image'
 import { loadProducts } from '../../../lib/products'
+import RenderedImage from '../../../components/products/RenderedImage'
 import { formatPrice } from '../../../utils/formatPrice'
 import {
   getContactPageHours,
@@ -65,7 +66,11 @@ export async function generateMetadata({
   const baseUrl = SITE_URL
   // Social previews (og:image / twitter:image) don't support SVG – fall back
   // to the generic OG image for vector product illustrations.
-  const productImage = product.image || product.imageUrl
+  // The same goes for the images rendered from the 3D models: transparent
+  // WebP, which link previews show on black or not at all.
+  const productImage = product.renderedImage
+    ? null
+    : product.image || product.imageUrl
   const socialImage =
     productImage && !productImage.toLowerCase().endsWith('.svg')
       ? productImage
@@ -122,6 +127,54 @@ export default async function ProductPage({ params }: ProductPageProps) {
     product.image ||
     product.imageUrl ||
     '/assets/images/products/erdbeertorte.jpg'
+
+  const imageFrame = (
+    <Box
+      sx={{
+        position: 'relative',
+        bgcolor: 'white',
+        borderRadius: 2,
+        overflow: 'hidden',
+        border: '1px solid',
+        borderColor: 'grey.200',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+      }}
+    >
+      <Box
+        sx={{
+          p: { xs: 3, md: 6 },
+          height: { xs: 250, md: 450 },
+          bgcolor: 'grey.50',
+        }}
+      >
+        {/* `fill` statt fester width/height: das Bild wird per CSS in
+            den Rahmen eingepasst, und next/image warnt im Dev-Modus,
+            sobald nur eine der beiden Seiten verändert wird. `quality`
+            hat mit `images.unoptimized` keine Wirkung und löst nur die
+            Warnung zu `images.qualities` aus. */}
+        <Box sx={{ position: 'relative', width: '100%', height: '100%' }}>
+          {product.renderedImage ? (
+            <RenderedImage
+              image={product.renderedImage}
+              alt={product.name}
+              priority
+              sizes="(max-width: 900px) 100vw, 450px"
+              style={{ position: 'absolute', inset: 0 }}
+            />
+          ) : (
+            <Image
+              fill
+              src={imageSrc}
+              alt={product.name}
+              priority
+              sizes="(max-width: 900px) 100vw, 50vw"
+              style={{ objectFit: 'contain' }}
+            />
+          )}
+        </Box>
+      </Box>
+    </Box>
+  )
 
   // Get related products from same category
   const relatedProducts = products
@@ -180,43 +233,24 @@ export default async function ProductPage({ params }: ProductPageProps) {
         <Grid container spacing={{ xs: 3, md: 8 }}>
           {/* Product Image Section */}
           <Grid item xs={12} md={6}>
-            <Box
-              sx={{
-                position: 'relative',
-                bgcolor: 'white',
-                borderRadius: 2,
-                overflow: 'hidden',
-                border: '1px solid',
-                borderColor: 'grey.200',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-              }}
-            >
-              <Box
-                sx={{
-                  p: { xs: 3, md: 6 },
-                  height: { xs: 250, md: 450 },
-                  bgcolor: 'grey.50',
-                }}
-              >
-                {/* `fill` statt fester width/height: das Bild wird per CSS in
-                    den Rahmen eingepasst, und next/image warnt im Dev-Modus,
-                    sobald nur eine der beiden Seiten verändert wird. `quality`
-                    hat mit `images.unoptimized` keine Wirkung und löst nur die
-                    Warnung zu `images.qualities` aus. */}
-                <Box
-                  sx={{ position: 'relative', width: '100%', height: '100%' }}
+            {/* Ein Kind, solange es kein gerendertes Bild gibt - dann ist die
+                Seite genau die von vorher. */}
+            {product.renderedImage ? (
+              <>
+                {imageFrame}
+                {/* Ehrlich benannt: aus dem 3D-Modell gerendert, kein Foto. */}
+                <Typography
+                  variant="caption"
+                  component="p"
+                  color="text.secondary"
+                  sx={{ mt: 1, textAlign: 'center' }}
                 >
-                  <Image
-                    fill
-                    src={imageSrc}
-                    alt={product.name}
-                    priority
-                    sizes="(max-width: 900px) 100vw, 50vw"
-                    style={{ objectFit: 'contain' }}
-                  />
-                </Box>
-              </Box>
-            </Box>
+                  Digitale Darstellung – kein Foto
+                </Typography>
+              </>
+            ) : (
+              imageFrame
+            )}
           </Grid>
 
           {/* Product Information */}
@@ -681,17 +715,26 @@ export default async function ProductPage({ params }: ProductPageProps) {
                           borderRadius: 1,
                         }}
                       >
-                        <Image
-                          width={90}
-                          height={90}
-                          src={
-                            relatedProduct.image ||
-                            relatedProduct.imageUrl ||
-                            '/assets/images/products/erdbeertorte.jpg'
-                          }
-                          alt={relatedProduct.name}
-                          style={{ objectFit: 'contain' }}
-                        />
+                        {relatedProduct.renderedImage ? (
+                          <RenderedImage
+                            image={relatedProduct.renderedImage}
+                            alt={relatedProduct.name}
+                            sizes="110px"
+                            style={{ width: 110, height: 110 }}
+                          />
+                        ) : (
+                          <Image
+                            width={90}
+                            height={90}
+                            src={
+                              relatedProduct.image ||
+                              relatedProduct.imageUrl ||
+                              '/assets/images/products/erdbeertorte.jpg'
+                            }
+                            alt={relatedProduct.name}
+                            style={{ objectFit: 'contain' }}
+                          />
+                        )}
                       </Box>
                       <Typography
                         variant="body1"

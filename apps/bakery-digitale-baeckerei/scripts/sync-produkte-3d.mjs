@@ -28,10 +28,10 @@
  *   --lock <datei>           statt produkte-3d.lock.json (nur für Tests)
  * Nur Node-Bordmittel und git; die Logik steht in produkte-3d-lock.js.
  */
-import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import produkte3d from '../../../libs/shared/produkte-3d/src/index.js'
 import lib from './produkte-3d-lock.js'
 
 const {
@@ -44,6 +44,7 @@ const {
   pruefeModell,
   ueberzaehlig,
 } = lib
+const { liesAusCommit } = produkte3d
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const args = process.argv.slice(2)
@@ -95,11 +96,9 @@ function raeumeAuf(index) {
   }
 }
 
-function gitShow(objekt) {
-  return execFileSync('git', ['-C', repoDir, 'show', objekt], {
-    maxBuffer: MAX_BUFFER,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
+/** Eine Datei aus dem gesperrten Commit - derselbe Weg wie bei den Produktbildern. */
+function gitShow(pfad) {
+  return liesAusCommit(repoDir, lock.commit, pfad, { maxBuffer: MAX_BUFFER })
 }
 
 if (fixtureMode) {
@@ -164,7 +163,7 @@ console.log(
 let geprueft
 try {
   geprueft = pruefeManifest(
-    JSON.parse(gitShow(`${lock.commit}:manifest.json`).toString('utf8')),
+    JSON.parse(gitShow('manifest.json').toString('utf8')),
     lock
   )
 } catch (err) {
@@ -184,7 +183,7 @@ const dateien = []
 for (const { id, pfad } of geprueft.modelle) {
   let data
   try {
-    data = new Uint8Array(gitShow(`${lock.commit}:${pfad}`))
+    data = new Uint8Array(gitShow(pfad))
   } catch (err) {
     fail(`${id}: ${pfad} lässt sich nicht lesen (${text(err)})`)
   }

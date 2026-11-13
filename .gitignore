@@ -27,6 +27,10 @@ dist/
 # 3D-Modelle einzelner Produkte (scripts/sync-produkte-3d.mjs) aus dem nur
 # lokalen Daten-Repo ../produkte-3d - gehören der Bäckerei, nicht hierher.
 /apps/bakery-digitale-baeckerei/public/produkte-3d/
+# Landingpage: aus den 3D-Modellen gerenderte Produktbilder und ihr Index
+# (scripts/sync-produktbilder.js) aus demselben Daten-Repo - ebenso wenig hierher.
+/apps/bakery-landing/public/produkte-3d/
+/apps/bakery-landing/produkte-3d-bilder.json
 /apps/bakery-digitale-baeckerei/screenshots/
 # Kein 3D-Modell im Repo, egal wo es abgelegt wird - außer den synthetischen
 # Test-Modellen.

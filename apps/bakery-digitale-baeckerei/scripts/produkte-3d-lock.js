@@ -10,9 +10,15 @@
  * dieselbe Prüfung wie beim Laden-Modell.
  */
 const { checkFile } = require('./model-lock.js')
+// Modell-ID, Commit-Hash und Quelle gelten für alles aus dem Daten-Repo (auch
+// die gerenderten Produktbilder der Landingpage) und stehen darum einmal in
+// der Lib.
+const {
+  QUELLE_LOKAL,
+  istCommit,
+  istModellId,
+} = require('../../../libs/shared/produkte-3d/src/index.js')
 
-/** Woher die Modelle heute kommen (DB9: nur lokal, kein Remote). */
-const QUELLE_LOKAL = 'lokal: ../produkte-3d'
 /** Ordner unter public/, in dem die Modelle ausgeliefert werden. */
 const ZIEL_ORDNER = 'produkte-3d'
 const INDEX_VERSION = 1
@@ -31,16 +37,6 @@ function isRecord(v) {
 }
 
 /**
- * Eine Modell-ID ist die hq-Produkt-ID ohne Nummer. Sie wird zu einem
- * Dateinamen und zu einem Pfad in `git show` - darum streng.
- * @param {unknown} id
- * @returns {id is string}
- */
-function istModellId(id) {
-  return typeof id === 'string' && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(id)
-}
-
-/**
  * Prüft die Form des Locks. Wirft mit einer Meldung, die sagt, was fehlt.
  * @param {unknown} raw
  * @returns {Produkte3dLock}
@@ -52,7 +48,7 @@ function parseLock(raw) {
     throw new Error(`${wo}: quelle fehlt`)
   }
   // Ein fester Stand ist ein voller Commit-Hash - kein Branch, kein Tag.
-  if (typeof raw.commit !== 'string' || !/^[0-9a-f]{40}$/.test(raw.commit)) {
+  if (!istCommit(raw.commit)) {
     throw new Error(
       `${wo}: commit muss ein voller Commit-Hash sein (40 Hex-Zeichen)`
     )

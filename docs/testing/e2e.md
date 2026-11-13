@@ -30,6 +30,10 @@ API welche Suite bekommt und was der Katalog erfüllen muss: [`tools/e2e/README.
   (`test.skip(true, 'Nicht gebaut - siehe Kopf der Datei.')`). Geprüft wird die echte App in
   `landing-smoke.spec.ts` und `management-smoke.spec.ts`. Wer eine dieser Funktionen baut, zieht den
   Test um und gibt ihm echte Selektoren - nicht die Skip-Markierung entfernen und hoffen.
+- **Landing, Produktbilder:** `produktbilder.spec.ts` braucht einen zweiten Export mit
+  `LANDING_PRODUKTBILDER_FIXTURE=1` und `HQ_PRODUCTS_DIR=tools/e2e/hq-products` (synthetische Bilder,
+  CI baut ihn nach dem gewöhnlichen Lauf) und ist sonst übersprungen. Der gewöhnliche Export hat
+  keine gerenderten Bilder - siehe [landing.md](../apps/landing.md#product-images-from-the-3d-models).
 - **Die Management-Suite speichert nie in hq**; Vorbestellungen (`management-preorders.spec.ts`)
   schreibt sie nur in die Wegwerf-SQLite der Test-API, Rezepte (`management-rezepte.spec.ts`) nur in
   die Wegwerf-Kopie der erfundenen Rezepte (Details im README).

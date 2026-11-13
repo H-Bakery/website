@@ -5,6 +5,7 @@ import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew'
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos'
 import NextLink from 'next/link'
 import { Product } from '../../types/product'
+import RenderedImage from '../products/RenderedImage'
 
 interface FeaturedProductsProps {
   products: Product[]
@@ -147,16 +148,28 @@ const FeaturedProducts: React.FC<FeaturedProductsProps> = ({ products }) => {
                     p: 3,
                   }}
                 >
-                  <Box
-                    component="img"
-                    src={product.image || product.imageUrl || ''}
-                    alt={product.name}
-                    sx={{
-                      maxWidth: '70%',
-                      maxHeight: '70%',
-                      objectFit: 'contain',
-                    }}
-                  />
+                  {product.renderedImage ? (
+                    // Aus dem 3D-Modell gerendert; das Bild bringt seinen Rand
+                    // mit und füllt darum den Rahmen (dessen Innenabstand
+                    // bleibt).
+                    <RenderedImage
+                      image={product.renderedImage}
+                      alt={product.name}
+                      sizes="(max-width: 600px) 45vw, 230px"
+                      style={{ minWidth: 0, minHeight: 0 }}
+                    />
+                  ) : (
+                    <Box
+                      component="img"
+                      src={product.image || product.imageUrl || ''}
+                      alt={product.name}
+                      sx={{
+                        maxWidth: '70%',
+                        maxHeight: '70%',
+                        objectFit: 'contain',
+                      }}
+                    />
+                  )}
                 </Box>
                 {/* Product Info */}
                 <Box sx={{ p: { xs: 2, md: 2.5 }, textAlign: 'center' }}>
