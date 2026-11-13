@@ -126,7 +126,14 @@ for (const [geraet, viewport, rahmenHoehe] of [
 
       freigeben()
       await geladen(img)
-      expect(await messen()).toEqual(vorher)
+      const nachher = await messen()
+      expect(nachher.breite).toBe(vorher.breite)
+      expect(nachher.hoehe).toBe(vorher.hoehe)
+      // Ein Pixel Spiel: Der Abstand ist aus zwei gerundeten Lagen gebildet,
+      // und eine nachladende Schrift verschiebt beide um Bruchteile.
+      expect(
+        Math.abs(nachher.hinweisDarunter - vorher.hinweisDarunter)
+      ).toBeLessThanOrEqual(1)
     })
 
     test('die Link-Vorschau nimmt das allgemeine Bild, kein transparentes WebP', async ({
