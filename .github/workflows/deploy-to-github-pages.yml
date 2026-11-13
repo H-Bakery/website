@@ -58,21 +58,13 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
-      # Die Landingpage baut wie bisher aus den gebündelten Mock-Produkten: hq ist
-      # in diesem Schritt noch nicht ausgecheckt, und HQ_PRODUCTS_DIR ist nicht
-      # gesetzt. Mit hq gebaut zeigte sie die echten Produkttexte aller 103
-      # Produkte - das entscheidet der Inhaber getrennt (siehe Doku).
-      - name: Build landing page
-        env:
-          NX_DAEMON: 'false'
-          NX_STANDALONE_BUILD: '1'
-        run: NODE_ENV=production npx nx build-static-standalone bakery-landing
-
-      # hq ist privat. Geholt wird nur der Ordner products/ (kein Cone-Modus,
-      # also auch keine Dateien aus der Wurzel), nur der letzte Stand, mit einem
-      # Deploy-Key, der nur lesen darf. Der Schlüssel bleibt nicht auf der
-      # Maschine liegen (persist-credentials: false).
-      - name: Checkout hq (nur products/, nur lesend)
+      # hq ist privat. Geholt werden nur die Ordner products/ und produkte-3d/
+      # (kein Cone-Modus, also auch keine Dateien aus der Wurzel), nur der
+      # letzte Stand, mit einem Deploy-Key, der nur lesen darf. Der Schlüssel
+      # bleibt nicht auf der Maschine liegen (persist-credentials: false).
+      # produkte-3d/ ist der Export des Daten-Repos (Modelle und gerenderte
+      # Bilder einzelner Produkte, vom Inhaber am 2026-11-13 freigegeben).
+      - name: Checkout hq (nur products/ und produkte-3d/, nur lesend)
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: H-Bakery/hq
@@ -80,17 +72,22 @@ jobs:
           path: hq
           sparse-checkout: |
             /products/
+            /produkte-3d/
           sparse-checkout-cone-mode: false
           fetch-depth: 1
           persist-credentials: false
 
       # Nur zählen, nie Inhalte ausgeben: Die Logs dieses Repos sind öffentlich.
-      - name: hq - nur products/ ausgecheckt?
+      - name: hq - nur products/ und produkte-3d/ ausgecheckt?
         run: |
           set -euo pipefail
-          fremd=$(find hq -mindepth 1 -maxdepth 1 ! -name .git ! -name products | wc -l | tr -d ' ')
+          fremd=$(find hq -mindepth 1 -maxdepth 1 ! -name .git ! -name products ! -name produkte-3d | wc -l | tr -d ' ')
           if [ "$fremd" -ne 0 ]; then
-            echo "::error::In hq/ liegt mehr als products/ ($fremd weitere Einträge) - der Checkout ist nicht auf products/ beschränkt."
+            echo "::error::In hq/ liegt mehr als products/ und produkte-3d/ ($fremd weitere Einträge) - der Checkout ist nicht darauf beschränkt."
+            exit 1
+          fi
+          if [ ! -f hq/produkte-3d/STAND.json ] || [ ! -f hq/produkte-3d/manifest.json ]; then
+            echo "::error::hq/produkte-3d ist kein Export des Daten-Repos (STAND.json oder manifest.json fehlt)."
             exit 1
           fi
           anzahl=$(find hq/products -maxdepth 1 -name '*.md' | wc -l | tr -d ' ')
@@ -99,6 +96,47 @@ jobs:
             exit 1
           fi
           echo "hq/products: $anzahl Produktdateien."
+
+      # Die Landingpage baut aus den echten Produkten in hq/products (Namen,
+      # Texte, Preise - vom Inhaber am 2026-11-13 freigegeben) und zeigt für
+      # Produkte ohne Foto das aus dem 3D-Modell gerenderte Bild (DB13):
+      # sync-produktbilder liest den Export hq/produkte-3d am Commit aus
+      # produkte-3d-bilder.lock.json und bricht bei einem anderen Stand ab.
+      - name: Build landing page
+        env:
+          NX_DAEMON: 'false'
+          NX_STANDALONE_BUILD: '1'
+          HQ_PRODUCTS_DIR: ${{ github.workspace }}/hq/products
+          PRODUKTE_3D_DIR: ${{ github.workspace }}/hq/produkte-3d
+        run: NODE_ENV=production npx nx build-static-standalone bakery-landing
+
+      # Fällt die Landingpage still auf die gebündelten Beispielprodukte oder
+      # auf "keine Bilder" zurück, wird nichts veröffentlicht. Nur Zahlen.
+      - name: Wächter - Landingpage mit echten Produkten und Bildern
+        run: |
+          set -euo pipefail
+          produkte=$(find hq/products -maxdepth 1 -name '*.md' ! -name '_*' | wc -l | tr -d ' ')
+          seiten=0
+          bilder=0
+          mit_bild=0
+          if [ -d apps/bakery-landing/out/products ]; then
+            seiten=$(find apps/bakery-landing/out/products -mindepth 1 -maxdepth 1 -name '*.html' | wc -l | tr -d ' ')
+            mit_bild=$({ grep -l 'produkte-3d/bilder/' apps/bakery-landing/out/products/*.html || true; } | wc -l | tr -d ' ')
+          fi
+          if [ -d apps/bakery-landing/out/produkte-3d/bilder ]; then
+            bilder=$(find apps/bakery-landing/out/produkte-3d/bilder -name '*.webp' | wc -l | tr -d ' ')
+          fi
+          echo "hq-Produkte: $produkte, Produktseiten: $seiten, davon mit gerendertem Bild: $mit_bild, Bilddateien: $bilder"
+          # Genau eine Seite je Produktdatei: Die Beispielprodukte haben eine
+          # andere Anzahl, und eine nicht lesbare Produktdatei fiele sonst still weg.
+          if [ "$seiten" -ne "$produkte" ]; then
+            echo "::error::Die Landingpage hat $seiten Produktseiten bei $produkte Produkten in hq - sie ist nicht (vollständig) aus hq gebaut."
+            exit 1
+          fi
+          if [ "$bilder" -eq 0 ] || [ "$mit_bild" -eq 0 ]; then
+            echo "::error::Die Landingpage zeigt keine gerenderten Produktbilder ($bilder Dateien, $mit_bild Seiten damit)."
+            exit 1
+          fi
 
       # Kein Fixture-Build auf der öffentlichen Seite: Mit dieser Variable nähmen
       # die Sync-Skripte das Test-Modell und erfundene Produkte.
@@ -111,23 +149,32 @@ jobs:
 
       # sync-model lädt das Modell am festen Commit, prüft es und nimmt die
       # Preisschilder heraus; sync-products schreibt den Snapshot ohne Preise aus
-      # hq/products und bricht ohne hq ab (keine Mocks). Nie aus dem Nx-Cache.
+      # hq/products und bricht ohne hq ab (keine Mocks); sync-produkte-3d holt
+      # die Modelle der ausgelegten Produkte aus dem Export hq/produkte-3d am
+      # Commit aus produkte-3d.lock.json. Nie aus dem Nx-Cache.
       - name: Build Digitale Bäckerei
         env:
           NX_DAEMON: 'false'
           NX_ISOLATE_PLUGINS: 'false'
           NODE_ENV: production
           HQ_PRODUCTS_DIR: ${{ github.workspace }}/hq/products
+          PRODUKTE_3D_DIR: ${{ github.workspace }}/hq/produkte-3d
           DIGITALE_BAECKEREI_BASE_PATH: /digitale-baeckerei
         run: npx nx build bakery-digitale-baeckerei --skip-nx-cache
 
       # Bricht ab, wenn der Export nicht genau das ist, was raus darf: das Modell
       # aus dem Lock (ausgeliefert.sha256, ohne Preisschilder), der Snapshot nur
-      # mit den erlaubten Feldern, nirgends ein Euro-Zeichen, kein Fixture, keine
-      # 3D-Modelle einzelner Produkte (nur lokal, DB9 - leerer Index erwartet).
-      # Meldet nur Dateinamen und Zahlen.
+      # mit den erlaubten Feldern, nirgends ein Euro-Zeichen, kein Fixture; die
+      # 3D-Modelle einzelner Produkte passen zum Index und gehören zu Produkten,
+      # die in einem Raum liegen. Meldet nur Dateinamen und Zahlen.
       - name: Wächter - Export der Digitalen Bäckerei
-        run: node apps/bakery-digitale-baeckerei/scripts/pruefe-export.mjs --base-path /digitale-baeckerei
+        run: |
+          set -euo pipefail
+          node apps/bakery-digitale-baeckerei/scripts/pruefe-export.mjs --base-path /digitale-baeckerei --mit-produkte-3d
+          if [ ! -f apps/bakery-digitale-baeckerei/out/produkte-3d/_regal.glb ]; then
+            echo "::error::Im Export fehlen die Regal-Modelle (produkte-3d/_regal.glb) - der Export hq/produkte-3d wurde nicht gelesen."
+            exit 1
+          fi
 
       # hq wird ab hier nicht mehr gebraucht - weg damit, bevor der Schritt läuft,
       # der veröffentlicht.

@@ -3,8 +3,9 @@
 Status: **P0–P4 gemergt und live** unter `/digitale-baeckerei/` (Deploy #137, 2026-11-13; `noindex`,
 nicht verlinkt). **Ausbau P5–P8 gemergt** (2026-11-13): weitere Räume (#148, #150), 3D-Bilder für die
 Landingpage (#146), Einrichtung des Verkaufsraums (#151); Produktmodelle im Stil DB10 für alle
-106 hq-Produkte lokal in `../produkte-3d`. Für Besucher ändert das noch nichts: Modelle, Bilder und
-Einrichtung sind nicht veröffentlicht. **Offen beim Inhaber:** siehe „Offen (Inhaber)“.
+106 hq-Produkte. **Seit 2026-11-13 veröffentlicht (DB14):** Die Produktmodelle liegen im Laden, die
+Landingpage baut aus hq und zeigt die gerenderten Bilder - Quelle ist der Export `hq/produkte-3d/`.
+Eine Einrichtung gibt es in hq noch nicht. **Offen beim Inhaber:** siehe „Offen (Inhaber)“.
 Dieses Dokument ist der Auftrag für die Umsetzung.
 
 Besucher schauen sich die Bäckerei Heusser in 3D an: die Theke mit Vitrine, das Brotregal und die
@@ -18,21 +19,22 @@ Landingpage auf GitHub Pages). Nicht im Pilot, nicht auf der Box.
 
 ## Entscheidungen (mit dem Inhaber, 2026-11-12)
 
-| #    | Entscheidung                                                                                                                                                                                                                                                                                           |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| DB1  | Name **„Digitale Bäckerei“**, Pfad `/digitale-baeckerei/`, App `bakery-digitale-baeckerei`.                                                                                                                                                                                                            |
-| DB2  | **Modell zuerst übernehmen, später vielleicht umziehen.** Quelle ist der fertige Zwilling aus dem Saar LiDAR Explorer. Der Generator bleibt dort, und Verbesserungen am Modell passieren dort. Ob er in die Bäckerei-Repos umzieht, entscheiden wir erst, wenn wir oft am Modell arbeiten (→ Phase 3). |
-| DB3  | Drei Blickpunkte: **Theke + Vitrine**, **Brotregal**, **Regale + Kühlschrank**.                                                                                                                                                                                                                        |
-| DB4  | Kamera: **fester Standort, leicht umschauen (≈ ±20°) und zoomen**. Kein Laufen, kein freier Orbit.                                                                                                                                                                                                     |
-| DB5  | **Start direkt an der Theke**, ohne Fassade: Straße und Nachbarhäuser fehlen im Modell noch. Ein Intro „Blick vom Kreisel“ kommt später (P3).                                                                                                                                                          |
-| DB6  | **Echte, aktuelle Produktdaten aus `hq/products`** (Name, Preis, Einheit, Text) statt des Standes im Modell. Die Texte werden vorher in hq überarbeitet (Gesundheitsversprechen).                                                                                                                      |
-| DB7  | Später bekommt jedes Produkt ein **eigenes, teilrealistisches 3D-Modell**, das auch die Landingpage nutzen kann (P4).                                                                                                                                                                                  |
-| DB8  | **Vorerst keine Preise**, weder auf der Karte noch in der Liste noch im Bild. Produktdaten kommen als Snapshot aus hq, der beim Build entsteht. Der Deploy-Workflow darf hq dafür lesen.                                                                                                               |
-| DB9  | Die 3D-Produkte (P4) kommen in ein **eigenes Daten-Repo**, zuerst **nur lokal**: `../produkte-3d` neben `website` und `hq`, ohne Remote.                                                                                                                                                               |
-| DB10 | **Produkt-Modelle sind prozedural, nicht gescannt** (2026-11-13). Stil „teilrealistisch-digital“: der heutige Comic-Look, etwas realistischer, aber klar als digitale Zeichnung zu erkennen. Scans sind vorerst vom Tisch.                                                                             |
-| DB11 | **Weitere Räume** (2026-11-13). Die App ist für weitere Räume bereit, zuerst die Backstube. Ein Modell der Backstube gibt es noch nicht; gebaut und getestet ist alles an einem synthetischen zweiten Raum. Abschnitt „Weitere Räume (Backstube)“.                                                     |
-| DB12 | **Der Laden ist „einrichtbar“** (2026-11-13). Was in Theke, Brotregal und Regalen liegt, ist Konfiguration und nicht ins Modell gebacken. Die App legt leichte Produkt-Modelle selbst auf die Plätze.                                                                                                  |
-| DB13 | **Die Landingpage nutzt Bilder, die aus den 3D-Produkt-Modellen gerendert sind** (2026-11-13).                                                                                                                                                                                                         |
+| #    | Entscheidung                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| DB1  | Name **„Digitale Bäckerei“**, Pfad `/digitale-baeckerei/`, App `bakery-digitale-baeckerei`.                                                                                                                                                                                                                                                                                                                        |
+| DB2  | **Modell zuerst übernehmen, später vielleicht umziehen.** Quelle ist der fertige Zwilling aus dem Saar LiDAR Explorer. Der Generator bleibt dort, und Verbesserungen am Modell passieren dort. Ob er in die Bäckerei-Repos umzieht, entscheiden wir erst, wenn wir oft am Modell arbeiten (→ Phase 3).                                                                                                             |
+| DB3  | Drei Blickpunkte: **Theke + Vitrine**, **Brotregal**, **Regale + Kühlschrank**.                                                                                                                                                                                                                                                                                                                                    |
+| DB4  | Kamera: **fester Standort, leicht umschauen (≈ ±20°) und zoomen**. Kein Laufen, kein freier Orbit.                                                                                                                                                                                                                                                                                                                 |
+| DB5  | **Start direkt an der Theke**, ohne Fassade: Straße und Nachbarhäuser fehlen im Modell noch. Ein Intro „Blick vom Kreisel“ kommt später (P3).                                                                                                                                                                                                                                                                      |
+| DB6  | **Echte, aktuelle Produktdaten aus `hq/products`** (Name, Preis, Einheit, Text) statt des Standes im Modell. Die Texte werden vorher in hq überarbeitet (Gesundheitsversprechen).                                                                                                                                                                                                                                  |
+| DB7  | Später bekommt jedes Produkt ein **eigenes, teilrealistisches 3D-Modell**, das auch die Landingpage nutzen kann (P4).                                                                                                                                                                                                                                                                                              |
+| DB8  | **Vorerst keine Preise**, weder auf der Karte noch in der Liste noch im Bild. Produktdaten kommen als Snapshot aus hq, der beim Build entsteht. Der Deploy-Workflow darf hq dafür lesen.                                                                                                                                                                                                                           |
+| DB9  | Die 3D-Produkte (P4) kommen in ein **eigenes Daten-Repo**, zuerst **nur lokal**: `../produkte-3d` neben `website` und `hq`, ohne Remote.                                                                                                                                                                                                                                                                           |
+| DB14 | **Veröffentlicht (2026-11-13):** Die Produktmodelle (noch nicht einzeln abgenommen) gehen live - im Laden die der ausgelegten Produkte, auf der Landingpage die Bilder aller 106. Die fertigen Dateien liegen als Export in `hq/produkte-3d/` (kein eigenes Remote für das Daten-Repo); die Landingpage baut aus `hq/products` - mit den Preisen aus hq. DB8 (keine Preise in der Digitalen Bäckerei) gilt weiter. |
+| DB10 | **Produkt-Modelle sind prozedural, nicht gescannt** (2026-11-13). Stil „teilrealistisch-digital“: der heutige Comic-Look, etwas realistischer, aber klar als digitale Zeichnung zu erkennen. Scans sind vorerst vom Tisch.                                                                                                                                                                                         |
+| DB11 | **Weitere Räume** (2026-11-13). Die App ist für weitere Räume bereit, zuerst die Backstube. Ein Modell der Backstube gibt es noch nicht; gebaut und getestet ist alles an einem synthetischen zweiten Raum. Abschnitt „Weitere Räume (Backstube)“.                                                                                                                                                                 |
+| DB12 | **Der Laden ist „einrichtbar“** (2026-11-13). Was in Theke, Brotregal und Regalen liegt, ist Konfiguration und nicht ins Modell gebacken. Die App legt leichte Produkt-Modelle selbst auf die Plätze.                                                                                                                                                                                                              |
+| DB13 | **Die Landingpage nutzt Bilder, die aus den 3D-Produkt-Modellen gerendert sind** (2026-11-13).                                                                                                                                                                                                                                                                                                                     |
 
 ## Quelle: der Zwilling im Explorer
 
@@ -124,7 +126,7 @@ Landingpage auf GitHub Pages). Nicht im Pilot, nicht auf der Box.
   Artefakt.
 - **Deploy:** Der Deploy-Workflow liest `hq/products` mit einem Deploy-Key, der nur lesen darf
   (Zustimmung des Inhabers 2026-11-12; Abschnitt „Deploy“). Ohne hq bricht der Build dieser App ab,
-  statt Mocks zu zeigen. Die Landingpage baut dort weiter aus ihren Mock-Produkten.
+  statt Mocks zu zeigen. Die Landingpage baut dort seit DB14 ebenfalls aus hq.
 - Welches Produkt wo liegt (die Belegung), kommt weiter aus dem Explorer: `sync-model` leitet
   `public/data/belegung.json` (git-ignoriert) aus dem geprüften GLB ab. Neue Produkte erscheinen
   im Regal erst mit einer neuen Belegung dort oder mit P4.
@@ -231,7 +233,7 @@ Modell“).
 - **Unter etwa 16 Bildern/s** laufen die Fahrten in Zeitlupe (längster Zeitschritt 64 ms) und
   sperren so lange das Umschauen.
 - **Links „Mehr auf der Website“** stimmen nur, solange die Landingpage dieselben Produktnummern
-  baut wie hq (heute aus Mocks mit denselben Nummern); nichts erzwingt das.
+  baut wie hq (seit DB14 baut der Deploy beide aus `hq/products`).
 - **Echtes Handy ungeprüft:** Pinch, Zwei-Finger-Wischen, die Zurück-Geste von iOS am Bildrand,
   Safari überhaupt - alles nur in Chromium emuliert.
 - **Das Modell wird auch ohne WebGL 2 vorgeladen:** Das `<link rel="preload">` steht fest im HTML
@@ -244,19 +246,20 @@ Modell“).
 ## Deploy
 
 `deploy-to-github-pages.yml` (Push auf `main` oder von Hand) veröffentlicht Landingpage und diese App
-zusammen. **Im Workflow selbst ungetestet**, bis das Secret angelegt ist - lokal sind dieselben
-Befehle in derselben Reihenfolge gelaufen (ohne Secret und ohne den hq-Checkout).
+zusammen.
 
 1. **Secret da?** Fehlt `HQ_DEPLOY_KEY` oder ist es leer, bricht der Lauf als Erstes mit einer
    deutschen Meldung ab. Es gibt keinen Rückfall auf Mocks und keinen Deploy ohne den Unterpfad.
-2. **Landingpage bauen** wie bisher - hq ist in diesem Schritt noch nicht ausgecheckt, sie baut also
-   aus `src/mocks/products` (siehe unten).
-3. **hq auschecken:** `H-Bakery/hq` nach `hq/`, nur der Ordner `products/` (Sparse-Checkout ohne
-   Cone-Modus, also auch keine Dateien aus der Wurzel), `fetch-depth: 1`,
+2. **hq auschecken:** `H-Bakery/hq` nach `hq/`, nur die Ordner `products/` und `produkte-3d/`
+   (Sparse-Checkout ohne Cone-Modus, also auch keine Dateien aus der Wurzel), `fetch-depth: 1`,
    `persist-credentials: false`, mit dem Deploy-Key aus dem Environment `pages-deploy` (nur Branch
-   `main`). Ein Schritt danach bricht ab, wenn in `hq/` mehr als `products/` liegt. Ins Log kommt nur
-   die Anzahl der Dateien.
+   `main`). Ein Schritt danach bricht ab, wenn in `hq/` mehr liegt oder `hq/produkte-3d` kein Export
+   ist (`STAND.json`, `manifest.json`). Ins Log kommt nur die Anzahl der Dateien.
+3. **Landingpage bauen** aus `hq/products` (`HQ_PRODUCTS_DIR`) mit den gerenderten Bildern aus dem
+   Export (`PRODUKTE_3D_DIR=$GITHUB_WORKSPACE/hq/produkte-3d`). Ein Wächter bricht ab, wenn sie
+   still auf die gebündelten Beispielprodukte oder auf „keine Bilder“ zurückgefallen ist.
 4. **App bauen:** `HQ_PRODUCTS_DIR=$GITHUB_WORKSPACE/hq/products`,
+   `PRODUKTE_3D_DIR=$GITHUB_WORKSPACE/hq/produkte-3d`,
    `DIGITALE_BAECKEREI_BASE_PATH=/digitale-baeckerei`, ohne Nx-Cache, nie mit
    `DIGITALE_BAECKEREI_FIXTURE` (eigener Schritt, der sonst abbricht).
 5. **Wächter** `scripts/pruefe-export.mjs` (Logik und Specs: `export-pruefung.js`): bricht ab, wenn
@@ -267,27 +270,20 @@ Befehle in derselben Reihenfolge gelaufen (ohne Secret und ohne den hq-Checkout)
    wenn Belegung oder Infopunkte einen Raum nennen, der nicht im Lock steht, wenn die Infopunkte
    ihren Vertrag nicht einhalten, wenn irgendwo eine Spur der synthetischen Test-Räume liegt,
    wenn irgendwo im Export ein „€“ steht, wenn der Export nicht für den Unterpfad gebaut ist oder der
-   Fixture-Schalter gesetzt ist. Ebenso, wenn 3D-Modelle einzelner Produkte im Export liegen: Die
-   sind vorerst nur lokal (DB9), der Runner hat das Daten-Repo `produkte-3d` nicht - erwartet wird
-   genau der leere Index `data/produkte-3d.json` und kein `produkte-3d/*.glb`; live gibt es also
-   keinen Knopf „In 3D ansehen“. Gemeldet werden nur Dateinamen und Zahlen.
+   Fixture-Schalter gesetzt ist. Er läuft mit `--mit-produkte-3d`: Die 3D-Modelle einzelner Produkte
+   müssen zum Index passen und zu Produkten gehören, die in einem Raum liegen; fehlt
+   `produkte-3d/_regal.glb`, bricht der Schritt ab. Gemeldet werden nur Dateinamen und Zahlen.
 6. `hq/` löschen, `out/` nach `apps/bakery-landing/out/digitale-baeckerei/` kopieren, dann der Upload
    wie bisher (CNAME, `.nojekyll`). Kein Artefakt mit `hq/` oder `public/data`.
 
 Die Actions dieses Jobs sind auf Commit-SHAs festgelegt (`actions/checkout`, `actions/setup-node`,
 `peaceiris/actions-gh-pages`).
 
-- **Die Landingpage bleibt auf den Mock-Produkten.** Mit hq gebaut änderte sich dort Sichtbares
-  (lokal verglichen, 117 Seiten): Alle 103 Produktseiten zeigten den echten Produkttext aus hq statt
-  des heutigen Standardsatzes (auch als Meta-Beschreibung), die Produktliste bekäme je Karte den
-  Kurztext, die Startseite zeigte bei den ausgewählten Produkten den Kurztext statt der Kategorie
-  und ein achtes Produkt, und acht Tortenseiten wechselten ein Platzhalterbild. Gleich blieben
-  Seiten, Titel, Namen und **Preise** (die stehen heute schon dort, mit denselben Werten).
-  Das wären 55 Texte mehr, als die Digitale Bäckerei zeigt, darunter solche, die noch auf
-  Gesundheitsversprechen durchgesehen werden - also eine eigene Entscheidung des Inhabers.
-- **Links „Mehr auf der Website“:** Im lokalen Gesamt-Export führen alle 48 auf eine vorhandene
-  Produktseite mit demselben Produktnamen. Das hält, solange Mock-Produkte und hq dieselben Nummern
-  tragen.
+- **Die Landingpage baut aus hq** (DB14): alle Produkte mit Namen, Texten und Preisen aus
+  `hq/products`, für Produkte ohne Foto das gerenderte Bild. Darunter sind Texte, die noch auf
+  Gesundheitsversprechen durchgesehen werden (siehe „Offen (Inhaber)“).
+- **Links „Mehr auf der Website“** führen auf die Produktseite mit der hq-Nummer; Landingpage und
+  App lesen dieselben Dateien.
 - **Statischer Host:** Die App hat nur die eine Seite `/digitale-baeckerei/`; neu laden geht.
   `/digitale-baeckerei` ohne Schrägstrich leitet GitHub Pages um. Ein unbekannter Pfad darunter
   zeigt die 404-Seite der Landingpage.
@@ -420,7 +416,7 @@ Kein Code - drei Einträge, in dieser Reihenfolge:
 Danach `npx nx build bakery-digitale-baeckerei`, ansehen, PR.
 
 **Für den Deploy fehlt dann noch ein Schritt** (bewusst nicht gebaut, solange es keinen zweiten Raum
-gibt): `deploy-to-github-pages.yml` holt aus hq nur `products/` und bricht ab, wenn mehr da ist. Mit
+gibt): `deploy-to-github-pages.yml` holt aus hq nur `products/` und `produkte-3d/` und bricht ab, wenn mehr da ist. Mit
 Infopunkten muss der Sparse-Checkout `config/digitale-baeckerei/raeume/` mitnehmen und der Schritt
 danach das erlauben - sonst geht der Raum ohne Infopunkte live (kein Fehler, aber leere Karten gibt
 es nicht: Stationen wären dann nicht antippbar).
@@ -648,14 +644,10 @@ Emulation (Pixel 7, 4G + CPU 4×, Software-GPU; **auf echtem Handy ungeprüft**)
 
 ### Was das Veröffentlichen braucht
 
-Damit die Einrichtung live gilt, muss der Deploy zwei Dinge erreichen, die er heute nicht hat: aus
-hq zusätzlich `config/digitale-baeckerei/` (Sparse-Checkout, und der Schritt danach muss den Ordner
-erlauben) und das Daten-Repo `produkte-3d` oder seine Artefakte am gesperrten Commit (heute nur
-lokal, DB9) - dann läuft der Wächter mit `--mit-produkte-3d`. Der Workflow ist unverändert; ohne
-beides bleibt die Seite, wie sie ist (nachgewiesen: Export dieses Stands ohne Daten-Repo gegen den
-von `main` - sichtbares HTML, Dateiliste, Modell, Belegung und Snapshot gleich, 14 von 15
-Standbildern Byte für Byte, das fünfzehnte weicht in 64 Pixeln der Leiste ab). Mit nur der Datei,
-ohne Regal-Modelle, bliebe jeder umbelegte Platz im Bild leer.
+Die Regal-Modelle erreicht der Deploy seit DB14 (Export `hq/produkte-3d/`, siehe „Veröffentlichen
+der Produktmodelle“). Für eine **Einrichtung** fehlt noch: `config/digitale-baeckerei/` im
+Sparse-Checkout von hq (und der Schritt danach muss den Ordner erlauben). Solange es die Datei nicht
+gibt, liegt in jedem Platz das Produkt, das der Zwilling dort nennt - jetzt als Regal-Modell.
 
 ## Phasen
 
@@ -675,12 +667,12 @@ und Desktop dazu (lokal, nicht eingecheckt).
 | Paket                        | Stand                                                                                                                                                                                                                                                 |
 | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **P5 Produktmodelle (DB10)** | Lokal in `../produkte-3d`: 27 Generator-Familien, alle 106 hq-Produkte mit Nahansicht (`model.glb`) und Regal-Modell (`regal.glb`, ≤ 250 Dreiecke), Manifest Version 2. Aussehen aus hq-Texten und Explorer-Formen abgeleitet, **keines abgenommen**. |
-| **P6 Bilder (DB13)**         | `npm run render` in `../produkte-3d`: freigestellte Bilder 400/800 px je Produkt. Die Landingpage zeigt sie, sobald ein Stand in `apps/bakery-landing/produkte-3d-bilder.lock.json` steht (#146); heute `commit: null`.                               |
+| **P6 Bilder (DB13)**         | `npm run render` in `../produkte-3d`: freigestellte Bilder 400/800 px je Produkt. Die Landingpage zeigt sie, sobald ein Stand in `apps/bakery-landing/produkte-3d-bilder.lock.json` steht (#146); seit DB14 gesetzt.                                  |
 | **P7 Weitere Räume (DB11)**  | App-Seite fertig (#148, #150): Raumwechsel, Modell je Raum, Infopunkte, Türen. Geprüft mit einem erfundenen Test-Raum. Ein Modell der Backstube gibt es nicht.                                                                                        |
 | **P8 Einrichtung (DB12)**    | Fertig (#151): `einrichtung.yaml` aus hq, die App legt Regal-Modelle in die Plätze, Einrichten-Modus lokal. Am echten Modell nur lokal und in der Emulation angesehen - **auf echtem Handy ungeprüft**.                                               |
 
-Nichts davon ist veröffentlicht: Der Deploy erreicht `../produkte-3d` nicht und liest aus hq nur
-`products/`. Die Live-Seite zeigt weiter die Ware aus dem Zwilling.
+**Veröffentlicht seit 2026-11-13 (DB14):** P5 und P6 über den Export `hq/produkte-3d/`. P7 und P8
+sind live im Code, aber ohne Inhalt: kein zweiter Raum, keine `einrichtung.yaml`.
 
 ### Stand P3
 
@@ -758,7 +750,8 @@ kann (im Produkt-Sheet) und das auch die Produktseiten der Landingpage zeigen.
   teilrealistische Produkte neben dem stilisierten Laden passen, zuerst mit 3 Produkten testen
   (Brezel, Kornbrot, ein Teilchen).
 - **Ablage (DB9):** ≈ 100 Modelle zu je 1–3 MB gehören nicht in `website` oder `hq`, sondern in ein
-  eigenes Daten-Repo `../produkte-3d`, vorerst nur lokal und ohne Remote. Wird veröffentlicht,
+  eigenes Daten-Repo `../produkte-3d`, vorerst nur lokal und ohne Remote (veröffentlicht wird seit DB14 über einen Export in hq, siehe
+  „Veröffentlichen der Produktmodelle“). Wird veröffentlicht,
   bekommt es ein Remote (GitHub, ggf. LFS), und die App lädt die Modelle wie das Laden-Modell über
   einen festen Stand mit Prüfsumme. Rohfotos bleiben außerhalb aller Repos.
   Die Fotos der eigenen Ware gehören der Bäckerei und dürfen veröffentlicht werden.
@@ -780,9 +773,8 @@ kann (im Produkt-Sheet) und das auch die Produktseiten der Landingpage zeigen.
   Produkt-IDs**, die Prüfsummen der Dateien stehen im Manifest) mit `git show` aus
   `../produkte-3d` (`PRODUKTE_3D_DIR`), prüft jede Datei gegen das Manifest und schreibt `public/produkte-3d/<id>.glb`
   und `public/data/produkte-3d.json` (beides git-ignoriert). **Gibt es das Daten-Repo nicht - CI,
-  Deploy, andere Rechner -, entsteht ein leerer Index, und die App bietet keine Nahansicht an.** Die
-  veröffentlichte Seite hat sie also erst, wenn das Daten-Repo ein Remote bekommt (dann wechselt nur
-  die Quelle von `git show` auf eine Adresse mit dem Commit im Pfad). CI und die Playwright-Suite
+  andere Rechner -, entsteht ein leerer Index, und die App bietet keine Nahansicht an.** Der Deploy
+  liest seit DB14 den Export `hq/produkte-3d/`. CI und die Playwright-Suite
   bauen mit einem synthetischen Laib für „Testbrot“ und prüfen, dass im Export nur der liegt.
 - **Ein neues Modell** kommt so hinein: im Daten-Repo verarbeiten und committen (`npm run process`,
   `check`) → in `produkte-3d.lock.json` `commit` und `manifest.sha256` (Prüfsumme von
@@ -808,23 +800,42 @@ Aus denselben Modellen rendert das Daten-Repo je Produkt ein Bild (`bilder/<id>/
 Modelle - fester Commit in `apps/bakery-landing/produkte-3d-bilder.lock.json`, geprüft, nach
 `public/` kopiert, git-ignoriert; ohne Daten-Repo bleibt sie, wie sie ist. Modell-ID, Commit-Prüfung
 und `git show` stehen für beide Apps einmal in `libs/shared/produkte-3d`. Ablauf, Vorrang gegenüber
-Fotos aus hq und die zwei Wege zur Veröffentlichung (Remote für `produkte-3d` oder Bilder in `hq`):
-[landing.md](./landing.md#product-images-from-the-3d-models).
+Fotos aus hq: [landing.md](./landing.md#product-images-from-the-3d-models).
+
+### Veröffentlichen der Produktmodelle (DB14)
+
+Der Deploy hat kein Daten-Repo. Er liest einen **Export** in hq: `hq/produkte-3d/` mit
+`STAND.json` (`commit` = der Commit in `../produkte-3d`, an dem exportiert wurde), `manifest.json`,
+`models/` und `bilder/`. `liesAusCommit` (`libs/shared/produkte-3d`) erkennt den Export an
+`STAND.json`, liest die Dateien direkt und bricht ab, wenn der Export nicht am Commit aus dem Lock
+gezogen wurde; alle weiteren Prüfungen (Manifest-Prüfsumme, sha256 je Modell, `modellSha256` der
+Bilder) sind dieselben wie lokal.
+
+Einen neuen Stand veröffentlichen - drei Schritte, in dieser Reihenfolge:
+
+1. In `../produkte-3d` erzeugen, prüfen, rendern, committen (`npm run check`, `npm run render`).
+2. Export nach hq, als Ganzes ersetzen (PR in hq):
+   `rm -rf hq/produkte-3d/{manifest.json,models,bilder}` ·
+   `git -C ../produkte-3d archive <commit> manifest.json models bilder | tar -x -C hq/produkte-3d` ·
+   `STAND.json` auf `<commit>` setzen.
+3. In `website` beide Locks auf `<commit>` setzen (`produkte-3d.lock.json` mit `manifest.sha256`,
+   `apps/bakery-landing/produkte-3d-bilder.lock.json`) und mergen.
+
+Zwischen Schritt 2 und 3 passt der Export nicht zum Lock: Ein Deploy in dieser Zeit **bricht ab**
+und veröffentlicht nichts (die Seite bleibt, wie sie ist). Darum Schritt 3 gleich nach Schritt 2.
 
 ## Offen (Inhaber)
 
 - **Produkttexte in hq:** Texte mit Formulierungen, die wie Gesundheitsversprechen klingen, vor dem
   Go-live überarbeiten.
-- **Landingpage aus hq oder aus Mocks bauen?** Heute Mocks; mit hq erschienen die echten Texte
-  aller Produkte.
+- **Preise in hq prüfen:** Die Landingpage zeigt seit DB14 das Feld `price` aus `hq/products`.
 - **Abnahme am Handy** nach dem Deploy, danach der Link von der Landingpage (#138).
 - **Produktmodelle abnehmen (DB10):** Abnahmeblatt in `../produkte-3d` ansehen und je Produkt
   bestätigen oder Änderungen nennen (`../produkte-3d/docs/abnahme.md`). Offen sind u. a. die Sorte
   bei Schnecke, Kranz, Zopf, Blechkuchen und Muffin, die Größen von Flit und Brezel und die
   Unterscheidung ähnlicher Brötchen und Laibe.
-- **Modelle, Bilder und Einrichtung veröffentlichen?** Dafür muss der Deploy an `../produkte-3d`
-  kommen (privates Remote mit zweitem Lese-Schlüssel) oder die fertigen Dateien liegen in hq; dazu
-  `config/digitale-baeckerei/` aus hq lesen. Bis dahin bleibt alles lokal.
+- **Einrichtung veröffentlichen:** sobald es `config/digitale-baeckerei/einrichtung.yaml` in hq
+  gibt, den Ordner im Deploy freigeben (siehe „Was das Veröffentlichen braucht“).
 - **Einrichtung:** Sollen im Modell leere Plätze (Thekenplatte, freie Vitrinenplätze) einrichtbar
   werden? Dafür müsste der Explorer die Platz-Posen mitliefern.
 - **Landingpage:** Wortlaut „Digitale Darstellung – kein Foto“, auch auf den Karten im Sortiment?

@@ -4,8 +4,9 @@
  * aus dem Daten-Repo `produkte-3d` nach public/produkte-3d/<id>.glb und
  * schreibt den Index public/data/produkte-3d.json - beides git-ignoriert.
  *
- * Das Daten-Repo liegt vorerst NUR LOKAL neben `website` und `hq`, ohne Remote
- * (DB9). Gelesen wird genau der Commit aus produkte-3d.lock.json, unabhängig
+ * Das Daten-Repo liegt lokal neben `website` und `hq`, ohne Remote (DB9); der
+ * Deploy liest seinen Export in hq (`hq/produkte-3d/` mit STAND.json, DB14 -
+ * liesAusCommit erkennt ihn und verlangt denselben Commit). Gelesen wird genau der Commit aus produkte-3d.lock.json, unabhängig
  * vom Arbeitsverzeichnis dort:
  *   git -C <dir> show <commit>:manifest.json
  *   git -C <dir> show <commit>:models/<id>/model.glb
