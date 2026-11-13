@@ -36,11 +36,24 @@ export interface BelegungEintrag {
 }
 
 /**
- * `public/data/belegung.json`, geschrieben von scripts/sync-model.mjs aus dem
- * JSON-Teil des GLB: nur Plätze, die morgens belegt sind.
+ * Die Belegung EINES Raums: nur Plätze, die morgens belegt sind. Abgeleitet
+ * von scripts/sync-model.mjs aus dem JSON-Teil des GLB dieses Raums.
  */
 export interface Belegung {
   version: 1
   quelle: { commit: string }
   slots: BelegungEintrag[]
+}
+
+/**
+ * `public/data/belegung.json`: die Belegung aller gebauten Räume, Schlüssel =
+ * id des Raums (src/config/raeume.ts). Ein Raum ohne Produkte steht mit
+ * leeren `slots` darin. Die App liest je Raum mit `belegungVon`.
+ */
+export interface BelegungDatei {
+  version: 2
+  raeume: Record<
+    string,
+    { quelle: { commit: string }; slots: BelegungEintrag[] }
+  >
 }

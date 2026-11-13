@@ -14,6 +14,9 @@ und der echte Produkt-Snapshot gehören nicht ins Repo; die Sync-Skripte schreib
 | `build-produkt-fixture.mjs`      | Generator dazu (nur Node-Bordmittel, deterministisch, ohne Winkelfunktionen). |
 | `produkte-3d.fixture.json`       | Index der Nahansicht: nur `testbrot-500g` hat ein Modell.                     |
 | `fixture-info.js`                | Liest die Dateien (GLB-Container, Plätze, erwartete Listen) - für die Tests.  |
+| `testbackstube.fixture.glb`      | Mini-Modell eines zweiten, erfundenen Raums (≈ 13 kB, 11 Knoten). Erzeugt.    |
+| `testraeume.ts`                  | Dessen Konfiguration (Blickpunkte, Tür) in der Form `Raum` der App.           |
+| `raeume/testbackstube.yaml`      | Dessen synthetische Infopunkte, in der Form der Dateien in hq.                |
 | `fixture.spec.ts`                | Prüft, was unten steht.                                                       |
 
 Mit `DIGITALE_BAECKEREI_FIXTURE=1` nehmen `sync-model` und `sync-products` diese Dateien statt der
@@ -67,6 +70,35 @@ Den Aufbau des echten Modells, damit dieselben Code-Pfade laufen:
 - **Glas:** Material `glas` (`alphaMode: BLEND`, doppelseitig): Frontscheibe, Glasboden und Deckel
   der Vitrine, Tür des Kühlschranks. Tippen muss hindurchgehen.
 
+## Der zweite Raum: „Testbackstube“ (DB11)
+
+Eine echte Backstube gibt es noch nicht als Modell - Raumwechsel, Infopunkte und Türen sind an
+diesem erfundenen Raum gebaut und getestet. **Es gibt ihn nur mit `DIGITALE_BAECKEREI_FIXTURE=1`**:
+`sync-model` und `sync-rauminfos` bauen dann nach `RAEUME` aus `fixture-info.js` (statt nach
+`model.lock.json`), und nur dann lädt die App `testraeume.ts` (`src/lib/raeume/verfuegbar.ts`). Im
+echten Export darf nichts davon auftauchen; der Wächter sucht danach (`TEST_SPUREN` in
+`scripts/export-pruefung.js` - id und Name jedes Test-Raums müssen eine der Spuren enthalten).
+
+- Ein Raum von 6 × 5 m im eigenen Rahmen (gleiche Höhenlage wie der Laden), Knoten `backstube/…`
+  (Boden, Wand, Decke). **Keine Produkte**, keine `fills`.
+- Blickpunkt „Ofen“: `ofen/korpus` + `ofen/tuer`, `kneter/korpus` + `kneter/kessel`, `spuele/becken`.
+  Blickpunkt „Arbeitstisch“: `arbeitstisch/platte` + `arbeitstisch/gestell`, `tuer/blatt`.
+- Infopunkte (`raeume/testbackstube.yaml`): `ofen` („Testofen“, mit langem Text), `kneter/`
+  („Testkneter“, mit Schrägstrich am Ende - der fällt beim Lesen weg), `arbeitstisch`
+  („Testtisch“). **Die Spüle hat absichtlich keinen** (Tipp ohne Karte), die Tür führt in den Laden
+  (`tueren` in `testraeume.ts`). `STATIONEN` in `fixture-info.js` nennt sie für die Suite.
+- Die Suite tippt auf die Mitte aller Stücke einer Station (`screenPos('ofen')`). Wer Kisten oder
+  Blickpunkte verschiebt, schaut ins Bild: Im Hochformat liegen die Pfeile am Rand (42 % der Höhe)
+  nah an Ofen und Tür.
+
+```bash
+node src/test/fixtures/build-fixture.mjs --raum testbackstube          # schreibt testbackstube.fixture.glb
+node src/test/fixtures/build-fixture.mjs --raum testbackstube --list   # seine Knoten
+```
+
+Ohne `--raum` schreibt bzw. prüft (`--check`) der Generator beide Modelle; mit `--out` oder `--list`
+allein gilt der Laden.
+
 ## Der Snapshot
 
 `products.snapshot.fixture.json` enthält genau die Produkte, die im Mini-Modell liegen (außer
@@ -111,4 +143,6 @@ darüber die Mitte des unteren: Nur `platz-04` (oberstes Fach) wird sicher selbs
 Das Mini-Modell hat **keine Normalen** (wie ein unlit-Modell sie nicht braucht) - die Hervorhebung
 berechnet sie sich dann selbst. `sync-products` kopiert den Fixture-Snapshot Byte für Byte; das Modell im
 Export ist das bereinigte Fixture (`ausgeliefertesModell()` in `fixture-info.js`, Byte für Byte
-herleitbar). Gegen beides prüfen CI und der e2e-Server den Export (`exportFehler()`).
+herleitbar). Gegen beides prüfen CI und der e2e-Server den Export (`exportFehler()`) - ebenso gegen
+das bereinigte Modell der Testbackstube und ihre Infopunkte (`rauminfosDatei()`), und dass in
+`model/` sonst nichts liegt.

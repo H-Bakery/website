@@ -4,7 +4,8 @@ Der Laden in 3D mit festen Blickpunkten: eigene statische Next.js-App ohne API, 
 Stand **P1 (MVP)**: drei Blickpunkte (Theke, Brotregal, Regale) mit Kamera-Rig, Produkte antippen →
 Karte mit Daten aus hq, Liste „Alles hier“, Ladebild, Ersatz ohne WebGL, Quellen. Dazu aus **P4**
 die Nahansicht: „In 3D ansehen“ in der Karte, vorerst nur lokal (DB9); aus **P3** der Flug zum Start
-und „entdeckt x von y“ in der Liste. Dev auf 4222
+und „entdeckt x von y“ in der Liste; aus **P5** mehrere Räume (DB11: Raumwechsel, `?raum=<id>`,
+Infopunkte) - live gibt es weiter nur den Verkaufsraum. Dev auf 4222
 (`npm run dev:digitale-baeckerei`), Export nach `apps/bakery-digitale-baeckerei/out`
 (`npm run build:digitale-baeckerei`, webpack), ausgeliefert auf 4232
 (`npm run serve:digitale-baeckerei`). Playwright: `apps/bakery-digitale-baeckerei-e2e`
@@ -12,16 +13,22 @@ und „entdeckt x von y“ in der Liste. Dev auf 4222
 
 Regeln, die am meisten beißen:
 
-- **Modell und Produktdaten gehören nicht ins Repo.** `build` und `serve` hängen an drei
+- **Modell und Produktdaten gehören nicht ins Repo.** `build` und `serve` hängen an vier
   Sync-Targets, die nach `public/` schreiben (git-ignoriert):
-  - `sync-model` (`scripts/sync-model.mjs`): lädt `twin.glb` am festen Commit aus `model.lock.json`,
+  - `sync-model` (`scripts/sync-model.mjs`): lädt je Raum aus `model.lock.json` das Modell (heute
+    einer: `laden` → `twin.glb`) am festen Commit,
     prüft sha256, **nimmt die Preisschilder heraus** (`scripts/glb-bereinigen.js`: Primitive mit
     Material `preiskarte`/`preisschrift` samt ihren Bytes, dazu die `extras` `source`, `sigma_m`,
     `confidence`), prüft das Ergebnis gegen die zweite Prüfsumme im Lock (`ausgeliefert`) und
     schreibt es nach `public/model/`. Dort löscht es alles, was nicht im Lock steht, und leitet aus
-    den `extras` des GLB `public/data/belegung.json` ab (welches Produkt morgens auf welchem Platz
-    liegt). Das Original der Quelle liegt nie unter `public/`. `catalogue.json` des Explorers (mit
-    Preisen) wird **nicht** geladen.
+    den `extras` des GLB `public/data/belegung.json` ab (je Raum: welches Produkt morgens auf
+    welchem Platz liegt). Das Original der Quelle liegt nie unter `public/`. `catalogue.json` des
+    Explorers (mit Preisen) wird **nicht** geladen.
+  - `sync-rauminfos` (`scripts/sync-rauminfos.mjs`, Leser und Vertrag einmal in `rauminfos.js`):
+    liest für die Räume aus dem Lock `<hq>/config/digitale-baeckerei/raeume/<raum>.yaml`
+    (`HQ_DIGITALE_BAECKEREI_DIR`, sonst neben `HQ_PRODUCTS_DIR`) und schreibt
+    `public/data/rauminfos.json`. **Fehlt Ordner oder Datei: keine Infopunkte, Exit 0** - nie ein
+    erfundener Text. Eine Datei außerhalb des Vertrags bricht ab.
   - `sync-products` (`scripts/sync-products.mjs`): liest `hq/products/*.md` (`HQ_PRODUCTS_DIR`, sonst
     `../hq/products`) über `libs/shared/hq-products` und schreibt
     `public/data/products.snapshot.json` **ohne Preise** und nur für Produkte, die im Modell
@@ -34,13 +41,30 @@ Regeln, die am meisten beißen:
     `../produkte-3d` (`PRODUKTE_3D_DIR`; in einem Worktree immer setzen) nach `public/produkte-3d/`,
     prüft sha256 und schreibt `public/data/produkte-3d.json`. **Fehlt das Daten-Repo (CI, Deploy,
     andere Rechner): leerer Index, Exit 0** - das darf nie einen Build brechen.
-- **Fixture-Modus:** `DIGITALE_BAECKEREI_FIXTURE=1` - alle drei Targets nehmen das synthetische
+- **Mehrere Räume (DB11):** Ein Raum = Eintrag in `model.lock.json` (`raeume.<id>`: Datei, Quelle,
+  beide Prüfsummen) + Eintrag in `src/config/raeume.ts` (gleiche `id`, `modell` = `datei`) +
+  optional die YAML-Datei in hq. **Ohne Lock-Eintrag wird ein Raum nicht gebaut und nicht gezeigt**
+  (`src/lib/raeume/verfuegbar.ts`; kein Platzhalter). Der Raumwechsel in der Leiste erscheint erst
+  bei mehr als einem Raum; mit nur dem Laden bleibt alles wie vorher - auch das HTML (festes
+  `<link rel=preload>`; erst mit mehreren Räumen wählt ein kleines Skript das Modell nach
+  `?raum=<id>`). Der Raum steht in der Adresse (`src/lib/raeume/adresse.ts`), nie im
+  Gerätespeicher. Ein Wechsel baut die Szene neu (`key` am `Viewer3D`): Die alte gibt in `dispose()`
+  alles frei, die Playwright-Suite zählt die WebGL-Kontexte nach. Die Daten fließen je Raum durch
+  **eine** Stelle (`listen` in `DigitaleBaeckerei.tsx`: Belegung des Raums + Snapshot, dann
+  Infopunkte) - Karte, „Alles hier“ und Ersatz ohne WebGL kennen nur `Karte`/`ListenZeile`
+  (`src/lib/karte.ts`). Die Regel „Knoten-ID gehört zu Anfang“ steht einmal: `gehoertZu`
+  (`rauminfos.ts`), für Infopunkte, Türen, Hervorhebung.
+- **Fixture-Modus:** `DIGITALE_BAECKEREI_FIXTURE=1` - alle vier Targets nehmen das synthetische
   Mini-Modell, den synthetischen Snapshot und das eine synthetische Produkt-Modell (`testbrot-500g`)
-  aus `src/test/fixtures/` (README dort), ohne Download, ohne hq und ohne Daten-Repo. So bauen CI
+  aus `src/test/fixtures/` (README dort), ohne Download, ohne hq und ohne Daten-Repo - **und nur
+  dann** gibt es den zweiten, erfundenen Raum „Testbackstube“ (Modell, `testraeume.ts`,
+  `raeume/testbackstube.yaml`): `next.config.js` reicht den Schalter als Konstante durch,
+  `verfuegbar.ts` lädt die Test-Räume nur dann, und der Wächter bricht ab, wenn im echten Export
+  eine Spur davon liegt (`TEST_SPUREN`). So bauen CI
   und die Playwright-Suite; deren Server (`serve-fixture.js`) liefert nichts anderes aus. Tests,
   Fixtures und Screenshots im Repo: nur synthetisch (erfundene Produkte wie „Testbrot“).
-- **Neues Modell = bewusster Schritt:** Commit, sha256, Bytes und Datum in `model.lock.json`
-  ändern, dazu `ausgeliefert` (sha256 und Bytes der bereinigten Datei - `sync-model` nennt die
+- **Neues Modell = bewusster Schritt:** Commit, sha256, Bytes und Datum des Raums in
+  `model.lock.json` ändern, dazu `ausgeliefert` (sha256 und Bytes der bereinigten Datei - `sync-model` nennt die
   Ist-Werte, wenn sie nicht passen), dann PR. Nie ein Branch-Name als Stand. Danach die Blickpunkte
   am echten Modell ansehen, das Brotregal aus der Nähe. Dasselbe gilt nach jeder Änderung an
   `glb-bereinigen.js`. Kennt die Bereinigung den Aufbau eines neuen Modells nicht (Texturen,
@@ -79,7 +103,8 @@ Regeln, die am meisten beißen:
   `src/config/raeume.ts`; die Playwright-Suite liest sie von dort.
 - **Reine Logik ohne three** dort testen, wo sie steht: `fills.ts`, `view.ts`, `rig.ts`,
   `treffer.ts`, `bildausschnitt.ts`, `aussenraum.ts`, `drehteller.ts`, `intro.ts`,
-  `src/lib/produkte/zuordnung.ts`, `modelle.ts`, `entdeckt.ts`, `scripts/model-lock.js`, `glb-bereinigen.js`
+  `src/lib/produkte/zuordnung.ts`, `modelle.ts`, `entdeckt.ts`, `src/lib/raeume/*.ts`,
+  `scripts/model-lock.js`, `rauminfos.js`, `glb-bereinigen.js`
   (auch der eine Leser für GLB-Container), `belegung.js`, `product-snapshot.js`,
   `produkte-3d-lock.js`.
 - **Flug zum Start (P3):** Weg und Zeitplan je Raum in `raeume.ts` (`intros`, Stützpunkte aus dem
@@ -99,13 +124,15 @@ Regeln, die am meisten beißen:
 - **Unterpfad und Deploy:** `DIGITALE_BAECKEREI_BASE_PATH=/digitale-baeckerei` beim Build.
   `deploy-to-github-pages.yml` baut die App mit hq (Deploy-Key nur lesend, nur `products/`) und hängt
   sie unter `/digitale-baeckerei/` in den Export der Landingpage. Davor läuft der Wächter
-  `scripts/pruefe-export.mjs` (`export-pruefung.js`): nur das bereinigte Modell aus dem Lock, Snapshot
-  im Vertrag, kein „€“, kein Fixture, **keine 3D-Modelle einzelner Produkte** (leerer
+  `scripts/pruefe-export.mjs` (`export-pruefung.js`): je Raum nur das bereinigte Modell aus dem
+  Lock, Snapshot und Rauminfos im Vertrag, Belegung und Rauminfos nur für Räume aus dem Lock, kein
+  Test-Raum, kein „€“, kein Fixture, **keine 3D-Modelle einzelner Produkte** (leerer
   `data/produkte-3d.json`, nichts in `produkte-3d/` - DB9, der Runner hat das Daten-Repo nicht) -
   sonst kein Deploy. Wer etwas Neues nach `public/` oder in den
   Snapshot legt, muss es dort erlauben. Logs sind öffentlich: nie Inhalte aus hq ausgeben.
   Der Link von der Landingpage kommt erst nach der Abnahme durch den Inhaber.
 
 Tests: `npx nx test bakery-digitale-baeckerei`, `npx nx lint bakery-digitale-baeckerei`,
-`npx nx e2e bakery-digitale-baeckerei-e2e`. Plan, Entscheidungen DB1-DB9 und Phasen:
+`npx nx e2e bakery-digitale-baeckerei-e2e`. Plan, Entscheidungen DB1-DB13, „Weitere Räume
+(Backstube)“ und Phasen:
 [`docs/apps/digitale-baeckerei.md`](../../docs/apps/digitale-baeckerei.md).

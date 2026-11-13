@@ -2,7 +2,16 @@ import { execFileSync } from 'child_process'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import yaml from 'js-yaml'
+import { TEST_SPUREN } from '../../../scripts/export-pruefung'
+import { gehoertZu } from '../../lib/raeume/rauminfos'
+import { TESTRAEUME } from './testraeume'
 import {
+  BACKSTUBE_GLB_PATH,
+  RAEUME,
+  RAUMINFOS_DIR,
+  STATIONEN,
+  rauminfosDatei,
   GENERATOR_PATH,
   GLB_PATH,
   MIT_MODELL,
@@ -267,6 +276,115 @@ describe('twin.fixture.glb', () => {
   })
 })
 
+describe('testbackstube.fixture.glb (zweiter Raum, nur für Tests)', () => {
+  const backstube = leseGlb(fs.readFileSync(BACKSTUBE_GLB_PATH))
+  const namen: string[] = backstube.json.nodes.map(
+    (n: { name: string }) => n.name
+  )
+  const raum = TESTRAEUME[0]
+  const infopunkte = (
+    yaml.load(
+      fs.readFileSync(path.join(RAUMINFOS_DIR, `${raum.id}.yaml`), 'utf8')
+    ) as { infopunkte: { knoten: string; titel: string; kurz: string }[] }
+  ).infopunkte
+
+  it('ist deterministisch: der Generator liefert genau die eingecheckte Datei', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'backstube-fixture-'))
+    try {
+      const target = path.join(dir, 'a.glb')
+      execFileSync(process.execPath, [
+        GENERATOR_PATH,
+        '--raum',
+        'testbackstube',
+        '--out',
+        target,
+      ])
+      expect(
+        fs.readFileSync(target).equals(fs.readFileSync(BACKSTUBE_GLB_PATH))
+      ).toBe(true)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('ist klein, ohne Decoder lesbar und hat keine Produkte', () => {
+    expect(fs.statSync(BACKSTUBE_GLB_PATH).size).toBeLessThan(20_000)
+    expect(backstube.json.extensionsUsed).not.toContain(
+      'EXT_meshopt_compression'
+    )
+    expect(namen.filter((n) => n.startsWith('produkt/'))).toEqual([])
+    expect(zeichenketten(backstube.json).filter((s) => PREIS.test(s))).toEqual(
+      []
+    )
+  })
+
+  it('die Räume des Fixtures sind der Laden und genau die Test-Räume der App', () => {
+    expect(RAEUME.map((r: { id: string }) => r.id)).toEqual([
+      'laden',
+      ...TESTRAEUME.map((r) => r.id),
+    ])
+    for (const r of TESTRAEUME) {
+      expect(RAEUME.find((x: { id: string }) => x.id === r.id)?.datei).toBe(
+        r.modell
+      )
+    }
+  })
+
+  it('jeder Test-Raum ist am Namen zu erkennen: Der Wächter des echten Exports findet ihn', () => {
+    for (const r of TESTRAEUME) {
+      for (const text of [r.id, r.name, r.modell, r.wechsel]) {
+        expect(TEST_SPUREN.some((spur) => text.includes(spur))).toBe(true)
+      }
+    }
+  })
+
+  it('jeder Blickpunkt des Test-Raums sieht Stücke des Modells, der Start-Blickpunkt ist einer davon', () => {
+    expect(raum.produkte).toBe(false)
+    expect(raum.blickpunkte.map((b) => b.id)).toContain(raum.start)
+    for (const blickpunkt of raum.blickpunkte) {
+      for (const prefix of blickpunkt.moebel) {
+        expect(namen.some((n) => n.startsWith(prefix))).toBe(true)
+      }
+    }
+  })
+
+  it('jeder synthetische Infopunkt gehört zu Stücken des Modells und zu genau einem Blickpunkt', () => {
+    expect(infopunkte.map((p) => p.titel)).toEqual([
+      STATIONEN.ofen.titel,
+      STATIONEN.kneter.titel,
+      STATIONEN.tisch.titel,
+    ])
+    for (const punkt of infopunkte) {
+      expect(namen.some((n) => gehoertZu(n, punkt.knoten))).toBe(true)
+      expect(
+        raum.blickpunkte.filter((b) =>
+          b.moebel.some((prefix) => gehoertZu(punkt.knoten, prefix))
+        )
+      ).toHaveLength(1)
+    }
+  })
+
+  it('hat eine Station ohne Infopunkt und eine Tür in den Laden', () => {
+    const { ohneInfo, tuer } = STATIONEN
+    expect(namen.some((n) => gehoertZu(n, ohneInfo.knoten))).toBe(true)
+    expect(infopunkte.some((p) => gehoertZu(ohneInfo.knoten, p.knoten))).toBe(
+      false
+    )
+    expect(raum.tueren).toEqual([{ knoten: tuer.knoten, ziel: tuer.ziel }])
+    expect(namen.some((n) => gehoertZu(n, tuer.knoten))).toBe(true)
+  })
+
+  it('die Infopunkte kommen durch denselben Leser wie die aus hq', () => {
+    const datei = JSON.parse(rauminfosDatei().toString('utf8'))
+    expect(Object.keys(datei.raeume)).toEqual([raum.id])
+    expect(datei.raeume[raum.id].infopunkte).toHaveLength(infopunkte.length)
+    // Der Schrägstrich am Ende von `knoten` ist erlaubt und fällt weg.
+    expect(
+      datei.raeume[raum.id].infopunkte.map((p: { knoten: string }) => p.knoten)
+    ).toEqual(['ofen', 'kneter', 'arbeitstisch'])
+  })
+})
+
 describe('products.snapshot.fixture.json', () => {
   const produkte = Object.entries<Record<string, unknown>>(snapshot.produkte)
 
@@ -432,10 +550,21 @@ describe('keine Preise in den Fixtures (DB8)', () => {
 
 describe('der Export-Wächter (exportFehler)', () => {
   let outDir: string
-  const lege = (model: Uint8Array | null, snapshot: Uint8Array | null) => {
+  const lege = (
+    model: Uint8Array | null,
+    snapshot: Uint8Array | null,
+    backstube: Uint8Array | null = ausgeliefertesModell('testbackstube'),
+    rauminfos: Uint8Array | null = rauminfosDatei()
+  ) => {
     fs.mkdirSync(path.join(outDir, 'model'), { recursive: true })
     fs.mkdirSync(path.join(outDir, 'data'), { recursive: true })
     if (model) fs.writeFileSync(path.join(outDir, 'model', 'twin.glb'), model)
+    const zweites = path.join(outDir, 'model', 'testbackstube.glb')
+    if (backstube) fs.writeFileSync(zweites, backstube)
+    else fs.rmSync(zweites, { force: true })
+    const infos = path.join(outDir, 'data', 'rauminfos.json')
+    if (rauminfos) fs.writeFileSync(infos, rauminfos)
+    else fs.rmSync(infos, { force: true })
     if (snapshot) {
       fs.writeFileSync(
         path.join(outDir, 'data', 'products.snapshot.json'),
@@ -511,6 +640,38 @@ describe('der Export-Wächter (exportFehler)', () => {
     expect(exportFehler(outDir)).toMatch(/twin\.glb ist nicht das synthetische/)
     lege(Buffer.from('irgendein anderes Modell'), snapshot)
     expect(exportFehler(outDir)).toMatch(/twin\.glb ist nicht das synthetische/)
+  })
+
+  it('lehnt den Export ab, wenn der zweite Raum fehlt, ein anderes Modell ist oder ein drittes dabei liegt', () => {
+    const snapshot = fs.readFileSync(SNAPSHOT_PATH)
+    legeProdukte()
+    lege(ausgeliefertesModell(), snapshot, null)
+    expect(exportFehler(outDir)).toMatch(
+      /testbackstube\.glb ist nicht das synthetische/
+    )
+    lege(ausgeliefertesModell(), snapshot, Buffer.from('eine echte Backstube'))
+    expect(exportFehler(outDir)).toMatch(
+      /testbackstube\.glb ist nicht das synthetische/
+    )
+    lege(ausgeliefertesModell(), snapshot)
+    fs.writeFileSync(path.join(outDir, 'model', 'backstube.glb'), 'echt')
+    expect(exportFehler(outDir)).toMatch(
+      /mehr als die synthetischen Modelle \(backstube\.glb\)/
+    )
+  })
+
+  it('lehnt andere oder fehlende Infopunkte ab', () => {
+    const snapshot = fs.readFileSync(SNAPSHOT_PATH)
+    legeProdukte()
+    lege(ausgeliefertesModell(), snapshot, undefined, null)
+    expect(exportFehler(outDir)).toMatch(/nicht die synthetischen Infopunkte/)
+    lege(
+      ausgeliefertesModell(),
+      snapshot,
+      undefined,
+      Buffer.from('{"version":1,"raeume":{}}\n')
+    )
+    expect(exportFehler(outDir)).toMatch(/nicht die synthetischen Infopunkte/)
   })
 
   it('lehnt einen anderen Snapshot und fehlende Dateien ab', () => {

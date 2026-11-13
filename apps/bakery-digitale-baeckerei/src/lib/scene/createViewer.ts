@@ -58,7 +58,8 @@ import {
   type Treffer,
 } from './pick'
 import { createRig } from './rigControls'
-import { TIPP_RADIUS_PX } from './treffer'
+import { gehoertZu } from '../raeume/rauminfos'
+import { slotVon, TIPP_RADIUS_PX } from './treffer'
 import { ansichtFuer, cappedPixelRatio, type Ansicht } from './view'
 
 export type { Treffer } from './pick'
@@ -121,8 +122,10 @@ export interface ViewerOptions {
   /** Der WebGL-Kontext ging verloren (App gewechselt, Speicherdruck). */
   onLost: () => void
   /**
-   * Ein Tipp ins Bild: der Treffer, wenn dort ein Produkt liegt (`produkt`
-   * gesetzt), sonst `null` (neutrale Ware, Möbel, Wand, nichts).
+   * Ein Tipp ins Bild: der Treffer - mit `produkt`, wenn dort ein Produkt
+   * liegt, sonst das getroffene Stück (neutrale Ware, Möbel, Station; die App
+   * schaut, ob es dazu einen Infopunkt oder eine Tür gibt) - oder `null`,
+   * wenn der Tipp nichts mit Kennung trifft.
    */
   onTreffer?: (treffer: Treffer | null) => void
   /** Einmal, bei der ersten Bedienung der Szene. */
@@ -383,7 +386,11 @@ export function createViewer(
     haltFrei()
   })
 
-  /** Mitte des sichtbaren Knotens `produkt/<slot>` im Zonen-Rahmen. */
+  /**
+   * Mitte des sichtbaren Knotens `produkt/<slot>` im Zonen-Rahmen. Gibt es
+   * keinen solchen Platz, ist `slot` der Knoten eines Infopunkts (`ofen`):
+   * dann die Mitte aller sichtbaren Stücke, die dazu gehören (`ofen/…`).
+   */
   const box = new Box3()
   const mitteVon = (slot: string): Vector3 | null => {
     if (!model) return null
@@ -395,7 +402,16 @@ export function createViewer(
       if (box.isEmpty()) continue
       return box.getCenter(new Vector3())
     }
-    return null
+    const gruppe = new Box3()
+    const teil = new Box3()
+    for (const child of model.children) {
+      if (!child.visible) continue
+      const id = slotVon(child.userData)
+      if (!id || !gehoertZu(id, slot)) continue
+      teil.setFromObject(child)
+      if (!teil.isEmpty()) gruppe.union(teil)
+    }
+    return gruppe.isEmpty() ? null : gruppe.getCenter(new Vector3())
   }
 
   /** Bildpunkt (CSS-px, relativ zum Canvas) und ob er vor der Kamera liegt. */
@@ -487,7 +503,9 @@ export function createViewer(
       options.onTreffer?.(treffer)
       return
     }
-    options.onTreffer?.(null)
+    // Kein Produkt: Die App bekommt das getroffene Stück trotzdem - an ihm
+    // kann ein Infopunkt oder eine Tür hängen (sonst schließt sie die Karte).
+    options.onTreffer?.(treffer ?? null)
     // Neutrale Ware hat keine Karte, aber der Tipp soll sichtbar ankommen:
     // kurz aufleuchten. Die Auswahl ist damit schon aufgehoben - `waehle(null)`
     // aus der App fasst die Hervorhebung dann nicht mehr an.

@@ -1,14 +1,15 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { FIXTURE_ENV, pruefeExport } from './export-pruefung'
+import { FIXTURE_ENV, TEST_SPUREN, pruefeExport } from './export-pruefung'
 import { LOCK_FORMAT, parseLock, sha256Hex } from './model-lock'
 import {
   SNAPSHOT_PATH,
   ausgeliefertesModell,
   ladeFixture,
 } from '../src/test/fixtures/fixture-info'
-import { belegungAusGlb } from './belegung'
+import { belegungAusGlb, fasseZusammen } from './belegung'
+import { alsDatei, leereRauminfos } from './rauminfos'
 import { leererIndex } from './produkte-3d-lock'
 
 // Ein synthetischer Export aus den Fixtures - das echte Modell und echte
@@ -17,22 +18,50 @@ const BASIS = '/digitale-baeckerei'
 const QUELLE = ladeFixture().glb
 const MODELL = ausgeliefertesModell()
 
-const lock = parseLock({
-  format: LOCK_FORMAT,
-  source: {
-    repo: 'beispiel/modell-daten',
-    commit: '0123456789abcdef0123456789abcdef01234567',
-    path: 'zones/testladen/built',
-  },
+const SOURCE = {
+  repo: 'beispiel/modell-daten',
+  commit: '0123456789abcdef0123456789abcdef01234567',
+  path: 'zones/testladen/built',
+}
+const LADEN = {
+  datei: 'twin.glb',
+  source: SOURCE,
   fetched: '2026-01-02',
-  files: {
-    'twin.glb': {
-      sha256: sha256Hex(QUELLE),
-      bytes: QUELLE.byteLength,
-      ausgeliefert: { sha256: sha256Hex(MODELL), bytes: MODELL.byteLength },
+  sha256: sha256Hex(QUELLE),
+  bytes: QUELLE.byteLength,
+  ausgeliefert: { sha256: sha256Hex(MODELL), bytes: MODELL.byteLength },
+}
+const lock = parseLock({ format: LOCK_FORMAT, raeume: { laden: LADEN } })
+/** Ein zweiter Raum, wie er später im Lock stehen könnte (hier: das Testmodell). */
+const WERKSTATT = ausgeliefertesModell('testbackstube')
+const lockMitZweiRaeumen = parseLock({
+  format: LOCK_FORMAT,
+  raeume: {
+    laden: LADEN,
+    werkstatt: {
+      datei: 'werkstatt.glb',
+      source: SOURCE,
+      fetched: '2026-01-02',
+      sha256: sha256Hex(WERKSTATT),
+      bytes: WERKSTATT.byteLength,
+      ausgeliefert: {
+        sha256: sha256Hex(WERKSTATT),
+        bytes: WERKSTATT.byteLength,
+      },
     },
   },
 })
+const belegungDatei = (raeume: Record<string, Uint8Array>) =>
+  JSON.stringify(
+    fasseZusammen(
+      Object.fromEntries(
+        Object.entries(raeume).map(([raum, glb]) => [
+          raum,
+          belegungAusGlb(glb, 'fixture').belegung,
+        ])
+      )
+    )
+  )
 
 let outDir: string
 const schreibe = (rel: string, inhalt: string | Uint8Array) => {
@@ -51,10 +80,9 @@ beforeEach(() => {
   )
   schreibe('_next/static/chunks/main.js', 'console.log("Testbrot")')
   schreibe('model/twin.glb', MODELL)
-  schreibe(
-    'data/belegung.json',
-    JSON.stringify(belegungAusGlb(MODELL, 'fixture').belegung)
-  )
+  schreibe('data/belegung.json', belegungDatei({ laden: MODELL }))
+  // So schreibt sync-rauminfos die Datei, wenn es in hq keine Infopunkte gibt.
+  schreibe('data/rauminfos.json', alsDatei(leereRauminfos()))
   schreibe('data/products.snapshot.json', fs.readFileSync(SNAPSHOT_PATH))
   // So schreibt sync-produkte-3d den Index, wenn es das Daten-Repo nicht gibt.
   schreibe('data/produkte-3d.json', `${JSON.stringify(leererIndex())}\n`)
@@ -100,11 +128,11 @@ describe('pruefeExport', () => {
   it('lehnt ein Modell mit Preisschildern ab, auch wenn das Lock es so nennt', () => {
     schreibe('model/twin.glb', QUELLE)
     const falsch = parseLock({
-      ...lock,
-      files: {
-        'twin.glb': {
-          ...lock.files['twin.glb'],
-          ausgeliefert: lock.files['twin.glb'],
+      format: LOCK_FORMAT,
+      raeume: {
+        laden: {
+          ...LADEN,
+          ausgeliefert: { sha256: LADEN.sha256, bytes: LADEN.bytes },
         },
       },
     })
@@ -115,13 +143,8 @@ describe('pruefeExport', () => {
 
   it('verlangt die Prüfsumme der ausgelieferten Datei im Lock', () => {
     const ohne = parseLock({
-      ...lock,
-      files: {
-        'twin.glb': {
-          sha256: lock.files['twin.glb'].sha256,
-          bytes: lock.files['twin.glb'].bytes,
-        },
-      },
+      format: LOCK_FORMAT,
+      raeume: { laden: { ...LADEN, ausgeliefert: undefined } },
     })
     expect(pruefeExport({ outDir, lock: ohne, basePath: BASIS })).toEqual([
       expect.stringMatching(/ausgeliefert für twin\.glb fehlt/),
@@ -215,6 +238,120 @@ describe('pruefeExport', () => {
     schreibe('data/produkte-3d.json', JSON.stringify({ version: 2 }))
     expect(pruefe()).toEqual([
       'data/produkte-3d.json hat nicht die erwartete Form',
+    ])
+  })
+
+  describe('mehrere Räume', () => {
+    const pruefeZwei = () =>
+      pruefeExport({ outDir, lock: lockMitZweiRaeumen, basePath: BASIS })
+    beforeEach(() => {
+      schreibe('model/werkstatt.glb', WERKSTATT)
+      schreibe(
+        'data/belegung.json',
+        belegungDatei({ laden: MODELL, werkstatt: WERKSTATT })
+      )
+    })
+
+    it('lässt einen Export mit zwei Räumen aus dem Lock durch - mit Infopunkten', () => {
+      schreibe(
+        'data/rauminfos.json',
+        alsDatei({
+          version: 1,
+          raeume: {
+            werkstatt: {
+              infopunkte: [
+                { knoten: 'ofen', titel: 'Probeofen', kurz: 'Nur ein Test.' },
+              ],
+            },
+          },
+        })
+      )
+      expect(pruefeZwei()).toEqual([])
+    })
+
+    it('prüft das Modell jedes Raums: fehlt eines oder ist es ein anderes, darf nichts raus', () => {
+      fs.rmSync(path.join(outDir, 'model', 'werkstatt.glb'))
+      expect(pruefeZwei()).toEqual(['model/werkstatt.glb fehlt'])
+      schreibe('model/werkstatt.glb', MODELL)
+      expect(pruefeZwei()).toEqual([
+        expect.stringMatching(
+          /model\/werkstatt\.glb ist nicht die Datei aus dem Lock/
+        ),
+      ])
+    })
+
+    it('ein Raum, der nicht im Lock steht, darf nicht im Export liegen - weder Modell noch Daten', () => {
+      // Derselbe Export gegen das Lock mit nur dem Laden.
+      schreibe(
+        'data/rauminfos.json',
+        alsDatei({
+          version: 1,
+          raeume: {
+            werkstatt: {
+              infopunkte: [{ knoten: 'ofen', titel: 'Probeofen', kurz: 'x' }],
+            },
+          },
+        })
+      )
+      expect(pruefe()).toEqual([
+        'model/werkstatt.glb steht nicht im Lock und darf nicht raus',
+        'data/belegung.json nennt 1 Raum/Räume, die nicht im Lock stehen',
+        'data/rauminfos.json nennt 1 Raum/Räume, die nicht im Lock stehen',
+      ])
+    })
+  })
+
+  it('lehnt eine Belegung im alten Format ab', () => {
+    schreibe(
+      'data/belegung.json',
+      JSON.stringify(belegungAusGlb(MODELL, 'fixture').belegung)
+    )
+    expect(pruefe()).toContain(
+      'data/belegung.json hat nicht die erwartete Form'
+    )
+  })
+
+  it('lehnt fehlende oder vertragswidrige Rauminfos ab - ohne den Inhalt zu nennen', () => {
+    fs.rmSync(path.join(outDir, 'data', 'rauminfos.json'))
+    expect(pruefe()).toEqual([expect.stringMatching(/rauminfos\.json fehlt/)])
+    schreibe(
+      'data/rauminfos.json',
+      JSON.stringify({
+        version: 1,
+        raeume: {
+          laden: {
+            infopunkte: [
+              {
+                knoten: 'theke',
+                titel: 'Probetheke',
+                kurz: 'x',
+                geheimfeld: 'GEHEIMER-INHALT',
+              },
+            ],
+          },
+        },
+      })
+    )
+    const fehler = pruefe()
+    expect(fehler).toEqual([expect.stringMatching(/Feld "geheimfeld"/)])
+    expect(fehler.join(' ')).not.toContain('GEHEIMER-INHALT')
+  })
+
+  it('findet jede Spur der synthetischen Test-Räume - im Code, in den Daten, als Datei', () => {
+    expect(TEST_SPUREN).toEqual(['testbackstube', 'Testbackstube'])
+    schreibe('_next/static/chunks/seite.js', 'var r={id:"testbackstube"}')
+    expect(pruefe()).toEqual([
+      '_next/static/chunks/seite.js enthält einen synthetischen Test-Raum - den gibt es nur im Fixture-Build',
+    ])
+    schreibe('_next/static/chunks/seite.js', 'var n="Testbackstube"')
+    expect(pruefe()).toHaveLength(1)
+    schreibe('_next/static/chunks/seite.js', 'var n="Backstube"')
+    expect(pruefe()).toEqual([])
+    // Das Modell des Test-Raums unter seinem Namen: doppelt falsch.
+    schreibe('model/testbackstube.glb', WERKSTATT)
+    expect(pruefe()).toEqual([
+      'model/testbackstube.glb steht nicht im Lock und darf nicht raus',
+      'model/testbackstube.glb enthält einen synthetischen Test-Raum - den gibt es nur im Fixture-Build',
     ])
   })
 

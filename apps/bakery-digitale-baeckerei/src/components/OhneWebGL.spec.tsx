@@ -16,8 +16,14 @@ const EINTRAEGE_JE = {
 function setup(props: Partial<React.ComponentProps<typeof OhneWebGL>> = {}) {
   zeige(
     <OhneWebGL
-      blickpunkte={BLICKPUNKTE}
-      eintraegeJe={EINTRAEGE_JE}
+      raeume={[
+        {
+          id: 'laden',
+          name: 'Laden',
+          blickpunkte: BLICKPUNKTE,
+          eintraegeJe: EINTRAEGE_JE,
+        },
+      ]}
       {...props}
     />
   )

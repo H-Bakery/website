@@ -29,7 +29,13 @@ const nextConfig = {
   assetPrefix: basePath || undefined,
   // Das Modell liegt in public/model/ und wird per fetch geladen - dafür
   // braucht der Client den Basis-Pfad (src/lib/basePath.ts).
-  env: { NEXT_PUBLIC_DIGITALE_BAECKEREI_BASE_PATH: basePath },
+  // Der Fixture-Schalter als Konstante zur Bauzeit: Nur dann nimmt die App die
+  // synthetischen Räume der Tests auf (src/lib/raeume/verfuegbar.ts).
+  env: {
+    NEXT_PUBLIC_DIGITALE_BAECKEREI_BASE_PATH: basePath,
+    NEXT_PUBLIC_DIGITALE_BAECKEREI_FIXTURE:
+      process.env.DIGITALE_BAECKEREI_FIXTURE === '1' ? '1' : '',
+  },
   poweredByHeader: false,
   reactStrictMode: true,
   devIndicators: false,

@@ -1,5 +1,10 @@
-import type { Belegung, ProduktInfo, ProduktSnapshot } from './types'
-import { eintraegeFuer, ladeProduktdaten } from './zuordnung'
+import type {
+  Belegung,
+  BelegungDatei,
+  ProduktInfo,
+  ProduktSnapshot,
+} from './types'
+import { belegungVon, eintraegeFuer, ladeProduktdaten } from './zuordnung'
 
 // Nur erfundene Produkte, keine Preise.
 const produkt = (id: string, name: string): ProduktInfo => ({
@@ -114,14 +119,23 @@ describe('ladeProduktdaten', () => {
     return fn
   }
 
+  /** `belegung.json`, wie sync-model sie schreibt: je Raum eine Belegung. */
+  const DATEI = {
+    version: 2,
+    raeume: {
+      laden: { quelle: BELEGUNG.quelle, slots: BELEGUNG.slots },
+      backstube: { quelle: { commit: 'x' }, slots: [] },
+    },
+  }
+
   it('lädt beide Dateien unter dem Basis-Pfad', async () => {
     const fn = mockFetch({
       '/digitale-baeckerei/data/products.snapshot.json': antwort(SNAPSHOT),
-      '/digitale-baeckerei/data/belegung.json': antwort(BELEGUNG),
+      '/digitale-baeckerei/data/belegung.json': antwort(DATEI),
     })
     await expect(ladeProduktdaten('/digitale-baeckerei')).resolves.toEqual({
       snapshot: SNAPSHOT,
-      belegung: BELEGUNG,
+      belegung: DATEI,
     })
     expect(fn).toHaveBeenCalledTimes(2)
   })
@@ -129,7 +143,7 @@ describe('ladeProduktdaten', () => {
   it('ohne Basis-Pfad liegen die Dateien unter /data/', async () => {
     const fn = mockFetch({
       '/data/products.snapshot.json': antwort(SNAPSHOT),
-      '/data/belegung.json': antwort(BELEGUNG),
+      '/data/belegung.json': antwort(DATEI),
     })
     await ladeProduktdaten('')
     expect(fn.mock.calls.map((c) => c[0]).sort()).toEqual([
@@ -180,9 +194,19 @@ describe('ladeProduktdaten', () => {
   })
 
   it.each([
-    ['falsche Version', { ...BELEGUNG, version: 2 }],
-    ['slots fehlt', { version: 1, quelle: { commit: 'x' } }],
-    ['Eintrag ohne Produkt', { ...BELEGUNG, slots: [{ slot: 'a' }] }],
+    ['altes Format (ein Raum, Version 1)', BELEGUNG],
+    ['raeume fehlt', { version: 2 }],
+    [
+      'slots fehlt',
+      { version: 2, raeume: { laden: { quelle: { commit: 'x' } } } },
+    ],
+    [
+      'Eintrag ohne Produkt',
+      {
+        version: 2,
+        raeume: { laden: { quelle: { commit: 'x' }, slots: [{ slot: 'a' }] } },
+      },
+    ],
   ])('lehnt eine Belegung ab: %s', async (_name, belegung) => {
     mockFetch({
       '/data/products.snapshot.json': antwort(SNAPSHOT),
@@ -191,5 +215,13 @@ describe('ladeProduktdaten', () => {
     await expect(ladeProduktdaten('')).rejects.toThrow(
       'Die Plätze im Regal haben nicht die erwartete Form.'
     )
+  })
+
+  it('belegungVon: die Belegung eines Raums - leer, wenn die Datei ihn nicht nennt', () => {
+    expect(belegungVon(DATEI as BelegungDatei, 'laden')).toEqual(BELEGUNG)
+    expect(belegungVon(DATEI as BelegungDatei, 'backstube').slots).toEqual([])
+    expect(belegungVon(DATEI as BelegungDatei, 'keller').slots).toEqual([])
+    // Ein Name aus dem Prototyp ist kein Raum.
+    expect(belegungVon(DATEI as BelegungDatei, 'toString').slots).toEqual([])
   })
 })

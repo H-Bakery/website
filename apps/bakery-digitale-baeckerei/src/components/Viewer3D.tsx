@@ -52,6 +52,11 @@ export interface Viewer3DProps {
   onWechselGeste?: (richtung: -1 | 1) => void
   /** Flüge zum Start dieses Raums (raeume.ts). `?intro=0` in der Adresse stellt sie ab. */
   intros?: readonly Intro[]
+  /**
+   * `false`: nach dem Laden ohne Flug am Blickpunkt stehen - der Raum wurde in
+   * diesem Besuch schon einmal betreten. Gelesen beim Aufbau der Szene.
+   */
+  introSpielen?: boolean
   /** Neuer Wert (> 0): den Flug noch einmal zeigen. */
   introNochmal?: number
   /** Neuer Wert (> 0): den laufenden Flug überspringen. */
@@ -82,11 +87,12 @@ export default function Viewer3D(props: Viewer3DProps) {
     const container = containerRef.current
     if (!container) return
     let debug = false
-    let introSpielen = true
+    let introSpielen = aktuell.current.introSpielen !== false
     try {
       const parameter = new URLSearchParams(window.location.search)
       debug = parameter.has('debug')
-      introSpielen = parameter.get('intro') !== '0'
+      introSpielen =
+        aktuell.current.introSpielen !== false && parameter.get('intro') !== '0'
     } catch {
       /* ohne Messhaken, mit Flug */
     }

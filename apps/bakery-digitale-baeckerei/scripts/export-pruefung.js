@@ -8,11 +8,16 @@
  * - kein Fixture-Build (DIGITALE_BAECKEREI_FIXTURE darf nicht gesetzt sein) -
  *   sonst ginge die Testseite live;
  * - der Export ist für den erwarteten Unterpfad gebaut;
- * - `model/` enthält nur die Dateien aus dem Lock, und `twin.glb` ist genau
- *   die bereinigte Datei (`ausgeliefert` in model.lock.json), ohne Preisschilder;
- * - `data/` enthält nur Belegung und Snapshot; der Snapshot hält den Vertrag
- *   ein (`pruefeSnapshot`: nur erlaubte Felder, kein „€“) und nennt kein
- *   Produkt, das nicht im Modell liegt;
+ * - `model/` enthält nur die Dateien aus dem Lock, und das Modell jedes Raums
+ *   ist genau die bereinigte Datei (`ausgeliefert` in model.lock.json), ohne
+ *   Preisschilder;
+ * - `data/` enthält nur Belegung, Snapshot, Rauminfos und den Index der
+ *   Nahansicht; der Snapshot hält den Vertrag ein (`pruefeSnapshot`: nur
+ *   erlaubte Felder, kein „€“) und nennt kein Produkt, das nicht in einem
+ *   Modell liegt; Belegung und Rauminfos nennen nur Räume aus dem Lock, die
+ *   Rauminfos halten ihren Vertrag ein (`pruefeRauminfos`);
+ * - keine Spur der synthetischen Test-Räume (`TEST_SPUREN`): Die gibt es nur
+ *   im Fixture-Build;
  * - keine 3D-Modelle einzelner Produkte (Nahansicht): die liegen vorerst nur
  *   lokal (DB9) und gehören nicht in einen öffentlichen Export. Der Index
  *   `data/produkte-3d.json` muss da und leer sein, `produkte-3d/` leer oder
@@ -23,7 +28,9 @@
  */
 const fs = require('fs')
 const path = require('path')
-const { checkFile, staleFiles } = require('./model-lock')
+const { checkFile, lockDateien, staleFiles } = require('./model-lock')
+const { alleSlots } = require('./belegung')
+const { pruefeRauminfos } = require('./rauminfos')
 const { zaehlePreisPrimitive } = require('./glb-bereinigen')
 const { pruefeSnapshot } = require('./product-snapshot')
 const { ZIEL_ORDNER, pruefeIndex } = require('./produkte-3d-lock')
@@ -31,7 +38,19 @@ const { ZIEL_ORDNER, pruefeIndex } = require('./produkte-3d-lock')
 const FIXTURE_ENV = 'DIGITALE_BAECKEREI_FIXTURE'
 const EURO = Buffer.from('€', 'utf8')
 const MODELL_INDEX = 'produkte-3d.json'
-const DATEN = ['belegung.json', 'products.snapshot.json', MODELL_INDEX]
+const RAUMINFOS = 'rauminfos.json'
+const DATEN = [
+  'belegung.json',
+  'products.snapshot.json',
+  MODELL_INDEX,
+  RAUMINFOS,
+]
+/**
+ * Woran man die synthetischen Räume der Tests erkennt (id und Name aus
+ * src/test/fixtures/testraeume.ts; fixture.spec.ts hält die Liste vollständig).
+ * Steht eine dieser Zeichenketten irgendwo im Export, ist es kein echter Build.
+ */
+const TEST_SPUREN = ['testbackstube', 'Testbackstube']
 
 /** Alle Dateien unter `dir`, relativ, sortiert. @param {string} dir @returns {string[]} */
 function alleDateien(dir) {
@@ -95,10 +114,11 @@ function pruefeExport({ outDir, lock, env = {}, basePath = '' }) {
 
   // Modell: nur was im Lock steht, und genau die bereinigte Datei.
   const modelDir = path.join(outDir, 'model')
-  for (const name of staleFiles(namenIn(modelDir), Object.keys(lock.files))) {
+  for (const name of staleFiles(namenIn(modelDir), lockDateien(lock))) {
     fehler.push(`model/${name} steht nicht im Lock und darf nicht raus`)
   }
-  for (const [name, entry] of Object.entries(lock.files)) {
+  for (const entry of Object.values(lock.raeume)) {
+    const name = entry.datei
     const file = path.join(modelDir, name)
     if (!entry.ausgeliefert) {
       fehler.push(
@@ -126,7 +146,7 @@ function pruefeExport({ outDir, lock, env = {}, basePath = '' }) {
     }
   }
 
-  // Daten: nur Belegung, Snapshot und der (leere) Index der Nahansicht.
+  // Daten: nur Belegung, Snapshot, Rauminfos und der (leere) Index der Nahansicht.
   const dataDir = path.join(outDir, 'data')
   for (const name of staleFiles(namenIn(dataDir), DATEN)) {
     fehler.push(`data/${name} gehört nicht in den Export`)
@@ -140,17 +160,46 @@ function pruefeExport({ outDir, lock, env = {}, basePath = '' }) {
       return null
     }
   }
-  const belegung = liesJson('belegung.json')
+  const gesperrt = new Set(Object.keys(lock.raeume))
+  /** @param {string} datei @param {unknown} raeume */
+  const nurGesperrte = (datei, raeume) => {
+    const fremd = Object.keys(
+      typeof raeume === 'object' && raeume !== null ? raeume : {}
+    ).filter((raum) => !gesperrt.has(raum))
+    if (fremd.length > 0) {
+      fehler.push(
+        `data/${datei} nennt ${fremd.length} Raum/Räume, die nicht im Lock stehen`
+      )
+    }
+  }
+  const belegungRaw = liesJson('belegung.json')
+  /** @type {{ slots: { produkt?: unknown }[] } | null} */
+  let belegung = null
+  if (belegungRaw !== null) {
+    try {
+      belegung = alleSlots(belegungRaw)
+      nurGesperrte('belegung.json', belegungRaw.raeume)
+    } catch {
+      fehler.push('data/belegung.json hat nicht die erwartete Form')
+    }
+  }
+  const rauminfosRaw = liesJson(RAUMINFOS)
+  if (rauminfosRaw !== null) {
+    try {
+      nurGesperrte(RAUMINFOS, pruefeRauminfos(rauminfosRaw).raeume)
+    } catch (err) {
+      // Die Meldungen von pruefeRauminfos nennen Raum, Stelle und Feld, keinen Inhalt.
+      fehler.push(
+        `data/${RAUMINFOS}: ${err instanceof Error ? err.message : String(err)}`
+      )
+    }
+  }
   const snapshotRaw = liesJson('products.snapshot.json')
   if (snapshotRaw !== null) {
     try {
       const snapshot = pruefeSnapshot(snapshotRaw)
       const belegt = new Set(
-        Array.isArray(belegung?.slots)
-          ? belegung.slots.map(
-              (/** @type {{ produkt?: unknown }} */ s) => s.produkt
-            )
-          : []
+        belegung ? belegung.slots.map((s) => s.produkt) : []
       )
       const fremd = Object.keys(snapshot.produkte).filter(
         (id) => !belegt.has(id)
@@ -198,14 +247,24 @@ function pruefeExport({ outDir, lock, env = {}, basePath = '' }) {
     }
   }
 
-  // Kein „€“ - nirgends im Export.
+  // Kein „€“ und keine Spur der Test-Räume - nirgends im Export.
   for (const rel of alleDateien(outDir)) {
-    if (fs.readFileSync(path.join(outDir, rel)).includes(EURO)) {
+    const inhalt = fs.readFileSync(path.join(outDir, rel))
+    if (inhalt.includes(EURO)) {
       fehler.push(`${rel} enthält „€“ - vorerst keine Preise (DB8)`)
+    }
+    if (
+      TEST_SPUREN.some(
+        (spur) => rel.includes(spur) || inhalt.includes(Buffer.from(spur))
+      )
+    ) {
+      fehler.push(
+        `${rel} enthält einen synthetischen Test-Raum - den gibt es nur im Fixture-Build`
+      )
     }
   }
 
   return fehler
 }
 
-module.exports = { FIXTURE_ENV, pruefeExport }
+module.exports = { FIXTURE_ENV, TEST_SPUREN, pruefeExport }

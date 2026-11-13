@@ -28,6 +28,7 @@
  */
 import { Box3, Raycaster, Vector2, Vector3 } from 'three'
 import type { Material, Mesh, Object3D, PerspectiveCamera, Ray } from 'three'
+import { gehoertZu } from '../raeume/rauminfos'
 import { createHervorhebung, UEBERZUG } from './interact'
 import type { HervorhebungsZiel } from './interact'
 import {
@@ -103,7 +104,11 @@ export interface Ziele {
    * `tippWinkel`) = Radius der Tippflächen, 0 = nur genaue Treffer.
    */
   waehle(ray: Ray, winkel?: number, weite?: number): Treffer | null
-  /** Sichtbare Meshes und Mitte eines Platzes zum Hervorheben, oder null. */
+  /**
+   * Sichtbare Meshes und Mitte eines Platzes zum Hervorheben, oder null.
+   * Kennt niemand den Platz genau, gilt `slot` als Anfang der Kennung: alle
+   * Stücke `<slot>/…` zusammen (Stationen mit Infopunkt).
+   */
   suche(slot: string): HervorhebungsZiel | null
 }
 
@@ -278,11 +283,22 @@ export function createZiele(root: Object3D): Ziele {
     },
 
     suche: (slot) => {
-      const ziel = ziele.get(slot)
-      if (!ziel || ziel.umschliessend) return null
+      // Ein Platz (`brotregal/ebene-1/platz-01`) - oder der Knoten eines
+      // Infopunkts (`ofen`): dann alle Stücke, die dazu gehören (`ofen/…`).
+      // Ein belegter Platz bleibt für sich, auch wenn unter ihm noch etwas hinge.
+      const exakt = ziele.get(slot)
+      const istPlatz = exakt?.knoten.some(
+        (k) => k.produkt !== undefined || k.ware !== undefined
+      )
+      const gruppe = (
+        exakt && istPlatz
+          ? [exakt]
+          : [...ziele.values()].filter((z) => gehoertZu(z.slot, slot))
+      ).filter((z) => !z.umschliessend)
+      if (gruppe.length === 0) return null
       const box = new Box3()
       const out: Mesh[] = []
-      for (const knoten of ziel.knoten) {
+      for (const knoten of gruppe.flatMap((z) => z.knoten)) {
         for (const mesh of knoten.meshes) {
           if (!sichtbar(mesh)) continue
           out.push(mesh)

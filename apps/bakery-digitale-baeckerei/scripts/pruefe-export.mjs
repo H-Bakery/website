@@ -45,9 +45,13 @@ if (fehler.length > 0) {
   for (const zeile of fehler) console.error(`  - ${zeile}`)
   process.exit(1)
 }
-const served = lock.files['twin.glb']?.ausgeliefert
+const modelle = Object.entries(lock.raeume)
+  .map(([raum, { ausgeliefert: served }]) =>
+    served
+      ? `${raum} sha256 ${served.sha256.slice(0, 12)}…, ${served.bytes} Bytes`
+      : raum
+  )
+  .join('; ')
 console.log(
-  `pruefe-export: in Ordnung - Modell ${
-    served ? `sha256 ${served.sha256.slice(0, 12)}…, ${served.bytes} Bytes` : ''
-  }, ohne Preisschilder; Snapshot im Vertrag; keine 3D-Modelle einzelner Produkte; kein „€“ im Export.`
+  `pruefe-export: in Ordnung - Modell ${modelle}, ohne Preisschilder; Snapshot und Rauminfos im Vertrag; keine 3D-Modelle einzelner Produkte; kein Test-Raum; kein „€“ im Export.`
 )
