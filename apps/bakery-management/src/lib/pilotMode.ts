@@ -63,6 +63,9 @@ export const PILOT_ALLOWED_ROUTES: readonly string[] = [
   // Inhaber, Backstubenleitung und Backstube, anlegen/ändern nur Inhaber und
   // Backstubenleitung - das regelt ROLE_ACCESS (roles.ts).
   '/admin/rezepte',
+  // Ausgangsrechnungen mit ZUGFeRD-PDF: im Pilot für den Inhaber sichtbar
+  // (nur er darf sie - ROLE_ACCESS in roles.ts, API: /api/invoices `inhaber`).
+  '/admin/rechnungen',
   // Kommende Pilot-Bildschirme (M1/M2):
   '/admin/preorders',
   '/admin/preorders/abholliste', // P2 (liegt unter /admin/preorders)
