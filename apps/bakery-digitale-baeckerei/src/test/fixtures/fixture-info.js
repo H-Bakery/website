@@ -14,6 +14,7 @@ const {
   leseGlb: leseContainer,
   zaehlePreisPrimitive,
 } = require('../../../scripts/glb-bereinigen')
+const { alsDatei, leseVerzeichnis } = require('../../../scripts/rauminfos')
 
 const GLB_PATH = path.join(__dirname, 'twin.fixture.glb')
 const SNAPSHOT_PATH = path.join(__dirname, 'products.snapshot.fixture.json')
@@ -22,6 +23,32 @@ const GENERATOR_PATH = path.join(__dirname, 'build-fixture.mjs')
 const PRODUKT_GLB_PATH = path.join(__dirname, 'produkt.fixture.glb')
 const PRODUKT_INDEX_PATH = path.join(__dirname, 'produkte-3d.fixture.json')
 const PRODUKT_GENERATOR_PATH = path.join(__dirname, 'build-produkt-fixture.mjs')
+/** Mini-Modell des zweiten, erfundenen Raums („Testbackstube“, DB11). */
+const BACKSTUBE_GLB_PATH = path.join(__dirname, 'testbackstube.fixture.glb')
+/** Synthetische Infopunkte: `<raum>.yaml`, in der Form der Dateien in hq. */
+const RAUMINFOS_DIR = path.join(__dirname, 'raeume')
+/**
+ * Die Räume des Fixtures: id (wie in src/config/raeume.ts bzw. testraeume.ts),
+ * Datei unter public/model/ und die Quelle hier. Danach bauen die
+ * Sync-Skripte im Fixture-Modus - statt nach model.lock.json.
+ */
+const RAEUME = [
+  { id: 'laden', datei: 'twin.glb', quelle: GLB_PATH },
+  {
+    id: 'testbackstube',
+    datei: 'testbackstube.glb',
+    quelle: BACKSTUBE_GLB_PATH,
+  },
+]
+/** Die Stationen der Testbackstube: mit Infopunkt, ohne, und die Tür. */
+const STATIONEN = {
+  ofen: { knoten: 'ofen', titel: 'Testofen' },
+  kneter: { knoten: 'kneter', titel: 'Testkneter' },
+  tisch: { knoten: 'arbeitstisch', titel: 'Testtisch' },
+  ohneInfo: { knoten: 'spuele' },
+  tuer: { knoten: 'tuer', ziel: 'laden' },
+}
+
 /** Das eine Fixture-Produkt mit Nahansicht - und eines ohne. */
 const MIT_MODELL = { produkt: 'testbrot-500g', name: 'Testbrot' }
 const OHNE_MODELL = { produkt: 'testkekse', name: 'Testkekse' }
@@ -76,10 +103,26 @@ function plaetze(json) {
 /**
  * Das Mini-Modell, wie `sync-model` es im Fixture-Modus ausliefert: ohne die
  * Preisschilder (`scripts/glb-bereinigen.js`), Byte für Byte herleitbar.
+ * @param {string} [raum] id aus `RAEUME`
  * @returns {Buffer}
  */
-function ausgeliefertesModell() {
-  return Buffer.from(bereinigeGlb(fs.readFileSync(GLB_PATH)).glb)
+function ausgeliefertesModell(raum = 'laden') {
+  const eintrag = RAEUME.find((r) => r.id === raum)
+  if (!eintrag) throw new Error(`Fixture-Raum ${raum} gibt es nicht`)
+  return Buffer.from(bereinigeGlb(fs.readFileSync(eintrag.quelle)).glb)
+}
+
+/**
+ * `data/rauminfos.json`, wie `sync-rauminfos` sie im Fixture-Modus schreibt:
+ * aus den YAML-Dateien hier, mit demselben Leser wie für hq.
+ * @returns {Buffer}
+ */
+function rauminfosDatei() {
+  const { rauminfos } = leseVerzeichnis(
+    RAUMINFOS_DIR,
+    RAEUME.map((r) => r.id)
+  )
+  return Buffer.from(alsDatei(rauminfos), 'utf8')
 }
 
 /**
@@ -93,13 +136,31 @@ function ausgeliefertesModell() {
  * @returns {string | null}
  */
 function exportFehler(outDir) {
-  const model = path.join(outDir, 'model', 'twin.glb')
   const snapshot = path.join(outDir, 'data', 'products.snapshot.json')
+  for (const raum of RAEUME) {
+    const model = path.join(outDir, 'model', raum.datei)
+    if (
+      !fs.existsSync(model) ||
+      !fs.readFileSync(model).equals(ausgeliefertesModell(raum.id))
+    ) {
+      return `${model} ist nicht das synthetische Fixture (bereinigt). Nur mit DIGITALE_BAECKEREI_FIXTURE=1 gebaut - nie mit dem echten Modell.`
+    }
+  }
+  const modelDir = path.join(outDir, 'model')
+  const fremd = fs
+    .readdirSync(modelDir)
+    .filter((name) => !RAEUME.some((r) => r.datei === name))
+  if (fremd.length > 0) {
+    return `${modelDir} enthält mehr als die synthetischen Modelle (${fremd.join(
+      ', '
+    )}). Nur mit DIGITALE_BAECKEREI_FIXTURE=1 gebaut - nie mit dem echten Modell.`
+  }
+  const rauminfos = path.join(outDir, 'data', 'rauminfos.json')
   if (
-    !fs.existsSync(model) ||
-    !fs.readFileSync(model).equals(ausgeliefertesModell())
+    !fs.existsSync(rauminfos) ||
+    !fs.readFileSync(rauminfos).equals(rauminfosDatei())
   ) {
-    return `${model} ist nicht das synthetische Fixture (bereinigt). Nur mit DIGITALE_BAECKEREI_FIXTURE=1 gebaut - nie mit dem echten Modell.`
+    return `${rauminfos} sind nicht die synthetischen Infopunkte. Nur mit DIGITALE_BAECKEREI_FIXTURE=1 gebaut - nie mit echten Texten aus hq.`
   }
   if (
     !fs.existsSync(snapshot) ||
@@ -163,6 +224,11 @@ function erwarteteEintraege(moebel) {
 }
 
 module.exports = {
+  BACKSTUBE_GLB_PATH,
+  RAEUME,
+  RAUMINFOS_DIR,
+  STATIONEN,
+  rauminfosDatei,
   GENERATOR_PATH,
   GLB_PATH,
   MIT_MODELL,

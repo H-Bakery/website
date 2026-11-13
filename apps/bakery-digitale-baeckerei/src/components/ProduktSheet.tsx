@@ -17,7 +17,7 @@ import {
   TOUCH_TARGET,
   rand,
 } from './theme'
-import type { ProduktInfo } from '../lib/produkte/types'
+import type { Karte } from '../lib/karte'
 
 export const MEHR_LESEN_TEXT = 'Mehr lesen'
 export const WENIGER_TEXT = 'Weniger'
@@ -28,8 +28,8 @@ export const NAHANSICHT_TEXT = 'In 3D ansehen'
 export const ZIEH_SCHWELLE = 64
 
 export interface ProduktSheetProps {
-  /** `null` = geschlossen */
-  produkt: ProduktInfo | null
+  /** Inhalt der Karte - ein Produkt oder ein Infopunkt; `null` = geschlossen */
+  produkt: Karte | null
   onClose: () => void
   /**
    * Eine unsichtbare Fläche über der Szene schließt das Sheet beim Tippen
@@ -92,7 +92,7 @@ function OffenesSheet({
   hinweis,
   onNahansicht,
 }: {
-  produkt: ProduktInfo
+  produkt: Karte
   onClose: () => void
   hintergrundSchliesst: boolean
   fokus: boolean

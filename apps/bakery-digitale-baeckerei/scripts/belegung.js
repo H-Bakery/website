@@ -103,4 +103,49 @@ function belegungAusGlb(glb, commit) {
   return belegungAusGltf(parseGlbJson(glb), commit)
 }
 
-module.exports = { parseGlbJson, belegungAusGltf, belegungAusGlb }
+/**
+ * `public/data/belegung.json`: die Belegung aller gebauten Räume in einer
+ * Datei, Schlüssel = id des Raums (src/config/raeume.ts). Ein Raum ohne
+ * Produkte (Backstube) steht mit leeren `slots` darin.
+ * @typedef {{ version: 2, raeume: Record<string, { quelle: { commit: string }, slots: BelegungEintrag[] }> }} BelegungDatei
+ * @param {Record<string, Belegung>} jeRaum
+ * @returns {BelegungDatei}
+ */
+function fasseZusammen(jeRaum) {
+  /** @type {BelegungDatei['raeume']} */
+  const raeume = {}
+  for (const [raum, belegung] of Object.entries(jeRaum)) {
+    raeume[raum] = { quelle: belegung.quelle, slots: belegung.slots }
+  }
+  return { version: 2, raeume }
+}
+
+/**
+ * Alle belegten Plätze aller Räume hintereinander - für alles, was nur
+ * wissen will, welche Produkte irgendwo liegen (Snapshot, Export-Wächter).
+ * Wirft, wenn die Datei nicht die Form `BelegungDatei` hat.
+ * @param {unknown} datei
+ * @returns {{ slots: BelegungEintrag[] }}
+ */
+function alleSlots(datei) {
+  if (!isRecord(datei) || datei.version !== 2 || !isRecord(datei.raeume)) {
+    throw new Error('belegung.json hat nicht die erwartete Form (version 2)')
+  }
+  /** @type {BelegungEintrag[]} */
+  const slots = []
+  for (const [raum, eintrag] of Object.entries(datei.raeume)) {
+    if (!isRecord(eintrag) || !Array.isArray(eintrag.slots)) {
+      throw new Error(`belegung.json: slots für Raum ${raum} fehlt`)
+    }
+    slots.push(...eintrag.slots)
+  }
+  return { slots }
+}
+
+module.exports = {
+  alleSlots,
+  belegungAusGlb,
+  belegungAusGltf,
+  fasseZusammen,
+  parseGlbJson,
+}

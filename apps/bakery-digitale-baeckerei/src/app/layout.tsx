@@ -1,10 +1,33 @@
 import type { Metadata, Viewport } from 'next'
 import ThemeRegistry from '../components/ThemeRegistry'
-import { START_RAUM_ID, findeRaum } from '../config/raeume'
+import { START_RAUM_ID } from '../config/raeume'
 import { modelUrl } from '../lib/basePath'
+import { RAUM_PARAMETER, raumAusAdresse } from '../lib/raeume/adresse'
+import { VERFUEGBARE_RAEUME } from '../lib/raeume/verfuegbar'
 
 /** Das Modell des Raums, in dem die App startet. */
-const START_MODELL = findeRaum(START_RAUM_ID)?.modell ?? 'twin.glb'
+const START_MODELL =
+  raumAusAdresse('', VERFUEGBARE_RAEUME, START_RAUM_ID)?.modell ?? 'twin.glb'
+
+/**
+ * Mehr als ein Raum: Welches Modell gebraucht wird, steht erst in der Adresse
+ * (`?raum=<id>`). Ein festes `<link rel=preload>` lüde dann für jeden Link in
+ * einen anderen Raum das Modell des Ladens umsonst mit - darum setzt dieses
+ * kleine Skript den Link passend zur Adresse. Bei nur einem Raum bleibt es
+ * beim festen Link (kein Skript).
+ */
+const VORLADEN =
+  VERFUEGBARE_RAEUME.length > 1
+    ? `(function(){var m=${JSON.stringify(
+        Object.fromEntries(
+          VERFUEGBARE_RAEUME.map((r) => [r.id, modelUrl(r.modell)])
+        )
+      )},u=${JSON.stringify(
+        modelUrl(START_MODELL)
+      )};try{var r=new URLSearchParams(location.search).get(${JSON.stringify(
+        RAUM_PARAMETER
+      )});if(r&&Object.prototype.hasOwnProperty.call(m,r))u=m[r]}catch(e){}var l=document.createElement('link');l.rel='preload';l.setAttribute('as','fetch');l.setAttribute('crossorigin','anonymous');l.href=u;document.head.appendChild(l)})()`
+    : null
 
 export const metadata: Metadata = {
   title: 'Digitale Bäckerei – Bäckerei Heusser',
@@ -41,12 +64,16 @@ export default function RootLayout({
             ganzen JS-Kette angefragt: schon mit dem HTML laden. `fetch()` in
             loadModel.ts nimmt genau diese Antwort (gleiche URL, gleicher
             Modus) - kein zweiter Download. */}
-        <link
-          rel="preload"
-          as="fetch"
-          crossOrigin="anonymous"
-          href={modelUrl(START_MODELL)}
-        />
+        {VORLADEN ? (
+          <script dangerouslySetInnerHTML={{ __html: VORLADEN }} />
+        ) : (
+          <link
+            rel="preload"
+            as="fetch"
+            crossOrigin="anonymous"
+            href={modelUrl(START_MODELL)}
+          />
+        )}
       </head>
       <body>
         <ThemeRegistry>{children}</ThemeRegistry>

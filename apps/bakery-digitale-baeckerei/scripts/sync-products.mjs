@@ -25,6 +25,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import hqProducts from '../../../libs/shared/hq-products/src/index.js'
+import belegungLib from './belegung.js'
 import productSnapshot from './product-snapshot.js'
 
 const { readHqProducts } = hqProducts
@@ -57,7 +58,11 @@ function writeJson(file, value) {
   fs.renameSync(tmp, file)
 }
 
-/** Die Belegung aus dem Modell (sync-model) - ohne sie geht es nicht weiter. */
+/**
+ * Die Belegung aus den Modellen (sync-model), alle Räume zusammen: Der
+ * Snapshot kennt ein Produkt, sobald es in irgendeinem Raum liegt. Ohne sie
+ * geht es nicht weiter.
+ */
 function leseBelegung() {
   if (!fs.existsSync(belegungPath)) {
     fail(
@@ -65,9 +70,9 @@ function leseBelegung() {
     )
   }
   try {
-    const belegung = JSON.parse(fs.readFileSync(belegungPath, 'utf8'))
-    if (!Array.isArray(belegung.slots)) throw new Error('slots fehlt')
-    return belegung
+    return belegungLib.alleSlots(
+      JSON.parse(fs.readFileSync(belegungPath, 'utf8'))
+    )
   } catch (err) {
     return fail(
       `public/data/belegung.json lässt sich nicht lesen (${

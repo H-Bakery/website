@@ -11,7 +11,7 @@ import ListItemButton from '@mui/material/ListItemButton'
 import ListItemText from '@mui/material/ListItemText'
 import Typography from '@mui/material/Typography'
 import useMediaQuery from '@mui/material/useMediaQuery'
-import type { ListenEintrag } from '../lib/produkte/zuordnung'
+import type { ListenZeile } from '../lib/karte'
 import { KEINE_PRODUKTINFOS_TEXT, gruppiereEintraege } from './produktliste'
 import { SEITLICH, TOUCH_TARGET, WENIGER_BEWEGUNG } from './theme'
 
@@ -21,10 +21,13 @@ export const ENTDECKT_ZEILE_TEXT = 'schon entdeckt'
 
 export interface AllesHierListeProps {
   offen: boolean
-  /** alle belegten Plätze des Blickpunkts; gleiche Produkte werden eine Zeile */
-  eintraege: ListenEintrag[]
+  /**
+   * alle belegten Plätze und Infopunkte des Blickpunkts; gleiche Produkte
+   * werden eine Zeile
+   */
+  eintraege: ListenZeile[]
   blickpunktName: string
-  /** bekommt den (ersten) Platz des gewählten Produkts */
+  /** bekommt den (ersten) Platz des gewählten Produkts bzw. den Knoten des Infopunkts */
   onSelect: (slot: string) => void
   onClose: () => void
   /**

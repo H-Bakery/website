@@ -13,7 +13,7 @@
         "command": "node scripts/sync-model.mjs"
       },
       "metadata": {
-        "description": "Downloads twin.glb at the commit pinned in model.lock.json, verifies its sha256, strips the price cards (scripts/glb-bereinigen.js), verifies the result against the lock's second checksum (ausgeliefert), writes it to public/model/ (git-ignored) and derives public/data/belegung.json (which product sits on which slot in the morning) from it. Aborts on any mismatch. No download when the served file is already there. DIGITALE_BAECKEREI_FIXTURE=1: no download, strips and uses the synthetic src/test/fixtures/twin.fixture.glb."
+        "description": "Downloads the model of every room in model.lock.json (today: the shop, twin.glb) at its pinned commit, verifies its sha256, strips the price cards (scripts/glb-bereinigen.js), verifies the result against the lock's second checksum (ausgeliefert), writes it to public/model/ (git-ignored) and derives public/data/belegung.json (per room: which product sits on which slot in the morning) from it. Aborts on any mismatch. No download when the served file is already there. DIGITALE_BAECKEREI_FIXTURE=1: no download, strips and uses the synthetic models in src/test/fixtures (shop and the invented second room)."
       }
     },
     "sync-products": {
@@ -39,10 +39,26 @@
         "description": "Copies the per-product 3D models (close-up in the product sheet) at the commit pinned in produkte-3d.lock.json from the local-only data repo ../produkte-3d (PRODUKTE_3D_DIR) into public/produkte-3d/ (git-ignored), verifies sha256, and writes public/data/produkte-3d.json. No data repo (CI, deploy, other machines): empty index, exit 0 - the app then offers no close-up. DIGITALE_BAECKEREI_FIXTURE=1: copies the synthetic src/test/fixtures/produkt.fixture.glb instead."
       }
     },
+    "sync-rauminfos": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "cwd": "apps/bakery-digitale-baeckerei",
+        "command": "node scripts/sync-rauminfos.mjs"
+      },
+      "metadata": {
+        "description": "Reads the info points of each room locked in model.lock.json from <hq>/config/digitale-baeckerei/raeume/<raum>.yaml (HQ_DIGITALE_BAECKEREI_DIR, else next to HQ_PRODUCTS_DIR) and writes public/data/rauminfos.json (git-ignored). No folder or file: no info points, exit 0 - never invented text. A file outside the contract aborts. DIGITALE_BAECKEREI_FIXTURE=1: reads the synthetic src/test/fixtures/raeume/*.yaml instead."
+      }
+    },
     "build": {
       "executor": "nx:run-commands",
       "cache": false,
-      "dependsOn": ["sync-model", "sync-products", "sync-produkte-3d"],
+      "dependsOn": [
+        "sync-model",
+        "sync-products",
+        "sync-produkte-3d",
+        "sync-rauminfos"
+      ],
       "outputs": ["{projectRoot}/out"],
       "options": {
         "cwd": "apps/bakery-digitale-baeckerei",
@@ -54,7 +70,12 @@
     },
     "serve": {
       "executor": "nx:run-commands",
-      "dependsOn": ["sync-model", "sync-products", "sync-produkte-3d"],
+      "dependsOn": [
+        "sync-model",
+        "sync-products",
+        "sync-produkte-3d",
+        "sync-rauminfos"
+      ],
       "options": {
         "cwd": "apps/bakery-digitale-baeckerei",
         "command": "npx next dev --webpack -p 4222"

@@ -1,4 +1,10 @@
-import { belegungAusGlb, belegungAusGltf, parseGlbJson } from './belegung'
+import {
+  alleSlots,
+  belegungAusGlb,
+  belegungAusGltf,
+  fasseZusammen,
+  parseGlbJson,
+} from './belegung'
 
 // Winzige, von Hand gebaute GLB-Puffer mit erfundenen Produkten - das echte
 // Modell liegt nie im Repo.
@@ -235,5 +241,43 @@ describe('belegungAusGlb', () => {
       'testregal/ebene-1/platz-01',
       'testregal/ebene-1/platz-02',
     ])
+  })
+})
+
+describe('belegung.json: alle Räume in einer Datei', () => {
+  const laden = belegungAusGlb(glb(MODELL), 'abc').belegung
+  const leer = belegungAusGltf({}, 'def').belegung
+
+  it('fasst die Räume zusammen, Schlüssel = id des Raums; ein Raum ohne Produkte steht leer darin', () => {
+    expect(fasseZusammen({ laden, werkstatt: leer })).toEqual({
+      version: 2,
+      raeume: {
+        laden: { quelle: { commit: 'abc' }, slots: laden.slots },
+        werkstatt: { quelle: { commit: 'def' }, slots: [] },
+      },
+    })
+  })
+
+  it('alleSlots: die Plätze aller Räume hintereinander', () => {
+    const datei = fasseZusammen({ laden, werkstatt: leer, lager: laden })
+    expect(alleSlots(datei).slots).toEqual([...laden.slots, ...laden.slots])
+    expect(alleSlots(fasseZusammen({})).slots).toEqual([])
+  })
+
+  it.each([
+    [
+      'altes Format (ein Raum)',
+      { version: 1, quelle: { commit: 'x' }, slots: [] },
+    ],
+    ['kein Objekt', null],
+    ['raeume fehlt', { version: 2 }],
+  ])('alleSlots lehnt ab: %s', (_name, datei) => {
+    expect(() => alleSlots(datei)).toThrow(/erwartete Form/)
+  })
+
+  it('alleSlots lehnt einen Raum ohne slots ab', () => {
+    expect(() =>
+      alleSlots({ version: 2, raeume: { laden: { quelle: { commit: 'x' } } } })
+    ).toThrow(/slots für Raum laden fehlt/)
   })
 })

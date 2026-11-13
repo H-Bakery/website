@@ -33,6 +33,11 @@
  * - `intro-ueberspringen`: der Knopf „Überspringen“, solange der Flug zum
  *   Start läuft; das Canvas heißt dann „…, Flug von der Straße zur Theke“.
  *
+ * - `raum-wechsel`: der Knopf in der Leiste, der in den anderen Raum führt
+ *   („In die Testbackstube“ / „In den Laden“). Den zweiten, erfundenen Raum
+ *   gibt es nur im Fixture-Build (`TESTBACKSTUBE`); `oeffneRaum()` öffnet ihn
+ *   über seinen Link `?raum=<id>`.
+ *
  * **Flug zum Start:** `oeffne()` stellt ihn mit `?intro=0` ab - sonst
  * dauerte jeder Test die 7,5 s des Flugs länger, und bis zur Ankunft gibt es
  * weder Leiste noch Antippen. Nur `intro.spec.ts` öffnet mit Flug
@@ -45,13 +50,17 @@ import { expect, type Locator, type Page } from '@playwright/test'
 import {
   START_RAUM_ID,
   findeRaum,
+  type Raum,
 } from '../../../bakery-digitale-baeckerei/src/config/raeume'
+// eslint-disable-next-line @nx/enforce-module-boundaries
+import { TESTBACKSTUBE } from '../../../bakery-digitale-baeckerei/src/test/fixtures/testraeume'
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import { ansichtFuer } from '../../../bakery-digitale-baeckerei/src/lib/scene/view'
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import {
   MIT_MODELL,
   OHNE_MODELL,
+  STATIONEN,
   VARIANTE,
   WAISE,
   erwarteteEintraege,
@@ -62,6 +71,8 @@ import {
 export {
   MIT_MODELL,
   OHNE_MODELL,
+  STATIONEN,
+  TESTBACKSTUBE,
   VARIANTE,
   WAISE,
   erwarteteEintraege,
@@ -250,6 +261,86 @@ export async function oeffne(
   return protokoll
 }
 
+/** Der Laden, wie ihn die App konfiguriert. */
+export const LADEN = findeRaum(START_RAUM_ID) as Raum
+
+/** Der Knopf in der Leiste, der in den anderen Raum führt. */
+export const raumWechsel = (page: Page): Locator =>
+  page.getByTestId('raum-wechsel')
+
+/** Namen der Knoten des geladenen Modells, die so beginnen. */
+export const knotenNamen = (page: Page, prefix: string): Promise<string[]> =>
+  page.evaluate(
+    (p) => window.__digitaleBaeckerei?.nodes(p).map((n) => n.name) ?? [],
+    prefix
+  )
+
+/**
+ * Wartet, bis der Raum `raum` steht: Szene bereit, sein Start-Blickpunkt am
+ * Canvas, und im Modell liegen seine Stücke (`kennzeichen` = ein Knoten, den
+ * nur dieser Raum hat) - nicht die des vorigen Raums.
+ */
+export async function imRaum(
+  page: Page,
+  raum: Raum,
+  kennzeichen: string
+): Promise<void> {
+  await expect(page.locator('main[data-zustand="bereit"]')).toBeVisible({
+    timeout: 60_000,
+  })
+  const start = raum.blickpunkte.find((b) => b.id === raum.start)
+  await expect(szene(page, start?.name ?? '')).toBeVisible()
+  await expect
+    .poll(async () => (await knotenNamen(page, kennzeichen)).length)
+    .toBeGreaterThan(0)
+  await ruhe(page)
+}
+
+/** Ein Knoten, den nur die Testbackstube hat - und einer nur im Laden. */
+export const NUR_BACKSTUBE = 'ofen/korpus'
+export const NUR_LADEN = 'theke/korpus'
+
+/**
+ * Öffnet die App über den Link in die Testbackstube (`?raum=<id>`), mit
+ * Messhaken und ohne Flug.
+ */
+export async function oeffneRaum(page: Page, raum: Raum): Promise<Protokoll> {
+  const protokoll = protokolliere(page)
+  const antwort = await page.goto(`${PFAD}?debug&intro=0&raum=${raum.id}`)
+  expect(antwort?.status()).toBe(200)
+  await imRaum(page, raum, NUR_BACKSTUBE)
+  return protokoll
+}
+
+/**
+ * Lebende WebGL-Kontexte der Seite (Chromium, DevTools-Protokoll), nach einer
+ * Speicherbereinigung - so zählt auch `nahansicht.spec.ts`.
+ */
+export async function webglKontexte(
+  page: Page
+): Promise<() => Promise<number>> {
+  const cdp = await page.context().newCDPSession(page)
+  return async () => {
+    await cdp.send('HeapProfiler.collectGarbage')
+    const proto = await cdp.send('Runtime.evaluate', {
+      expression: 'WebGL2RenderingContext.prototype',
+      objectGroup: 'zaehlen',
+    })
+    const alle = await cdp.send('Runtime.queryObjects', {
+      prototypeObjectId: proto.result.objectId ?? '',
+      objectGroup: 'zaehlen',
+    })
+    const anzahl = await cdp.send('Runtime.callFunctionOn', {
+      objectId: alle.objects.objectId,
+      functionDeclaration: 'function () { return this.length }',
+      returnByValue: true,
+    })
+    // Die eigene Liste wieder loslassen - sonst hält die Messung fest.
+    await cdp.send('Runtime.releaseObjectGroup', { objectGroup: 'zaehlen' })
+    return anzahl.result.value as number
+  }
+}
+
 /**
  * Alles, was ein Mensch oder ein Screenreader zu lesen bekommt: Textknoten
  * (ohne Skripte und Styles) und beschreibende Attribute.
@@ -302,10 +393,12 @@ export function blickpunktKnopf(page: Page, name: string): Locator {
  * einem ausgelasteten Rechner beginnt die Fahrt manchmal erst nach der ersten
  * Messung, und „kein neues Bild“ hieße dann fälschlich „angekommen“.
  */
-export async function angekommen(page: Page, name: string): Promise<void> {
-  const blickpunkt = findeRaum(START_RAUM_ID)?.blickpunkte.find(
-    (b) => b.name === name
-  )
+export async function angekommen(
+  page: Page,
+  name: string,
+  raum: Raum = LADEN
+): Promise<void> {
+  const blickpunkt = raum.blickpunkte.find((b) => b.name === name)
   if (!blickpunkt) throw new Error(`Blickpunkt ${name} gibt es nicht`)
   const viewport = page.viewportSize()
   if (!viewport) throw new Error('kein Viewport')
@@ -328,11 +421,15 @@ export async function angekommen(page: Page, name: string): Promise<void> {
   await ruhe(page)
 }
 
-export async function wechsleZu(page: Page, name: string): Promise<void> {
+export async function wechsleZu(
+  page: Page,
+  name: string,
+  raum: Raum = LADEN
+): Promise<void> {
   await blickpunktKnopf(page, name).click()
   await expect(szene(page, name)).toBeVisible()
   // Die Fahrt dorthin (≈ 0,8 s, auf langsamen Rechnern länger) abwarten.
-  await angekommen(page, name)
+  await angekommen(page, name, raum)
 }
 
 export const produktSheet = (page: Page): Locator =>

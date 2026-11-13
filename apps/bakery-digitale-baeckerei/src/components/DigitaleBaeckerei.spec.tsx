@@ -230,6 +230,9 @@ const MODELLE = {
   },
 }
 
+/** Im Laden gibt es keine Infopunkte - wie im echten Build ohne Datei in hq. */
+const RAUMINFOS = { version: 1, raeume: {} }
+
 const fetchMock = jest.fn()
 
 function antworteMitDaten(modelle: unknown = MODELLE) {
@@ -242,7 +245,9 @@ function antworteMitDaten(modelle: unknown = MODELLE) {
       status: 200,
       json: async () =>
         url.endsWith('/data/belegung.json')
-          ? BELEGUNG
+          ? { version: 2, raeume: { laden: BELEGUNG } }
+          : url.endsWith('/data/rauminfos.json')
+          ? RAUMINFOS
           : url.endsWith('/data/produkte-3d.json')
           ? modelle
           : SNAPSHOT,
@@ -266,7 +271,7 @@ async function bereit(strict = false) {
   const { user } = setup(strict)
   await screen.findByTestId('fake-viewer')
   await user.click(screen.getByRole('button', { name: 'fertig' }))
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(strict ? 6 : 3))
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(strict ? 8 : 4))
   // Die Liste für Screenreader erscheint, sobald die Daten geladen sind.
   await screen.findByTestId('ohne-webgl')
   return { user }
@@ -340,6 +345,7 @@ describe('DigitaleBaeckerei: Laden', () => {
       '/data/belegung.json',
       '/data/products.snapshot.json',
       '/data/produkte-3d.json',
+      '/data/rauminfos.json',
     ])
   })
 

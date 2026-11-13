@@ -34,11 +34,15 @@ Prerequisites: Node ≥ 20.9 locally (the box runs Node 22 LTS). `.npmrc` sets
 | Digitale Bäckerei (3D)  | `npm run dev:digitale-baeckerei` | 4222 |
 
 The Digitale Bäckerei needs its 3D model and product data, neither of which is in this repo: `dev:` /
-`build:digitale-baeckerei` first run three Nx targets. `sync-model` downloads `twin.glb` (public, at the
-commit pinned in `apps/bakery-digitale-baeckerei/model.lock.json`, sha256-checked), strips the price
+`build:digitale-baeckerei` first run four Nx targets. `sync-model` downloads the model of every room
+in `apps/bakery-digitale-baeckerei/model.lock.json` (today one: the shop, `twin.glb`; public, at its
+pinned commit, sha256-checked), strips the price
 cards baked into the model (`scripts/glb-bereinigen.js`), checks the result against the lock's second
 checksum (`ausgeliefert`), writes it to the git-ignored `public/model/` and derives
-`public/data/belegung.json` (which product sits on which slot) from it.
+`public/data/belegung.json` (per room: which product sits on which slot) from it.
+`sync-rauminfos` reads the info points of those rooms from
+`<hq>/config/digitale-baeckerei/raeume/<raum>.yaml` (`HQ_DIGITALE_BAECKEREI_DIR`, else next to
+`HQ_PRODUCTS_DIR`) into `public/data/rauminfos.json`; no file means no info points, never an error.
 `sync-products` reads `hq/products/*.md` (`HQ_PRODUCTS_DIR`, else `../hq/products`) through
 `libs/shared/hq-products` and writes `public/data/products.snapshot.json` **without prices** and only
 for the products the model shows; it aborts when there is no hq - there are no mock products.
@@ -47,7 +51,8 @@ pinned in `produkte-3d.lock.json` from the local-only data repo `../produkte-3d`
 set it when you build in a worktree) into the git-ignored `public/produkte-3d/`; without that repo it
 writes an empty index and the app simply offers no close-up. Without hq (or offline), set
 `DIGITALE_BAECKEREI_FIXTURE=1`: all targets then use the synthetic mini model, snapshot and product
-model from `src/test/fixtures/` and download nothing. `npm run serve:digitale-baeckerei` serves the static export
+model from `src/test/fixtures/` and download nothing - and only then the app has a second, invented
+room ("Testbackstube") to test switching rooms. `npm run serve:digitale-baeckerei` serves the static export
 on 4232, `npm run test:unit:digitale-baeckerei` runs its jest specs (no network, synthetic data).
 Subpath build: `DIGITALE_BAECKEREI_BASE_PATH=/digitale-baeckerei`. See
 [apps/digitale-baeckerei.md](./apps/digitale-baeckerei.md) and the app's `CLAUDE.md`.

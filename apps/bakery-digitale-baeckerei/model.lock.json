@@ -1,13 +1,14 @@
 {
-  "format": "bakery-model-lock-v1",
-  "source": {
-    "repo": "Open-Kirrberg/saar-lidar-data",
-    "commit": "8b416d5e0f834d0080bdbda0ff4ebd2c397e35c5",
-    "path": "zones/baeckerei-heusser/built"
-  },
-  "fetched": "2026-11-12",
-  "files": {
-    "twin.glb": {
+  "format": "bakery-model-lock-v2",
+  "raeume": {
+    "laden": {
+      "datei": "twin.glb",
+      "source": {
+        "repo": "Open-Kirrberg/saar-lidar-data",
+        "commit": "8b416d5e0f834d0080bdbda0ff4ebd2c397e35c5",
+        "path": "zones/baeckerei-heusser/built"
+      },
+      "fetched": "2026-11-12",
       "sha256": "7b63bc5795e8b49016e20e50aad7a6c4179cb58f75bad4b349a8fd4a1c2d7f7a",
       "bytes": 3237272,
       "ausgeliefert": {

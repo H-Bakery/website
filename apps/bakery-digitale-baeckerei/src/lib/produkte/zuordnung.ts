@@ -5,6 +5,7 @@
  */
 import type {
   Belegung,
+  BelegungDatei,
   BelegungEintrag,
   ProduktInfo,
   ProduktSnapshot,
@@ -34,7 +35,7 @@ function produktVon(
 export function eintraegeFuer(
   belegung: Belegung,
   snapshot: ProduktSnapshot,
-  moebel: string[]
+  moebel: readonly string[]
 ): ListenEintrag[] {
   const eintraege: ListenEintrag[] = []
   for (const eintrag of belegung.slots) {
@@ -81,14 +82,34 @@ function istEintrag(v: unknown): v is BelegungEintrag {
   )
 }
 
-function istBelegung(v: unknown): v is Belegung {
+function istBelegung(v: unknown): v is BelegungDatei {
   return (
     isRecord(v) &&
-    v.version === 1 &&
-    isRecord(v.quelle) &&
-    Array.isArray(v.slots) &&
-    v.slots.every(istEintrag)
+    v.version === 2 &&
+    isRecord(v.raeume) &&
+    Object.values(v.raeume).every(
+      (raum) =>
+        isRecord(raum) &&
+        isRecord(raum.quelle) &&
+        Array.isArray(raum.slots) &&
+        raum.slots.every(istEintrag)
+    )
   )
+}
+
+/**
+ * Die Belegung eines Raums. Nennt die Datei den Raum nicht (ein Raum ohne
+ * Modell, oder ohne Produkte), ist sie leer - es wird nichts erfunden.
+ */
+export function belegungVon(datei: BelegungDatei, raumId: string): Belegung {
+  const raum = Object.prototype.hasOwnProperty.call(datei.raeume, raumId)
+    ? datei.raeume[raumId]
+    : undefined
+  return {
+    version: 1,
+    quelle: raum?.quelle ?? { commit: '' },
+    slots: raum?.slots ?? [],
+  }
 }
 
 /**
@@ -98,7 +119,7 @@ function istBelegung(v: unknown): v is Belegung {
  */
 export async function ladeProduktdaten(
   basePath: string
-): Promise<{ snapshot: ProduktSnapshot; belegung: Belegung }> {
+): Promise<{ snapshot: ProduktSnapshot; belegung: BelegungDatei }> {
   const [snapshot, belegung] = await Promise.all([
     ladeJson(`${basePath}/data/products.snapshot.json`, 'Die Produktdaten'),
     ladeJson(`${basePath}/data/belegung.json`, 'Die Plätze im Regal'),

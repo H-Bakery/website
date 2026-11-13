@@ -116,18 +116,31 @@ test.describe('Laden unter dem Unterpfad', () => {
 })
 
 test.describe('Das Modell wird vorab geladen', () => {
-  test('steht als preload im HTML und wird genau einmal geholt', async ({
+  // Der Fixture-Build hat zwei Räume: Welches Modell gebraucht wird, steht
+  // erst in der Adresse - darum setzt ein kleines Skript im <head> den
+  // preload-Link (mit nur einem Raum steht er fest im HTML; das prüft
+  // `src/app/layout.spec.tsx` der App).
+  test('wird schon mit dem HTML angefragt und genau einmal geholt', async ({
     page,
     baseURL,
     request,
   }) => {
     const html = await (await request.get(PFAD)).text()
-    expect(html).toMatch(
-      /<link[^>]+rel="preload"[^>]+href="\/digitale-baeckerei\/model\/twin\.glb"/
-    )
-    expect(html).toMatch(/<link[^>]+as="fetch"[^>]+crossorigin/i)
+    const kopf = html.slice(0, html.indexOf('</head>'))
+    expect(kopf).toContain('"/digitale-baeckerei/model/twin.glb"')
+    expect(kopf).toContain("l.rel='preload';l.setAttribute('as','fetch')")
 
     const protokoll = await oeffne(page)
+    const links = await page.evaluate(() =>
+      Array.from(
+        document.querySelectorAll<HTMLLinkElement>('link[rel="preload"]')
+      )
+        .filter((l) => l.as === 'fetch')
+        .map((l) => ({ href: l.getAttribute('href'), cors: l.crossOrigin }))
+    )
+    expect(links).toEqual([
+      { href: '/digitale-baeckerei/model/twin.glb', cors: 'anonymous' },
+    ])
     await page.waitForLoadState('networkidle')
     const modell = `${baseURL}${PFAD}model/twin.glb`
     expect(protokoll.anfragen.filter((url) => url === modell)).toHaveLength(1)

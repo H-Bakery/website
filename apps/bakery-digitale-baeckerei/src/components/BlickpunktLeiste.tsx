@@ -11,6 +11,7 @@ import IconButton from '@mui/material/IconButton'
 import Paper from '@mui/material/Paper'
 import type { BlickpunktKurz } from '../config/raeume'
 import Quellen from './Quellen'
+import RaumWechsel, { type RaumZiel } from './RaumWechsel'
 import { EBENE, LEISTE_EINZEILIG, TOUCH_TARGET, rand } from './theme'
 
 export const ALLES_HIER_TEXT = 'Alles hier'
@@ -24,11 +25,18 @@ export interface BlickpunktLeisteProps {
   onAllesHier?: () => void
   /** Den Flug zum Start noch einmal zeigen (Knopf unter „Quellen“). */
   onIntroNochmal?: () => void
+  /**
+   * Die anderen Räume, in die man von hier wechseln kann. Leer oder ohne
+   * Angabe (es gibt nur einen Raum): kein Knopf.
+   */
+  raumZiele?: readonly RaumZiel[]
+  onRaumWechsel?: (id: string) => void
 }
 
 /**
  * Die Bedienung unten in Daumenreichweite: ein Chip je Blickpunkt, „Alles
- * hier“ und „Quellen“; dazu Pfeile am linken und rechten Rand. Die Pfeile
+ * hier“, der Wechsel in einen anderen Raum (nur wenn es einen gibt) und
+ * „Quellen“; dazu Pfeile am linken und rechten Rand. Die Pfeile
  * laufen im Kreis (nach dem letzten Blickpunkt kommt wieder der erste).
  */
 export default function BlickpunktLeiste({
@@ -37,6 +45,8 @@ export default function BlickpunktLeiste({
   onWechsel,
   onAllesHier,
   onIntroNochmal,
+  raumZiele = [],
+  onRaumWechsel,
 }: BlickpunktLeisteProps) {
   const index = blickpunkte.findIndex((b) => b.id === aktiv)
   const n = blickpunkte.length
@@ -155,6 +165,9 @@ export default function BlickpunktLeiste({
             >
               {ALLES_HIER_TEXT}
             </Button>
+          )}
+          {onRaumWechsel && (
+            <RaumWechsel ziele={raumZiele} onWechsel={onRaumWechsel} />
           )}
           <Box sx={{ ml: 'auto' }}>
             <Quellen onIntroNochmal={onIntroNochmal} />
