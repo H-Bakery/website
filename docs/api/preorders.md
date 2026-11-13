@@ -18,6 +18,7 @@ the Backzettel-variant hook in `src/services/preorder-variants.ts`.
 | `POST /api/preorders/bulk-status`      | verkauf; fahrer only `abgeholt` / `nicht_abgeholt` | `{ ids, status?, notCollected?, paid?, expectedUpdatedAt? }` → `{ success, data: { counts, results } }`             |
 | `GET /api/preorders/variants`          | verkauf, fahrer                                    | `{ success, data: { [productId]: string[] }, configured, count }`                                                   |
 | `GET /api/preorders/:id`               | verkauf, fahrer                                    | `{ success, data }`; 404 `not_found`                                                                                |
+| `GET /api/preorders/:id/pdf`           | verkauf, fahrer                                    | `application/pdf`, `Bestellschein-<Code>.pdf` (see „Bestellschein“); 404 `not_found`, 503 `pdf_fonts_missing`       |
 | `POST /api/preorders`                  | verkauf                                            | 201 `{ success, data }`; optional `requestId` (a retry returns the earlier order, 200)                              |
 | `PATCH /api/preorders/:id`             | verkauf                                            | `{ success, data }`; partial; a date/place change renews the code; optional `expectedUpdatedAt`                     |
 | `POST /api/preorders/:id/status`       | verkauf; fahrer only `abgeholt` / `nicht_abgeholt` | `{ status?, notCollected?, paid?, expectedUpdatedAt? }` → `{ success, data }`                                       |
@@ -230,6 +231,33 @@ not_collected }` (plus `paid: true` with `handed_over`), and not away from a han
   preorder can no longer be edited or change status (409 `anonymized`). Backups keep the names
   until they rotate out (runbook §5.1). The same nightly run anonymises old delivery stops (B8,
   report field `deliveryStops`, see [deliveries.md](deliveries.md#dsgvo-p4-rule-for-stops)).
+
+## Bestellschein (PDF)
+
+`GET /api/preorders/:id/pdf` - one order as a printable A4 sheet (button „Als PDF drucken“ on the
+detail page). Code: `src/services/preorder-pdf.ts`, shared pdfkit pieces (fonts, letterhead, footer)
+in `src/services/pdf-kit.ts`, the same ones the invoice uses.
+
+- **Same roles as `GET /:id`** (verkauf, fahrer, inhaber; backstube 403). Read-only: nothing is
+  stored, no audit row, `Cache-Control: no-store`.
+- **It draws exactly the `Preorder` DTO of `GET /:id`** - so an anonymised order prints
+  „anonymisiert“ and neither phone nor note; there is no second read path that could leak them.
+- **Not an invoice:** title „Bestellschein <Code>“, below it „Dieser Bestellschein ist keine
+  Rechnung.“, repeated in the footer. No bank details, no VAT breakdown, no XML, no PDF/A.
+- **Content:** letterhead and footer from the Impressum data (`currentSeller()` →
+  `@bakery/shared/legal`, without the bank columns), customer, phone (if any), pickup day with
+  weekday, place („Laden“ + time, or pickup point + window), channel, status („Nicht abgeholt“ when
+  marked so), payment („nicht bezahlt“, „bezahlt (X)“, plus „noch offen“ / „zu erstatten“ from
+  `paymentBalance`), lines (quantity + unit, name with variant, unit price, line total), total,
+  note. A cancelled order carries a red „STORNIERT“. The footer says „Stand <today>“.
+- **Nothing is computed here.** Line totals, total and balance are the order's own values
+  (`delivery-preorders.core.js`); euro formatting is `formatEuro(priceToCents())` from
+  `invoice.core.js`; the item label is `itemLabel()` of the preorder core.
+- One page for a normal order; a very long one (about 20+ lines) continues on further pages with
+  the table header repeated.
+- Fonts missing (`PdfFontsError`): 503 `pdf_fonts_missing` with a German `message`.
+- Tests: `tests/unit/preorderPdf.test.ts` (content, cancelled, anonymised, page break),
+  `tests/integration/preorderPdf.test.ts` (roles, 404, 503, anonymisation run).
 
 ## CLI
 

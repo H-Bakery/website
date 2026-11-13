@@ -33,6 +33,7 @@ import {
   Inventory2 as ReadyIcon,
   MoreVert as MoreIcon,
   Payments as PaidIcon,
+  Print as PrintIcon,
   Undo as ReopenIcon,
 } from '@mui/icons-material'
 import PreorderForm from '../PreorderForm'
@@ -49,6 +50,7 @@ import { readPreorderEditDraft } from '../../../../lib/preorderDraft'
 import {
   cancelPreorder,
   changePreorderStatus,
+  downloadPreorderPdf,
   getPreorder,
   isPreorderConflict,
   preorderErrorMessage,
@@ -386,6 +388,23 @@ export default function PreorderDetailClient({
     }
   }
 
+  // Bestellschein („Als PDF drucken“): lesen darf ihn, wer die Bestellung
+  // sieht - auch der Fahrer, auch bei stornierten und anonymisierten.
+  const printPdf = async () => {
+    if (!preorder) return
+    setBusy(true)
+    setActionError(null)
+    try {
+      await downloadPreorderPdf(preorder)
+    } catch (err) {
+      setActionError(
+        preorderErrorMessage(err, 'Die PDF konnte nicht geladen werden.')
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
   // Jede Aktion schickt die geladene Version mit: ein Klick auf veralteter
   // Anzeige (z. B. „Doch nicht bezahlt“, nachdem der Fahrer kassiert hat)
   // wird abgelehnt statt still übernommen.
@@ -566,78 +585,84 @@ export default function PreorderDetailClient({
         preorder.pickupDate
       )} · ${formatPickupPlace(preorder)}`}
       actions={
-        actions.length > 0 ? (
-          <Box
-            role="group"
-            aria-label="Aktionen"
-            sx={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 1,
-              width: { xs: '100%', sm: 'auto' },
-              justifyContent: { sm: 'flex-end' },
-              '& > .MuiButton-root': { flexGrow: { xs: 1, sm: 0 } },
-            }}
+        <Box
+          role="group"
+          aria-label="Aktionen"
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 1,
+            width: { xs: '100%', sm: 'auto' },
+            justifyContent: { sm: 'flex-end' },
+            '& > .MuiButton-root': { flexGrow: { xs: 1, sm: 0 } },
+          }}
+        >
+          {visibleActions.map((a) => (
+            <Button
+              key={a.key}
+              variant={a.primary ? 'contained' : 'outlined'}
+              color={a.color ?? 'primary'}
+              startIcon={a.icon}
+              onClick={() => run(a.key)}
+              disabled={busy}
+            >
+              {a.label}
+            </Button>
+          ))}
+          <Button
+            variant="outlined"
+            startIcon={<PrintIcon />}
+            onClick={printPdf}
+            disabled={busy}
           >
-            {visibleActions.map((a) => (
-              <Button
-                key={a.key}
-                variant={a.primary ? 'contained' : 'outlined'}
-                color={a.color ?? 'primary'}
-                startIcon={a.icon}
-                onClick={() => run(a.key)}
-                disabled={busy}
-              >
-                {a.label}
-              </Button>
-            ))}
-            {menuActions.length > 0 && (
-              <>
-                <Tooltip title="Weitere Aktionen">
-                  <IconButton
-                    aria-label="Weitere Aktionen"
-                    aria-haspopup="menu"
-                    aria-controls={menuAnchor ? 'preorder-more' : undefined}
-                    aria-expanded={menuAnchor ? 'true' : undefined}
-                    onClick={(event) => setMenuAnchor(event.currentTarget)}
-                    disabled={busy}
-                    sx={{ border: 1, borderColor: 'divider' }}
-                  >
-                    <MoreIcon />
-                  </IconButton>
-                </Tooltip>
-                <Menu
-                  id="preorder-more"
-                  anchorEl={menuAnchor}
-                  open={Boolean(menuAnchor)}
-                  onClose={() => setMenuAnchor(null)}
-                  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-                  transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+            Als PDF drucken
+          </Button>
+          {menuActions.length > 0 && (
+            <>
+              <Tooltip title="Weitere Aktionen">
+                <IconButton
+                  aria-label="Weitere Aktionen"
+                  aria-haspopup="menu"
+                  aria-controls={menuAnchor ? 'preorder-more' : undefined}
+                  aria-expanded={menuAnchor ? 'true' : undefined}
+                  onClick={(event) => setMenuAnchor(event.currentTarget)}
+                  disabled={busy}
+                  sx={{ border: 1, borderColor: 'divider' }}
                 >
-                  {menuActions.map((a) => (
-                    <MenuItem
-                      key={a.key}
-                      onClick={() => run(a.key)}
+                  <MoreIcon />
+                </IconButton>
+              </Tooltip>
+              <Menu
+                id="preorder-more"
+                anchorEl={menuAnchor}
+                open={Boolean(menuAnchor)}
+                onClose={() => setMenuAnchor(null)}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+              >
+                {menuActions.map((a) => (
+                  <MenuItem
+                    key={a.key}
+                    onClick={() => run(a.key)}
+                    sx={{
+                      minHeight: 48,
+                      color: a.color === 'error' ? 'error.main' : undefined,
+                    }}
+                  >
+                    <ListItemIcon
                       sx={{
-                        minHeight: 48,
                         color: a.color === 'error' ? 'error.main' : undefined,
                       }}
                     >
-                      <ListItemIcon
-                        sx={{
-                          color: a.color === 'error' ? 'error.main' : undefined,
-                        }}
-                      >
-                        {a.icon}
-                      </ListItemIcon>
-                      {a.label}
-                    </MenuItem>
-                  ))}
-                </Menu>
-              </>
-            )}
-          </Box>
-        ) : undefined
+                      {a.icon}
+                    </ListItemIcon>
+                    {a.label}
+                  </MenuItem>
+                ))}
+              </Menu>
+            </>
+          )}
+        </Box>
       }
     >
       {/* W4-Verifikation Runde 2: bezahlt, aber der Betrag stimmt nicht mehr */}

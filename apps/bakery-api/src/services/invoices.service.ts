@@ -28,6 +28,7 @@ import { currentSeller, InvoiceSeller } from './invoice-seller'
 import {
   fontsProblem,
   InvoiceFontsError,
+  renderInvoiceDraftPdf,
   renderInvoicePdf,
 } from './invoice-pdf'
 import { isFailure, PreordersService } from './preorders.service'
@@ -1079,6 +1080,37 @@ export class InvoicesService {
   }
 
   /**
+   * Vorschau eines Entwurfs als PDF („Entwurf als PDF“): dasselbe Bild wie
+   * die Rechnung, aber mit dem Aufdruck „ENTWURF – keine Rechnung“, ohne XML
+   * und ohne PDF/A. Geht auch, solange Nummer, Anschrift oder Bankverbindung
+   * fehlen (steht dann als „offen“ da). Wird bei jedem Abruf neu erzeugt und
+   * nie gespeichert; am Entwurf ändert sich nichts.
+   */
+  async preview(id: unknown): Promise<{ filename: string; pdf: Buffer }> {
+    const invoice = await this.find(id)
+    if (invoice.status !== core.STATUS.DRAFT) {
+      throw new InvoiceError(
+        409,
+        'invoice_not_draft',
+        'Die Vorschau gibt es nur für Entwürfe. Diese Rechnung ist kein Entwurf mehr - bitte ihr PDF laden.'
+      )
+    }
+    try {
+      const pdf = await renderInvoiceDraftPdf({
+        invoice: this.toDto(invoice),
+        createdAt: this.clock(),
+      })
+      return { filename: `${draftFileStem(invoice)}.pdf`, pdf }
+    } catch (error) {
+      if (error instanceof InvoiceFontsError) {
+        console.error(`[ERROR] ${error.message}`)
+        throw new InvoiceError(503, 'invoice_fonts_missing', FONTS_MESSAGE)
+      }
+      throw error
+    }
+  }
+
+  /**
    * Liefert die festgeschriebenen Bytes des Originals bzw. der Storno-Fassung
    * und schreibt sie fest, falls sie noch fehlen. Sie fehlen nur bei
    * Rechnungen, die vor der Festschreibung ausgestellt wurden: dann wird das
@@ -1250,4 +1282,12 @@ function fileStem(number: string | null | undefined): string {
     .replace(/[^A-Za-z0-9._-]+/g, '-')
     .replace(/^-+|-+$/g, '')
   return `Rechnung-${safe || 'ohne-Nummer'}`
+}
+
+/** Dateiname der Entwurfs-Vorschau: mit der eingetragenen Nummer, sonst der id. */
+function draftFileStem(invoice: Invoice): string {
+  const safe = String(invoice.number ?? '')
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return `Rechnungsentwurf-${safe || invoice.id}`
 }

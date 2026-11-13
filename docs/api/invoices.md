@@ -8,7 +8,8 @@ outside, the gross-to-net scheme and what is deliberately missing:
 | ------------------------------------------------ | -------------------------------------------------------------------------------------------- |
 | `src/services/invoice.core.js`                   | the one formula: cents, VAT per rate, rounding, required fields, pure CII XML builder        |
 | `src/services/invoices.service.ts`               | DB, transactions, audit; draft / issue / cancel; `InvoiceError`                              |
-| `src/services/invoice-pdf.ts`                    | PDF/A-3b with `factur-x.xml` via pdfkit (no headless browser)                                |
+| `src/services/invoice-pdf.ts`                    | PDF/A-3b with `factur-x.xml` via pdfkit (no headless browser); draft preview                 |
+| `src/services/pdf-kit.ts`                        | shared pdfkit pieces: fonts, page, letterhead, footer, watermark (also the Bestellschein)    |
 | `src/services/invoice-anonymize.ts`              | wipes buyer data of stale drafts in the 90-day job                                           |
 | `src/services/invoice-seller.ts`                 | seller from the Impressum data (`@bakery/shared/legal`) + bank details from the environment  |
 | `src/routes/invoices.routes.ts`                  | `createInvoicesRouter({ preorders, seller?, now? })`, mounted at `/api/invoices` by `app.ts` |
@@ -39,6 +40,7 @@ and `fields: [{ field, message }]` where a form field is at fault.
 | `GET /api/invoices/:id/pdf`     | `application/pdf`, `Rechnung-<Nummer>.pdf`: the bytes frozen at issue, header `X-Invoice-Sha256`         |
 | `GET …/pdf?variant=storniert`   | the frozen version with the „STORNIERT“ line, `…-storniert.pdf` (cancelled invoices only)                |
 | `GET /api/invoices/:id/xml`     | `application/xml`, the frozen Factur-X XML                                                               |
+| `GET /api/invoices/:id/preview` | drafts only: `application/pdf`, `Rechnungsentwurf-<Nummer or id>.pdf` - a preview, **not an invoice**    |
 
 Input: `number`, `invoiceDate`, `deliveryDate` (`YYYY-MM-DD`), `paymentTermDays` (0–365),
 `paymentText`, `note`, `paid` (boolean), `paidOn`, `paidMethod` (`bar` | `karte`),
@@ -54,13 +56,13 @@ unitPriceGrossCents, vatRate (7 | 19, default 7), productId? }`. Money in answer
 Errors: 400 `invalid_status` / `invalid_preorder` / `invalid_variant`; 403
 `personal_session_required`; 404 `invoice_not_found` / `preorder_not_found`;
 409 `invoice_immutable` (change or delete of an issued invoice), `invoice_not_draft` (issue twice),
-`invoice_not_issued` (PDF/XML/cancel of a draft), `invoice_cancelled`, `invoice_exists` (a
+`invoice_not_issued` (PDF/XML/cancel of a draft; the preview of a non-draft is `invoice_not_draft`), `invoice_cancelled`, `invoice_exists` (a
 non-cancelled invoice for this preorder exists; `invoiceId` in the body), `preorder_cancelled`,
 `invoice_not_cancelled` (stamped PDF of a non-cancelled invoice), `number_taken` (compared by
 `numberKey()`), `bank_not_configured` (transfer invoices only); 422 `validation_failed` (also a
 line whose quantity × price exceeds 999 999,99 € - never a 500), `invoice_incomplete` (issue; all
 missing fields in `fields`, including the date bounds), `preorder_price_invalid` (a preorder price
-with fractions of a cent; names the product); 503 `invoice_fonts_missing` (nothing is issued).
+with fractions of a cent; names the product); 503 `invoice_fonts_missing` (nothing is issued; also the preview).
 
 ## Data
 
@@ -133,20 +135,32 @@ answers 409 `bank_not_configured`. Never a placeholder.
   „Bereits bezahlt“ / „Noch zu zahlen 0,00 €“ and neither a payment request nor bank details.
 - A cancelled invoice keeps its original PDF and XML; the version with the red „STORNIERT“ line is
   a second stored file.
+- **Draft preview** (`renderInvoiceDraftPdf()`, `GET /:id/preview`, button „Entwurf als PDF“): the
+  same drawing code as the invoice, but no `subset` (no PDF/A claim, no output intent), no embedded
+  file, no Factur-X XMP. „ENTWURF – keine Rechnung“ runs diagonally across every page, stands below
+  the title „Rechnungsentwurf“ and in the footer of every page. Rendered on every call from the
+  stored draft (`Cache-Control: no-store`), **never stored**, no hash, no audit row; the system
+  assigns no number - a number the owner already typed is printed. Works on an incomplete draft:
+  a missing number, date, address part, line or bank detail is printed as „offen“ (never a sample
+  value). The management app saves the form first, then loads the preview.
+- The issued path does not go through any draft branch that changes its bytes: `render()` draws the
+  identical command sequence when an XML is passed (checked by rendering the five sample invoices
+  before and after the refactoring into `pdf-kit.ts`: same SHA-256).
 - Fonts missing: `InvoiceFontsError` → 503 `invoice_fonts_missing`; `server.ts` logs a `[WARN]` at
   start and `GET /config` answers `pdfReady: false`.
 
 ## Verification
 
-| What                                              | Where                                                                     | Local                         |
-| ------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------- |
-| amounts, BR-CO rules, required fields, golden XML | `tests/unit/invoiceCore.test.js`, `tests/fixtures/invoice-golden.xml`     | yes                           |
-| XML against the official EN 16931 XSD             | same test, `xmllint --schema tests/fixtures/facturx-en16931/…`            | yes if `xmllint` is installed |
-| PDF structure (attachment, AF, XMP, fonts)        | `tests/unit/invoicePdf.test.ts`                                           | yes                           |
-| routes, roles, immutability, anonymisation        | `tests/integration/invoices.test.ts`                                      | yes                           |
-| **PDF/A-3b (veraPDF) + EN 16931 Schematron**      | `.github/workflows/invoice-conformance.yml` (Mustang-CLI, pinned by hash) | **no** - needs Java           |
+| What                                                | Where                                                                      | Local                         |
+| --------------------------------------------------- | -------------------------------------------------------------------------- | ----------------------------- |
+| amounts, BR-CO rules, required fields, golden XML   | `tests/unit/invoiceCore.test.js`, `tests/fixtures/invoice-golden.xml`      | yes                           |
+| XML against the official EN 16931 XSD               | same test, `xmllint --schema tests/fixtures/facturx-en16931/…`             | yes if `xmllint` is installed |
+| PDF structure (attachment, AF, XMP, fonts)          | `tests/unit/invoicePdf.test.ts`                                            | yes                           |
+| draft preview (mark on every page, no XML, „offen“) | `tests/unit/invoiceDraftPdf.test.ts` (text via `tests/helpers/pdfText.ts`) | yes                           |
+| routes, roles, immutability, anonymisation          | `tests/integration/invoices.test.ts`                                       | yes                           |
+| **PDF/A-3b (veraPDF) + EN 16931 Schematron**        | `.github/workflows/invoice-conformance.yml` (Mustang-CLI, pinned by hash)  | **no** - needs Java           |
 
-The conformance workflow runs on changes to the invoice code, fonts, fixtures or the lockfile and
+The conformance workflow runs on changes to the invoice code, `pdf-kit.ts`, fonts, fixtures or the lockfile and
 on demand (`workflow_dispatch`). It renders the synthetic sample invoices (mixed rates, rounding
 case, multi-page, cancelled, already paid), validates each PDF, and checks that a tampered total is rejected.
 Reports and sample PDFs are kept as the artifact `rechnungen-konformitaet`.

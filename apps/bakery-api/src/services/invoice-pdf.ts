@@ -8,7 +8,8 @@
  *   - PDF 1.7, Teilmenge `PDF/A-3b`: pdfkit schreibt den Output-Intent mit
  *     sRGB-Profil und `pdfaid:part 3 / conformance B` in die XMP-Metadaten.
  *   - Schriften eingebettet: Liberation Sans aus `assets/fonts` (OFL); die
- *     Standardschrift Helvetica wird nie geladen (`font:` im Konstruktor).
+ *     Standardschrift Helvetica wird nie geladen (`openDocument` in
+ *     `pdf-kit.ts`, dort auch Briefkopf und Fußzeile).
  *   - Die XML als eingebettete Datei `factur-x.xml`, `AFRelationship`
  *     `Alternative` (die XML sagt dasselbe wie das Bild), MIME `text/xml`,
  *     im Katalog unter `/AF` und im Namensbaum `EmbeddedFiles`.
@@ -18,52 +19,39 @@
  *
  * Das Bild zeigt genau die festgeschriebenen Zahlen der Rechnung (`InvoiceDto`
  * aus `invoices.service.ts`); gerechnet wird hier nichts.
+ *
+ * `renderInvoiceDraftPdf()` zeichnet dasselbe Bild für einen Entwurf - als
+ * Vorschau, die ausdrücklich keine Rechnung ist (kein PDF/A, keine XML).
  */
-import * as fs from 'fs'
-import * as path from 'path'
-
 import type { InvoiceDto } from './invoices.service'
+import {
+  BLACK,
+  CONTENT_WIDTH,
+  GREY,
+  LIGHT,
+  MARGIN,
+  PAGE_BOTTOM,
+  RED,
+  RIGHT,
+  drawFooters,
+  drawLetterhead,
+  drawWatermark,
+  footerColumns,
+  formatBerlinDate,
+  metaText,
+  openDocument,
+  sellerNameParts,
+} from './pdf-kit'
 
-/* eslint-disable @typescript-eslint/no-var-requires */
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const core = require('./invoice.core')
-// pdfkit bringt keine Typen mit; hier steht nur, was diese Datei benutzt.
-const PDFDocument: new (
-  options: Record<string, unknown>
-) => PdfDoc = require('pdfkit')
-/* eslint-enable @typescript-eslint/no-var-requires */
 
-interface TextOptions {
-  width?: number
-  align?: 'left' | 'right' | 'center'
-  lineBreak?: boolean
-  lineGap?: number
-  ellipsis?: boolean
-}
-
-interface PdfDoc {
-  y: number
-  page: { margins: { bottom: number } }
-  on(event: 'data', listener: (chunk: Buffer) => void): this
-  on(event: 'end', listener: () => void): this
-  on(event: 'error', listener: (error: Error) => void): this
-  registerFont(name: string, src: string): this
-  font(name: string): this
-  fontSize(size: number): this
-  fillColor(color: string): this
-  strokeColor(color: string): this
-  lineWidth(width: number): this
-  moveTo(x: number, y: number): this
-  lineTo(x: number, y: number): this
-  stroke(): this
-  text(text: string, x?: number, y?: number, options?: TextOptions): this
-  heightOfString(text: string, options?: TextOptions): number
-  addPage(): this
-  bufferedPageRange(): { start: number; count: number }
-  switchToPage(index: number): this
-  file(src: Buffer, options: Record<string, unknown>): unknown
-  appendXML(xml: string): void
-  end(): void
-}
+// Die Schriften teilt sich die Rechnung mit den anderen PDFs (`pdf-kit.ts`).
+export {
+  PdfFontsError as InvoiceFontsError,
+  fontsDir,
+  fontsProblem,
+} from './pdf-kit'
 
 export interface RenderInvoiceOptions {
   invoice: InvoiceDto
@@ -73,55 +61,17 @@ export interface RenderInvoiceOptions {
   createdAt: Date
 }
 
-const FONT_FILES = {
-  regular: 'LiberationSans-Regular.ttf',
-  bold: 'LiberationSans-Bold.ttf',
+export interface RenderInvoiceDraftOptions {
+  /** Der Entwurf, wie `GET /api/invoices/:id` ihn liefert. */
+  invoice: InvoiceDto
+  /** Zeitpunkt der Vorschau (PDF-Metadaten). */
+  createdAt: Date
 }
 
-/**
- * Die Schriften liegen im Repo unter `apps/bakery-api/assets/fonts`. Der
- * Server läuft als Bundle aus `dist/apps/bakery-api/bundle/` im selben
- * Arbeitsbaum (auch auf der Box: ein Release ist ein git-Worktree), Tests
- * laufen aus `src/services/`.
- */
-export class InvoiceFontsError extends Error {
-  constructor(readonly searched: string[]) {
-    super(
-      `Rechnungs-PDF: Schriften nicht gefunden (${Object.values(
-        FONT_FILES
-      ).join(', ')}; gesucht in ${searched.join(', ')})`
-    )
-  }
-}
-
-export function fontsDir(): string {
-  const candidates = [
-    process.env['INVOICE_FONTS_DIR'],
-    path.join(__dirname, '../../assets/fonts'),
-    path.join(__dirname, '../../../../apps/bakery-api/assets/fonts'),
-    path.join(process.cwd(), 'apps/bakery-api/assets/fonts'),
-  ].filter((dir): dir is string => !!dir)
-  const found = candidates.find((dir) =>
-    Object.values(FONT_FILES).every((file) =>
-      fs.existsSync(path.join(dir, file))
-    )
-  )
-  if (!found) throw new InvoiceFontsError(candidates)
-  return found
-}
-
-/**
- * `null`, wenn die Schriften da sind, sonst der Grund - für den Hinweis beim
- * Start des Servers und in `GET /api/invoices/config`.
- */
-export function fontsProblem(): string | null {
-  try {
-    fontsDir()
-    return null
-  } catch (error) {
-    return (error as Error).message
-  }
-}
+/** Steht quer über jeder Seite der Vorschau und in ihrem Titel. */
+export const DRAFT_MARK = 'ENTWURF – keine Rechnung'
+/** Platzhalter für eine Angabe, die im Entwurf noch fehlt. */
+const OPEN = 'offen'
 
 /** Factur-X-Eigenschaften und ihr PDF/A-Erweiterungsschema für die XMP. */
 export function facturxXmp(): string {
@@ -170,19 +120,6 @@ export function facturxXmp(): string {
     </rdf:Description>`
 }
 
-/** Text für Info-Dictionary und XMP (pdfkit schreibt ihn dort unmaskiert). */
-function metaText(value: string): string {
-  // eslint-disable-next-line no-control-regex
-  return value.replace(/[<>&\u0000-\u001f]/g, ' ').trim()
-}
-
-const PAGE = { width: 595.28, height: 841.89 }
-const MARGIN = { left: 62, right: 45, top: 48, bottom: 96 }
-const CONTENT_WIDTH = PAGE.width - MARGIN.left - MARGIN.right
-const GREY = '#555555'
-const LIGHT = '#bbbbbb'
-const BLACK = '#000000'
-
 interface Column {
   key: string
   label: string
@@ -205,37 +142,47 @@ const COLUMNS: Column[] = [
 export function renderInvoicePdf(
   options: RenderInvoiceOptions
 ): Promise<Buffer> {
-  const { invoice, xml, createdAt } = options
-  const fonts = fontsDir()
-  const regular = path.join(fonts, FONT_FILES.regular)
-  const bold = path.join(fonts, FONT_FILES.bold)
-  const cancelled = invoice.status === core.STATUS.CANCELLED
-  const seller = invoice.seller
-  const title = metaText(`Rechnung ${invoice.number ?? ''}`)
+  return render(options.invoice, options.createdAt, options.xml)
+}
 
-  const doc = new PDFDocument({
-    size: 'A4',
-    margins: {
-      top: MARGIN.top,
-      bottom: MARGIN.bottom,
-      left: MARGIN.left,
-      right: MARGIN.right,
-    },
-    pdfVersion: '1.7',
-    subset: 'PDF/A-3b',
-    // Nie Helvetica: Standardschriften werden nicht eingebettet.
-    font: regular,
-    bufferPages: true,
-    autoFirstPage: true,
-    lang: 'de-DE',
-    displayTitle: true,
+/**
+ * Vorschau eines Entwurfs: dasselbe Bild wie die Rechnung, aber **keine
+ * Rechnung** - Aufdruck `DRAFT_MARK` quer über jeder Seite, Titel
+ * „Rechnungsentwurf“, keine eingebettete XML, kein PDF/A. Was dem Entwurf
+ * noch fehlt (Nummer, Datum, Anschrift, Bankverbindung), steht als „offen“
+ * da - nichts wird erfunden. Wird nie gespeichert.
+ */
+export function renderInvoiceDraftPdf(
+  options: RenderInvoiceDraftOptions
+): Promise<Buffer> {
+  return render(options.invoice, options.createdAt, null)
+}
+
+/** `xml === null`: Entwurfs-Vorschau, sonst die Rechnung. */
+function render(
+  invoice: InvoiceDto,
+  createdAt: Date,
+  xml: string | null
+): Promise<Buffer> {
+  const draft = xml === null
+  const cancelled = !draft && invoice.status === core.STATUS.CANCELLED
+  const seller = invoice.seller
+  const number = invoice.number ?? ''
+  /** Im Entwurf steht für eine fehlende Angabe „offen“. */
+  const orOpen = (value: string): string => (draft && !value ? OPEN : value)
+  const heading = draft
+    ? `Rechnungsentwurf${number ? ` ${number}` : ''}`
+    : `Rechnung ${number}`
+
+  const { doc, done } = openDocument({
+    ...(draft ? {} : { subset: 'PDF/A-3b' }),
     info: {
-      Title: title,
+      Title: metaText(draft ? `${heading} (${DRAFT_MARK})` : heading),
       Author: metaText(seller.name),
       Subject: metaText(
-        `Rechnung ${invoice.number ?? ''} vom ${core.formatDate(
-          invoice.invoiceDate
-        )}`
+        draft
+          ? DRAFT_MARK
+          : `Rechnung ${number} vom ${core.formatDate(invoice.invoiceDate)}`
       ),
       Creator: 'Bäckerei-Verwaltung',
       Producer: 'pdfkit',
@@ -243,46 +190,24 @@ export function renderInvoicePdf(
       ModDate: createdAt,
     },
   })
-  doc.registerFont('regular', regular)
-  doc.registerFont('bold', bold)
 
-  const chunks: Buffer[] = []
-  const done = new Promise<Buffer>((resolve, reject) => {
-    doc.on('data', (chunk: Buffer) => chunks.push(chunk))
-    doc.on('end', () => resolve(Buffer.concat(chunks)))
-    doc.on('error', reject)
-  })
-
-  // --- eingebettete XML + XMP -------------------------------------------
-  doc.file(Buffer.from(xml, 'utf8'), {
-    name: core.FACTURX_FILENAME,
-    type: 'text/xml',
-    relationship: 'Alternative',
-    description: 'Factur-X/ZUGFeRD-Rechnung (EN 16931)',
-    creationDate: createdAt,
-    modifiedDate: createdAt,
-  })
-  doc.appendXML(facturxXmp())
+  // --- eingebettete XML + XMP (nur die Rechnung) --------------------------
+  if (xml !== null) {
+    doc.file(Buffer.from(xml, 'utf8'), {
+      name: core.FACTURX_FILENAME,
+      type: 'text/xml',
+      relationship: 'Alternative',
+      description: 'Factur-X/ZUGFeRD-Rechnung (EN 16931)',
+      creationDate: createdAt,
+      modifiedDate: createdAt,
+    })
+    doc.appendXML(facturxXmp())
+  }
 
   // --- Kopf ---------------------------------------------------------------
-  const right = PAGE.width - MARGIN.right
-  // „Bäckerei X, Inh. Y“: Firmenname groß, der Inhaber in der Zeile darunter.
-  const comma = seller.name.indexOf(',')
-  const sellerShort = comma > 0 ? seller.name.slice(0, comma) : seller.name
-  const sellerOwner = comma > 0 ? seller.name.slice(comma + 1).trim() : ''
-  doc.font('bold').fontSize(15).fillColor(BLACK)
-  doc.text(sellerShort, MARGIN.left, MARGIN.top, {
-    width: CONTENT_WIDTH,
-  })
-  doc.font('regular').fontSize(8.5).fillColor(GREY)
-  doc.text(
-    [sellerOwner, seller.street, `${seller.postcode} ${seller.city}`]
-      .filter(Boolean)
-      .join(' · '),
-    MARGIN.left,
-    doc.y + 2,
-    { width: CONTENT_WIDTH }
-  )
+  const right = RIGHT
+  const sellerShort = sellerNameParts(seller).short
+  drawLetterhead(doc, seller)
 
   // Anschriftfeld (DIN 5008, Form B: 45 mm von oben)
   const addressTop = 128
@@ -308,6 +233,17 @@ export function renderInvoicePdf(
     `${buyer.postcode} ${buyer.city}`.trim(),
     buyer.countryCode && buyer.countryCode !== 'DE' ? buyer.countryCode : '',
   ].filter(Boolean)
+  if (draft) {
+    // Was an der Anschrift noch fehlt, steht da - nicht einfach eine Lücke.
+    const missing = [
+      buyer.name ? '' : 'Name',
+      buyer.street ? '' : 'Straße',
+      buyer.postcode && buyer.city ? '' : 'PLZ/Ort',
+    ].filter(Boolean)
+    if (missing.length > 0) {
+      buyerLines.push(`(${OPEN}: ${missing.join(', ')})`)
+    }
+  }
   doc.text(buyerLines.join('\n'), MARGIN.left, addressTop + 18, {
     width: 240,
     lineGap: 2,
@@ -317,9 +253,9 @@ export function renderInvoicePdf(
   // Angaben rechts
   const infoLeft = 360
   const infoRows: Array<[string, string]> = [
-    ['Rechnungsnummer', invoice.number ?? ''],
-    ['Rechnungsdatum', core.formatDate(invoice.invoiceDate)],
-    ['Liefer-/Leistungsdatum', core.formatDate(invoice.deliveryDate)],
+    ['Rechnungsnummer', orOpen(number)],
+    ['Rechnungsdatum', orOpen(core.formatDate(invoice.invoiceDate))],
+    ['Liefer-/Leistungsdatum', orOpen(core.formatDate(invoice.deliveryDate))],
   ]
   if (invoice.preorderCode) infoRows.push(['Bestellung', invoice.preorderCode])
   let infoY = addressTop + 18
@@ -337,14 +273,24 @@ export function renderInvoicePdf(
   // --- Titel --------------------------------------------------------------
   let y = Math.max(addressBottom, infoY, 232) + 26
   doc.font('bold').fontSize(16).fillColor(BLACK)
-  doc.text(`Rechnung ${invoice.number ?? ''}`, MARGIN.left, y, {
+  doc.text(heading, MARGIN.left, y, {
     width: CONTENT_WIDTH,
   })
   y = doc.y + 4
-  if (cancelled) {
-    doc.font('bold').fontSize(10).fillColor('#b00020')
+  if (draft) {
+    doc.font('bold').fontSize(10).fillColor(RED)
     doc.text(
-      `STORNIERT am ${formatDateTime(invoice.cancelledAt)}${
+      `${DRAFT_MARK}. Dieses Dokument ist eine Vorschau und kein Beleg.`,
+      MARGIN.left,
+      y,
+      { width: CONTENT_WIDTH }
+    )
+    y = doc.y + 4
+  }
+  if (cancelled) {
+    doc.font('bold').fontSize(10).fillColor(RED)
+    doc.text(
+      `STORNIERT am ${formatBerlinDate(invoice.cancelledAt)}${
         invoice.cancelReason ? ` - ${invoice.cancelReason}` : ''
       }`,
       MARGIN.left,
@@ -356,7 +302,7 @@ export function renderInvoicePdf(
   y += 10
 
   // --- Positionen ---------------------------------------------------------
-  const pageBottom = PAGE.height - MARGIN.bottom
+  const pageBottom = PAGE_BOTTOM
   const drawHeader = (top: number): number => {
     let x = MARGIN.left
     doc.font('bold').fontSize(8).fillColor(BLACK)
@@ -420,6 +366,13 @@ export function renderInvoicePdf(
       .strokeColor(LIGHT)
       .stroke()
     y += 4
+  }
+  if (draft && invoice.lines.length === 0) {
+    doc.font('regular').fontSize(9).fillColor(GREY)
+    doc.text(`Positionen: ${OPEN}`, MARGIN.left + 2, y, {
+      width: CONTENT_WIDTH,
+    })
+    y = doc.y + 8
   }
 
   // --- Summen -------------------------------------------------------------
@@ -513,13 +466,15 @@ export function renderInvoicePdf(
         `Bitte überweisen Sie ${core.formatEuro(
           totals['payableCents']
         )} unter Angabe der Rechnungsnummer ${
-          invoice.number ?? ''
+          draft && !number ? `(${OPEN})` : number
         } auf folgendes Konto:`,
       ]
   const bankLines = [
-    `Kontoinhaber: ${seller.accountHolder}`,
-    `IBAN: ${core.formatIban(seller.iban)}`,
-    `BIC: ${seller.bic}${seller.bankName ? ` · ${seller.bankName}` : ''}`,
+    `Kontoinhaber: ${orOpen(seller.accountHolder)}`,
+    `IBAN: ${orOpen(core.formatIban(seller.iban))}`,
+    `BIC: ${orOpen(seller.bic)}${
+      seller.bankName ? ` · ${seller.bankName}` : ''
+    }`,
   ]
   ensureSpace(110, false)
   y += 14
@@ -527,10 +482,15 @@ export function renderInvoicePdf(
     .font(paid ? 'bold' : 'regular')
     .fontSize(9.5)
     .fillColor(BLACK)
-  doc.text(paymentLines.join('\n'), MARGIN.left, y, {
-    width: CONTENT_WIDTH,
-    lineGap: 2,
-  })
+  doc.text(
+    paymentLines.filter((line) => !draft || line).join('\n'),
+    MARGIN.left,
+    y,
+    {
+      width: CONTENT_WIDTH,
+      lineGap: 2,
+    }
+  )
   y = doc.y + 6
   if (!paid) {
     doc.font('bold').fontSize(9.5)
@@ -554,64 +514,24 @@ export function renderInvoicePdf(
   ensureSpace(24, false)
   doc.text(
     'Die Positionspreise sind Bruttopreise. Die Nettobeträge je Position sind anteilig aus der Bruttosumme je Steuersatz berechnet. ' +
-      'Diese PDF enthält die Rechnung zusätzlich als XML (ZUGFeRD/Factur-X, Profil EN 16931).',
+      (draft
+        ? 'Entwurf: Beträge und Angaben können sich bis zum Ausstellen ändern; dieses PDF enthält keine XML (ZUGFeRD/Factur-X).'
+        : 'Diese PDF enthält die Rechnung zusätzlich als XML (ZUGFeRD/Factur-X, Profil EN 16931).'),
     MARGIN.left,
     y,
     { width: CONTENT_WIDTH }
   )
 
   // --- Fuß auf jeder Seite ------------------------------------------------
-  const range = doc.bufferedPageRange()
-  const footerColumns = [
-    [
-      sellerShort,
-      sellerOwner,
-      seller.street,
-      `${seller.postcode} ${seller.city}`,
-    ],
-    [
-      seller.phone ? `Telefon ${seller.phone}` : '',
-      seller.email,
-      seller.vatId ? `USt-IdNr. ${seller.vatId}` : '',
-    ],
-    seller.iban
-      ? [
-          seller.bankName || 'Bankverbindung',
-          `IBAN ${core.formatIban(seller.iban)}`,
-          `BIC ${seller.bic}`,
-        ]
-      : [],
-  ]
-  for (let index = 0; index < range.count; index += 1) {
-    doc.switchToPage(range.start + index)
-    // Unter dem unteren Rand schreiben, ohne dass pdfkit eine Seite anhängt.
-    doc.page.margins.bottom = 0
-    const top = PAGE.height - 78
-    doc
-      .moveTo(MARGIN.left, top - 6)
-      .lineTo(right, top - 6)
-      .lineWidth(0.4)
-      .strokeColor(LIGHT)
-      .stroke()
-    doc.font('regular').fontSize(7.5).fillColor(GREY)
-    const width = CONTENT_WIDTH / 3
-    footerColumns.forEach((lines, column) => {
-      doc.text(
-        lines.filter(Boolean).join('\n'),
-        MARGIN.left + column * width,
-        top,
-        { width: width - 8, lineGap: 1.5 }
-      )
-    })
-    doc.text(
-      `Rechnung ${invoice.number ?? ''} · Seite ${index + 1} von ${
-        range.count
-      }`,
-      MARGIN.left,
-      PAGE.height - 30,
-      { width: CONTENT_WIDTH, align: 'right', lineBreak: false }
-    )
-  }
+  drawFooters(
+    doc,
+    footerColumns(seller, core.formatIban),
+    (page, count) =>
+      draft
+        ? `${DRAFT_MARK} · Seite ${page} von ${count}`
+        : `Rechnung ${number} · Seite ${page} von ${count}`,
+    draft ? () => drawWatermark(doc, DRAFT_MARK) : undefined
+  )
 
   doc.end()
   return done
@@ -619,14 +539,4 @@ export function renderInvoicePdf(
 
 function formatRate(rate: number): string {
   return String(rate).replace('.', ',')
-}
-
-function formatDateTime(value: string | null): string {
-  if (!value) return ''
-  return new Intl.DateTimeFormat('de-DE', {
-    timeZone: 'Europe/Berlin',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(new Date(value))
 }
