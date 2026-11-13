@@ -74,6 +74,9 @@ export const MAUS_RADIUS_PX = 8
 
 /** Horizontfarbe des Explorer-Himmels (sRGB), dort Hintergrund des Zwillings. */
 const HORIZON: Vec3 = [0.74, 0.8, 0.86]
+/** So oft wird das Laden des Modells nach einem Netzfehler wiederholt, mit dieser Pause. */
+const MODELL_NOCHMAL = 2
+const MODELL_NOCHMAL_MS = 200
 /** Wie im Explorer: nah genug für Ware direkt vor der Kamera. */
 const NEAR = 0.05
 /** Der Außenraum reicht ≈ 40 m weit; der Explorer nimmt 3000 für seine Landschaft. */
@@ -674,9 +677,27 @@ export function createViewer(
 
   // Laden: 0…0,9 Download, danach Entpacken (meshopt) und erstes Bild.
   options.onProgress(0)
-  loadModel(options.modelUrl, abort.signal, options.modelBytes, (f) => {
-    if (!disposed) options.onProgress(0.9 * f)
-  })
+  /**
+   * Ein Netzfehler (`TypeError: Failed to fetch`) wird wiederholt, bevor er
+   * als Ladefehler gilt: Wechselt man schnell hin und her, bricht die alte
+   * Szene ihren Abruf ab - und der Browser lässt dabei auch den neuen Abruf
+   * derselben Datei scheitern, obwohl dessen eigenes Signal nicht abgebrochen
+   * ist. Ein echter Ausfall scheitert auch beim zweiten und dritten Mal; eine
+   * Antwort mit Fehlerstatus (404) wird nicht wiederholt.
+   */
+  const ladeModell = (rest: number): Promise<Object3D> =>
+    loadModel(options.modelUrl, abort.signal, options.modelBytes, (f) => {
+      if (!disposed) options.onProgress(0.9 * f)
+    }).catch((err: unknown) => {
+      const netzfehler = err instanceof TypeError
+      if (disposed || abort.signal.aborted || !netzfehler || rest <= 0) {
+        throw err
+      }
+      return new Promise<void>((weiter) =>
+        setTimeout(weiter, MODELL_NOCHMAL_MS)
+      ).then(() => ladeModell(rest - 1))
+    })
+  ladeModell(MODELL_NOCHMAL)
     .then((root) => {
       if (disposed) {
         disposeTree(root)
@@ -926,8 +947,10 @@ export function createViewer(
     ueberspringeIntro: () => beendeIntro('uebersprungen'),
     dispose: () => {
       if (disposed) return
-      beendeIntro('uebersprungen')
+      // Erst abgebaut, dann den Flug beenden: So meldet er der App kein
+      // „Flug zu Ende“ mehr - die Szene gehört schon dem alten Raum.
       disposed = true
+      beendeIntro('uebersprungen')
       abort.abort()
       if (raf) cancelAnimationFrame(raf)
       raf = 0

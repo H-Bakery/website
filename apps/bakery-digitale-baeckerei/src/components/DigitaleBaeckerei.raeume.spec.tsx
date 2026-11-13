@@ -288,6 +288,34 @@ describe('Raum wechseln', () => {
     expect(wechsel()).toHaveTextContent('In den Laden')
   })
 
+  it('der Fokus geht beim Wechsel nicht verloren: Er steht danach wieder auf dem Raumwechsel', async () => {
+    const { user } = setup()
+    await fertig()
+    await user.click(wechsel() as HTMLElement)
+    // Unterwegs ist die Leiste weg - der Fokus fällt auf BODY.
+    await waitFor(() =>
+      expect(viewer()).toHaveAttribute('data-modell', '/model/werkstatt.glb')
+    )
+    expect(document.body).toHaveFocus()
+    await fertig()
+    expect(wechsel()).toHaveFocus()
+    expect(wechsel()).toHaveTextContent('In den Laden')
+  })
+
+  it('wer den Fokus inzwischen woanders hat, behält ihn', async () => {
+    const { user } = setup()
+    await fertig()
+    await user.click(wechsel() as HTMLElement)
+    await waitFor(() =>
+      expect(viewer()).toHaveAttribute('data-modell', '/model/werkstatt.glb')
+    )
+    const titel = screen.getByRole('heading', { level: 1 })
+    titel.tabIndex = -1
+    titel.focus()
+    await fertig()
+    expect(titel).toHaveFocus()
+  })
+
   it('die erwartete Größe gibt es nur für Räume aus dem Lock', async () => {
     const { user } = setup()
     await fertig()
@@ -377,6 +405,8 @@ describe('Link in einen Raum (?raum=<id>)', () => {
     ])
     expect(abgebaut).toEqual([])
     expect(status()).toHaveTextContent(raumBereitText('Werkstatt', 'Ofen'))
+    // Beim Laden über einen Link nimmt sich die App keinen Fokus.
+    expect(document.body).toHaveFocus()
     expect(window.location.search).toBe('?raum=werkstatt')
   })
 

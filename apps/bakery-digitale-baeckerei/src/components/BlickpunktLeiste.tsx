@@ -153,6 +153,9 @@ export default function BlickpunktLeiste({
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: 0.5,
+            // Mit Raumwechsel wird die Zeile auf schmalen Handys zu lang:
+            // dann umbrechen statt Beschriftungen abzuschneiden.
+            flexWrap: onRaumWechsel ? 'wrap' : 'nowrap',
           }}
         >
           {onAllesHier && (
