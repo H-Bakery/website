@@ -4,9 +4,11 @@ import os from 'os'
 import path from 'path'
 import {
   bildVarianten,
+  exportStand,
   istCommit,
   istModellId,
   leererBilderIndex,
+  liesAusCommit,
   parseBilderLock,
   pruefeBild,
   pruefeBilderIndex,
@@ -305,5 +307,53 @@ describe('bildVarianten', () => {
     expect(bildVarianten(i, 'testkuchen')).toEqual([])
     expect(bildVarianten(i, 'constructor')).toEqual([])
     expect(bildVarianten(i, 'testbrot-500g', 'oben')).toEqual([])
+  })
+})
+
+describe('liesAusCommit aus einem Export (STAND.json)', () => {
+  const COMMIT = 'a'.repeat(40)
+  let tmp: string
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'produkte-3d-export-'))
+    fs.mkdirSync(path.join(tmp, 'bilder'), { recursive: true })
+    fs.writeFileSync(path.join(tmp, 'bilder', 'index.json'), '{"x":1}')
+  })
+  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }))
+  const stand = (inhalt: string) =>
+    fs.writeFileSync(path.join(tmp, 'STAND.json'), inhalt)
+
+  it('ohne STAND.json ist der Ordner kein Export', () => {
+    expect(exportStand(tmp)).toBeNull()
+  })
+
+  it('liest die Datei direkt, wenn der Export am verlangten Commit gezogen wurde', () => {
+    stand(JSON.stringify({ commit: COMMIT }))
+    expect(exportStand(tmp)).toBe(COMMIT)
+    expect(liesAusCommit(tmp, COMMIT, 'bilder/index.json').toString()).toBe(
+      '{"x":1}'
+    )
+  })
+
+  it('lehnt einen Export von einem anderen Stand ab', () => {
+    stand(JSON.stringify({ commit: 'b'.repeat(40) }))
+    expect(() => liesAusCommit(tmp, COMMIT, 'bilder/index.json')).toThrow(
+      /Export ist vom Stand bbbbbbbbbbbb, verlangt ist aaaaaaaaaaaa/
+    )
+  })
+
+  it('lehnt eine kaputte STAND.json ab, statt auf git auszuweichen', () => {
+    stand('{')
+    expect(() => exportStand(tmp)).toThrow(/kein gültiges JSON/)
+    stand(JSON.stringify({ commit: 'main' }))
+    expect(() => liesAusCommit(tmp, COMMIT, 'bilder/index.json')).toThrow(
+      /voller Commit-Hash/
+    )
+  })
+
+  it('liest nichts außerhalb des Exports', () => {
+    stand(JSON.stringify({ commit: COMMIT }))
+    expect(() => liesAusCommit(tmp, COMMIT, '../etwas.json')).toThrow(
+      /aus dem Export heraus/
+    )
   })
 })

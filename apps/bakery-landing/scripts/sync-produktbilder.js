@@ -5,8 +5,9 @@
  * schreibt den Index produkte-3d-bilder.json neben die App - beides
  * git-ignoriert. src/lib/products.ts liest den Index beim Bauen.
  *
- * Das Daten-Repo liegt vorerst NUR LOKAL neben `website` und `hq`, ohne Remote
- * (DB9). Gelesen wird genau der Commit aus produkte-3d-bilder.lock.json,
+ * Das Daten-Repo liegt lokal neben `website` und `hq`, ohne Remote (DB9); der
+ * Deploy liest seinen Export in hq (`hq/produkte-3d/` mit STAND.json, DB14 -
+ * liesAusCommit erkennt ihn und verlangt denselben Commit). Gelesen wird genau der Commit aus produkte-3d-bilder.lock.json,
  * unabhängig vom Arbeitsverzeichnis dort (`git show <commit>:<pfad>`):
  *   bilder/index.json     welche Bilder es gibt (Vertrag des Daten-Repos)
  *   manifest.json         sha256 der Modelle - ein Bild muss vom Modell

@@ -72,17 +72,9 @@ nothing shifts). `og:image` stays the generic `og-image.jpg`: link previews show
 WebP on black or not at all. The landing page has no dark mode in use (`ThemeContext` is not
 mounted), the frames are always the light cream surfaces.
 
-**Publishing them** needs the images where the deploy can read them. Two options, not decided:
-
-- **A private remote for `produkte-3d` plus a second read-only deploy key** (like `HQ_DEPLOY_KEY`;
-  the workflow checks out the pinned commit before the landing build and sets `PRODUKTE_3D_DIR`).
-  One source for models and images, and the same step would give the Digitale Bäckerei its
-  close-up models; the lock and all checks work unchanged. Costs: a second secret and checkout in
-  the deploy, the repo's size (models, GLBs, possibly LFS) on every run unless checked out sparsely,
-  and DB9 ("local only, never push") has to be lifted.
-- **The rendered images in `hq`** (e.g. `hq/products/bilder/`, copied there after a render). No new
-  secret - but the deploy builds the landing page _before_ it checks out `hq` and only fetches
-  `products/`, so the workflow order and the sparse path change; ≈ 100 products × 2 WebP grow a
-  repo that the box clones and Anna edits; and the images sit apart from the models they were
-  rendered from, so the `modellSha256` check against the manifest is lost unless the manifest is
-  copied too.
+**Published since 2026-11-13** (owner decision DB14): the deploy checks out `hq/products` and the
+export `hq/produkte-3d/` before the landing build, so the public landing page is built from the
+real hq products (names, texts, prices) and shows the rendered images. `sync-produktbilder` reads
+the export exactly like the data repo, but only if its `STAND.json` names the commit pinned in the
+lock. How to publish a new state:
+[digitale-baeckerei.md](./digitale-baeckerei.md#veröffentlichen-der-produktmodelle-db14).

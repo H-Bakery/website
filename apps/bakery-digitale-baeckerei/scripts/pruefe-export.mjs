@@ -8,8 +8,8 @@
  * Aufruf: node scripts/pruefe-export.mjs [--base-path /digitale-baeckerei] [--mit-produkte-3d] [outDir]
  *   outDir: Standard `out` neben diesem Ordner.
  *   --mit-produkte-3d: 3D-Modelle einzelner Produkte (Nahansicht, Regal-Modelle)
- *     dürfen im Export liegen und müssen dann zum Index passen. Ohne den
- *     Schalter (so läuft der Deploy, DB9) darf keines darin sein.
+ *     dürfen im Export liegen und müssen dann zum Index passen (so läuft der
+ *     Deploy seit DB14). Ohne den Schalter darf keines darin sein.
  */
 import fs from 'node:fs'
 import path from 'node:path'

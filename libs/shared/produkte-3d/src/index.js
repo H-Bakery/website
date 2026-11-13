@@ -21,6 +21,7 @@
  */
 const { execFileSync } = require('child_process')
 const fs = require('fs')
+const path = require('path')
 
 /** Woher die Daten heute kommen (DB9: nur lokal, kein Remote). */
 const QUELLE_LOKAL = 'lokal: ../produkte-3d'
@@ -62,9 +63,46 @@ function istCommit(v) {
   return typeof v === 'string' && /^[0-9a-f]{40}$/.test(v)
 }
 
+/** Markiert einen Ordner als Export des Daten-Repos an genau einem Commit. */
+const EXPORT_DATEI = 'STAND.json'
+
+/**
+ * Ist `repoDir` ein Export (fertige Dateien statt git-Repo, so liegt der
+ * Stand für den Deploy in hq)? Dann der Commit, an dem er gezogen wurde -
+ * sonst `null`. Eine kaputte `STAND.json` ist ein Fehler, kein „kein Export“.
+ * @param {string} repoDir
+ * @returns {string | null}
+ */
+function exportStand(repoDir) {
+  const datei = path.join(repoDir, EXPORT_DATEI)
+  let text
+  try {
+    text = fs.readFileSync(datei, 'utf8')
+  } catch {
+    return null
+  }
+  let stand
+  try {
+    stand = JSON.parse(text)
+  } catch {
+    throw new Error(`${EXPORT_DATEI} ist kein gültiges JSON`)
+  }
+  if (!stand || typeof stand !== 'object' || !istCommit(stand.commit)) {
+    throw new Error(
+      `${EXPORT_DATEI}: commit muss ein voller Commit-Hash sein (40 Hex-Zeichen)`
+    )
+  }
+  return stand.commit
+}
+
 /**
  * Eine Datei aus genau einem Commit des Daten-Repos, unabhängig von dessen
  * Arbeitsverzeichnis: `git -C <repoDir> show <commit>:<pfad>`.
+ *
+ * Liegt in `repoDir` eine `STAND.json`, ist der Ordner ein **Export** des
+ * Daten-Repos (so kommt der Stand über hq in den Deploy): Dann wird die Datei
+ * direkt gelesen - aber nur, wenn der Export am verlangten Commit gezogen
+ * wurde. Ein anderer Stand ist ein Fehler, nie ein stilles „nimm, was da ist“.
  * @param {string} repoDir
  * @param {string} commit
  * @param {string} pfad  relativ zur Wurzel des Daten-Repos
@@ -74,6 +112,23 @@ function istCommit(v) {
 function liesAusCommit(repoDir, commit, pfad, options = {}) {
   if (!istCommit(commit)) {
     throw new Error('commit muss ein voller Commit-Hash sein (40 Hex-Zeichen)')
+  }
+  const stand = exportStand(repoDir)
+  if (stand !== null) {
+    if (stand !== commit) {
+      throw new Error(
+        `der Export ist vom Stand ${stand.slice(
+          0,
+          12
+        )}, verlangt ist ${commit.slice(0, 12)}`
+      )
+    }
+    const wurzel = path.resolve(repoDir)
+    const datei = path.resolve(wurzel, pfad)
+    if (!datei.startsWith(wurzel + path.sep)) {
+      throw new Error('Pfad führt aus dem Export heraus')
+    }
+    return fs.readFileSync(datei)
   }
   return execFileSync('git', ['-C', repoDir, 'show', `${commit}:${pfad}`], {
     maxBuffer: options.maxBuffer ?? 16 * 1024 * 1024,
@@ -306,6 +361,8 @@ module.exports = {
   istCommit,
   istModellId,
   leererBilderIndex,
+  EXPORT_DATEI,
+  exportStand,
   liesAusCommit,
   parseBilderLock,
   pruefeBild,
