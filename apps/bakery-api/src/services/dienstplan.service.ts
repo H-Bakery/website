@@ -774,7 +774,8 @@ export class DienstplanService {
   /**
    * Plan und Soll der Person in der laufenden Woche (Mo-So) und im laufenden
    * Monat, je mit der geschätzten Überstundenbezahlung (`pay`;
-   * `hoursOverview` in `vacation.core.js`) - für das Profil.
+   * `hoursOverview` in `vacation.core.js`) - für das Profil. Der Monat zählt
+   * bis heute (Datum der Box), der ganze Monat steht in `month.full`.
    */
   private async currentHours(
     employee: Employee,
@@ -804,6 +805,7 @@ export class DienstplanService {
         week: { from: weekFrom, to: weekTo },
         month: { from: monthFrom, to: monthTo },
       },
+      today,
       employees: [plainEmployee(employee)],
       shifts: shifts.map(plainShift),
       absences: absences.map(absenceShape),
@@ -1586,7 +1588,9 @@ export class DienstplanService {
    * Stunden je Person (Plan, Soll, Differenz) und die geschätzte
    * Überstundenbezahlung (`hoursOverview` in `vacation.core.js`).
    * `week`: die Woche um das Datum und der Monat ihres Donnerstags
-   * (`weekMonth`); `month`: nur der Monat. `area` filtert Personen und
+   * (`weekMonth`); `month`: nur der Monat. Der laufende Monat zählt bis
+   * heute (`this.today()`, Datum der Box), daneben der ganze Monat, dazu
+   * Lohnkosten und Minijob-Grenze (`monthHours`). `area` filtert Personen und
    * Summen (ohne: alle Bereiche). Dieselben Personen wie der Kalender: aktive
    * und ausgeschiedene mit Einträgen im Zeitraum.
    */
@@ -1623,8 +1627,10 @@ export class DienstplanService {
       (e) => !area || area === 'alle' || e.area === area
     )
     const plainEmployees = shown.map(plainEmployee)
+    const today = this.today()
     const overview = core.hoursOverview({
       periods,
+      today,
       employees: plainEmployees,
       shifts: shifts.map(plainShift),
       absences: absences.map(absenceShape),
@@ -1632,7 +1638,7 @@ export class DienstplanService {
     })
     return {
       data: {
-        today: this.today(),
+        today,
         area: !area || area === 'alle' ? 'alle' : area,
         periods: { week: periods.week ?? null, month: periods.month },
         closedWeekdays: closed,

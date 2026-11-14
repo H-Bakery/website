@@ -576,6 +576,11 @@ export default function DienstplanClient({
       })
     )
   }, [overviewValue, view])
+  // Im laufenden Monat zählen die Überstunden bis heute - das steht dabei.
+  const gridPayPrefix =
+    view === 'monat' && overviewValue?.totals.month.phase === 'current'
+      ? 'Überstd. bis heute'
+      : undefined
 
   const nav = PERIOD_NAV[view]
   const sectionHint =
@@ -761,6 +766,7 @@ export default function DienstplanClient({
               navigate({ view: 'woche', start: mondayOf(date) })
             }
             pays={gridPays}
+            payPrefix={gridPayPrefix}
             onOpenHours={setHoursFor}
           />
         ) : shownCalendar !== null ? (

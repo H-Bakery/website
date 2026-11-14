@@ -945,8 +945,19 @@ describe('calendar aggregate', () => {
       targetMinutes: 1800,
       diffMinutes: -1440,
     })
-    // November 2026: 24 open days (5 Mondays, Allerheiligen on a Sunday)
+    // the current month counts through today (Sun 08.11.: open days
+    // 03.-08. = 6 × 300 min) ...
     expect(profile.body.data.hours.month).toMatchObject({
+      phase: 'current',
+      asOf: TODAY,
+      from: '2026-11-01',
+      to: TODAY,
+      plannedMinutes: 360,
+      targetMinutes: 1800,
+    })
+    // ... next to the whole November: 24 open days (5 Mondays, Allerheiligen
+    // on a Sunday)
+    expect(profile.body.data.hours.month.full).toMatchObject({
       from: '2026-11-01',
       to: '2026-11-30',
       plannedMinutes: 360,
@@ -1177,8 +1188,9 @@ describe('Stundenlohn und geschätzte Überstundenbezahlung', () => {
         diffMinutes: 120,
         pay: { status: 'ok', overtimeMinutes: 120, amountCents: 3000 },
       },
-      // the March shift does not count for April
-      month: { plannedMinutes: 0, pay: { status: 'no-overtime' } },
+      // the March shift does not count for April; April is still ahead
+      // (today 08.11.2026): planned vs. target only, no overtime yet
+      month: { phase: 'future', plannedMinutes: 0, pay: { status: 'future' } },
     })
     expect(row(unpaid)).toMatchObject({
       hourlyWageCents: null,
@@ -1194,9 +1206,12 @@ describe('Stundenlohn und geschätzte Überstundenbezahlung', () => {
       missingWageCount: 1,
     })
     expect(data.totals.month).toMatchObject({
+      phase: 'future',
       plannedMinutes: 0,
-      amountCents: 0,
+      overtimeMinutes: null,
+      amountCents: null,
       missingWageCount: 0,
+      wageCost: { toDate: null, full: { amountCents: 0, missingWageCount: 0 } },
     })
 
     const march = await as().get(
@@ -1264,6 +1279,118 @@ describe('Stundenlohn und geschätzte Überstundenbezahlung', () => {
       diffMinutes: 60,
       pay: { status: 'ok', overtimeMinutes: 60, amountCents: 2000 },
     })
-    expect(profile.body.data.hours.month.pay.status).toBe('no-overtime')
+    // the month through today (03.-08.11.: Soll 6 h) has the same +1 h
+    expect(profile.body.data.hours.month).toMatchObject({
+      phase: 'current',
+      diffMinutes: 60,
+      pay: { status: 'ok', overtimeMinutes: 60, amountCents: 2000 },
+      wageCost: {
+        toDate: { status: 'ok', plannedMinutes: 420, amountCents: 14000 },
+        full: { status: 'ok', plannedMinutes: 420, amountCents: 14000 },
+      },
+      minijob: null,
+    })
+  })
+
+  it('GET /hours: current month through today, net overtime, wage costs and the Minijob limit', async () => {
+    const mona = await employee({
+      displayName: 'Mona Mini',
+      area: 'fahrer',
+      employmentType: 'minijob',
+      weeklyHours: 6,
+      hourlyWageCents: 1500,
+    })
+    const max = await employee({
+      displayName: 'Max Minus',
+      area: 'fahrer',
+      employmentType: 'teilzeit',
+      weeklyHours: 6,
+    })
+    const shift = (employeeId: number, date: string, endTime: string) =>
+      as().post('/api/dienstplan/shifts', {
+        employeeId,
+        date,
+        startTime: '06:00',
+        endTime,
+      })
+    // Mona: 8 h before today, 41 h in November → 615 € > 603 €
+    for (const [date, end] of [
+      ['2026-11-03', '14:00'],
+      ['2026-11-17', '14:00'],
+      ['2026-11-18', '14:00'],
+      ['2026-11-24', '14:00'],
+      ['2026-11-25', '15:00'],
+    ]) {
+      expect((await shift(mona, date, end)).status).toBe(201)
+    }
+    // Max: 2 h before today, no wage
+    expect((await shift(max, '2026-11-04', '08:00')).status).toBe(201)
+
+    const res = await as().get(
+      '/api/dienstplan/hours?month=2026-11&area=fahrer'
+    )
+    expect(res.status).toBe(200)
+    const data = res.body.data
+    const row = (id: number) =>
+      data.rows.find((r: { employeeId: number }) => r.employeeId === id)
+    // through Sun 08.11.: Soll 6 open days × 60 min = 6 h
+    expect(row(mona).month).toMatchObject({
+      phase: 'current',
+      asOf: TODAY,
+      to: TODAY,
+      plannedMinutes: 480,
+      targetMinutes: 360,
+      diffMinutes: 120,
+      pay: { status: 'ok', overtimeMinutes: 120, amountCents: 3000 },
+      full: { to: '2026-11-30', plannedMinutes: 2460, targetMinutes: 1440 },
+      wageCost: {
+        toDate: { amountCents: 12000 },
+        full: { amountCents: 61500 },
+      },
+      minijob: {
+        status: 'over',
+        limitCents: 60300,
+        plannedCostCents: 61500,
+        overCents: 1200,
+      },
+    })
+    expect(row(max).month).toMatchObject({
+      diffMinutes: 120 - 360,
+      pay: { status: 'no-overtime', amountCents: 0 },
+      wageCost: {
+        toDate: { status: 'no-wage', amountCents: null },
+        full: { status: 'no-wage', amountCents: null },
+      },
+      minijob: null,
+    })
+    expect(data.totals.month).toMatchObject({
+      phase: 'current',
+      asOf: TODAY,
+      overtimeMinutes: 120,
+      amountCents: 3000,
+      wageCost: {
+        toDate: { amountCents: 12000, missingWageCount: 1 },
+        full: { amountCents: 61500, missingWageCount: 1 },
+      },
+      minijob: { count: 1, overCount: 1, openCount: 0, limitCents: 60300 },
+    })
+
+    // a past month counts whole: through today = the whole month
+    const october = await as().get(
+      '/api/dienstplan/hours?month=2026-10&area=fahrer'
+    )
+    expect(october.body.data.totals.month).toMatchObject({
+      phase: 'past',
+      asOf: null,
+    })
+    const monaOct = october.body.data.rows.find(
+      (r: { employeeId: number }) => r.employeeId === mona
+    )
+    expect(monaOct.month).toMatchObject({
+      phase: 'past',
+      from: '2026-10-01',
+      to: '2026-10-31',
+    })
+    expect(monaOct.month.full).toMatchObject({ to: '2026-10-31' })
   })
 })

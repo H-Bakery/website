@@ -2,6 +2,7 @@
 import React from 'react'
 import Link from 'next/link'
 import {
+  Alert,
   Box,
   Button,
   ButtonBase,
@@ -20,23 +21,32 @@ import {
 import {
   Close as CloseIcon,
   ChevronRight as OpenIcon,
+  WarningAmber as WarningIcon,
 } from '@mui/icons-material'
 import {
   AREA_LABELS,
   EMPLOYMENT_TYPE_LABELS,
+  formatCents,
   formatDateDe,
   formatDays,
   formatMinutes,
   formatWage,
   groupByArea,
+  minijobText,
+  monthBasisText,
   payFormula,
   payText,
   totalPayText,
+  totalWageCostText,
+  wageCostFormula,
+  wageCostText,
   type Employee,
   type HoursOverview,
   type HoursOverviewRow,
-  type HoursTotals,
+  type MinijobCheck,
+  type MonthHours,
   type PeriodHours,
+  type PlannedHours,
 } from '../../../lib/dienstplanApi'
 import {
   MONTH_NAMES,
@@ -55,15 +65,22 @@ import {
 import { ColorDot } from './mitarbeiter/EmployeeDialog'
 import { profileHref } from './mitarbeiter/MitarbeiterClient'
 import { AreaGroupRow, stickyName } from './calendarParts'
+import { HowItWorks, InfoButton } from './HoursInfo'
+import type {
+  HoursInfoContext,
+  HoursInfoKey,
+} from '../../../lib/dienstplanInfo'
 
 /** Namensspalte der Übersicht: breiter als im Raster - hier ist Platz. */
-const OVERVIEW_NAME_WIDTH = { xs: 140, sm: 220 } as const
+const OVERVIEW_NAME_WIDTH = { xs: 140, sm: 200 } as const
 
 /**
- * Stunden und Überstunden unter dem Kalender (Woche und Monat): je Person
- * Plan, Soll und Differenz der Woche und des Monats und die geschätzte
- * Überstundenbezahlung, darüber die Summen, je Person Details in einer
- * Schublade (`HoursDrawer`). Gerechnet hat die API (`hoursOverview` in
+ * Stunden und Überstunden unter dem Kalender (Woche und Monat). Bezahlt wird
+ * der **Monat** (vorläufig 11/2026): im laufenden Monat Plan bis heute gegen
+ * Soll bis heute, Minusstunden einer Woche gleichen Überstunden einer
+ * anderen im selben Monat aus; die Woche steht nur als Richtwert daneben.
+ * Dazu die geschätzten Lohnkosten (Plan × Stundenlohn) und die
+ * Minijob-Grenze. Gerechnet hat die API (`hoursOverview`/`monthHours` in
  * `vacation.core.js`, `GET /api/dienstplan/hours`) - hier nur Text.
  */
 
@@ -102,56 +119,207 @@ function spanningNote(overview: HoursOverview): string {
   )}).`
 }
 
-function periodKeys(overview: HoursOverview): PeriodKey[] {
-  return overview.periods.week ? ['week', 'month'] : ['month']
-}
-
 /** „09.11. – 15.11.2026“ */
 function rangeText(range: { from: string; to: string }): string {
   return `${formatDateDe(range.from).slice(0, 6)} – ${formatDateDe(range.to)}`
 }
 
-/** Kurz für die Kennzahlen: „KW 46“ bzw. „November“ (das Jahr steht im Kopf). */
-function shortLabel(overview: HoursOverview, key: PeriodKey): string {
-  if (key === 'week') return periodLabel(overview, 'week') ?? ''
+/** Was die Erklärtexte aus der Antwort brauchen (Minijob-Grenze, Jahr). */
+function infoContext(overview: HoursOverview): HoursInfoContext {
+  return {
+    minijobLimitCents: overview.totals.month.minijob.limitCents,
+    year: overview.periods.month.from.slice(0, 4),
+  }
+}
+
+/** Bezeichnung mit (i)-Knopf zur Regel dahinter. */
+function withInfo(
+  label: string,
+  info: HoursInfoKey,
+  context?: HoursInfoContext
+): React.ReactNode {
+  return (
+    <>
+      {label}
+      <InfoButton info={info} context={context} />
+    </>
+  )
+}
+
+/** „November“ (das Jahr steht im Kopf). */
+function monthName(overview: HoursOverview): string {
   return MONTH_NAMES[Number(overview.periods.month.from.slice(5, 7)) - 1]
 }
 
-function totalFigures(overview: HoursOverview): KeyFigure[] {
-  return periodKeys(overview).flatMap((key): KeyFigure[] => {
-    const t = overview.totals[key] as HoursTotals
-    const label = shortLabel(overview, key)
-    return [
-      {
-        label: `Plan ${label}`,
-        value: formatMinutes(t.plannedMinutes),
-        hint:
-          t.targetMinutes === null
-            ? 'Soll offen'
-            : `Soll ${formatMinutes(t.targetMinutes)}${
-                t.noTargetCount > 0 ? ` (ohne ${t.noTargetCount} offen)` : ''
-              }`,
-        'data-testid': `total-plan-${key}`,
-      },
-      {
-        label: `Überstunden ${label}`,
-        value: totalPayText(t),
-        hint: [
-          'geschätzt',
-          t.overtimeMinutes === null
-            ? 'Überstunden offen'
-            : formatMinutes(t.overtimeMinutes),
-          t.missingWageCount > 0
-            ? `${t.missingWageCount} × Stundenlohn offen`
-            : null,
-        ]
-          .filter(Boolean)
-          .join(' · '),
-        tone: t.missingWageCount > 0 ? 'warning' : 'default',
-        'data-testid': `total-pay-${key}`,
-      },
-    ]
-  })
+function targetHint(
+  targetMinutes: number | null,
+  noTargetCount: number
+): string {
+  return targetMinutes === null
+    ? 'Soll offen'
+    : `Soll ${formatMinutes(targetMinutes)}${
+        noTargetCount > 0 ? ` (ohne ${noTargetCount} offen)` : ''
+      }`
+}
+
+function openWages(count: number): string | null {
+  return count > 0 ? `${count} × Stundenlohn offen` : null
+}
+
+/**
+ * Kennzahlen des Monats - die Zahl, die bezahlt wird: Plan (bis heute),
+ * Überstunden netto, Lohnkosten und im laufenden Monat der ganze Monat.
+ */
+function monthFigures(overview: HoursOverview): KeyFigure[] {
+  const t = overview.totals.month
+  const name = monthName(overview)
+  const current = t.phase === 'current'
+  const future = t.phase === 'future'
+  const basis = current ? ' bis heute' : ''
+  const figures: KeyFigure[] = [
+    {
+      label: withInfo(`Plan ${name}${basis}`, 'bisHeute'),
+      value: formatMinutes(t.plannedMinutes),
+      hint: targetHint(t.targetMinutes, t.noTargetCount),
+      'data-testid': 'total-plan-month',
+    },
+    {
+      label: withInfo(`Überstunden ${name}${basis}`, 'verrechnung'),
+      value: future ? 'noch keine' : totalPayText(t),
+      hint: future
+        ? 'Monat noch nicht begonnen'
+        : [
+            'geschätzt, netto im Monat',
+            t.overtimeMinutes === null
+              ? 'Überstunden offen'
+              : formatMinutes(t.overtimeMinutes),
+            openWages(t.missingWageCount),
+          ]
+            .filter(Boolean)
+            .join(' · '),
+      tone: t.missingWageCount > 0 ? 'warning' : 'default',
+      'data-testid': 'total-pay-month',
+    },
+  ]
+  const cost = future ? t.wageCost.full : t.wageCost.toDate
+  if (cost) {
+    figures.push({
+      label: withInfo(
+        `Lohnkosten ${name}${future ? ' geplant' : basis}`,
+        'lohnkosten'
+      ),
+      value: totalWageCostText(cost),
+      hint: ['geschätzt: Plan × Stundenlohn', openWages(cost.missingWageCount)]
+        .filter(Boolean)
+        .join(' · '),
+      tone: cost.missingWageCount > 0 ? 'warning' : 'default',
+      'data-testid': 'total-cost-month',
+    })
+  }
+  if (current) {
+    figures.push({
+      label: 'Ganzer Monat geplant',
+      value: formatMinutes(t.full.plannedMinutes),
+      hint: [
+        targetHint(t.full.targetMinutes, t.full.noTargetCount),
+        `Lohnkosten ${totalWageCostText(t.wageCost.full)}`,
+        openWages(t.wageCost.full.missingWageCount),
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      'data-testid': 'total-full-month',
+    })
+  }
+  return figures
+}
+
+/** Kennzahlen der Woche - nur ein Richtwert. */
+function weekFigures(overview: HoursOverview): KeyFigure[] {
+  const t = overview.totals.week
+  if (!t) return []
+  const label = periodLabel(overview, 'week') ?? ''
+  return [
+    {
+      label: `Plan ${label}`,
+      value: formatMinutes(t.plannedMinutes),
+      hint: targetHint(t.targetMinutes, t.noTargetCount),
+      'data-testid': 'total-plan-week',
+    },
+    {
+      label: withInfo(`Überstunden ${label}`, 'woche'),
+      value: totalPayText(t),
+      hint: [
+        'Richtwert',
+        t.overtimeMinutes === null
+          ? 'Überstunden offen'
+          : formatMinutes(t.overtimeMinutes),
+        openWages(t.missingWageCount),
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      'data-testid': 'total-pay-week',
+    },
+  ]
+}
+
+/** Minijobs über der Grenze bzw. offen - als Hinweis über der Tabelle. */
+function MinijobNotice({ overview }: { overview: HoursOverview }) {
+  const t = overview.totals.month.minijob
+  if (t.overCount === 0 && t.openCount === 0) return null
+  const names = (status: MinijobCheck['status'][]) =>
+    overview.rows
+      .filter((r) => r.month.minijob && status.includes(r.month.minijob.status))
+      .map(
+        (r) =>
+          overview.employees.find((e) => e.id === r.employeeId)?.displayName
+      )
+      .filter(Boolean)
+      .join(', ')
+  const limit =
+    t.limitCents === null ? 'nicht hinterlegt' : formatCents(t.limitCents)
+  return (
+    <Alert
+      severity={t.overCount > 0 ? 'warning' : 'info'}
+      data-testid="minijob-notice"
+      sx={{ mt: 1.5 }}
+      action={<InfoButton info="minijob" context={infoContext(overview)} />}
+    >
+      {t.overCount > 0 && (
+        <Box component="span" sx={{ display: 'block' }}>
+          Über der Minijob-Grenze ({limit} im Monat, geplante Lohnkosten des
+          ganzen Monats): <strong>{names(['over'])}</strong>.
+        </Box>
+      )}
+      {t.openCount > 0 && (
+        <Box component="span" sx={{ display: 'block' }}>
+          Minijob-Grenze nicht prüfbar (Stundenlohn oder Grenze offen):{' '}
+          {names(['no-wage', 'no-limit'])}.
+        </Box>
+      )}
+    </Alert>
+  )
+}
+
+function FigureGroup({
+  title,
+  children,
+}: {
+  title: string
+  children: React.ReactNode
+}) {
+  return (
+    <Box>
+      <Typography
+        variant="overline"
+        color="text.secondary"
+        component="h3"
+        sx={{ display: 'block', lineHeight: 1.6, mb: 0.5 }}
+      >
+        {title}
+      </Typography>
+      {children}
+    </Box>
+  )
 }
 
 export function HoursOverviewSection({
@@ -167,7 +335,7 @@ export function HoursOverviewSection({
   return (
     <PageSection
       title="Stunden und Überstunden"
-      description={`Nach Plan (Schichten) - Ist-Stunden gibt es noch nicht. Überstunden = Plan über Soll; Bezahlung geschätzt = Überstunden × Stundenlohn, ohne Zuschläge. Person antippen: Details.${
+      description={`Nach Plan (Schichten) - Ist-Stunden gibt es noch nicht. Bezahlt wird der Monat: im laufenden Monat Plan bis heute gegen Soll bis heute, Minusstunden einer Woche gleichen Überstunden einer anderen im selben Monat aus. Die Woche ist nur ein Richtwert. Bezahlung und Lohnkosten geschätzt (× Stundenlohn), ohne Zuschläge. Person antippen: Details.${
         overview ? spanningNote(overview) : ''
       }`}
       disablePadding={overview !== null && overview.employees.length > 0}
@@ -183,14 +351,37 @@ export function HoursOverviewSection({
         </Typography>
       ) : overview ? (
         <>
-          <Box sx={{ px: { xs: 2, md: 3 }, pb: 2 }}>
-            <KeyFigures
-              variant="plain"
-              dense
-              items={totalFigures(overview)}
-              aria-label="Summen der Stunden"
-              data-testid="hours-totals"
-            />
+          <Box
+            sx={{ px: { xs: 2, md: 3 }, pb: 2, display: 'grid', gap: 2 }}
+            data-testid="hours-totals"
+          >
+            <FigureGroup
+              title={`${periodLabel(overview, 'month')} · ${monthBasisText(
+                overview.totals.month
+              )} · wird bezahlt`}
+            >
+              <KeyFigures
+                variant="plain"
+                dense
+                items={monthFigures(overview)}
+                aria-label="Summen des Monats"
+              />
+              <MinijobNotice overview={overview} />
+            </FigureGroup>
+            {overview.totals.week && (
+              <FigureGroup
+                title={`${periodLabel(overview, 'week')} · nur Richtwert`}
+              >
+                <KeyFigures
+                  variant="plain"
+                  dense
+                  columns={4}
+                  items={weekFigures(overview)}
+                  aria-label="Summen der Woche (Richtwert)"
+                />
+              </FigureGroup>
+            )}
+            <HowItWorks context={infoContext(overview)} />
           </Box>
           <OverviewTable overview={overview} onOpen={onOpen} />
         </>
@@ -206,10 +397,11 @@ function OverviewTable({
   overview: HoursOverview
   onOpen: (employeeId: number) => void
 }) {
-  const keys = periodKeys(overview)
+  const hasWeek = overview.periods.week !== null
   const rows = new Map(overview.rows.map((r) => [r.employeeId, r]))
   const groups = groupByArea(overview.employees)
-  const columns = 2 + keys.length
+  const columns = hasWeek ? 5 : 4
+  const t = overview.totals.month
   return (
     <TableContainer
       sx={{ overflowX: 'auto', borderTop: 1, borderColor: 'divider' }}
@@ -220,8 +412,8 @@ function OverviewTable({
         sx={{
           tableLayout: 'fixed',
           minWidth: {
-            xs: OVERVIEW_NAME_WIDTH.xs + 88 + keys.length * 150,
-            sm: 600,
+            xs: OVERVIEW_NAME_WIDTH.xs + 88 + (columns - 2) * 150,
+            sm: hasWeek ? 760 : 620,
           },
           '& td, & th': { verticalAlign: 'top' },
         }}
@@ -240,20 +432,26 @@ function OverviewTable({
             <TableCell align="right" sx={{ width: { xs: 88, md: 110 } }}>
               Stundenlohn
             </TableCell>
-            {keys.map((key) => (
-              <TableCell key={key} align="right">
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  {periodLabel(overview, key)}
-                </Typography>
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  display="block"
-                >
-                  Plan − Soll, Überstunden
-                </Typography>
-              </TableCell>
-            ))}
+            <HeadCell
+              title={periodLabel(overview, 'month') ?? ''}
+              caption={
+                t.phase === 'future'
+                  ? 'Plan − Soll, geplant'
+                  : `Plan − Soll ${monthBasisText(t)}, Überstunden`
+              }
+            />
+            {hasWeek && (
+              <HeadCell
+                title={periodLabel(overview, 'week') ?? ''}
+                caption="Plan − Soll, Richtwert"
+              />
+            )}
+            <HeadCell
+              title="Lohnkosten"
+              caption={`${
+                t.phase === 'future' ? 'geplant' : monthBasisText(t)
+              }, Plan × Lohn`}
+            />
           </TableRow>
         </TableHead>
         <TableBody>
@@ -272,7 +470,7 @@ function OverviewTable({
                     key={employee.id}
                     employee={employee}
                     row={row}
-                    keys={keys}
+                    hasWeek={hasWeek}
                     onOpen={onOpen}
                   />
                 )
@@ -285,15 +483,28 @@ function OverviewTable({
   )
 }
 
+function HeadCell({ title, caption }: { title: string; caption: string }) {
+  return (
+    <TableCell align="right">
+      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+        {title}
+      </Typography>
+      <Typography variant="caption" color="text.secondary" display="block">
+        {caption}
+      </Typography>
+    </TableCell>
+  )
+}
+
 function OverviewRow({
   employee,
   row,
-  keys,
+  hasWeek,
   onOpen,
 }: {
   employee: Employee
   row: HoursOverviewRow
-  keys: PeriodKey[]
+  hasWeek: boolean
   onOpen: (employeeId: number) => void
 }) {
   return (
@@ -342,14 +553,20 @@ function OverviewRow({
       >
         {formatWage(row.hourlyWageCents)}
       </TableCell>
-      {keys.map((key) => (
+      <PeriodCell
+        employeeId={employee.id}
+        periodKey="month"
+        hours={row.month}
+        fullMonth={row.month.phase === 'current' ? row.month.full : null}
+      />
+      {hasWeek && row.week && (
         <PeriodCell
-          key={key}
           employeeId={employee.id}
-          periodKey={key}
-          hours={row[key] as PeriodHours}
+          periodKey="week"
+          hours={row.week}
         />
-      ))}
+      )}
+      <CostCell employeeId={employee.id} month={row.month} />
     </TableRow>
   )
 }
@@ -357,20 +574,24 @@ function OverviewRow({
 /**
  * Ein Zeitraum einer Person in einer Zelle: die Differenz groß, darunter
  * Plan / Soll und - bei Überstunden - die geschätzte Bezahlung
- * („≈ 69,50 €“) oder „Stundenlohn offen“.
+ * („≈ 69,50 €“) oder „Stundenlohn offen“; im laufenden Monat zusätzlich der
+ * ganze Monat.
  */
 function PeriodCell({
   employeeId,
   periodKey,
   hours,
+  fullMonth,
 }: {
   employeeId: number
   periodKey: PeriodKey
   hours: PeriodHours
+  fullMonth?: PlannedHours | null
 }) {
   const t = hoursTexts(hours)
   const pay = hours.pay
-  const showPay = pay.status === 'ok' || pay.status === 'no-wage'
+  const showPay =
+    pay.status === 'ok' || pay.status === 'no-wage' || pay.status === 'future'
   return (
     <TableCell
       align="right"
@@ -407,9 +628,27 @@ function PeriodCell({
           data-testid={`overview-pay-${periodKey}-${employeeId}`}
           data-status={pay.status}
           title={payFormula(pay) ?? undefined}
-          sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}
+          color={pay.status === 'future' ? 'text.secondary' : undefined}
+          sx={{
+            fontWeight: pay.status === 'future' ? 400 : 600,
+            whiteSpace: 'nowrap',
+          }}
         >
           {payText(pay)}
+        </Typography>
+      )}
+      {fullMonth && (
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          display="block"
+          data-testid={`overview-full-${employeeId}`}
+          sx={{ whiteSpace: 'nowrap' }}
+        >
+          ganzer Monat {formatMinutes(fullMonth.plannedMinutes)}
+          {fullMonth.targetMinutes !== null
+            ? ` / ${formatMinutes(fullMonth.targetMinutes)}`
+            : ''}
         </Typography>
       )}
     </TableCell>
@@ -417,9 +656,76 @@ function PeriodCell({
 }
 
 /**
- * Details einer Person: Stundenlohn, Woche und Monat mit Plan, Soll,
- * Differenz, Überstunden und der geschätzten Bezahlung samt Rechenweg. Den
- * Stundenlohn pflegt der Inhaber im Profil.
+ * Lohnkosten einer Person im Monat (Plan × Stundenlohn): bis heute bzw. der
+ * ganze Monat, im laufenden Monat darunter der ganze Monat, bei Minijob die
+ * Grenze.
+ */
+function CostCell({
+  employeeId,
+  month,
+}: {
+  employeeId: number
+  month: MonthHours
+}) {
+  const main = month.wageCost.toDate ?? month.wageCost.full
+  const minijob = month.minijob
+  return (
+    <TableCell
+      align="right"
+      data-testid={`overview-cost-${employeeId}`}
+      sx={{ fontVariantNumeric: 'tabular-nums' }}
+    >
+      <Typography
+        variant="body2"
+        color={main.status === 'no-wage' ? 'text.secondary' : undefined}
+        sx={{ fontWeight: main.status === 'no-wage' ? 400 : 600 }}
+      >
+        {wageCostText(main)}
+      </Typography>
+      {month.phase === 'current' && (
+        <Typography variant="caption" color="text.secondary" display="block">
+          ganzer Monat {wageCostText(month.wageCost.full)}
+        </Typography>
+      )}
+      {minijob && <MinijobLine check={minijob} employeeId={employeeId} />}
+    </TableCell>
+  )
+}
+
+function MinijobLine({
+  check,
+  employeeId,
+  year,
+}: {
+  check: MinijobCheck
+  employeeId: number
+  year?: string
+}) {
+  const over = check.status === 'over'
+  return (
+    <Typography
+      variant="caption"
+      display="flex"
+      data-testid={`overview-minijob-${employeeId}`}
+      data-status={check.status}
+      color={over ? 'warning.main' : 'text.secondary'}
+      sx={{
+        justifyContent: 'flex-end',
+        alignItems: 'flex-start',
+        gap: 0.5,
+        fontWeight: over ? 600 : 400,
+      }}
+    >
+      {over && <WarningIcon aria-hidden sx={{ fontSize: 14, mt: '2px' }} />}
+      <span>{minijobText(check, year)}</span>
+    </Typography>
+  )
+}
+
+/**
+ * Details einer Person: Stundenlohn, der Monat (bezahlt: bis heute, netto)
+ * mit Lohnkosten und Minijob-Grenze, der ganze Monat und die Woche als
+ * Richtwert. Den Stundenlohn pflegt der Inhaber im Profil.
  */
 export function HoursDrawer({
   overview,
@@ -442,7 +748,7 @@ export function HoursDrawer({
       onClose={onClose}
       PaperProps={{
         sx: {
-          width: narrow ? '100%' : 420,
+          width: narrow ? '100%' : 440,
           maxHeight: narrow ? '90vh' : undefined,
         },
       }}
@@ -469,7 +775,7 @@ export function HoursDrawer({
                   AREA_LABELS[employee.area],
                   employee.employmentType
                     ? EMPLOYMENT_TYPE_LABELS[employee.employmentType]
-                    : null,
+                    : 'Beschäftigungsart offen',
                   employee.weeklyHours !== null
                     ? `${formatDays(employee.weeklyHours)} Std./Woche`
                     : 'Wochenstunden offen',
@@ -491,30 +797,29 @@ export function HoursDrawer({
             />
           </DrawerList>
 
-          {periodKeys(overview).map((key) => {
-            const h = row[key] as PeriodHours
-            const range =
-              key === 'week' ? overview.periods.week : overview.periods.month
-            return (
-              <Box key={key} data-testid={`drawer-${key}`}>
-                <Typography variant="subtitle2" component="h3">
-                  {key === 'week' ? 'Woche' : 'Monat'}{' '}
-                  {periodLabel(overview, key)}
-                </Typography>
-                {range && (
-                  <Typography variant="caption" color="text.secondary">
-                    {rangeText(range)}
-                  </Typography>
-                )}
-                <PeriodDetails hours={h} />
-              </Box>
-            )
-          })}
+          <MonthDetails
+            month={row.month}
+            title={`Monat ${periodLabel(overview, 'month')}`}
+          />
+
+          {overview.periods.week && row.week && (
+            <Box data-testid="drawer-week">
+              <Typography variant="subtitle2" component="h3">
+                Woche {periodLabel(overview, 'week')} · nur Richtwert
+                <InfoButton info="woche" />
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {rangeText(overview.periods.week)}
+              </Typography>
+              <PeriodDetails hours={row.week} />
+            </Box>
+          )}
 
           <Typography variant="caption" color="text.secondary">
-            Geschätzt nach Plan: noch keine Ist-Stunden, ohne Zuschläge und ohne
-            Freizeitausgleich - keine Lohnabrechnung. Minusstunden der Woche
-            oder des Monats verrechnet die Schätzung nicht.
+            Geschätzt nach Plan: noch keine Ist-Stunden, ohne Zuschläge - keine
+            Lohnabrechnung. Bezahlt wird der Monat: Minusstunden einer Woche
+            gleichen Überstunden einer anderen im selben Monat aus; die Woche
+            ist nur ein Richtwert. Kein Übertrag zwischen Monaten.
           </Typography>
 
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
@@ -531,6 +836,97 @@ export function HoursDrawer({
         </Box>
       )}
     </Drawer>
+  )
+}
+
+/**
+ * Der Monat einer Person in Details: der gewertete Zeitraum (bis heute bzw.
+ * ganzer Monat) mit Überstunden, der ganze Monat, Lohnkosten, Minijob.
+ */
+export function MonthDetails({
+  month,
+  title,
+}: {
+  month: MonthHours
+  title: string
+}) {
+  const current = month.phase === 'current'
+  return (
+    <Box data-testid="drawer-month">
+      <Typography variant="subtitle2" component="h3">
+        {title} · {monthBasisText(month)}
+        <InfoButton info="verrechnung" />
+      </Typography>
+      <Typography variant="caption" color="text.secondary">
+        {rangeText(month)}
+        {month.phase === 'future'
+          ? ' - noch keine Überstunden'
+          : ' - wird bezahlt (netto im Monat)'}
+      </Typography>
+      <PeriodDetails hours={month} />
+      {current && (
+        <>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            component="h4"
+            sx={{ display: 'block', mt: 1.5, fontWeight: 600 }}
+          >
+            Ganzer Monat (geplant) · {rangeText(month.full)}
+          </Typography>
+          <DrawerList>
+            <DrawerRow
+              label="Plan / Soll"
+              value={`${hoursTexts(month.full).plan} / ${
+                hoursTexts(month.full).target
+              }`}
+              testId="drawer-full"
+            />
+            <DrawerRow
+              label="Differenz (Plan − Soll)"
+              value={hoursTexts(month.full).diff ?? 'offen'}
+            />
+          </DrawerList>
+        </>
+      )}
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        component="h4"
+        sx={{ display: 'block', mt: 1.5, fontWeight: 600 }}
+      >
+        Lohnkosten (geschätzt, Plan × Stundenlohn)
+        <InfoButton info="lohnkosten" />
+      </Typography>
+      <DrawerList>
+        {month.wageCost.toDate && current && (
+          <DrawerRow
+            label={monthBasisText(month)}
+            hint={wageCostFormula(month.wageCost.toDate) ?? undefined}
+            value={wageCostText(month.wageCost.toDate)}
+            testId="drawer-cost"
+          />
+        )}
+        <DrawerRow
+          label={current ? 'ganzer Monat' : monthBasisText(month)}
+          hint={wageCostFormula(month.wageCost.full) ?? undefined}
+          value={wageCostText(month.wageCost.full)}
+          testId={current ? 'drawer-cost-full' : 'drawer-cost'}
+        />
+        {month.minijob && (
+          <DrawerRow
+            label={withInfo('Minijob-Grenze', 'minijob', {
+              minijobLimitCents: month.minijob.limitCents,
+              year: month.from.slice(0, 4),
+            })}
+            hint="geplante Lohnkosten des ganzen Monats"
+            value={minijobText(month.minijob, month.from.slice(0, 4))}
+            tone={month.minijob.status === 'over' ? 'warning' : undefined}
+            testId="drawer-minijob"
+          />
+        )}
+      </DrawerList>
+    </Box>
   )
 }
 
@@ -561,7 +957,7 @@ function PeriodDetails({ hours }: { hours: PeriodHours }) {
       />
       <DrawerRow label="Differenz (Plan − Soll)" value={t.diff ?? 'offen'} />
       <DrawerRow
-        label="Überstunden-Bezahlung (geschätzt)"
+        label={withInfo('Überstunden-Bezahlung (geschätzt)', 'schaetzung')}
         hint={
           payFormula(pay) ??
           (pay.status === 'no-wage' && pay.overtimeMinutes !== null
@@ -603,11 +999,13 @@ function DrawerRow({
   value,
   hint,
   testId,
+  tone,
 }: {
-  label: string
+  label: React.ReactNode
   value: string
   hint?: string
   testId?: string
+  tone?: 'warning'
 }) {
   return (
     <>
@@ -630,7 +1028,13 @@ function DrawerRow({
         variant="body2"
         fontWeight={600}
         data-testid={testId}
-        sx={{ m: 0, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+        color={tone === 'warning' ? 'warning.main' : undefined}
+        sx={{
+          m: 0,
+          textAlign: 'right',
+          fontVariantNumeric: 'tabular-nums',
+          maxWidth: 220,
+        }}
       >
         {value}
       </Typography>

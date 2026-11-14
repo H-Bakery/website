@@ -103,6 +103,7 @@ export default function MonthView({
   onCell,
   onOpenWeek,
   pays,
+  payPrefix,
   onOpenHours,
 }: {
   calendar: Calendar
@@ -111,6 +112,8 @@ export default function MonthView({
   loading: boolean
   /** Geschätzte Überstundenbezahlung des Monats je Person (Stundenübersicht). */
   pays?: ReadonlyMap<number, OvertimePay>
+  /** Vor dem Betrag („Überstd. bis heute“ im laufenden Monat). */
+  payPrefix?: string
   /** Stunden einer Person: Details öffnen. */
   onOpenHours?: (employeeId: number) => void
   onCell: (
@@ -242,6 +245,7 @@ export default function MonthView({
                         employeeId={employee.id}
                         hours={hours.get(employee.id)}
                         pay={pays?.get(employee.id)}
+                        payPrefix={payPrefix}
                         onOpen={
                           onOpenHours
                             ? () => onOpenHours(employee.id)

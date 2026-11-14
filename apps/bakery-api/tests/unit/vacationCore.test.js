@@ -992,6 +992,7 @@ describe('Überstunden (weekOf, monthOf, weekMonth, overtimePay, hoursOverview)'
     const month = core.weekMonth('2026-06-29')
     const res = core.hoursOverview({
       periods: { week, month },
+      today: '2026-08-15', // July is over: the whole month counts
       employees: [person()],
       shifts: [
         shift('2026-06-30', '06:00', '14:00'), // 8 h, June
@@ -1025,6 +1026,7 @@ describe('Überstunden (weekOf, monthOf, weekMonth, overtimePay, hoursOverview)'
   it('hoursOverview: month boundaries - only the days of the month count', () => {
     const res = core.hoursOverview({
       periods: { month: core.monthOf('2026-11-15') },
+      today: '2026-12-01',
       employees: [person({ weeklyHours: 6 })],
       shifts: [
         shift('2026-10-31', '06:00', '16:00'), // October
@@ -1145,6 +1147,386 @@ describe('Überstunden (weekOf, monthOf, weekMonth, overtimePay, hoursOverview)'
       noTargetCount: 1,
     })
     expect(run([], [])).toMatchObject({ amountCents: null, plannedMinutes: 0 })
+  })
+})
+
+describe('Monat bis heute, Verrechnung, Lohnkosten, Minijob (monthHours, hoursOverview)', () => {
+  // Soll 6 h/Woche = 60 min je Öffnungstag (Ruhetag Montag).
+  const person = (extra = {}) => ({
+    id: 7,
+    weeklyHours: 6,
+    hourlyWageCents: 1390,
+    employmentType: 'teilzeit',
+    entryDate: null,
+    exitDate: null,
+    ...extra,
+  })
+  const shift = (date, startTime, endTime, employeeId = 7) => ({
+    employeeId,
+    date,
+    startTime,
+    endTime,
+    breakMinutes: 0,
+  })
+  const NOVEMBER = core.monthOf('2026-11-01')
+  const DECEMBER = core.monthOf('2026-12-01')
+  const month = (today, shifts, extra = {}, m = NOVEMBER) =>
+    core.monthHours({
+      month: m,
+      today,
+      employee: person(extra),
+      shifts,
+      absences: [],
+      closedWeekdays: MONDAY,
+    })
+
+  it('monthPhase: past, current (first and last day inclusive), future', () => {
+    expect(core.monthPhase(NOVEMBER, '2026-10-31')).toBe('future')
+    expect(core.monthPhase(NOVEMBER, '2026-11-01')).toBe('current')
+    expect(core.monthPhase(NOVEMBER, '2026-11-30')).toBe('current')
+    expect(core.monthPhase(NOVEMBER, '2026-12-01')).toBe('past')
+    // today comes from the API - the core never reads the clock
+    expect(() => core.monthPhase(NOVEMBER, undefined)).toThrow(TypeError)
+    expect(() =>
+      core.hoursOverview({ periods: { month: NOVEMBER }, employees: [] })
+    ).toThrow(TypeError)
+  })
+
+  it('current month: plan and target through today (inclusive) are the main figures', () => {
+    // today Sa 14.11.2026: Öffnungstage 03.-08. und 10.-14. = 11 → Soll 660
+    const res = month('2026-11-14', [
+      shift('2026-11-10', '06:00', '16:00'), // 600
+      shift('2026-11-14', '06:00', '08:00'), // 120, today counts
+      shift('2026-11-20', '06:00', '16:00'), // 600, after today
+    ])
+    expect(res).toMatchObject({
+      phase: 'current',
+      asOf: '2026-11-14',
+      from: '2026-11-01',
+      to: '2026-11-14',
+      plannedMinutes: 720,
+      targetDays: 11,
+      targetMinutes: 660,
+      diffMinutes: 60,
+    })
+    expect(res.pay).toEqual({
+      status: 'ok',
+      overtimeMinutes: 60,
+      hourlyWageCents: 1390,
+      amountCents: 1390,
+    })
+    // the whole month stays visible next to it
+    expect(res.full).toMatchObject({
+      from: '2026-11-01',
+      to: '2026-11-30',
+      plannedMinutes: 1320,
+      targetMinutes: 1440,
+      diffMinutes: -120,
+    })
+    // Lohnkosten = Plan × Lohn: bis heute 12 h, ganzer Monat 22 h
+    expect(res.wageCost.toDate).toEqual({
+      status: 'ok',
+      plannedMinutes: 720,
+      hourlyWageCents: 1390,
+      amountCents: 16680,
+    })
+    expect(res.wageCost.full.amountCents).toBe(30580)
+    expect(res.minijob).toBeNull()
+  })
+
+  it('today = first day of the month: only that day counts', () => {
+    // Di 01.12.2026 is an opening day: Soll 60
+    const res = month(
+      '2026-12-01',
+      [
+        shift('2026-11-30', '06:00', '16:00'), // November
+        shift('2026-12-01', '06:00', '08:00'),
+        shift('2026-12-02', '06:00', '16:00'), // tomorrow
+      ],
+      {},
+      DECEMBER
+    )
+    expect(res).toMatchObject({
+      phase: 'current',
+      from: '2026-12-01',
+      to: '2026-12-01',
+      plannedMinutes: 120,
+      targetMinutes: 60,
+      diffMinutes: 60,
+    })
+    expect(res.pay.overtimeMinutes).toBe(60)
+    expect(res.full.plannedMinutes).toBe(720)
+    // So 01.11.2026 is Allerheiligen: no target yet, no overtime, still 'ok'
+    const closed = month('2026-11-01', [])
+    expect(closed).toMatchObject({
+      phase: 'current',
+      targetDays: 0,
+      targetMinutes: 0,
+      diffMinutes: 0,
+    })
+    expect(closed.pay.status).toBe('no-overtime')
+  })
+
+  it('today = last day of the month: through today is the whole month', () => {
+    const shifts = [
+      shift('2026-11-10', '06:00', '16:00'),
+      shift('2026-11-30', '06:00', '08:00'), // Monday (Ruhetag) but planned
+    ]
+    const res = month('2026-11-30', shifts)
+    expect(res.phase).toBe('current')
+    expect(res.to).toBe('2026-11-30')
+    expect(res.plannedMinutes).toBe(res.full.plannedMinutes)
+    expect(res.targetMinutes).toBe(res.full.targetMinutes)
+    expect(res.wageCost.toDate).toEqual(res.wageCost.full)
+  })
+
+  it('netting: minus hours of one week offset overtime of another in the same month', () => {
+    // Soll November 24 × 60 = 1440. Plan 6 + 11 + 3 + 6 = 26 h → netto +2 h.
+    const shifts = [
+      shift('2026-11-03', '06:00', '12:00'), // KW 45: 6 h = Soll
+      shift('2026-11-10', '06:00', '17:00'), // KW 46: 11 h = +5 h
+      shift('2026-11-17', '06:00', '09:00'), // KW 47: 3 h = −3 h
+      shift('2026-11-24', '06:00', '12:00'), // KW 48: 6 h = Soll
+    ]
+    const res = core.hoursOverview({
+      periods: {
+        week: core.weekOf('2026-11-10'),
+        month: NOVEMBER,
+      },
+      today: '2026-12-03', // November is over
+      employees: [person({ hourlyWageCents: 1500 })],
+      shifts,
+      absences: [],
+      closedWeekdays: MONDAY,
+    })
+    const row = res.rows[0]
+    // the week alone shows +5 h (Richtwert) ...
+    expect(row.week.pay).toMatchObject({
+      overtimeMinutes: 300,
+      amountCents: 7500,
+    })
+    // ... the month pays the net +2 h
+    expect(row.month).toMatchObject({
+      phase: 'past',
+      asOf: null,
+      plannedMinutes: 1560,
+      targetMinutes: 1440,
+      diffMinutes: 120,
+    })
+    expect(row.month.pay).toEqual({
+      status: 'ok',
+      overtimeMinutes: 120,
+      hourlyWageCents: 1500,
+      amountCents: 3000,
+    })
+    expect(res.totals.month).toMatchObject({
+      phase: 'past',
+      overtimeMinutes: 120,
+      amountCents: 3000,
+    })
+    // without the 11-hour week the month is net negative: no overtime
+    const minus = month('2026-12-03', [shifts[0], shifts[2], shifts[3]])
+    expect(minus.diffMinutes).toBe(900 - 1440)
+    expect(minus.pay.status).toBe('no-overtime')
+  })
+
+  it('future month: only planned vs. target, no overtime yet', () => {
+    const res = core.hoursOverview({
+      periods: { month: DECEMBER },
+      today: '2026-11-14',
+      employees: [
+        person({ id: 1, hourlyWageCents: 1500 }),
+        person({ id: 2, hourlyWageCents: null }),
+      ],
+      shifts: [
+        shift('2026-12-01', '06:00', '16:00', 1),
+        shift('2026-12-02', '06:00', '16:00', 2),
+      ],
+      absences: [],
+      closedWeekdays: MONDAY,
+    })
+    const row = res.rows[0].month
+    expect(row).toMatchObject({
+      phase: 'future',
+      asOf: null,
+      from: '2026-12-01',
+      to: '2026-12-31',
+      plannedMinutes: 600,
+    })
+    expect(row.pay).toEqual({
+      status: 'future',
+      overtimeMinutes: null,
+      hourlyWageCents: 1500,
+      amountCents: null,
+    })
+    expect(row.wageCost.toDate).toBeNull()
+    expect(row.wageCost.full.amountCents).toBe(15000)
+    expect(res.totals.month).toMatchObject({
+      phase: 'future',
+      plannedMinutes: 1200,
+      overtimeMinutes: null,
+      amountCents: null,
+      estimatedCount: 0,
+      missingWageCount: 0,
+      wageCost: {
+        toDate: null,
+        full: { amountCents: 15000, missingWageCount: 1 },
+      },
+    })
+    expect(res.totals.month.targetMinutes).toBe(
+      2 * res.rows[0].month.full.targetMinutes
+    )
+  })
+
+  it('wageCost: plan × wage; open wage with planned hours stays open, never 0', () => {
+    expect(core.wageCost(90, 1390)).toEqual({
+      status: 'ok',
+      plannedMinutes: 90,
+      hourlyWageCents: 1390,
+      amountCents: 2085,
+    })
+    expect(core.wageCost(90, null)).toEqual({
+      status: 'no-wage',
+      plannedMinutes: 90,
+      hourlyWageCents: null,
+      amountCents: null,
+    })
+    // nothing planned costs nothing, with or without a wage
+    expect(core.wageCost(0, null)).toMatchObject({
+      status: 'ok',
+      amountCents: 0,
+    })
+  })
+
+  it('totals: wage costs sum known wages only and count the open ones', () => {
+    const res = core.hoursOverview({
+      periods: { month: NOVEMBER },
+      today: '2026-11-14',
+      employees: [
+        person({ id: 1, hourlyWageCents: 1500 }),
+        person({ id: 2, hourlyWageCents: null }), // planned, wage open
+        person({ id: 3, hourlyWageCents: null }), // nothing planned
+      ],
+      shifts: [
+        shift('2026-11-10', '06:00', '10:00', 1), // 4 h bis heute
+        shift('2026-11-20', '06:00', '10:00', 1), // 4 h später
+        shift('2026-11-21', '06:00', '10:00', 2), // 4 h später, ohne Lohn
+      ],
+      absences: [],
+      closedWeekdays: MONDAY,
+    })
+    expect(res.totals.month.wageCost).toEqual({
+      toDate: { amountCents: 6000, missingWageCount: 0 },
+      full: { amountCents: 12000, missingWageCount: 1 },
+    })
+    expect(res.totals.month.full).toEqual({
+      plannedMinutes: 720,
+      targetMinutes: 3 * 1440,
+      noTargetCount: 0,
+    })
+    expect(res.totals.month.minijob).toEqual({
+      count: 0,
+      overCount: 0,
+      openCount: 0,
+      limitCents: 60300,
+    })
+    // only people with an open wage: the sum is open, not 0 €
+    const open = core.hoursOverview({
+      periods: { month: NOVEMBER },
+      today: '2026-11-14',
+      employees: [person({ hourlyWageCents: null })],
+      shifts: [shift('2026-11-10', '06:00', '10:00')],
+      absences: [],
+      closedWeekdays: MONDAY,
+    })
+    expect(open.totals.month.wageCost.toDate).toEqual({
+      amountCents: null,
+      missingWageCount: 1,
+    })
+  })
+
+  it('Minijob-Grenze 2026: 603 € per month, exactly the limit is fine', () => {
+    expect(core.MINIJOB_LIMIT_CENTS[2026]).toBe(60300)
+    expect(core.minijobLimitCents(2026)).toBe(60300)
+    expect(core.minijobLimitCents('2026')).toBe(60300)
+    // 15,00 €/h: 40:12 h = 603,00 € exactly, one minute more is over
+    expect(core.minijobCheck(core.wageCost(2412, 1500), 2026)).toEqual({
+      status: 'ok',
+      limitCents: 60300,
+      plannedCostCents: 60300,
+      overCents: null,
+    })
+    expect(core.minijobCheck(core.wageCost(2413, 1500), 2026)).toEqual({
+      status: 'over',
+      limitCents: 60300,
+      plannedCostCents: 60325,
+      overCents: 25,
+    })
+    // open wage or a year without a limit on file: the check is open
+    expect(core.minijobCheck(core.wageCost(600, null), 2026).status).toBe(
+      'no-wage'
+    )
+    expect(core.minijobCheck(core.wageCost(600, 1500), 2031)).toMatchObject({
+      status: 'no-limit',
+      limitCents: null,
+    })
+  })
+
+  it('monthHours: Minijob check on the whole month planned, only for minijob', () => {
+    // 15,00 €/h × 41 h (in five shifts) = 615 € > 603 € - although only
+    // 8 h lie before today
+    const shifts = [
+      shift('2026-11-10', '06:00', '14:00'),
+      shift('2026-11-17', '06:00', '14:00'),
+      shift('2026-11-18', '06:00', '14:00'),
+      shift('2026-11-24', '06:00', '14:00'),
+      shift('2026-11-25', '06:00', '15:00'),
+    ]
+    const mini = month('2026-11-14', shifts, {
+      employmentType: 'minijob',
+      hourlyWageCents: 1500,
+    })
+    expect(mini.wageCost.toDate.amountCents).toBe(12000)
+    expect(mini.minijob).toEqual({
+      status: 'over',
+      limitCents: 60300,
+      plannedCostCents: 61500,
+      overCents: 1200,
+    })
+    expect(
+      month('2026-11-14', shifts.slice(0, 4), {
+        employmentType: 'minijob',
+        hourlyWageCents: 1500,
+      }).minijob.status
+    ).toBe('ok')
+    expect(
+      month('2026-11-14', shifts, {
+        employmentType: 'minijob',
+        hourlyWageCents: null,
+      }).minijob.status
+    ).toBe('no-wage')
+    expect(
+      month('2026-11-14', shifts, { hourlyWageCents: 1500 }).minijob
+    ).toBeNull()
+    // totals count over and open minijobs
+    const res = core.hoursOverview({
+      periods: { month: NOVEMBER },
+      today: '2026-11-14',
+      employees: [
+        person({ id: 7, employmentType: 'minijob', hourlyWageCents: 1500 }),
+        person({ id: 8, employmentType: 'minijob', hourlyWageCents: null }),
+        person({ id: 9, employmentType: null, hourlyWageCents: 1500 }),
+      ],
+      shifts: [...shifts, shift('2026-11-11', '06:00', '08:00', 8)],
+      absences: [],
+      closedWeekdays: MONDAY,
+    })
+    expect(res.totals.month.minijob).toEqual({
+      count: 2,
+      overCount: 1,
+      openCount: 1,
+      limitCents: 60300,
+    })
   })
 })
 

@@ -218,6 +218,53 @@ const NO_TARGET: dienstplanApi.OvertimePay = {
   amountCents: null,
 }
 const MONTH_RANGE = { from: '2026-11-01', to: '2026-11-30' }
+const AS_OF = '2026-11-10'
+/** Bis heute gewertet: Erster bis `AS_OF`. */
+const TO_DATE = { from: '2026-11-01', to: AS_OF }
+
+/**
+ * Ein laufender Monat wie von der API (`monthHours`): `h` gilt bis heute,
+ * `full` für den ganzen Monat; Lohnkosten Plan × Stundenlohn.
+ */
+function monthHoursOf(
+  h: dienstplanApi.PlannedHours,
+  pay: dienstplanApi.OvertimePay,
+  fullPlannedMinutes: number,
+  wage: number | null,
+  fullOverrides: Partial<dienstplanApi.PlannedHours> = {}
+): dienstplanApi.MonthHours {
+  const cost = (minutes: number): dienstplanApi.WageCost =>
+    wage === null && minutes > 0
+      ? {
+          status: 'no-wage',
+          plannedMinutes: minutes,
+          hourlyWageCents: null,
+          amountCents: null,
+        }
+      : {
+          status: 'ok',
+          plannedMinutes: minutes,
+          hourlyWageCents: wage,
+          amountCents: wage === null ? 0 : Math.round((minutes * wage) / 60),
+        }
+  return {
+    ...h,
+    pay,
+    phase: 'current',
+    asOf: AS_OF,
+    full: {
+      ...h,
+      ...MONTH_RANGE,
+      plannedMinutes: fullPlannedMinutes,
+      ...fullOverrides,
+    },
+    wageCost: {
+      toDate: cost(h.plannedMinutes),
+      full: cost(fullPlannedMinutes),
+    },
+    minijob: null,
+  }
+}
 
 /**
  * Stundenübersicht wie von der API (`hoursOverview`), erfundene Zahlen:
@@ -246,9 +293,9 @@ function overview(
         employeeId: 3,
         hourlyWageCents: 1390,
         ...week(WEEK_HOURS[0], NO_OVERTIME(1390)),
-        month: {
-          ...hoursOf(3, {
-            ...MONTH_RANGE,
+        month: monthHoursOf(
+          hoursOf(3, {
+            ...TO_DATE,
             weeklyHours: 30,
             plannedMinutes: 7350,
             shiftCount: 20,
@@ -257,40 +304,46 @@ function overview(
             targetDays: 24,
             status: 'ok',
           }),
-          pay: {
+          {
             status: 'ok',
             overtimeMinutes: 150,
             hourlyWageCents: 1390,
             amountCents: 3475,
           },
-        },
+          9000,
+          1390,
+          { targetMinutes: 7200, diffMinutes: 1800 }
+        ),
       },
       {
         employeeId: 5,
         hourlyWageCents: null,
         ...week(WEEK_HOURS[1], NO_TARGET),
-        month: { ...hoursOf(5, MONTH_RANGE), pay: NO_TARGET },
+        month: monthHoursOf(hoursOf(5, TO_DATE), NO_TARGET, 0, null),
       },
       {
         employeeId: 4,
         hourlyWageCents: null,
         ...week(WEEK_HOURS[2], NO_OVERTIME(null)),
-        month: {
-          ...hoursOf(4, {
-            ...MONTH_RANGE,
+        month: monthHoursOf(
+          hoursOf(4, {
+            ...TO_DATE,
             weeklyHours: 40,
             plannedMinutes: 9100,
             targetMinutes: 8800,
             diffMinutes: 300,
             status: 'ok',
           }),
-          pay: {
+          {
             status: 'no-wage',
             overtimeMinutes: 300,
             hourlyWageCents: null,
             amountCents: null,
           },
-        },
+          10000,
+          null,
+          { targetMinutes: 9800, diffMinutes: 200 }
+        ),
       },
     ],
     totals: {
@@ -315,6 +368,14 @@ function overview(
         estimatedCount: 1,
         missingWageCount: 1,
         noTargetCount: 1,
+        phase: 'current',
+        asOf: AS_OF,
+        full: { plannedMinutes: 19000, targetMinutes: 17000, noTargetCount: 1 },
+        wageCost: {
+          toDate: { amountCents: 170275, missingWageCount: 1 },
+          full: { amountCents: 208500, missingWageCount: 1 },
+        },
+        minijob: { count: 0, overCount: 0, openCount: 0, limitCents: 60300 },
       },
     },
   }
@@ -1412,6 +1473,44 @@ describe('Dienstplan - Stunden und Überstunden', () => {
     expect(screen.getByTestId('total-pay-month')).toHaveTextContent('geschätzt')
     expect(screen.getByTestId('total-pay-week')).toHaveTextContent('0,00 €')
     expect(screen.getByTestId('total-plan-month')).toHaveTextContent('274:10 h')
+    // bezahlt wird der Monat bis heute (netto), die Woche ist ein Richtwert
+    expect(section).toHaveTextContent('Bezahlt wird der Monat')
+    expect(section).toHaveTextContent(
+      'November 2026 · bis heute (10.11.) · wird bezahlt'
+    )
+    expect(section).toHaveTextContent('KW 46 · nur Richtwert')
+    expect(screen.getByTestId('total-pay-month')).toHaveTextContent(
+      'Überstunden November bis heute'
+    )
+    expect(screen.getByTestId('total-pay-month')).toHaveTextContent(
+      'netto im Monat'
+    )
+    expect(screen.getByTestId('total-pay-week')).toHaveTextContent('Richtwert')
+    // Lohnkosten: nur bekannte Löhne, mit offenen „mind.“; ganzer Monat daneben
+    const cost = screen.getByTestId('total-cost-month')
+    expect(cost).toHaveTextContent('Lohnkosten November bis heute')
+    expect(cost).toHaveTextContent('mind. 1.702,75 €')
+    expect(cost).toHaveTextContent('1 × Stundenlohn offen')
+    const full = screen.getByTestId('total-full-month')
+    expect(full).toHaveTextContent('316:40 h')
+    expect(full).toHaveTextContent('Soll 283:20 h (ohne 1 offen)')
+    expect(full).toHaveTextContent('Lohnkosten mind. 2.085,00 €')
+    expect(screen.getByTestId('overview-full-3')).toHaveTextContent(
+      'ganzer Monat 150:00 h / 120:00 h'
+    )
+    expect(screen.getByTestId('overview-cost-3')).toHaveTextContent(
+      '≈ 1.702,75 €'
+    )
+    expect(screen.getByTestId('overview-cost-3')).toHaveTextContent(
+      'ganzer Monat ≈ 2.085,00 €'
+    )
+    // ohne Stundenlohn: Lohnkosten offen, nie 0 €; ohne Plan 0 €
+    expect(screen.getByTestId('overview-cost-4')).toHaveTextContent(
+      'Stundenlohn offen'
+    )
+    expect(screen.getByTestId('overview-cost-4')).not.toHaveTextContent('€')
+    expect(screen.getByTestId('overview-cost-5')).toHaveTextContent('0,00 €')
+    expect(screen.queryByTestId('minijob-notice')).not.toBeInTheDocument()
     // Die Stundenspalte des Rasters zeigt die Woche: keine Überstunden.
     expect(screen.queryByTestId('hours-pay-3')).not.toBeInTheDocument()
   })
@@ -1429,7 +1528,23 @@ describe('Dienstplan - Stunden und Überstunden', () => {
     const month = within(drawer.getByTestId('drawer-month'))
     expect(month.getByTestId('drawer-pay')).toHaveTextContent('≈ 34,75 €')
     expect(month.getByText('2:30 h × 13,90 €/h')).toBeInTheDocument()
+    expect(
+      month.getByRole('heading', {
+        name: 'Monat November 2026 · bis heute (10.11.)',
+      })
+    ).toBeInTheDocument()
+    expect(month.getByTestId('drawer-full')).toHaveTextContent(
+      '150:00 h / 120:00 h'
+    )
+    expect(month.getByTestId('drawer-cost')).toHaveTextContent('≈ 1.702,75 €')
+    expect(month.getByTestId('drawer-cost-full')).toHaveTextContent(
+      '≈ 2.085,00 €'
+    )
+    expect(month.getByText('150:00 h × 13,90 €/h')).toBeInTheDocument()
+    expect(month.queryByTestId('drawer-minijob')).not.toBeInTheDocument()
+    expect(drawer.getByText(/KW 46 · nur Richtwert/)).toBeInTheDocument()
     expect(drawer.getByText(/keine Lohnabrechnung/)).toBeInTheDocument()
+    expect(drawer.getByText(/Bezahlt wird der Monat/)).toBeInTheDocument()
     expect(drawer.getByRole('link', { name: 'Zum Profil' })).toHaveAttribute(
       'href',
       '/admin/dienstplan/mitarbeiter/3'
@@ -1456,6 +1571,197 @@ describe('Dienstplan - Stunden und Überstunden', () => {
     expect(
       max.getByRole('link', { name: 'Stundenlohn im Profil eintragen' })
     ).toHaveAttribute('href', '/admin/dienstplan/mitarbeiter/4')
+  })
+
+  it('Minijob über der Grenze: Hinweis über der Tabelle, in der Zeile und in der Schublade', async () => {
+    api.fetchHoursOverview.mockImplementation(async (period) => {
+      const base = overview(period)
+      return {
+        ...base,
+        rows: base.rows.map((r) =>
+          r.employeeId === 4
+            ? {
+                ...r,
+                month: {
+                  ...r.month,
+                  minijob: {
+                    status: 'over' as const,
+                    limitCents: 60300,
+                    plannedCostCents: 61500,
+                    overCents: 1200,
+                  },
+                },
+              }
+            : r
+        ),
+        totals: {
+          ...base.totals,
+          month: {
+            ...base.totals.month,
+            minijob: {
+              count: 1,
+              overCount: 1,
+              openCount: 0,
+              limitCents: 60300,
+            },
+          },
+        },
+      }
+    })
+    renderCalendar()
+    await ready()
+    const notice = await screen.findByTestId('minijob-notice')
+    expect(notice).toHaveTextContent(
+      'Über der Minijob-Grenze (603,00 € im Monat'
+    )
+    expect(notice).toHaveTextContent('Max Muster')
+    const line = screen.getByTestId('overview-minijob-4')
+    expect(line).toHaveAttribute('data-status', 'over')
+    expect(line).toHaveTextContent(
+      'über der Minijob-Grenze (603,00 €) um 12,00 €'
+    )
+    fireEvent.click(screen.getByTestId('hours-open-4'))
+    const drawer = within(await screen.findByTestId('hours-drawer'))
+    expect(drawer.getByTestId('drawer-minijob')).toHaveTextContent(
+      'über der Minijob-Grenze'
+    )
+  })
+
+  it('Info-Knopf erklärt die Minijob-Grenze mit dem Wert aus der API', async () => {
+    api.fetchHoursOverview.mockImplementation(async (period) => {
+      const base = overview(period)
+      return {
+        ...base,
+        totals: {
+          ...base.totals,
+          month: {
+            ...base.totals.month,
+            // ein anderer Wert als 603 €: der Text nimmt die Zahl der API
+            minijob: {
+              count: 1,
+              overCount: 0,
+              openCount: 1,
+              limitCents: 63300,
+            },
+          },
+        },
+      }
+    })
+    renderCalendar()
+    await ready()
+    const notice = await screen.findByTestId('minijob-notice')
+    const button = within(notice).getByRole('button', {
+      name: 'Erklärung: Minijob-Grenze',
+    })
+    expect(button).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(button)
+    const popover = await screen.findByRole('dialog', {
+      name: 'Minijob-Grenze',
+    })
+    expect(popover).toHaveTextContent('höchstens 633,00 € verdienen')
+    expect(popover).toHaveTextContent('Stand 2026')
+    expect(popover).toHaveTextContent('geplanten Lohnkosten des ganzen Monats')
+    expect(popover).not.toHaveTextContent('603')
+    fireEvent.keyDown(popover, { key: 'Escape' })
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: 'Minijob-Grenze' })
+      ).not.toBeInTheDocument()
+    )
+  })
+
+  it('„So rechnet die App“: eingeklappt, aufgeklappt alle Regeln', async () => {
+    renderCalendar()
+    await ready()
+    const box = await screen.findByTestId('hours-how-it-works')
+    const toggle = within(box).getByRole('button', {
+      name: 'So rechnet die App',
+    })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(box).not.toHaveTextContent('Zwischen den Monaten')
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(box).toHaveTextContent('Bis heute oder ganzer Monat')
+    expect(box).toHaveTextContent(
+      'Minusstunden einer Woche gleichen Überstunden einer anderen Woche im selben Monat aus'
+    )
+    expect(box).toHaveTextContent('Zwischen den Monaten wird nichts übertragen')
+    expect(box).toHaveTextContent('Ohne Zuschläge')
+    expect(box).toHaveTextContent('keine Lohnabrechnung')
+    expect(box).toHaveTextContent('höchstens 603,00 € verdienen (Stand 2026')
+    // Info-Knopf an der Kennzahl: dieselben Texte
+    fireEvent.click(
+      within(screen.getByTestId('total-pay-month')).getByRole('button', {
+        name: 'Erklärung: Überstunden im Monat',
+      })
+    )
+    expect(
+      await screen.findByRole('dialog', { name: 'Überstunden im Monat' })
+    ).toHaveTextContent('Bezahlt wird der Monat')
+  })
+
+  it('künftiger Monat: nur geplant gegen Soll, noch keine Überstunden', async () => {
+    api.fetchHoursOverview.mockImplementation(async (period) => {
+      const base = overview(period)
+      const future = (
+        m: dienstplanApi.MonthHours
+      ): dienstplanApi.MonthHours => ({
+        ...m.full,
+        phase: 'future',
+        asOf: null,
+        full: m.full,
+        pay: {
+          status: 'future',
+          overtimeMinutes: null,
+          hourlyWageCents: m.pay.hourlyWageCents,
+          amountCents: null,
+        },
+        wageCost: { toDate: null, full: m.wageCost.full },
+        minijob: null,
+      })
+      return {
+        ...base,
+        rows: base.rows.map((r) => ({ ...r, month: future(r.month) })),
+        totals: {
+          ...base.totals,
+          month: {
+            ...base.totals.month,
+            plannedMinutes: 19000,
+            targetMinutes: 17000,
+            overtimeMinutes: null,
+            amountCents: null,
+            estimatedCount: 0,
+            missingWageCount: 0,
+            phase: 'future',
+            asOf: null,
+            wageCost: {
+              toDate: null,
+              full: { amountCents: 208500, missingWageCount: 1 },
+            },
+          },
+        },
+      }
+    })
+    renderCalendar()
+    await ready()
+    const pay = await screen.findByTestId('total-pay-month')
+    expect(pay).toHaveTextContent('noch keine')
+    expect(pay).toHaveTextContent('Monat noch nicht begonnen')
+    expect(pay).not.toHaveTextContent('€')
+    expect(screen.getByTestId('total-cost-month')).toHaveTextContent(
+      'Lohnkosten November geplant'
+    )
+    expect(screen.getByTestId('total-cost-month')).toHaveTextContent(
+      'mind. 2.085,00 €'
+    )
+    expect(screen.queryByTestId('total-full-month')).not.toBeInTheDocument()
+    expect(screen.getByTestId('overview-diff-month-3')).toHaveTextContent(
+      '+30:00 h'
+    )
+    expect(screen.getByTestId('overview-pay-month-3')).toHaveTextContent(
+      'Monat noch nicht begonnen'
+    )
+    expect(screen.queryByTestId('overview-full-3')).not.toBeInTheDocument()
   })
 
   it('eine Woche über den Monatswechsel nennt den Monat ihres Donnerstags', async () => {
@@ -1612,8 +1918,9 @@ describe('Dienstplan - Kalender (Monat und Jahr)', () => {
       { month: '2026-11' },
       undefined
     )
+    // laufender Monat: die Überstunden zählen bis heute
     expect(await screen.findByTestId('hours-pay-3')).toHaveTextContent(
-      'Überstd. ≈ 34,75 €'
+      'Überstd. bis heute ≈ 34,75 €'
     )
     expect(screen.getByTestId('hours-pay-4')).toHaveTextContent(
       'Stundenlohn offen'
