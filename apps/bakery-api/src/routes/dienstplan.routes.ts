@@ -18,6 +18,8 @@
  *   GET    /shifts?from&to[&employeeId]    POST /shifts, PATCH/DELETE /shifts/:id
  *   GET    /absences?from&to[&employeeId]  POST /absences, PATCH/DELETE /absences/:id
  *   GET    /balance?year[&employeeId]      vacation balance per employee
+ *   GET    /hours?week=|month=[&area=]     hours (plan, target, diff) of week and
+ *                                          month, estimated overtime pay
  */
 import { NextFunction, Request, Response, Router } from 'express'
 
@@ -147,6 +149,11 @@ export function createDienstplanRouter(
   router.get(
     '/balance',
     handle((req) => service.balance(req))
+  )
+
+  router.get(
+    '/hours',
+    handle((req) => service.hours(req))
   )
 
   return router

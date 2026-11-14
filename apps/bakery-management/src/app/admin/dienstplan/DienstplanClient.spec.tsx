@@ -23,6 +23,7 @@ jest.mock('next/navigation', () => ({
 jest.mock('../../../lib/dienstplanApi', () => ({
   ...jest.requireActual('../../../lib/dienstplanApi'),
   fetchCalendar: jest.fn(),
+  fetchHoursOverview: jest.fn(),
   fetchBalances: jest.fn(),
   fetchShiftTemplates: jest.fn(),
   createShiftTemplate: jest.fn(),
@@ -50,6 +51,7 @@ function employee(
     color: null,
     employmentType: null,
     weeklyHours: null,
+    hourlyWageCents: null,
     entryDate: null,
     exitDate: null,
     active: true,
@@ -66,6 +68,7 @@ const ERIKA = employee({
   displayName: 'Erika Beispiel',
   color: '#1E88E5',
   weeklyHours: 30,
+  hourlyWageCents: 1390,
 })
 const LENA = employee({ id: 5, displayName: 'Lena Neu' })
 const MAX = employee({ id: 4, displayName: 'Max Muster', area: 'backstube' })
@@ -202,6 +205,121 @@ const WEEK_HOURS: dienstplanApi.PlannedHours[] = [
   }),
 ]
 
+const NO_OVERTIME = (wage: number | null): dienstplanApi.OvertimePay => ({
+  status: 'no-overtime',
+  overtimeMinutes: 0,
+  hourlyWageCents: wage,
+  amountCents: 0,
+})
+const NO_TARGET: dienstplanApi.OvertimePay = {
+  status: 'no-target',
+  overtimeMinutes: null,
+  hourlyWageCents: null,
+  amountCents: null,
+}
+const MONTH_RANGE = { from: '2026-11-01', to: '2026-11-30' }
+
+/**
+ * Stundenübersicht wie von der API (`hoursOverview`), erfundene Zahlen:
+ * Erika hat im Monat 2:30 h Überstunden und einen Stundenlohn, Max 5 h
+ * ohne Stundenlohn, Lena kein Soll.
+ */
+function overview(
+  period: { week: string } | { month: string } = { week: WEEK[0] }
+): dienstplanApi.HoursOverview {
+  const withWeek = 'week' in period
+  const week = (
+    h: dienstplanApi.PlannedHours,
+    pay: dienstplanApi.OvertimePay
+  ) => (withWeek ? { week: { ...h, pay } } : {})
+  return {
+    today: '2026-11-10',
+    area: 'alle',
+    periods: {
+      week: withWeek ? { from: WEEK[0], to: WEEK[6] } : null,
+      month: MONTH_RANGE,
+    },
+    closedWeekdays: { weekdays: [1], source: 'default' },
+    employees: [ERIKA, LENA, MAX],
+    rows: [
+      {
+        employeeId: 3,
+        hourlyWageCents: 1390,
+        ...week(WEEK_HOURS[0], NO_OVERTIME(1390)),
+        month: {
+          ...hoursOf(3, {
+            ...MONTH_RANGE,
+            weeklyHours: 30,
+            plannedMinutes: 7350,
+            shiftCount: 20,
+            targetMinutes: 7200,
+            diffMinutes: 150,
+            targetDays: 24,
+            status: 'ok',
+          }),
+          pay: {
+            status: 'ok',
+            overtimeMinutes: 150,
+            hourlyWageCents: 1390,
+            amountCents: 3475,
+          },
+        },
+      },
+      {
+        employeeId: 5,
+        hourlyWageCents: null,
+        ...week(WEEK_HOURS[1], NO_TARGET),
+        month: { ...hoursOf(5, MONTH_RANGE), pay: NO_TARGET },
+      },
+      {
+        employeeId: 4,
+        hourlyWageCents: null,
+        ...week(WEEK_HOURS[2], NO_OVERTIME(null)),
+        month: {
+          ...hoursOf(4, {
+            ...MONTH_RANGE,
+            weeklyHours: 40,
+            plannedMinutes: 9100,
+            targetMinutes: 8800,
+            diffMinutes: 300,
+            status: 'ok',
+          }),
+          pay: {
+            status: 'no-wage',
+            overtimeMinutes: 300,
+            hourlyWageCents: null,
+            amountCents: null,
+          },
+        },
+      },
+    ],
+    totals: {
+      ...(withWeek
+        ? {
+            week: {
+              plannedMinutes: 360,
+              targetMinutes: 3000,
+              overtimeMinutes: 0,
+              amountCents: 0,
+              estimatedCount: 0,
+              missingWageCount: 0,
+              noTargetCount: 1,
+            },
+          }
+        : {}),
+      month: {
+        plannedMinutes: 16450,
+        targetMinutes: 16000,
+        overtimeMinutes: 450,
+        amountCents: 3475,
+        estimatedCount: 1,
+        missingWageCount: 1,
+        noTargetCount: 1,
+      },
+    },
+  }
+}
+
 function calendar(
   overrides: Partial<dienstplanApi.Calendar> = {}
 ): dienstplanApi.Calendar {
@@ -297,6 +415,9 @@ describe('Dienstplan - Kalender (Woche)', () => {
     jest.restoreAllMocks()
     mockReplace.mockReset()
     api.fetchCalendar.mockReset().mockResolvedValue(calendar())
+    api.fetchHoursOverview
+      .mockReset()
+      .mockImplementation(async (period) => overview(period))
     api.fetchShiftTemplates.mockReset().mockResolvedValue(TEMPLATES)
     api.createShift.mockReset()
     api.updateShift.mockReset()
@@ -320,8 +441,13 @@ describe('Dienstplan - Kalender (Woche)', () => {
 
     const rows = screen.getAllByTestId(/^row-/).map((r) => r.dataset.testid)
     expect(rows).toEqual(['row-3', 'row-5', 'row-4'])
-    expect(screen.getByText('Verkauf (2)')).toBeInTheDocument()
-    expect(screen.getByText('Backstube (1)')).toBeInTheDocument()
+    const grid = within(
+      screen.getByRole('table', {
+        name: 'Dienstplan KW 46 · 09.11. – 15.11.2026',
+      })
+    )
+    expect(grid.getByText('Verkauf (2)')).toBeInTheDocument()
+    expect(grid.getByText('Backstube (1)')).toBeInTheDocument()
 
     // Geschlossener Tag: nur sein Name, kein zweites „geschlossen“.
     const monday = screen.getByTestId('day-2026-11-09')
@@ -1215,11 +1341,188 @@ function balance(
   }
 }
 
+describe('Dienstplan - Stunden und Überstunden', () => {
+  beforeEach(() => {
+    jest.restoreAllMocks()
+    mockReplace.mockReset()
+    api.fetchCalendar.mockReset().mockResolvedValue(calendar())
+    api.fetchHoursOverview
+      .mockReset()
+      .mockImplementation(async (period) => overview(period))
+    api.fetchShiftTemplates.mockReset().mockResolvedValue(TEMPLATES)
+  })
+
+  it('Woche: Stunden der Woche und des Monats ihres Donnerstags je Person, Bezahlung geschätzt', async () => {
+    renderCalendar()
+    await ready()
+    expect(api.fetchHoursOverview).toHaveBeenCalledWith(
+      { week: '2026-11-09' },
+      undefined
+    )
+    const section = await screen.findByTestId('hours-overview')
+    expect(section).toHaveTextContent('Stunden und Überstunden')
+    expect(section).toHaveTextContent('ohne Zuschläge')
+    const table = within(section).getByRole('table', {
+      name: 'Stunden und Überstunden je Person',
+    })
+    expect(table).toHaveTextContent('KW 46')
+    expect(table).toHaveTextContent('November 2026')
+    // Verkauf zuerst, wie im Raster
+    expect(
+      within(table)
+        .getAllByTestId(/^overview-\d+$/)
+        .map((r) => r.dataset.testid)
+    ).toEqual(['overview-3', 'overview-5', 'overview-4'])
+    expect(screen.getByTestId('overview-wage-3')).toHaveTextContent('13,90 €/h')
+    expect(screen.getByTestId('overview-wage-4')).toHaveTextContent('offen')
+    expect(screen.getByTestId('overview-week-3')).toHaveTextContent(
+      '6:00 h / 30:00 h'
+    )
+    expect(screen.getByTestId('overview-diff-week-3')).toHaveTextContent(
+      '−24:00 h'
+    )
+    expect(screen.getByTestId('overview-diff-month-3')).toHaveTextContent(
+      '+2:30 h'
+    )
+    const erikaPay = screen.getByTestId('overview-pay-month-3')
+    expect(erikaPay).toHaveTextContent('≈ 34,75 €')
+    // Intl setzt ein geschütztes Leerzeichen vor das €
+    expect(erikaPay).toHaveAttribute(
+      'title',
+      expect.stringMatching(/^2:30 h × 13,90\s€\/h$/)
+    )
+    // keine Überstunden in der Woche: keine Zeile
+    expect(screen.queryByTestId('overview-pay-week-3')).not.toBeInTheDocument()
+    // ohne Stundenlohn: offen, nie 0 €
+    const maxPay = screen.getByTestId('overview-pay-month-4')
+    expect(maxPay).toHaveTextContent('Stundenlohn offen')
+    expect(maxPay).not.toHaveTextContent('€')
+    // ohne Soll: offen, keine Schätzung
+    expect(screen.getByTestId('overview-diff-month-5')).toHaveTextContent(
+      'Soll offen'
+    )
+    expect(screen.queryByTestId('overview-pay-month-5')).not.toBeInTheDocument()
+    // Summen: ein Lohn fehlt → „mind.“ und wie viele offen sind
+    expect(screen.getByTestId('total-pay-month')).toHaveTextContent(
+      'mind. 34,75 €'
+    )
+    expect(screen.getByTestId('total-pay-month')).toHaveTextContent(
+      '1 × Stundenlohn offen'
+    )
+    expect(screen.getByTestId('total-pay-month')).toHaveTextContent('geschätzt')
+    expect(screen.getByTestId('total-pay-week')).toHaveTextContent('0,00 €')
+    expect(screen.getByTestId('total-plan-month')).toHaveTextContent('274:10 h')
+    // Die Stundenspalte des Rasters zeigt die Woche: keine Überstunden.
+    expect(screen.queryByTestId('hours-pay-3')).not.toBeInTheDocument()
+  })
+
+  it('Details je Person in der Schublade - aus der Tabelle und aus der Stundenspalte', async () => {
+    renderCalendar()
+    await ready()
+    fireEvent.click(await screen.findByTestId('hours-open-3'))
+    const drawer = within(await screen.findByTestId('hours-drawer'))
+    expect(drawer.getByText('Erika Beispiel')).toBeInTheDocument()
+    expect(drawer.getByTestId('drawer-wage')).toHaveTextContent('13,90 €/h')
+    expect(
+      within(drawer.getByTestId('drawer-week')).getByTestId('drawer-pay')
+    ).toHaveTextContent('keine Überstunden')
+    const month = within(drawer.getByTestId('drawer-month'))
+    expect(month.getByTestId('drawer-pay')).toHaveTextContent('≈ 34,75 €')
+    expect(month.getByText('2:30 h × 13,90 €/h')).toBeInTheDocument()
+    expect(drawer.getByText(/keine Lohnabrechnung/)).toBeInTheDocument()
+    expect(drawer.getByRole('link', { name: 'Zum Profil' })).toHaveAttribute(
+      'href',
+      '/admin/dienstplan/mitarbeiter/3'
+    )
+    fireEvent.click(drawer.getByRole('button', { name: 'Schließen' }))
+    await waitFor(() =>
+      expect(screen.queryByTestId('hours-drawer')).not.toBeInTheDocument()
+    )
+
+    // Stundenspalte des Rasters: derselbe Weg zu den Details.
+    fireEvent.click(
+      within(screen.getByTestId('hours-4')).getByRole('button', {
+        name: 'Stunden von Max Muster: Details',
+      })
+    )
+    const max = within(await screen.findByTestId('hours-drawer'))
+    expect(max.getByTestId('drawer-wage')).toHaveTextContent('offen')
+    expect(
+      within(max.getByTestId('drawer-month')).getByTestId('drawer-pay')
+    ).toHaveTextContent('Stundenlohn offen')
+    expect(
+      max.getByText('5:00 h Überstunden, Stundenlohn fehlt')
+    ).toBeInTheDocument()
+    expect(
+      max.getByRole('link', { name: 'Stundenlohn im Profil eintragen' })
+    ).toHaveAttribute('href', '/admin/dienstplan/mitarbeiter/4')
+  })
+
+  it('eine Woche über den Monatswechsel nennt den Monat ihres Donnerstags', async () => {
+    api.fetchCalendar.mockImplementation(async (range) => calendarFor(range))
+    api.fetchHoursOverview.mockImplementation(async () => {
+      const base = overview()
+      return {
+        ...base,
+        periods: {
+          week: { from: '2026-11-30', to: '2026-12-06' },
+          month: { from: '2026-12-01', to: '2026-12-31' },
+        },
+      }
+    })
+    renderCalendar({ week: '2026-12-02' })
+    await ready()
+    expect(api.fetchHoursOverview).toHaveBeenCalledWith(
+      { week: '2026-11-30' },
+      undefined
+    )
+    const section = await screen.findByTestId('hours-overview')
+    await within(section).findByRole('table', {
+      name: 'Stunden und Überstunden je Person',
+    })
+    expect(section).toHaveTextContent(
+      'Die KW 49 reicht in zwei Monate; daneben steht der Monat ihres Donnerstags (Dezember 2026).'
+    )
+    expect(screen.getByTestId('total-plan-month')).toHaveTextContent(
+      'Plan Dezember'
+    )
+  })
+
+  it('Bereichsfilter gilt auch für die Stunden (Summen rechnet die API)', async () => {
+    renderCalendar({ week: '2026-11-12', area: 'verkauf' })
+    await ready()
+    await waitFor(() =>
+      expect(api.fetchHoursOverview).toHaveBeenCalledWith(
+        { week: '2026-11-09' },
+        'verkauf'
+      )
+    )
+  })
+
+  it('scheitert nur die Stundenübersicht, steht der Kalender trotzdem', async () => {
+    api.fetchHoursOverview
+      .mockReset()
+      .mockRejectedValue(new Error('Stunden kaputt'))
+    renderCalendar()
+    await ready()
+    const section = await screen.findByTestId('hours-overview')
+    expect(
+      await within(section).findByText('Stunden kaputt')
+    ).toBeInTheDocument()
+    expect(screen.getByTestId('row-3')).toBeInTheDocument()
+    // die Stundenspalte des Rasters kommt aus dem Kalender und bleibt
+    expect(screen.getByTestId('hours-3')).toHaveTextContent('Plan 6:00 h')
+  })
+})
+
 describe('Dienstplan - Kalender (Monat und Jahr)', () => {
   beforeEach(() => {
     jest.restoreAllMocks()
     mockReplace.mockReset()
     api.fetchShiftTemplates.mockReset().mockResolvedValue(TEMPLATES)
+    api.fetchHoursOverview
+      .mockReset()
+      .mockImplementation(async (period) => overview(period))
     api.fetchCalendar.mockReset().mockImplementation(async (range) => {
       if (range.from === '2026-11-01') return monthCalendar()
       if (range.from === '2026-01-01') return yearCalendar()
@@ -1291,7 +1594,11 @@ describe('Dienstplan - Kalender (Monat und Jahr)', () => {
       'min-height': '44px',
       'min-width': '44px',
     })
-    expect(touchStyle(screen.getByRole('table'))).toMatchObject({
+    expect(
+      touchStyle(
+        screen.getByRole('table', { name: 'Dienstplan November 2026' })
+      )
+    ).toMatchObject({
       'min-width': `${170 + 30 * (44 + 2 * 2 + 1) + 112}px`,
     })
     // Stunden des Monats ganz rechts, Differenz mit Vorzeichen.
@@ -1300,6 +1607,23 @@ describe('Dienstplan - Kalender (Monat und Jahr)', () => {
     expect(screen.getByTestId('hours-3')).toHaveTextContent('−114:00 h')
     expect(screen.getByTestId('hours-4')).toHaveTextContent('+5:00 h')
     expect(screen.getByTestId('hours-5')).toHaveTextContent('Soll offen')
+    // geschätzte Überstundenbezahlung des Monats (Stundenübersicht der API)
+    expect(api.fetchHoursOverview).toHaveBeenCalledWith(
+      { month: '2026-11' },
+      undefined
+    )
+    expect(await screen.findByTestId('hours-pay-3')).toHaveTextContent(
+      'Überstd. ≈ 34,75 €'
+    )
+    expect(screen.getByTestId('hours-pay-4')).toHaveTextContent(
+      'Stundenlohn offen'
+    )
+    expect(screen.queryByTestId('hours-pay-5')).not.toBeInTheDocument()
+    // im Monat nur Monatsspalten, keine Woche
+    expect(screen.queryByTestId('overview-week-3')).not.toBeInTheDocument()
+    expect(screen.getByTestId('overview-pay-month-3')).toHaveTextContent(
+      '≈ 34,75 €'
+    )
     // Monat ist kein Tag: zwischen den Pfeilen steht der Monat, kein Datum.
     const nav = screen.getByTestId('month-navigator')
     expect(screen.getByTestId('month-navigator-value')).toHaveTextContent(
@@ -1687,6 +2011,12 @@ describe('Dienstplan - Kalender (Monat und Jahr)', () => {
 })
 
 describe('Dienstplan - Tagestyp aus dem Kalender (Z14)', () => {
+  beforeEach(() => {
+    api.fetchHoursOverview
+      .mockReset()
+      .mockImplementation(async (period) => overview(period))
+  })
+
   it('Woche: Schließtag mit Notiz, Sonderöffnung mit Öffnungszeit', async () => {
     const base = calendar()
     api.fetchCalendar.mockResolvedValue({

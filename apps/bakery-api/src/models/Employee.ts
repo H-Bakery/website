@@ -27,6 +27,11 @@ export class Employee extends Model<
   /** `vollzeit | teilzeit | minijob | aushilfe`, or null. */
   declare employmentType: CreationOptional<string | null>
   declare weeklyHours: CreationOptional<number | null>
+  /**
+   * Bruttostundenlohn in Cent, or null ("offen") - only for the estimated
+   * overtime pay. Owner only; the audit log never holds the amount.
+   */
+  declare hourlyWageCents: CreationOptional<number | null>
   declare entryDate: CreationOptional<string | null>
   declare exitDate: CreationOptional<string | null>
   declare active: CreationOptional<boolean>
@@ -45,6 +50,7 @@ export class Employee extends Model<
         color: { type: DataTypes.STRING(7), allowNull: true },
         employmentType: { type: DataTypes.STRING(16), allowNull: true },
         weeklyHours: { type: DataTypes.DECIMAL(5, 2), allowNull: true },
+        hourlyWageCents: { type: DataTypes.INTEGER, allowNull: true },
         entryDate: { type: DataTypes.DATEONLY, allowNull: true },
         exitDate: { type: DataTypes.DATEONLY, allowNull: true },
         active: {

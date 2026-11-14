@@ -100,4 +100,10 @@ export const MIGRATIONS: MigrationEntry[] = [
     name: '20270325000000-invoices-pdf-paid.js',
     module: require('../../migrations/20270325000000-invoices-pdf-paid.js'),
   },
+  {
+    // Dienstplan: employees.hourly_wage_cents (Stundenlohn, geschätzte
+    // Überstundenbezahlung), additive, NULL = offen
+    name: '20270401000000-dienstplan-hourly-wage.js',
+    module: require('../../migrations/20270401000000-dienstplan-hourly-wage.js'),
+  },
 ]

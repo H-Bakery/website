@@ -112,6 +112,7 @@ export function plainEmployee(e: Employee): Plain {
     color: e.color ?? null,
     employmentType: e.employmentType ?? null,
     weeklyHours: num(e.weeklyHours),
+    hourlyWageCents: e.hourlyWageCents ?? null,
     entryDate: e.entryDate ?? null,
     exitDate: e.exitDate ?? null,
     active: Boolean(e.active),
@@ -356,6 +357,56 @@ function byAreaAndName(a: Employee, b: Employee): number {
 
 // ---------------------------------------------------------------- service
 
+/**
+ * Wen Kalender und Stundenübersicht zeigen: aktive Personen und
+ * ausgeschiedene mit Schichten oder Abwesenheiten im Zeitraum.
+ */
+function shownEmployees(
+  employees: Employee[],
+  shifts: Shift[],
+  absences: Absence[]
+): Employee[] {
+  const withEntries = new Set<number>([
+    ...shifts.map((s) => s.employeeId),
+    ...absences.map((a) => a.employeeId),
+  ])
+  return employees
+    .filter((e) => e.active || withEntries.has(e.id))
+    .sort(byAreaAndName)
+}
+
+const MONTH_RE = /^(\d{4})-(0[1-9]|1[0-2])$/
+
+/**
+ * `?week=JJJJ-MM-TT` (ein Tag der Woche) → Woche und Monat ihres
+ * Donnerstags; `?month=JJJJ-MM` → nur der Monat. Jahre 2000-2100.
+ */
+function parseHoursPeriods(query: Record<string, unknown>): {
+  week?: { from: string; to: string }
+  month: { from: string; to: string }
+} {
+  const week = query['week']
+  const month = query['month']
+  const bad = (): never =>
+    invalid(
+      'Zeitraum bitte als week=JJJJ-MM-TT oder month=JJJJ-MM angeben.',
+      'invalid_period'
+    )
+  const yearOk = (y: number) => y >= 2000 && y <= 2100
+  if (week !== undefined && month === undefined) {
+    if (!core.isValidDate(week)) bad()
+    const day = week as string
+    if (!yearOk(Number(day.slice(0, 4)))) bad()
+    return { week: core.weekOf(day), month: core.weekMonth(day) }
+  }
+  if (month !== undefined && week === undefined) {
+    const m = typeof month === 'string' ? MONTH_RE.exec(month) : null
+    if (!m || !yearOk(Number(m[1]))) bad()
+    return { month: core.monthOf(`${month as string}-01`) }
+  }
+  return bad()
+}
+
 export class DienstplanService {
   private readonly financeDir: string
   private readonly log: (message: string) => void
@@ -464,6 +515,23 @@ export class DienstplanService {
     if (type !== undefined) out['employmentType'] = type
     const hours = numberField(body, 'weeklyHours', 'Wochenstunden', 0, 60)
     if (hours !== undefined) out['weeklyHours'] = hours
+    if (has(body, 'hourlyWageCents') && body['hourlyWageCents'] !== undefined) {
+      const wage = body['hourlyWageCents']
+      if (wage === null || wage === '') {
+        out['hourlyWageCents'] = null
+      } else if (
+        typeof wage !== 'number' ||
+        !Number.isInteger(wage) ||
+        wage < 1 ||
+        wage > core.MAX_HOURLY_WAGE_CENTS
+      ) {
+        invalid(
+          'Stundenlohn bitte in Cent als ganze Zahl von 1 bis 99999 angeben (0,01 € bis 999,99 €).'
+        )
+      } else {
+        out['hourlyWageCents'] = wage
+      }
+    }
     const entry = dateField(body, 'entryDate', 'Eintrittsdatum', {
       nullable: true,
     })
@@ -524,6 +592,11 @@ export class DienstplanService {
       }
       if (key === 'displayName') {
         data['nameChanged'] = true
+        continue
+      }
+      // Personal data: the audit log says that the wage changed, not to what.
+      if (key === 'hourlyWageCents') {
+        data['hourlyWageChanged'] = true
         continue
       }
       data[key] = before ? { from: before[key] ?? null, to: value } : value
@@ -700,7 +773,8 @@ export class DienstplanService {
 
   /**
    * Plan und Soll der Person in der laufenden Woche (Mo-So) und im laufenden
-   * Monat (`plannedHours` in `vacation.core.js`) - für das Profil.
+   * Monat, je mit der geschätzten Überstundenbezahlung (`pay`;
+   * `hoursOverview` in `vacation.core.js`) - für das Profil.
    */
   private async currentHours(
     employee: Employee,
@@ -725,16 +799,18 @@ export class DienstplanService {
         },
       }),
     ])
-    const input = {
-      employee: plainEmployee(employee),
+    const overview = core.hoursOverview({
+      periods: {
+        week: { from: weekFrom, to: weekTo },
+        month: { from: monthFrom, to: monthTo },
+      },
+      employees: [plainEmployee(employee)],
       shifts: shifts.map(plainShift),
       absences: absences.map(absenceShape),
       closedWeekdays,
-    }
-    return {
-      week: core.plannedHours({ ...input, from: weekFrom, to: weekTo }),
-      month: core.plannedHours({ ...input, from: monthFrom, to: monthTo }),
-    }
+    })
+    const row = overview.rows[0]
+    return { week: row.week, month: row.month }
   }
 
   // ---------------------------------------------------------- entitlements
@@ -1465,13 +1541,7 @@ export class DienstplanService {
         ],
       }),
     ])
-    const withEntries = new Set<number>([
-      ...shifts.map((s) => s.employeeId),
-      ...absences.map((a) => a.employeeId),
-    ])
-    const shown = employees
-      .filter((e) => e.active || withEntries.has(e.id))
-      .sort(byAreaAndName)
+    const shown = shownEmployees(employees, shifts, absences)
     const plainShifts = shifts.map(plainShift)
     const plainAbsences = absences.map((a) =>
       this.plainAbsence(a, closed.weekdays)
@@ -1505,6 +1575,70 @@ export class DienstplanService {
           plainAbsences,
           closed.weekdays
         ),
+      },
+    }
+  }
+
+  // ------------------------------------------------------------------ hours
+
+  /**
+   * `GET /api/dienstplan/hours?week=JJJJ-MM-TT | ?month=JJJJ-MM [&area=]`:
+   * Stunden je Person (Plan, Soll, Differenz) und die geschätzte
+   * Überstundenbezahlung (`hoursOverview` in `vacation.core.js`).
+   * `week`: die Woche um das Datum und der Monat ihres Donnerstags
+   * (`weekMonth`); `month`: nur der Monat. `area` filtert Personen und
+   * Summen (ohne: alle Bereiche). Dieselben Personen wie der Kalender: aktive
+   * und ausgeschiedene mit Einträgen im Zeitraum.
+   */
+  async hours(req: Request): Promise<ServiceResult> {
+    const query = req.query as Record<string, unknown>
+    const periods = parseHoursPeriods(query)
+    const area = query['area']
+    if (
+      area !== undefined &&
+      area !== '' &&
+      area !== 'alle' &&
+      !(core.AREAS as readonly unknown[]).includes(area)
+    ) {
+      invalid(
+        `Bereich bitte als ${core.AREAS.join(', ')} oder alle angeben.`,
+        'invalid_area'
+      )
+    }
+    const ranges = Object.values(periods) as { from: string; to: string }[]
+    const from = ranges.map((r) => r.from).sort()[0]
+    const to = ranges
+      .map((r) => r.to)
+      .sort()
+      .reverse()[0]
+    const closed = this.closedWeekdays()
+    const [employees, shifts, absences] = await Promise.all([
+      Employee.findAll(),
+      Shift.findAll({ where: { date: { [Op.between]: [from, to] } } }),
+      Absence.findAll({
+        where: { startDate: { [Op.lte]: to }, endDate: { [Op.gte]: from } },
+      }),
+    ])
+    const shown = shownEmployees(employees, shifts, absences).filter(
+      (e) => !area || area === 'alle' || e.area === area
+    )
+    const plainEmployees = shown.map(plainEmployee)
+    const overview = core.hoursOverview({
+      periods,
+      employees: plainEmployees,
+      shifts: shifts.map(plainShift),
+      absences: absences.map(absenceShape),
+      closedWeekdays: closed.weekdays,
+    })
+    return {
+      data: {
+        today: this.today(),
+        area: !area || area === 'alle' ? 'alle' : area,
+        periods: { week: periods.week ?? null, month: periods.month },
+        closedWeekdays: closed,
+        employees: plainEmployees,
+        rows: overview.rows,
+        totals: overview.totals,
       },
     }
   }

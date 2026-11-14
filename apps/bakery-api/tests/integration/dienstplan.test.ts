@@ -112,6 +112,7 @@ const PATHS = [
   '/api/dienstplan/shifts?from=2026-11-09&to=2026-11-15',
   '/api/dienstplan/absences?from=2026-11-09&to=2026-11-15',
   '/api/dienstplan/balance?year=2026',
+  '/api/dienstplan/hours?week=2026-11-09',
 ]
 
 describe('access: inhaber with a personal session only', () => {
@@ -1077,5 +1078,192 @@ describe('bakery calendar (Z14)', () => {
       closed: false,
       calendar: 'missing',
     })
+  })
+})
+
+describe('Stundenlohn und geschätzte Überstundenbezahlung', () => {
+  it('stores the hourly wage in cents, validates it and audits without the amount', async () => {
+    const id = await employee({ displayName: 'Paula Lohn', area: 'buero' })
+    const created = await as().get(`/api/dienstplan/employees/${id}`)
+    // new and old rows: not entered = null ("Stundenlohn offen"), never 0
+    expect(created.body.data.employee.hourlyWageCents).toBeNull()
+    for (const hourlyWageCents of [0, -1, 12.5, 100000, '13,90', true]) {
+      const res = await as().patch(`/api/dienstplan/employees/${id}`, {
+        hourlyWageCents,
+      })
+      expect(res.status).toBe(400)
+      expect(res.body).toMatchObject({
+        error: 'validation_failed',
+        message: expect.stringContaining('Stundenlohn'),
+      })
+    }
+    const set = await as().patch(`/api/dienstplan/employees/${id}`, {
+      hourlyWageCents: 1390,
+    })
+    expect(set.status).toBe(200)
+    expect(set.body.data.hourlyWageCents).toBe(1390)
+    // the same value again changes nothing (no audit row)
+    await as().patch(`/api/dienstplan/employees/${id}`, {
+      hourlyWageCents: 1390,
+    })
+    const cleared = await as().patch(`/api/dienstplan/employees/${id}`, {
+      hourlyWageCents: null,
+    })
+    expect(cleared.body.data.hourlyWageCents).toBeNull()
+
+    const rows = await AuditLog.findAll({
+      where: { entity: 'employee', entityId: String(id) },
+      order: [['id', 'ASC']],
+    })
+    expect(rows.map((r) => r.action)).toEqual(['create', 'update', 'update'])
+    expect(rows[1].data).toEqual({ hourlyWageChanged: true })
+    expect(JSON.stringify(rows.map((r) => r.data))).not.toContain('1390')
+  })
+
+  it('GET /hours: week and the month of its Thursday, estimate and totals', async () => {
+    const paid = await employee({
+      displayName: 'Olga Ueber',
+      area: 'buero',
+      weeklyHours: 6,
+      hourlyWageCents: 1500,
+    })
+    const unpaid = await employee({
+      displayName: 'Otto Offen',
+      area: 'buero',
+      weeklyHours: 6,
+    })
+    // KW 13/2027: Mo 29.03. … So 04.04., Donnerstag 01.04. → April
+    for (const body of [
+      {
+        employeeId: paid,
+        date: '2027-03-30',
+        startTime: '06:00',
+        endTime: '14:00',
+      },
+      {
+        employeeId: unpaid,
+        date: '2027-03-31',
+        startTime: '06:00',
+        endTime: '13:00',
+      },
+    ]) {
+      expect((await as().post('/api/dienstplan/shifts', body)).status).toBe(201)
+    }
+    const res = await as().get(
+      '/api/dienstplan/hours?week=2027-04-01&area=buero'
+    )
+    expect(res.status).toBe(200)
+    const data = res.body.data
+    expect(data).toMatchObject({
+      today: TODAY,
+      area: 'buero',
+      periods: {
+        week: { from: '2027-03-29', to: '2027-04-04' },
+        month: { from: '2027-04-01', to: '2027-04-30' },
+      },
+    })
+    expect(
+      data.employees.every((e: { area: string }) => e.area === 'buero')
+    ).toBe(true)
+    expect(data.rows).toHaveLength(data.employees.length)
+    const row = (id: number) =>
+      data.rows.find((r: { employeeId: number }) => r.employeeId === id)
+    // 6 h/Woche, 6 Öffnungstage: Soll 6 h; Olga plant 8 h → +2 h × 15,00 €
+    expect(row(paid)).toMatchObject({
+      hourlyWageCents: 1500,
+      week: {
+        plannedMinutes: 480,
+        targetMinutes: 360,
+        diffMinutes: 120,
+        pay: { status: 'ok', overtimeMinutes: 120, amountCents: 3000 },
+      },
+      // the March shift does not count for April
+      month: { plannedMinutes: 0, pay: { status: 'no-overtime' } },
+    })
+    expect(row(unpaid)).toMatchObject({
+      hourlyWageCents: null,
+      week: {
+        diffMinutes: 60,
+        pay: { status: 'no-wage', overtimeMinutes: 60, amountCents: null },
+      },
+    })
+    expect(data.totals.week).toMatchObject({
+      plannedMinutes: 900,
+      amountCents: 3000,
+      estimatedCount: 1,
+      missingWageCount: 1,
+    })
+    expect(data.totals.month).toMatchObject({
+      plannedMinutes: 0,
+      amountCents: 0,
+      missingWageCount: 0,
+    })
+
+    const march = await as().get(
+      '/api/dienstplan/hours?month=2027-03&area=buero'
+    )
+    expect(march.status).toBe(200)
+    expect(march.body.data.periods).toEqual({
+      week: null,
+      month: { from: '2027-03-01', to: '2027-03-31' },
+    })
+    const olga = march.body.data.rows.find(
+      (r: { employeeId: number }) => r.employeeId === paid
+    )
+    expect(olga.month).toMatchObject({ plannedMinutes: 480 })
+    expect(olga).not.toHaveProperty('week')
+
+    // all areas by default
+    const all = await as().get('/api/dienstplan/hours?week=2027-03-29')
+    expect(all.body.data.area).toBe('alle')
+    expect(
+      all.body.data.employees.some((e: { area: string }) => e.area !== 'buero')
+    ).toBe(true)
+  })
+
+  it('GET /hours validates the period and the area', async () => {
+    for (const [query, code] of [
+      ['', 'invalid_period'],
+      ['?week=2026-13-01', 'invalid_period'],
+      ['?week=1999-12-31', 'invalid_period'],
+      ['?month=2026-1', 'invalid_period'],
+      ['?month=2026-11-01', 'invalid_period'],
+      ['?week=2026-11-09&month=2026-11', 'invalid_period'],
+      ['?week=2026-11-09&area=kasse', 'invalid_area'],
+    ]) {
+      const res = await as().get(`/api/dienstplan/hours${query}`)
+      expect(res.status).toBe(400)
+      expect(res.body).toMatchObject({
+        error: code,
+        message: expect.any(String),
+      })
+    }
+  })
+
+  it('the profile carries the estimate for the current week and month', async () => {
+    const id = await employee({
+      displayName: 'Pia Profil',
+      area: 'buero',
+      weeklyHours: 6,
+      hourlyWageCents: 2000,
+    })
+    // today's week 02.11.-08.11.2026: Soll 6 h, Plan 7 h
+    expect(
+      (
+        await as().post('/api/dienstplan/shifts', {
+          employeeId: id,
+          date: '2026-11-03',
+          startTime: '06:00',
+          endTime: '13:00',
+        })
+      ).status
+    ).toBe(201)
+    const profile = await as().get(`/api/dienstplan/employees/${id}`)
+    expect(profile.body.data.employee.hourlyWageCents).toBe(2000)
+    expect(profile.body.data.hours.week).toMatchObject({
+      diffMinutes: 60,
+      pay: { status: 'ok', overtimeMinutes: 60, amountCents: 2000 },
+    })
+    expect(profile.body.data.hours.month.pay.status).toBe('no-overtime')
   })
 })

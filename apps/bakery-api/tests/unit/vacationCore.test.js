@@ -879,6 +879,275 @@ describe('plannedHours (Plan und Soll)', () => {
   })
 })
 
+describe('Überstunden (weekOf, monthOf, weekMonth, overtimePay, hoursOverview)', () => {
+  const person = (extra = {}) => ({
+    id: 7,
+    weeklyHours: 30,
+    hourlyWageCents: 1390,
+    entryDate: null,
+    exitDate: null,
+    ...extra,
+  })
+  const shift = (date, startTime, endTime, employeeId = 7) => ({
+    employeeId,
+    date,
+    startTime,
+    endTime,
+    breakMinutes: 0,
+  })
+  const hoursWithDiff = (diffMinutes) => ({ diffMinutes })
+
+  it('weekOf / monthOf: Monday to Sunday, first to last of the month', () => {
+    expect(core.weekOf('2026-11-12')).toEqual({
+      from: '2026-11-09',
+      to: '2026-11-15',
+    })
+    expect(core.weekOf('2026-11-15')).toEqual({
+      from: '2026-11-09',
+      to: '2026-11-15',
+    })
+    expect(core.monthOf('2026-11-30')).toEqual({
+      from: '2026-11-01',
+      to: '2026-11-30',
+    })
+    expect(core.monthOf('2028-02-10')).toEqual({
+      from: '2028-02-01',
+      to: '2028-02-29',
+    })
+    expect(core.monthOf('2026-12-31')).toEqual({
+      from: '2026-12-01',
+      to: '2026-12-31',
+    })
+  })
+
+  it('weekMonth: a week spanning two months belongs to the month of its Thursday', () => {
+    // KW 27/2026: Mo 29.06. … So 05.07., Donnerstag 02.07.
+    expect(core.weekMonth('2026-06-29')).toEqual({
+      from: '2026-07-01',
+      to: '2026-07-31',
+    })
+    expect(core.weekMonth('2026-07-05')).toEqual({
+      from: '2026-07-01',
+      to: '2026-07-31',
+    })
+    // KW 44/2026: Mo 26.10. … So 01.11., Donnerstag 29.10.
+    expect(core.weekMonth('2026-11-01')).toEqual({
+      from: '2026-10-01',
+      to: '2026-10-31',
+    })
+    // KW 53/2026: Mo 28.12.2026 … So 03.01.2027, Donnerstag 31.12.
+    expect(core.weekMonth('2027-01-02')).toEqual({
+      from: '2026-12-01',
+      to: '2026-12-31',
+    })
+  })
+
+  it('overtimePay: overtime × hourly wage, rounded to the cent', () => {
+    expect(core.overtimePay(hoursWithDiff(150), 1390)).toEqual({
+      status: 'ok',
+      overtimeMinutes: 150,
+      hourlyWageCents: 1390,
+      amountCents: 3475,
+    })
+    // 7 min × 13,90 € = 1,6216… € → 162 ct
+    expect(core.overtimePay(hoursWithDiff(7), 1390).amountCents).toBe(162)
+  })
+
+  it('overtimePay without an hourly wage is open (null), never 0 €', () => {
+    expect(core.overtimePay(hoursWithDiff(90), null)).toEqual({
+      status: 'no-wage',
+      overtimeMinutes: 90,
+      hourlyWageCents: null,
+      amountCents: null,
+    })
+    // invalid wages count as missing
+    for (const wage of [0, -100, 12.5, 100000, '1390', undefined]) {
+      expect(core.overtimePay(hoursWithDiff(90), wage).status).toBe('no-wage')
+    }
+  })
+
+  it('overtimePay: no overtime is 0 €, no target is open', () => {
+    expect(core.overtimePay(hoursWithDiff(-240), 1390)).toEqual({
+      status: 'no-overtime',
+      overtimeMinutes: 0,
+      hourlyWageCents: 1390,
+      amountCents: 0,
+    })
+    expect(core.overtimePay(hoursWithDiff(0), null)).toMatchObject({
+      status: 'no-overtime',
+      amountCents: 0,
+    })
+    expect(core.overtimePay(hoursWithDiff(null), 1390)).toEqual({
+      status: 'no-target',
+      overtimeMinutes: null,
+      hourlyWageCents: 1390,
+      amountCents: null,
+    })
+  })
+
+  it('hoursOverview: week and month of a week spanning two months', () => {
+    // KW 27/2026 belongs to July; Di 30.06. counts for the week and June,
+    // not for July.
+    const week = core.weekOf('2026-06-29')
+    const month = core.weekMonth('2026-06-29')
+    const res = core.hoursOverview({
+      periods: { week, month },
+      employees: [person()],
+      shifts: [
+        shift('2026-06-30', '06:00', '14:00'), // 8 h, June
+        shift('2026-07-02', '06:00', '14:00'), // 8 h, July
+        shift('2026-07-21', '06:00', '12:00'), // 6 h, July, another week
+      ],
+      absences: [],
+      closedWeekdays: MONDAY,
+    })
+    const row = res.rows[0]
+    expect(row.employeeId).toBe(7)
+    expect(row.hourlyWageCents).toBe(1390)
+    expect(row.week).toMatchObject({
+      from: '2026-06-29',
+      to: '2026-07-05',
+      plannedMinutes: 960,
+      targetMinutes: 1800,
+      diffMinutes: -840,
+    })
+    expect(row.week.pay.status).toBe('no-overtime')
+    // July 2026: 31 days, 4 Mondays, no holiday → 27 opening days × 300 min
+    expect(row.month).toMatchObject({
+      from: '2026-07-01',
+      to: '2026-07-31',
+      plannedMinutes: 840,
+      targetDays: 27,
+      targetMinutes: 8100,
+    })
+  })
+
+  it('hoursOverview: month boundaries - only the days of the month count', () => {
+    const res = core.hoursOverview({
+      periods: { month: core.monthOf('2026-11-15') },
+      employees: [person({ weeklyHours: 6 })],
+      shifts: [
+        shift('2026-10-31', '06:00', '16:00'), // October
+        shift('2026-11-03', '06:00', '16:00'),
+        shift('2026-11-30', '06:00', '16:00'),
+        shift('2026-12-01', '06:00', '16:00'), // December
+      ],
+      absences: [],
+      closedWeekdays: MONDAY,
+    })
+    // November 2026: 24 opening days × 60 min = 1440; plan 2 × 600 = 1200
+    expect(res.rows[0].month).toMatchObject({
+      plannedMinutes: 1200,
+      targetMinutes: 1440,
+      diffMinutes: -240,
+    })
+    expect(res.rows[0]).not.toHaveProperty('week')
+  })
+
+  it('hoursOverview: estimate per person and totals, missing wage stays open', () => {
+    const week = core.weekOf('2026-11-09')
+    // Soll 6 h/Woche = 60 min je Öffnungstag
+    const people = [
+      person({ id: 1, weeklyHours: 6, hourlyWageCents: 1500 }), // +2 h, Lohn
+      person({ id: 2, weeklyHours: 6, hourlyWageCents: null }), // +1 h, ohne Lohn
+      person({ id: 3, weeklyHours: null, hourlyWageCents: 1500 }), // kein Soll
+      person({ id: 4, weeklyHours: 6, hourlyWageCents: 1500 }), // −6 h
+    ]
+    const res = core.hoursOverview({
+      periods: { week },
+      employees: people,
+      shifts: [
+        shift('2026-11-10', '06:00', '14:00', 1), // 8 h
+        shift('2026-11-10', '06:00', '13:00', 2), // 7 h
+        shift('2026-11-10', '06:00', '10:00', 3), // 4 h
+      ],
+      absences: [],
+      closedWeekdays: MONDAY,
+    })
+    expect(res.rows.map((r) => [r.employeeId, r.week.pay])).toEqual([
+      [
+        1,
+        {
+          status: 'ok',
+          overtimeMinutes: 120,
+          hourlyWageCents: 1500,
+          amountCents: 3000,
+        },
+      ],
+      [
+        2,
+        {
+          status: 'no-wage',
+          overtimeMinutes: 60,
+          hourlyWageCents: null,
+          amountCents: null,
+        },
+      ],
+      [
+        3,
+        {
+          status: 'no-target',
+          overtimeMinutes: null,
+          hourlyWageCents: 1500,
+          amountCents: null,
+        },
+      ],
+      [
+        4,
+        {
+          status: 'no-overtime',
+          overtimeMinutes: 0,
+          hourlyWageCents: 1500,
+          amountCents: 0,
+        },
+      ],
+    ])
+    expect(res.totals.week).toEqual({
+      plannedMinutes: 480 + 420 + 240,
+      targetMinutes: 3 * 360,
+      overtimeMinutes: 180,
+      amountCents: 3000,
+      estimatedCount: 1,
+      missingWageCount: 1,
+      noTargetCount: 1,
+    })
+  })
+
+  it('hoursOverview totals: open when only people without wage have overtime, 0 € without overtime', () => {
+    const week = core.weekOf('2026-11-09')
+    const run = (employees, shifts) =>
+      core.hoursOverview({
+        periods: { week },
+        employees,
+        shifts,
+        absences: [],
+        closedWeekdays: MONDAY,
+      }).totals.week
+    expect(
+      run(
+        [person({ weeklyHours: 6, hourlyWageCents: null })],
+        [shift('2026-11-10', '06:00', '14:00')]
+      )
+    ).toMatchObject({ amountCents: null, missingWageCount: 1 })
+    expect(run([person({ hourlyWageCents: null })], [])).toMatchObject({
+      overtimeMinutes: 0,
+      amountCents: 0,
+      missingWageCount: 0,
+    })
+    // nobody has a target: everything open
+    expect(run([person({ weeklyHours: null })], [])).toEqual({
+      plannedMinutes: 0,
+      targetMinutes: null,
+      overtimeMinutes: null,
+      amountCents: null,
+      estimatedCount: 0,
+      missingWageCount: 0,
+      noTargetCount: 1,
+    })
+    expect(run([], [])).toMatchObject({ amountCents: null, plannedMinutes: 0 })
+  })
+})
+
 describe('withinEmployment', () => {
   it('respects entry and exit, each optional', () => {
     expect(core.withinEmployment('2026-05-01', null, null)).toBe(true)

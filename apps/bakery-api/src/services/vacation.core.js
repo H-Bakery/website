@@ -2,8 +2,8 @@
  * Dienstplan und Urlaubskonto (TASK-042): Feiertage Saarland, Öffnungstage
  * und -zeiten, Gewicht eines Tages, Urlaubstage einer Abwesenheit,
  * anteiliger Anspruch, Jahreskonto mit Übertrag, Schicht-Regeln, die
- * Tagesliste des Kalenders mit der Besetzung des Verkaufs und die geplanten
- * Stunden neben dem Soll.
+ * Tagesliste des Kalenders mit der Besetzung des Verkaufs, die geplanten
+ * Stunden neben dem Soll und die geschätzte Überstundenbezahlung.
  *
  * Bewusst abhängigkeitsfreies CommonJS (Konvention wie `targets.core.js`):
  * dieselbe Datei benutzen die API (`src/services/dienstplan.service.ts`), die
@@ -853,6 +853,179 @@ function hoursByEmployee(
   )
 }
 
+// ============================================================================
+// ÜBERSTUNDEN (geschätzt) - Stunden der Woche und des Monats mit Stundenlohn
+// ============================================================================
+
+/**
+ * Höchster Stundenlohn in Cent (999,99 €) - Schutz vor Tippfehlern, keine
+ * Lohnregel. Der Stundenlohn ist Personendaten (D13): SQLite der Box, nur
+ * Inhaber, nie in hq und nie im Audit-Log.
+ */
+const MAX_HOURLY_WAGE_CENTS = 99999
+
+/** Woche (Mo-So) um `date`. */
+function weekOf(date) {
+  const from = addDays(date, 1 - isoWeekday(date))
+  return { from, to: addDays(from, 6) }
+}
+
+/** Kalendermonat um `date` (Erster bis Letzter). */
+function monthOf(date) {
+  const from = `${date.slice(0, 7)}-01`
+  return { from, to: addDays(addMonths(from, 1), -1) }
+}
+
+/**
+ * Monat, zu dem eine Woche gehört: der ihres Donnerstags - wie die
+ * Kalenderwoche (ISO 8601) und der Ansichtswechsel Woche → Monat. Die Woche
+ * 30.11.-06.12.2026 gehört so zum Dezember; ihre Stunden zählen trotzdem
+ * tageweise in den Monat, in dem sie liegen.
+ */
+function weekMonth(date) {
+  return monthOf(addDays(weekOf(date).from, 3))
+}
+
+function isWageCents(value) {
+  return Number.isInteger(value) && value >= 1 && value <= MAX_HOURLY_WAGE_CENTS
+}
+
+/**
+ * Geschätzte Bezahlung der Überstunden einer Person im Zeitraum:
+ * Überstunden × Stundenlohn. Überstunden = Plan − Soll, nur wenn positiv
+ * (`plannedHours`); keine Zuschläge, keine Verrechnung mit Minusstunden aus
+ * einem anderen Zeitraum - eine Schätzung nach Plan, keine Lohnabrechnung.
+ *
+ *   hours           Ergebnis von `plannedHours`
+ *   hourlyWageCents Stundenlohn in Cent oder `null` (nicht erfasst)
+ *
+ * Ergebnis `{ status, overtimeMinutes, hourlyWageCents, amountCents }`:
+ *   'no-target'   kein Soll (keine Wochenstunden) - Überstunden und Betrag
+ *                 `null` („offen“), nie 0
+ *   'no-overtime' Plan ≤ Soll - 0 Überstunden, Betrag 0 (mit oder ohne Lohn)
+ *   'no-wage'     Überstunden, aber kein Stundenlohn - Betrag `null`
+ *                 („Stundenlohn offen“), nie 0
+ *   'ok'          Betrag = round(Überstunden-Minuten × Cent ÷ 60)
+ */
+function overtimePay(hours, hourlyWageCents) {
+  const wage = isWageCents(hourlyWageCents) ? hourlyWageCents : null
+  if (!hours || hours.diffMinutes === null || hours.diffMinutes === undefined) {
+    return {
+      status: 'no-target',
+      overtimeMinutes: null,
+      hourlyWageCents: wage,
+      amountCents: null,
+    }
+  }
+  const overtimeMinutes = Math.max(0, hours.diffMinutes)
+  if (overtimeMinutes === 0) {
+    return {
+      status: 'no-overtime',
+      overtimeMinutes: 0,
+      hourlyWageCents: wage,
+      amountCents: 0,
+    }
+  }
+  if (wage === null) {
+    return {
+      status: 'no-wage',
+      overtimeMinutes,
+      hourlyWageCents: null,
+      amountCents: null,
+    }
+  }
+  return {
+    status: 'ok',
+    overtimeMinutes,
+    hourlyWageCents: wage,
+    amountCents: Math.round((overtimeMinutes * wage) / 60),
+  }
+}
+
+/**
+ * Stundenübersicht: je Person Plan, Soll, Differenz und die geschätzte
+ * Überstundenbezahlung für mehrere Zeiträume zugleich (Woche und Monat),
+ * dazu die Summen je Zeitraum.
+ *
+ *   input = {
+ *     periods:  { week?: { from, to }, month?: { from, to } } (Schlüssel frei),
+ *     employees: [{ id, weeklyHours, hourlyWageCents, entryDate, exitDate }],
+ *     shifts, absences, closedWeekdays   (wie `plannedHours`; Schichten und
+ *                                         Abwesenheiten müssen alle Zeiträume
+ *                                         abdecken)
+ *   }
+ *
+ * Ergebnis `{ rows, totals }`:
+ *   rows[]   `{ employeeId, hourlyWageCents, [key]: { ...plannedHours, pay } }`
+ *            in der Reihenfolge von `employees`
+ *   totals   je Schlüssel `{ plannedMinutes, targetMinutes, overtimeMinutes,
+ *            amountCents, estimatedCount, missingWageCount, noTargetCount }`:
+ *            Soll und Überstunden nur über Personen mit Soll (`null`, wenn
+ *            niemand eins hat); der Betrag summiert nur Personen mit Lohn
+ *            (`null`, wenn es keine Überstunden mit Lohn gibt und welche
+ *            ohne Lohn - dann ist die Summe offen, nicht 0);
+ *            `missingWageCount` = Personen mit Überstunden ohne Stundenlohn.
+ */
+function hoursOverview(input) {
+  const periods = Object.entries(input.periods || {})
+  const rows = (input.employees || []).map((employee) => {
+    const wage = isWageCents(employee.hourlyWageCents)
+      ? employee.hourlyWageCents
+      : null
+    const row = { employeeId: employee.id, hourlyWageCents: wage }
+    for (const [key, range] of periods) {
+      const hours = plannedHours({
+        from: range.from,
+        to: range.to,
+        employee,
+        shifts: input.shifts,
+        absences: input.absences,
+        closedWeekdays: input.closedWeekdays,
+      })
+      row[key] = { ...hours, pay: overtimePay(hours, wage) }
+    }
+    return row
+  })
+  const totals = {}
+  for (const [key] of periods) {
+    const t = {
+      plannedMinutes: 0,
+      targetMinutes: null,
+      overtimeMinutes: null,
+      amountCents: null,
+      estimatedCount: 0,
+      missingWageCount: 0,
+      noTargetCount: 0,
+    }
+    for (const row of rows) {
+      const h = row[key]
+      t.plannedMinutes += h.plannedMinutes
+      if (h.targetMinutes === null) {
+        t.noTargetCount += 1
+        continue
+      }
+      t.targetMinutes = (t.targetMinutes || 0) + h.targetMinutes
+      t.overtimeMinutes = (t.overtimeMinutes || 0) + h.pay.overtimeMinutes
+      if (h.pay.status === 'ok') {
+        t.amountCents = (t.amountCents || 0) + h.pay.amountCents
+        t.estimatedCount += 1
+      } else if (h.pay.status === 'no-wage') {
+        t.missingWageCount += 1
+      }
+    }
+    // Niemand mit Überstunden fehlt der Lohn und keiner hat welche: 0 €.
+    if (
+      t.amountCents === null &&
+      t.missingWageCount === 0 &&
+      t.targetMinutes !== null
+    ) {
+      t.amountCents = 0
+    }
+    totals[key] = t
+  }
+  return { rows, totals }
+}
+
 /** Liegt `date` in der Beschäftigungszeit (Eintritt/Austritt, je optional)? */
 function withinEmployment(date, entryDate, exitDate) {
   if (isValidDate(entryDate) && date < entryDate) return false
@@ -900,5 +1073,11 @@ module.exports = {
   dailyTargetMinutes,
   plannedHours,
   hoursByEmployee,
+  MAX_HOURLY_WAGE_CENTS,
+  weekOf,
+  monthOf,
+  weekMonth,
+  overtimePay,
+  hoursOverview,
   withinEmployment,
 }

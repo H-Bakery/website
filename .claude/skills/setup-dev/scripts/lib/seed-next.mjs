@@ -572,6 +572,7 @@ export async function seedDienstplan(ctx) {
   const PEOPLE = [
     {
       key: 'vera',
+      hourlyWageCents: 1450, // erfunden
       displayName: 'Vera Verkauf (Test)',
       area: 'verkauf',
       color: '#c2185b',
@@ -583,6 +584,7 @@ export async function seedDienstplan(ctx) {
     },
     {
       key: 'valentin',
+      hourlyWageCents: 1390, // erfunden
       displayName: 'Valentin Verkauf (Test)',
       area: 'verkauf',
       color: '#1976d2',
@@ -594,6 +596,7 @@ export async function seedDienstplan(ctx) {
     },
     {
       key: 'sabine',
+      hourlyWageCents: 1290, // erfunden
       displayName: 'Sabine Beispiel (Test)',
       area: 'verkauf',
       color: '#388e3c',
@@ -604,6 +607,7 @@ export async function seedDienstplan(ctx) {
     },
     {
       key: 'mia',
+      hourlyWageCents: null, // erfunden; null = Stundenlohn offen
       displayName: 'Mia Muster (Test)',
       area: 'verkauf',
       color: '#f57c00',
@@ -615,6 +619,7 @@ export async function seedDienstplan(ctx) {
     },
     {
       key: 'bernd',
+      hourlyWageCents: 1680, // erfunden
       displayName: 'Bernd Backstube (Test)',
       area: 'backstube',
       color: '#6d4c41',
@@ -626,6 +631,7 @@ export async function seedDienstplan(ctx) {
     },
     {
       key: 'paul',
+      hourlyWageCents: null, // erfunden; null = Stundenlohn offen
       displayName: 'Paul Probe (Test)',
       area: 'backstube',
       color: '#5d4037',
@@ -635,6 +641,7 @@ export async function seedDienstplan(ctx) {
     },
     {
       key: 'fritz',
+      hourlyWageCents: 1290, // erfunden
       displayName: 'Fritz Fahrer (Test)',
       area: 'fahrer',
       color: '#455a64',
@@ -646,6 +653,7 @@ export async function seedDienstplan(ctx) {
     },
     {
       key: 'erika',
+      hourlyWageCents: 1500, // erfunden
       displayName: 'Erika Beispiel (Test)',
       area: 'buero',
       color: '#7b1fa2',
@@ -663,6 +671,7 @@ export async function seedDienstplan(ctx) {
       color: p.color,
       employmentType: p.employmentType,
       weeklyHours: p.weeklyHours,
+      hourlyWageCents: p.hourlyWageCents,
       ...(p.entryDate ? { entryDate: p.entryDate } : {}),
       ...(p.user && USERS[p.user]?.id ? { userId: USERS[p.user].id } : {}),
     }

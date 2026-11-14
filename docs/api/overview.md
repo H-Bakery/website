@@ -90,7 +90,8 @@ node --enable-source-maps dist/apps/bakery-api/bundle/main.js
    `20270201000000-backzettel-dough-day.js` (Z10), `20270210000000-backzettel-baked.js` (Z10 O5),
    `20270301000000-dienstplan.js` (TASK-042),
    `20270310000000-backzettel-none-today.js` („Heute keine“),
-   `20270320000000-invoices.js` (Rechnungen), `20270325000000-invoices-pdf-paid.js` (Rechnungen: festgeschriebenes PDF, bezahlt). The
+   `20270320000000-invoices.js` (Rechnungen), `20270325000000-invoices-pdf-paid.js` (Rechnungen: festgeschriebenes PDF, bezahlt),
+   `20270401000000-dienstplan-hourly-wage.js` (Dienstplan: Stundenlohn). The
    17 legacy migrations are archived in
    `migrations/archive/` and never loaded (`sequelize-cli` does not read subdirectories either).
 5. `initializeModels(sequelize)` - after the migrations, never before.

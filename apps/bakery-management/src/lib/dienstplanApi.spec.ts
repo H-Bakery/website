@@ -16,9 +16,18 @@ import {
   formatDays,
   formatMinutes,
   formatOpenDays,
+  fetchHoursOverview,
+  formatCents,
+  formatWage,
   groupByArea,
   parseDaysInput,
   parseHoursInput,
+  parseWageInput,
+  payFormula,
+  payText,
+  totalPayText,
+  wageToInput,
+  type HoursTotals,
   saveEntitlement,
   updateEmployee,
   type Employee,
@@ -52,6 +61,7 @@ function employee(overrides: Partial<Employee> = {}): Employee {
     color: null,
     employmentType: 'teilzeit',
     weeklyHours: 20,
+    hourlyWageCents: null,
     entryDate: null,
     exitDate: null,
     active: true,
@@ -231,5 +241,102 @@ describe('dienstplanApi - Helfer', () => {
     expect(parseHoursInput('38,5')).toBe(38.5)
     expect(parseHoursInput('61')).toBeNaN()
     expect(parseHoursInput(' ')).toBeNull()
+  })
+})
+
+describe('Stundenlohn und geschätzte Überstundenbezahlung', () => {
+  it('fetchHoursOverview fragt Woche oder Monat, optional mit Bereich', async () => {
+    apiClient.get.mockResolvedValue({ success: true, data: { rows: [] } })
+    await fetchHoursOverview({ week: '2026-11-09' })
+    expect(apiClient.get).toHaveBeenLastCalledWith('/api/dienstplan/hours', {
+      week: '2026-11-09',
+    })
+    await fetchHoursOverview({ month: '2026-11' }, 'verkauf')
+    expect(apiClient.get).toHaveBeenLastCalledWith('/api/dienstplan/hours', {
+      month: '2026-11',
+      area: 'verkauf',
+    })
+  })
+
+  it('liest den Stundenlohn in Euro als Cent; leer = offen, Unsinn = NaN', () => {
+    expect(parseWageInput('13,90')).toBe(1390)
+    expect(parseWageInput(' 13.9 ')).toBe(1390)
+    expect(parseWageInput('14')).toBe(1400)
+    expect(parseWageInput('0,01')).toBe(1)
+    expect(parseWageInput('999,99')).toBe(99999)
+    expect(parseWageInput('12,50 €')).toBe(1250)
+    expect(parseWageInput('')).toBeNull()
+    for (const bad of ['0', '0,00', '1000', '13,999', '-5', 'abc', '13,9,0']) {
+      expect(parseWageInput(bad)).toBeNaN()
+    }
+    expect(wageToInput(1390)).toBe('13,90')
+    expect(wageToInput(1205)).toBe('12,05')
+    expect(wageToInput(null)).toBe('')
+    expect(parseWageInput(wageToInput(1205))).toBe(1205)
+  })
+
+  // Intl setzt ein geschütztes Leerzeichen vor das €.
+  const plain = (text: string | null) => text?.replace(/\u00a0/g, ' ')
+
+  it('formatiert Cent und Stundenlohn; ohne Lohn „offen“', () => {
+    expect(plain(formatCents(3475))).toBe('34,75 €')
+    expect(plain(formatWage(1390))).toBe('13,90 €/h')
+    expect(formatWage(null)).toBe('offen')
+  })
+
+  it('Bezahlung als Text: geschätzt, Stundenlohn offen (nie 0 €), keine Überstunden, Soll offen', () => {
+    const ok = {
+      status: 'ok' as const,
+      overtimeMinutes: 150,
+      hourlyWageCents: 1390,
+      amountCents: 3475,
+    }
+    expect(plain(payText(ok))).toBe('≈ 34,75 €')
+    expect(plain(payFormula(ok))).toBe('2:30 h × 13,90 €/h')
+    const noWage = {
+      status: 'no-wage' as const,
+      overtimeMinutes: 60,
+      hourlyWageCents: null,
+      amountCents: null,
+    }
+    expect(payText(noWage)).toBe('Stundenlohn offen')
+    expect(payFormula(noWage)).toBeNull()
+    expect(
+      payText({
+        status: 'no-overtime',
+        overtimeMinutes: 0,
+        hourlyWageCents: 1390,
+        amountCents: 0,
+      })
+    ).toBe('keine Überstunden')
+    expect(
+      payText({
+        status: 'no-target',
+        overtimeMinutes: null,
+        hourlyWageCents: null,
+        amountCents: null,
+      })
+    ).toBe('Soll offen')
+  })
+
+  it('Summe: „mind.“, wenn Löhne fehlen; offen ohne Betrag; 0 € ohne Überstunden', () => {
+    const totals = (extra: Partial<HoursTotals>): HoursTotals => ({
+      plannedMinutes: 0,
+      targetMinutes: 0,
+      overtimeMinutes: 0,
+      amountCents: 0,
+      estimatedCount: 0,
+      missingWageCount: 0,
+      noTargetCount: 0,
+      ...extra,
+    })
+    expect(plain(totalPayText(totals({ amountCents: 9530 })))).toBe('≈ 95,30 €')
+    expect(
+      plain(totalPayText(totals({ amountCents: 9530, missingWageCount: 2 })))
+    ).toBe('mind. 95,30 €')
+    expect(
+      totalPayText(totals({ amountCents: null, missingWageCount: 1 }))
+    ).toBe('offen')
+    expect(plain(totalPayText(totals({})))).toBe('0,00 €')
   })
 })

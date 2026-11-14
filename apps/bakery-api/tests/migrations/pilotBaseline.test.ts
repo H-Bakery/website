@@ -26,6 +26,8 @@ const invoicesMigration = require('../../migrations/20270320000000-invoices.js')
 const invoicesPdfMigration = require('../../migrations/20270325000000-invoices-pdf-paid.js')
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const noneTodayMigration = require('../../migrations/20270310000000-backzettel-none-today.js')
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const hourlyWageMigration = require('../../migrations/20270401000000-dienstplan-hourly-wage.js')
 
 /** The 17 migrations the server ran before B2, now in migrations/archive/. */
 const LEGACY_NAMES = [
@@ -104,6 +106,7 @@ describe('pilot baseline on a fresh database', () => {
       '20270310000000-backzettel-none-today.js',
       '20270320000000-invoices.js',
       '20270325000000-invoices-pdf-paid.js',
+      '20270401000000-dienstplan-hourly-wage.js',
     ])
   })
 
@@ -1375,6 +1378,98 @@ describe('„Heute keine“ migration (backzettel_lines.none_today)', () => {
   })
 })
 
+describe('Stundenlohn migration (employees.hourly_wage_cents)', () => {
+  const HOURLY_WAGE = '20270401000000-dienstplan-hourly-wage.js'
+
+  async function schema(sequelize: Sequelize) {
+    return {
+      fk: await sequelize.query('PRAGMA foreign_key_list(employees)', {
+        type: QueryTypes.SELECT,
+      }),
+      indexes: await sequelize.getQueryInterface().showIndex('employees'),
+      columns: await columns(sequelize, 'employees'),
+    }
+  }
+
+  it('adds hourly_wage_cents NULL; existing employees keep everything and read "offen"; idempotent; down() restores the schema', async () => {
+    const sequelize = await freshDb()
+    await runMigrations(sequelize, {
+      ...quiet,
+      migrations: MIGRATIONS.filter((m) => m.name !== HOURLY_WAGE),
+    })
+    const before = await schema(sequelize)
+    expect(before.columns).not.toContain('hourly_wage_cents')
+    // A box database from before: a login, an employee linked to it, a shift.
+    await sequelize.query(
+      `INSERT INTO users (id, username, display_name, role, password_hash, active, created_at, updated_at)
+       VALUES (7, 'test.verkauf', 'Test Verkauf', 'verkauf', 'x', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+    )
+    await sequelize.query(
+      `INSERT INTO employees (id, display_name, area, weekly_hours, user_id, note, active, created_at, updated_at)
+       VALUES (1, 'Erika Beispiel', 'verkauf', 30, 7, 'Testnotiz', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+              (2, 'Max Muster', 'backstube', NULL, NULL, NULL, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+    )
+    await sequelize.query(
+      `INSERT INTO shifts (employee_id, date, start_time, end_time, break_minutes, created_at, updated_at)
+       VALUES (1, '2026-11-10', '06:00', '12:00', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+    )
+    const result = await runMigrations(sequelize, quiet)
+    expect(result.executed).toEqual([HOURLY_WAGE])
+    const described = await sequelize
+      .getQueryInterface()
+      .describeTable('employees')
+    expect(described['hourly_wage_cents']).toMatchObject({ allowNull: true })
+    expect(
+      await sequelize.query(
+        'SELECT id, display_name, area, weekly_hours, user_id, note, active, hourly_wage_cents FROM employees ORDER BY id',
+        { type: QueryTypes.SELECT }
+      )
+    ).toEqual([
+      {
+        id: 1,
+        display_name: 'Erika Beispiel',
+        area: 'verkauf',
+        weekly_hours: 30,
+        user_id: 7,
+        note: 'Testnotiz',
+        active: 1,
+        hourly_wage_cents: null,
+      },
+      {
+        id: 2,
+        display_name: 'Max Muster',
+        area: 'backstube',
+        weekly_hours: null,
+        user_id: null,
+        note: null,
+        active: 0,
+        hourly_wage_cents: null,
+      },
+    ])
+    expect(
+      await sequelize.query('SELECT employee_id, date FROM shifts', {
+        type: QueryTypes.SELECT,
+      })
+    ).toEqual([{ employee_id: 1, date: '2026-11-10' }])
+    const qi = sequelize.getQueryInterface()
+    const after = await schema(sequelize)
+    // foreign key and indexes survive (no table rebuild)
+    expect(after.fk).toEqual(before.fk)
+    expect(after.indexes).toEqual(before.indexes)
+    await hourlyWageMigration.up(qi, Sequelize)
+    expect(await schema(sequelize)).toEqual(after)
+    await hourlyWageMigration.down(qi, Sequelize)
+    expect(await schema(sequelize)).toEqual(before)
+    expect(await foreignKeyViolations(sequelize)).toEqual([])
+    // without the Dienstplan tables both directions do nothing
+    await dienstplanMigration.down(qi, Sequelize)
+    await hourlyWageMigration.up(qi, Sequelize)
+    await hourlyWageMigration.down(qi, Sequelize)
+    expect(await tableNames(sequelize)).not.toContain('employees')
+    await sequelize.close()
+  })
+})
+
 describe('TASK-042 Dienstplan migration', () => {
   it('creates the Dienstplan tables, idempotently, and drops them again', async () => {
     const sequelize = await freshDb()
@@ -1392,6 +1487,7 @@ describe('TASK-042 Dienstplan migration', () => {
         'employment_type',
         'entry_date',
         'exit_date',
+        'hourly_wage_cents',
         'id',
         'note',
         'updated_at',

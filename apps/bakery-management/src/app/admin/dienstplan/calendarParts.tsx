@@ -1,14 +1,23 @@
 'use client'
 import React from 'react'
 import Link from 'next/link'
-import { Box, Chip, TableCell, TableRow, Typography } from '@mui/material'
+import {
+  Box,
+  ButtonBase,
+  Chip,
+  TableCell,
+  TableRow,
+  Typography,
+} from '@mui/material'
 import type { Theme } from '@mui/material/styles'
 import {
   ABSENCE_TYPES,
   ABSENCE_TYPE_LABELS,
   formatDays,
+  payText,
   type AbsenceType,
   type Employee,
+  type OvertimePay,
   type PlannedHours,
 } from '../../../lib/dienstplanApi'
 import { hoursTexts } from '../../../lib/dienstplanCalendar'
@@ -236,15 +245,23 @@ export function HoursHeaderCell({ periodLabel }: { periodLabel: string }) {
 
 /**
  * Stunden einer Person im Zeitraum: Plan, Soll („offen“ ohne
- * Wochenstunden, nie 0) und die Differenz mit Vorzeichen - als Text.
- * Gerechnet hat die API (`plannedHours` in `vacation.core.js`).
+ * Wochenstunden, nie 0) und die Differenz mit Vorzeichen - als Text; mit
+ * `pay` darunter die geschätzte Überstundenbezahlung („≈ 34,75 €“,
+ * „Stundenlohn offen“). Mit `onOpen` ist die Zelle ein Knopf zu den Details.
+ * Gerechnet hat die API (`plannedHours`/`hoursOverview` in `vacation.core.js`).
  */
 export function HoursCell({
   employeeId,
   hours,
+  pay,
+  onOpen,
+  openLabel,
 }: {
   employeeId: number
   hours: PlannedHours | undefined
+  pay?: OvertimePay
+  onOpen?: () => void
+  openLabel?: string
 }) {
   if (!hours) {
     return <TableCell data-testid={`hours-${employeeId}`}>–</TableCell>
@@ -256,15 +273,9 @@ export function HoursCell({
           hours.creditedDays === 1 ? 'Tag' : 'Tage'
         } Urlaub/abwesend`
       : null
-  return (
-    <TableCell
-      data-testid={`hours-${employeeId}`}
-      sx={{
-        verticalAlign: 'top',
-        py: 0.5,
-        fontVariantNumeric: 'tabular-nums',
-      }}
-    >
+  const showPay = pay && (pay.status === 'ok' || pay.status === 'no-wage')
+  const content = (
+    <>
       <Typography variant="caption" display="block">
         Plan {t.plan}
       </Typography>
@@ -291,6 +302,49 @@ export function HoursCell({
         >
           {t.diff}
         </Typography>
+      )}
+      {showPay && (
+        <Typography
+          variant="caption"
+          display="block"
+          data-testid={`hours-pay-${employeeId}`}
+          data-status={pay.status}
+          title="Überstunden-Bezahlung, geschätzt"
+          sx={{ overflowWrap: 'anywhere' }}
+        >
+          {pay.status === 'ok' ? `Überstd. ${payText(pay)}` : payText(pay)}
+        </Typography>
+      )}
+    </>
+  )
+  return (
+    <TableCell
+      data-testid={`hours-${employeeId}`}
+      sx={{
+        verticalAlign: 'top',
+        py: 0.5,
+        fontVariantNumeric: 'tabular-nums',
+        ...(onOpen ? { px: 0.5 } : {}),
+      }}
+    >
+      {onOpen ? (
+        <ButtonBase
+          onClick={onOpen}
+          aria-label={openLabel}
+          sx={{
+            display: 'block',
+            width: '100%',
+            textAlign: 'left',
+            borderRadius: 1,
+            px: 0.5,
+            py: 0.25,
+            '&:hover, &:focus-visible': { bgcolor: 'action.hover' },
+          }}
+        >
+          {content}
+        </ButtonBase>
+      ) : (
+        content
       )}
     </TableCell>
   )
