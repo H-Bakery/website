@@ -924,7 +924,7 @@ describe('Backstube-Tablet', () => {
   it('Vorbereitung heute: für den nächsten Backtag', async () => {
     renderTablet()
     await screen.findByTestId('bs-progress')
-    fireEvent.click(screen.getByRole('tab', { name: 'Vorbereitung heute' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Vorbereitung' }))
     const prep = await screen.findByTestId('bs-prep')
     expect(mocked.fetchPrep).toHaveBeenCalledWith('2026-11-29')
     // gilt immer dem nächsten Backtag: kein Heute/Morgen, Kopf = heute
@@ -958,7 +958,7 @@ describe('Backstube-Tablet', () => {
     })
     renderTablet({ now: at('2026-11-29', 15) })
     await waitFor(() => expect(mocked.fetchBackzettelDay).toHaveBeenCalled())
-    fireEvent.click(screen.getByRole('tab', { name: 'Vorbereitung heute' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Vorbereitung' }))
     const prep = await screen.findByTestId('bs-prep')
     expect(mocked.fetchPrep).toHaveBeenCalledWith('2026-12-01')
     expect(prep).toHaveTextContent('Vorzubereiten am Montag, 30.11.2026.')
@@ -1172,5 +1172,110 @@ describe('Backstube-Tablet: UI-Runde 1', () => {
       )
     ).map((el) => el.getAttribute('data-testid'))
     expect(order[0]).toBe('bs-warnings')
+  })
+})
+
+describe('Backstube-Tablet: Aufbau (UI-Umbau 2026-11)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    mocked.fetchBackzettelConfig.mockResolvedValue(CONFIG_RESPONSE)
+    mocked.fetchBackzettelDay.mockResolvedValue(saturdayConfirmed())
+  })
+
+  it('Überblick: je Abschnitt ein Sprungknopf mit „erledigt von“', async () => {
+    const scrollIntoView = jest.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    renderTablet()
+    const overview = within(await screen.findByTestId('bs-overview'))
+    expect(overview.getByTestId('bs-progress')).toHaveTextContent(
+      '0 von 4 erledigt'
+    )
+    expect(
+      overview.getByRole('button', { name: 'Hefeteig: 0 von 2' })
+    ).toBeInTheDocument()
+    const broetchen = overview.getByRole('button', {
+      name: 'Brötchen: 0 von 1',
+    })
+    // Hefeteig & Füllungen ist Ansicht ohne Haken - nur der Name.
+    expect(
+      overview.getByRole('button', { name: 'Hefeteig & Füllungen' })
+    ).toBeInTheDocument()
+
+    fireEvent.click(broetchen)
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(scrollIntoView.mock.contexts[0]).toBe(
+      document.getElementById('bs-anchor-broetchen')
+    )
+    expect(document.getElementById('bs-anchor-broetchen')).toBe(
+      screen.getByTestId('bs-section-broetchen')
+    )
+  })
+
+  it('Fortschritt im Kopf zählt beim Abhaken mit; Stand steht oben', async () => {
+    mocked.setLineDone.mockReturnValue(new Promise(() => undefined))
+    renderTablet()
+    await screen.findByTestId('bs-progress')
+    const bar = screen.getByTestId('bs-header-progress')
+    expect(bar).toHaveAttribute('aria-valuenow', '0')
+    expect(screen.getByTestId('bs-loaded-at')).toHaveTextContent('Stand 03:00')
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Testweck abhaken' }))
+    expect(bar).toHaveAttribute('aria-valuenow', '25')
+    expect(bar).toHaveAccessibleName('1 von 4 erledigt')
+    expect(
+      within(screen.getByTestId('bs-overview')).getByRole('button', {
+        name: 'Brötchen: 1 von 1',
+      })
+    ).toBeInTheDocument()
+  })
+
+  it('offene Nachträge stehen vor dem Überblick und den Zeilen', async () => {
+    renderTablet()
+    await screen.findByTestId('bs-overview')
+    const order = Array.from(
+      document.querySelectorAll(
+        '[data-testid="bs-deltas"], [data-testid="bs-overview"], [data-testid^="bs-section-"]'
+      )
+    ).map((el) => el.getAttribute('data-testid'))
+    expect(order.slice(0, 2)).toEqual(['bs-deltas', 'bs-overview'])
+    // Seitenspalte und Zeilen getrennt (zwei Spalten ab 1080 px).
+    expect(
+      within(screen.getByTestId('bs-aside')).getByTestId('bs-deltas')
+    ).toBeInTheDocument()
+    expect(
+      within(screen.getByTestId('bs-main')).getByTestId('bs-section-brot')
+    ).toBeInTheDocument()
+  })
+
+  it('Entwurf: Überblick nennt je Abschnitt nur die Zahl der Zeilen', async () => {
+    mocked.fetchBackzettelDay.mockResolvedValue(saturdayDraft())
+    renderTablet()
+    const overview = within(await screen.findByTestId('bs-overview'))
+    expect(overview.getByTestId('bs-draft-banner')).toBeInTheDocument()
+    expect(
+      overview.getByRole('button', { name: 'Hefeteig: 2 Zeilen' })
+    ).toBeInTheDocument()
+    expect(
+      overview.getByRole('button', { name: 'Brot: 1 Zeile' })
+    ).toBeInTheDocument()
+    // Kein Fortschritt im Kopf, solange nichts abgehakt werden kann.
+    expect(screen.getByTestId('bs-header-progress')).toHaveStyle({
+      visibility: 'hidden',
+    })
+  })
+
+  it('ein gescheiterter Haken meldet sich unten fest im Bild', async () => {
+    mocked.setLineDone.mockRejectedValue(
+      apiError(500, 'internal', 'Interner Fehler')
+    )
+    renderTablet()
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: 'Testweck abhaken' })
+    )
+    const alert = await screen.findByText(/^Nicht gespeichert:/)
+    const box = alert.closest('[data-print="hide"]') as HTMLElement
+    expect(getComputedStyle(box).position).toBe('fixed')
+    fireEvent.click(within(box).getByRole('button', { name: /close/i }))
+    expect(screen.queryByText(/^Nicht gespeichert:/)).not.toBeInTheDocument()
   })
 })

@@ -516,6 +516,20 @@ Die Stationsansicht der Backstube, Startseite der Rolle `backstube` nach der PIN
 `/admin` - keine Seitenleiste, deshalb mit eigenem „Abmelden" (`LogoutButton`, auf der Station zurück
 zu den Namenskacheln). Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhaber, Backstube).
 
+- **Aufbau (UI-Umbau 2026-11):** fester Kopf (`BackstubeHeader.tsx`) mit Datum, „Backstube · Name ·
+  Stand HH:MM" (nach gescheitertem Neuladen gelb mit Wolke), Neu laden, „Planung & Druck", „Zur
+  Verwaltung", Abmelden (unter 1200 px nur als Zeichen, Name per `aria-label`), Reitern Zettel /
+  Backen / Vorbereitung, Heute/Morgen und einer Fortschrittsleiste über die ganze Breite (Zettel:
+  erledigt, Backen: gebacken). Darunter **ab 1080 px zwei Spalten** (`BackstubeLayout.tsx`, Tablet
+  quer und Desktop): links eine mitlaufende Spalte mit eigenem Bildlauf - offene Nachträge zuerst,
+  dann der **Überblick** (`BackstubeOverview.tsx`: „n von m erledigt", je Abschnitt ein Sprungknopf
+  mit „3/7" und Balken; im Entwurf nur die Zeilenzahl), dann Hinweise -, rechts was zu tun ist
+  (Teige heute, Hefeteig & Füllungen, die Zeilen; höchstens ~940 px breit, eine Punktlinie führt vom
+  Namen zur Menge). Hochkant und am Handy steht die linke Spalte über den Zeilen; weit unten führt
+  „Überblick" zurück nach oben. Gezählt wird nur, was der Server an den Zeilen trägt
+  (`src/lib/backstubeProgress.ts`, rein und getestet; ein Nachtrag nach dem Haken öffnet die Zeile wieder).
+  Ein gescheiterter Haken meldet sich unten fest im Bild, auch wenn die Zeile weit unten lag. Am Handy
+  läuft der Kopf mit (vier Reihen wären ein Drittel des Bildschirms).
 - **Welcher Tag:** `src/lib/backstubeDay.ts` (rein, getestet). Vor **12 Uhr** (Ortszeit des Tablets,
   `BACKSTUBE_SWITCH_HOUR`) heute - die Schicht ab 2 Uhr läuft -, ab 12 Uhr der nächste
   Produktionstag; ist heute kein Produktionstag, immer der nächste. Der Umschalter „Heute"/„Morgen"
@@ -556,15 +570,17 @@ zu den Namenskacheln). Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhabe
   gesetzt und bei Fehler zurückgenommen; 409/404 laden die Backliste neu, ein Neuladen während
   eines laufenden Hakens wird verworfen. Der **Ausdruck** der Backliste bleibt Papier: ein leeres
   Kästchen je Zeile, unverändert (eine Seite).
-- **Nachträge:** Karte oben mit je einem großen „Gesehen", an der Zeile ein Badge „Nachtrag +N" (offen
+- **Nachträge:** Karte zuoberst in der linken Spalte (hochkant: über allem) mit je einem großen
+  „Gesehen", an der Zeile ein Badge „Nachtrag +N" (offen
   farbig, quittiert „· gesehen"). Nachträge stehen nie im Gesamt.
 - **Samstag:** Hefeteig & Füllungen (`components/backstube/BackstubeHefeteig.tsx`) **vor** den Zeilen,
   sonst danach. Dieselben Server-Zahlen wie die Tagesplanung, nur groß.
-- **„Vorbereitung heute":** `GET /api/backzettel/:datum/prep` für den nächsten Produktionstag nach
+- **Reiter „Vorbereitung"** (heute vorzubereiten): `GET /api/backzettel/:datum/prep` für den nächsten Produktionstag nach
   heute (vorbereitet am Kalender-Vortag ab 14 Uhr); ist der Vortag Ruhetag, steht der Hinweis aus
   `prepDateProvisional` da. Kein Umschalter - die Vorbereitung gilt immer dem nächsten Backtag.
 - **Neu geladen** wird alle 60 s (`BACKSTUBE_REFRESH_MS`), bei `focus` und `visibilitychange`.
-  Scheitert ein Neuladen, bleibt der letzte Stand stehen mit Hinweis und „Stand von HH:MM".
+  Scheitert ein Neuladen, bleibt der letzte Stand stehen mit Hinweis und „Stand von HH:MM"; der
+  Kopf zeigt den Stand gelb.
   **Fehlertexte** über `describeBackstubeError` (`src/lib/backstubeErrors.ts`): kein Server erreicht
   (fetch-Fehler, Zeitüberschreitung, 502-504 ohne JSON-Kennung von Caddy) → „Keine Verbindung zum
   Server – bitte WLAN prüfen."; 4xx mit deutscher API-`message` → diese; sonst ein deutscher Text mit
@@ -593,6 +609,6 @@ zu den Namenskacheln). Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhabe
   `admin/backzettel/grundmengen/GrundmengenClient.spec.tsx`,
   `components/backzettel/BackzettelPrint.spec.tsx`, Z10-Druck: `src/lib/dayPrintLayout.spec.ts`,
   `components/backzettel/{DoughDayPrint,BakeListPrint,AddLineCard}.spec.tsx`, Druck-Auswahl in
-  `admin/backzettel/[datum]/BackzettelDayClient.v2.spec.tsx`; `app/backstube/BackstubeClient.spec.tsx`,
+  `admin/backzettel/[datum]/BackzettelDayClient.v2.spec.tsx`; `app/backstube/BackstubeClient{,.v2}.spec.tsx`, `src/lib/backstubeProgress.spec.ts`,
   `components/backstube/backstubeColors.spec.ts`. Fixtures erfunden: `src/lib/backzettelFixtures.ts`
   (eindeutige Zeilen-IDs je Zeile), `src/lib/grundmengenFixtures.ts`.

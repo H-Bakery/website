@@ -16,6 +16,10 @@ import {
 } from '../../lib/backzettelFormat'
 import { BS_SECTION_TITLE_SX } from './backstubeType'
 import { useBackstubeColors } from './backstubeColors'
+import { BS_WIDE } from './BackstubeLayout'
+
+/** Ab hier (Tablet hochkant) steht „Gesehen“ neben dem Namen. */
+const ROW_LAYOUT = '@media (min-width: 600px)'
 
 /** Schlüssel für „Alle gesehen“ (`ackingKey`). */
 export const ACK_ALL_KEY = '*'
@@ -173,7 +177,10 @@ export function BackstubeDeltas({
           id="bs-deltas-title"
           variant="h2"
           component="h2"
-          sx={BS_SECTION_TITLE_SX}
+          sx={{
+            ...BS_SECTION_TITLE_SX,
+            fontSize: { xs: '1.4rem', sm: '1.65rem' },
+          }}
         >
           {open.length === 1
             ? '1 Nachtrag seit der Freigabe'
@@ -220,27 +227,55 @@ export function BackstubeDeltas({
               key={g.key}
               data-testid={`bs-delta-group-${g.key}`}
               sx={{
-                display: 'flex',
+                // Schmal (Handy, Seitenspalte am Desktop): Zahl + Name,
+                // „Gesehen“ über die ganze Breite darunter. Hochkant am
+                // Tablet alles in einer Reihe.
+                display: 'grid',
                 alignItems: 'center',
-                gap: 2,
-                flexWrap: 'wrap',
+                columnGap: 2,
+                rowGap: 1.25,
+                gridTemplateColumns: 'auto minmax(0, 1fr)',
+                gridTemplateAreas: '"fig name" "btn btn"',
+                [ROW_LAYOUT]: {
+                  gridTemplateColumns: 'auto minmax(0, 1fr) auto',
+                  gridTemplateAreas: '"fig name btn"',
+                },
+                [BS_WIDE]: {
+                  gridTemplateColumns: 'auto minmax(0, 1fr)',
+                  gridTemplateAreas: '"fig name" "btn btn"',
+                },
                 p: 1.5,
                 borderRadius: 1.5,
                 bgcolor: 'background.paper',
+                '& > .bs-delta-ack': {
+                  gridArea: 'btn',
+                  width: '100%',
+                  [ROW_LAYOUT]: { width: 'auto' },
+                  [BS_WIDE]: { width: '100%' },
+                },
               }}
             >
               <Typography
                 sx={{
                   fontSize: { xs: '2rem', sm: '2.5rem' },
                   fontWeight: 800,
-                  minWidth: 80,
+                  minWidth: 72,
+                  gridArea: 'fig',
+                  lineHeight: 1.1,
                   fontVariantNumeric: 'tabular-nums',
                 }}
               >
                 {headline.big}
               </Typography>
-              <Box sx={{ flex: 1, minWidth: 180 }}>
-                <Typography sx={{ fontSize: '1.4rem', fontWeight: 700 }}>
+              <Box sx={{ gridArea: 'name', minWidth: 0 }}>
+                <Typography
+                  sx={{
+                    fontSize: { xs: '1.25rem', sm: '1.4rem' },
+                    fontWeight: 700,
+                    lineHeight: 1.2,
+                    overflowWrap: 'anywhere',
+                  }}
+                >
                   {label}
                 </Typography>
                 {headline.note && (
@@ -257,6 +292,7 @@ export function BackstubeDeltas({
               </Box>
               {canAck && (
                 <ButtonBase
+                  className="bs-delta-ack"
                   onClick={() => onAck(g.deltas, g.key)}
                   disabled={busy}
                   aria-label={

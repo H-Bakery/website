@@ -266,6 +266,41 @@ describe('Backstube-Tablet - Teigtag-Zettel und Backliste (Z10)', () => {
   describe('Backen: gebacken-Haken (O5)', () => {
     const DOPPEL = `test-doppel|@${V2_TUE}`
 
+    it('Überblick und Kopf zählen „gebacken“; Planung & Druck auch hier', async () => {
+      mocked.setLineBaked.mockReturnValue(new Promise(() => undefined))
+      renderTablet(at(V2_TUE, 3))
+      const overview = within(await screen.findByTestId('bs-overview'))
+      expect(overview.getByTestId('bs-bake-progress')).toHaveTextContent(
+        '0 von 4 gebacken'
+      )
+      // Brot kommt aus einem Entwurf: zählt mit, ist aber nicht abhakbar.
+      expect(
+        overview.getByRole('button', { name: 'Brot: 0 von 1' })
+      ).toBeInTheDocument()
+      expect(
+        overview.getByRole('button', { name: 'Nachträge: 0 von 1' })
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('link', { name: 'Planung & Druck' })
+      ).toHaveAttribute('href', `/admin/backzettel/${V2_TUE}`)
+
+      fireEvent.click(
+        screen.getByRole('checkbox', {
+          name: 'Testdoppel als gebacken abhaken',
+        })
+      )
+      expect(overview.getByTestId('bs-bake-progress')).toHaveTextContent(
+        '1 von 4 gebacken'
+      )
+      expect(screen.getByTestId('bs-header-progress')).toHaveAttribute(
+        'aria-valuenow',
+        '25'
+      )
+      expect(
+        overview.getByRole('button', { name: 'Brötchen: 1 von 3' })
+      ).toBeInTheDocument()
+    })
+
     it('setzt den Haken sofort und schickt ihn an die Backliste des Backtags', async () => {
       const pending = deferred<api.LineBakedResult>()
       mocked.setLineBaked.mockReturnValue(pending.promise)
