@@ -143,7 +143,7 @@ Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). AP
     „mind. … €“ mit „n × Stundenlohn offen“; wer nichts geplant hat, kostet 0 €.
   - **Minijob-Grenze** (vorläufig): bei Beschäftigung **Minijob** warnt die Seite, wenn die
     geplanten Lohnkosten des **ganzen Monats** über der Grenze liegen (genau die Grenze ist noch in
-    Ordnung). Grenze **2026: 603 € im Monat**, einmal in `MINIJOB_LIMIT_CENTS` (`vacation.core.js`,
+    Ordnung). Grenze **2026: 603 €, 2027: 633 € im Monat**, einmal in `MINIJOB_LIMIT_CENTS` (`vacation.core.js`,
     je Jahr; Mindestlohn × 130 ÷ 3). Ein Jahr ohne Wert prüft nichts („Minijob-Grenze … nicht
     hinterlegt“), ohne Stundenlohn „Minijob-Grenze offen“. Die Beschäftigung (Vollzeit, Teilzeit,
     Minijob, Aushilfe; leer = „offen“) gab es schon im Profil (`employment_type`) - keine Migration.
@@ -154,7 +154,7 @@ Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). AP
   - **Offene Inhaber-Fragen** (bewusst nicht erfunden): Zuschläge (Nacht, Sonntag, Feiertag)?
     Werden Überstunden bezahlt oder abgefeiert? Übertrag von Plus-/Minusstunden in den nächsten
     Monat? Die vorläufigen Entscheidungen oben (bis heute, Verrechnung im Monat, Lohnkosten,
-    Minijob) bestätigen. Minijob-Grenze ab 2027 eintragen. Ab wann zählen Ist-Stunden statt Plan?
+    Minijob) bestätigen. Minijob-Grenze ab 2028 eintragen. Ab wann zählen Ist-Stunden statt Plan?
 - **Feiertage Saarland sind geschlossen** (Neujahr, Karfreitag, Ostermontag, 1. Mai, Christi
   Himmelfahrt, Pfingstmontag, Fronleichnam, Mariä Himmelfahrt, 3. Oktober, Allerheiligen, beide
   Weihnachtsfeiertage): sie zählen nie als Urlaubstag und stehen im Kalender wie der Ruhetag als
