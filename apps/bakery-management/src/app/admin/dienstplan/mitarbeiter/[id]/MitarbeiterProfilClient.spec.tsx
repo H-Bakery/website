@@ -39,6 +39,7 @@ const EMPLOYEE: dienstplanApi.Employee = {
   color: '#1E88E5',
   employmentType: 'teilzeit',
   weeklyHours: 20,
+  hourlyWageCents: null,
   entryDate: '2025-03-01',
   exitDate: null,
   active: true,
@@ -99,10 +100,10 @@ const ABSENCE: dienstplanApi.ProfileAbsence = {
   note: null,
 }
 
-/** Stunden wie von der API (`plannedHours`), erfundene Zahlen. */
+/** Stunden wie von der API (`hoursOverview`), erfundene Zahlen. */
 function hours(
-  overrides: Partial<dienstplanApi.PlannedHours> = {}
-): dienstplanApi.PlannedHours {
+  overrides: Partial<dienstplanApi.PeriodHours> = {}
+): dienstplanApi.PeriodHours {
   return {
     employeeId: 3,
     from: '2026-11-02',
@@ -115,6 +116,12 @@ function hours(
     targetDays: 6,
     creditedDays: 0,
     status: 'ok',
+    pay: {
+      status: 'no-wage',
+      overtimeMinutes: 150,
+      hourlyWageCents: null,
+      amountCents: null,
+    },
     ...overrides,
   }
 }
@@ -152,6 +159,12 @@ function profile(
         diffMinutes: -400,
         targetDays: 23,
         creditedDays: 1,
+        pay: {
+          status: 'no-overtime',
+          overtimeMinutes: 0,
+          hourlyWageCents: null,
+          amountCents: 0,
+        },
       }),
     },
     closedWeekdays: { weekdays: [1], source: 'default' },
@@ -470,6 +483,50 @@ describe('Dienstplan - Mitarbeiterprofil', () => {
     )
   })
 
+  it('Stundenlohn im Profil: Euro rein, Cent zur API, Unsinn gesperrt, leer = offen', async () => {
+    api.updateEmployee.mockResolvedValue({ ...EMPLOYEE, hourlyWageCents: 1390 })
+    renderProfile()
+    fireEvent.click(await screen.findByRole('button', { name: 'Bearbeiten' }))
+    let d = dialog()
+    const wage = d.getByLabelText(/Stundenlohn/)
+    expect(wage).toHaveValue('')
+    fireEvent.change(wage, { target: { value: '0' } })
+    expect(
+      d.getByText('Ein Betrag von 0,01 bis 999,99 € (z. B. 13,90).')
+    ).toBeInTheDocument()
+    expect(d.getByRole('button', { name: 'Speichern' })).toBeDisabled()
+    fireEvent.change(wage, { target: { value: '13,90' } })
+    // nach dem Speichern lädt das Profil neu - jetzt mit Lohn
+    api.fetchEmployeeProfile.mockResolvedValue(
+      profile({ employee: { ...EMPLOYEE, hourlyWageCents: 1390 } })
+    )
+    fireEvent.click(d.getByRole('button', { name: 'Speichern' }))
+    await waitFor(() =>
+      expect(api.updateEmployee).toHaveBeenCalledWith(3, {
+        hourlyWageCents: 1390,
+      })
+    )
+
+    // einen erfassten Lohn wieder leeren: null (offen), nicht 0
+    expect(await screen.findByTestId('master-wage')).toHaveTextContent('13,90')
+    api.updateEmployee.mockClear()
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Bearbeiten' }))
+    d = dialog()
+    await waitFor(() =>
+      expect(d.getByLabelText(/Stundenlohn/)).toHaveValue('13,90')
+    )
+    fireEvent.change(d.getByLabelText(/Stundenlohn/), { target: { value: '' } })
+    fireEvent.click(d.getByRole('button', { name: 'Speichern' }))
+    await waitFor(() =>
+      expect(api.updateEmployee).toHaveBeenCalledWith(3, {
+        hourlyWageCents: null,
+      })
+    )
+  })
+
   it('Logins nicht geladen: ein verknüpfter Login steht als „verknüpft“, nicht als „kein Login“', async () => {
     api.fetchEmployeeProfile.mockResolvedValue(
       profile({ employee: { ...EMPLOYEE, userId: 7 } })
@@ -532,6 +589,12 @@ describe('Dienstplan - Mitarbeiterprofil', () => {
       targetMinutes: null,
       diffMinutes: null,
       status: 'no-target',
+      pay: {
+        status: 'no-target',
+        overtimeMinutes: null,
+        hourlyWageCents: null,
+        amountCents: null,
+      },
     })
     api.fetchEmployeeProfile.mockResolvedValue(
       profile({ hours: { week: open, month: { ...open, from: '2026-11-01' } } })
@@ -540,6 +603,42 @@ describe('Dienstplan - Mitarbeiterprofil', () => {
     await screen.findByRole('heading', { name: 'Erika Beispiel' })
     expect(screen.getByTestId('hours-week')).toHaveTextContent('Soll offen')
     expect(screen.getAllByText('Plan 22:30 h · Soll offen')).toHaveLength(2)
+  })
+
+  it('Stundenlohn offen: Stammdaten „offen“, Überstunden ohne Betrag - nie 0 €', async () => {
+    renderProfile()
+    await screen.findByRole('heading', { name: 'Erika Beispiel' })
+    expect(screen.getByTestId('master-wage')).toHaveTextContent('offen')
+    expect(screen.getByTestId('pay-week')).toHaveTextContent(
+      'Stundenlohn offen'
+    )
+    expect(screen.getByTestId('pay-week')).not.toHaveTextContent('0,00')
+    // keine Überstunden im Monat: keine Zeile
+    expect(screen.queryByTestId('pay-month')).not.toBeInTheDocument()
+  })
+
+  it('mit Stundenlohn: geschätzte Bezahlung mit Rechenweg', async () => {
+    api.fetchEmployeeProfile.mockResolvedValue(
+      profile({
+        employee: { ...EMPLOYEE, hourlyWageCents: 1390 },
+        hours: {
+          week: hours({
+            pay: {
+              status: 'ok',
+              overtimeMinutes: 150,
+              hourlyWageCents: 1390,
+              amountCents: 3475,
+            },
+          }),
+          month: hours({ from: '2026-11-01', to: '2026-11-30' }),
+        },
+      })
+    )
+    renderProfile()
+    await screen.findByRole('heading', { name: 'Erika Beispiel' })
+    expect(screen.getByTestId('master-wage')).toHaveTextContent('13,90 €/h')
+    expect(screen.getByTestId('pay-week')).toHaveTextContent('≈ 34,75 €')
+    expect(screen.getByText('2:30 h × 13,90 €/h')).toBeInTheDocument()
   })
 
   it('zeigt die Meldung der API, wenn das Profil fehlt', async () => {

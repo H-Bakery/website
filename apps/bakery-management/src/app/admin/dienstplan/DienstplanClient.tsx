@@ -37,6 +37,7 @@ import {
   deleteShift,
   fetchBalances,
   fetchCalendar,
+  fetchHoursOverview,
   fetchShiftTemplates,
   formatAbsenceRange,
   formatDateWithWeekday,
@@ -48,6 +49,7 @@ import {
   type CalendarDay,
   type DienstplanWarning,
   type Employee,
+  type OvertimePay,
   type Shift,
   type ShiftTemplate,
 } from '../../../lib/dienstplanApi'
@@ -98,6 +100,11 @@ import ShiftDialog from './ShiftDialog'
 import ShiftTemplatesDialog from './ShiftTemplatesDialog'
 import MonthView from './MonthView'
 import YearView, { type YearBalances } from './YearView'
+import {
+  HoursDrawer,
+  HoursOverviewSection,
+  type OverviewState,
+} from './HoursOverview'
 import {
   ABSENCE_COLORS,
   AreaGroupRow,
@@ -208,6 +215,11 @@ function cellActions(
 }
 
 const AREA_FILTERS: AreaFilter[] = ['alle', ...AREAS]
+
+/** Schlüssel der Stundenübersicht: Ansicht, Zeitraum und Bereich. */
+function overviewKey(view: CalendarView, start: string, area: AreaFilter) {
+  return `${view}:${start}:${area}`
+}
 
 /**
  * Breite einer Tagesspalte der Woche (px): Handy schmaler, damit neben der
@@ -320,6 +332,13 @@ export default function DienstplanClient({
   )
   const [templatesOpen, setTemplatesOpen] = React.useState(false)
   const [cellMenu, setCellMenu] = React.useState<CellMenu | null>(null)
+  // Stundenübersicht (Woche und Monat) zum Schlüssel der Ansicht; lädt
+  // neben dem Kalender und blockiert ihn nie.
+  const [overview, setOverview] = React.useState<{
+    key: string
+    value: OverviewState
+  } | null>(null)
+  const [hoursFor, setHoursFor] = React.useState<number | null>(null)
   const [dialog, setDialog] = React.useState<DialogState>(null)
   const requestRef = React.useRef(0)
 
@@ -379,6 +398,34 @@ export default function DienstplanClient({
         }
       )
     }
+    if (view !== 'jahr') {
+      const key = overviewKey(view, start, area)
+      setOverview((current) =>
+        current?.key === key ? current : { key, value: { status: 'loading' } }
+      )
+      fetchHoursOverview(
+        view === 'woche' ? { week: start } : { month: start.slice(0, 7) },
+        area === 'alle' ? undefined : area
+      ).then(
+        (value) => {
+          if (request !== requestRef.current) return
+          setOverview({ key, value: { status: 'ok', value } })
+        },
+        (err) => {
+          if (request !== requestRef.current) return
+          setOverview({
+            key,
+            value: {
+              status: 'error',
+              message: messageOf(
+                err,
+                'Die Stunden konnten nicht geladen werden.'
+              ),
+            },
+          })
+        }
+      )
+    }
     try {
       const next = await fetchCalendar({ from: start, to: end })
       if (request !== requestRef.current) return
@@ -392,7 +439,7 @@ export default function DienstplanClient({
     } finally {
       if (request === requestRef.current) setLoading(false)
     }
-  }, [start, end, view, year])
+  }, [start, end, view, year, area])
 
   React.useEffect(() => {
     void reload()
@@ -511,6 +558,24 @@ export default function DienstplanClient({
     date: string,
     entries: CellEntries | undefined
   ) => offer(anchor, addActions(employee, date, entries))
+
+  const shownOverview: OverviewState =
+    view !== 'jahr' && overview?.key === overviewKey(view, start, area)
+      ? overview.value
+      : { status: 'loading' }
+  const overviewValue =
+    shownOverview.status === 'ok' ? shownOverview.value : null
+  // Geschätzte Bezahlung je Person für die Stundenspalte des Rasters: die
+  // Woche in der Woche, der Monat im Monat.
+  const gridPays = React.useMemo(() => {
+    if (!overviewValue) return undefined
+    return new Map<number, OvertimePay>(
+      overviewValue.rows.flatMap((row) => {
+        const h = view === 'woche' ? row.week : row.month
+        return h ? [[row.employeeId, h.pay] as [number, OvertimePay]] : []
+      })
+    )
+  }, [overviewValue, view])
 
   const nav = PERIOD_NAV[view]
   const sectionHint =
@@ -680,6 +745,8 @@ export default function DienstplanClient({
             onAbsence={(employee, absence, date) =>
               setDialog({ kind: 'absence', employee, date, absence })
             }
+            pays={gridPays}
+            onOpenHours={setHoursFor}
           />
         ) : shownCalendar !== null && view === 'monat' ? (
           <MonthView
@@ -693,6 +760,8 @@ export default function DienstplanClient({
             onOpenWeek={(date) =>
               navigate({ view: 'woche', start: mondayOf(date) })
             }
+            pays={gridPays}
+            onOpenHours={setHoursFor}
           />
         ) : shownCalendar !== null ? (
           <YearView
@@ -729,6 +798,19 @@ export default function DienstplanClient({
           <LoadingState label="Dienstplan wird geladen …" />
         )}
       </PageSection>
+
+      {view !== 'jahr' && gridShown && (
+        <HoursOverviewSection
+          state={shownOverview}
+          onRetry={() => void reload()}
+          onOpen={setHoursFor}
+        />
+      )}
+      <HoursDrawer
+        overview={overviewValue}
+        employeeId={hoursFor}
+        onClose={() => setHoursFor(null)}
+      />
 
       <Menu
         anchorEl={cellMenu?.anchor ?? null}
@@ -818,11 +900,16 @@ function WeekView({
   onAdd,
   onShift,
   onAbsence,
+  pays,
+  onOpenHours,
 }: {
   calendar: Calendar
   dates: readonly string[]
   area: AreaFilter
   loading: boolean
+  /** Geschätzte Überstundenbezahlung der Woche je Person. */
+  pays?: ReadonlyMap<number, OvertimePay>
+  onOpenHours?: (employeeId: number) => void
   onAdd: (
     anchor: HTMLElement,
     employee: Employee,
@@ -983,6 +1070,13 @@ function WeekView({
                       <HoursCell
                         employeeId={employee.id}
                         hours={hours.get(employee.id)}
+                        pay={pays?.get(employee.id)}
+                        onOpen={
+                          onOpenHours
+                            ? () => onOpenHours(employee.id)
+                            : undefined
+                        }
+                        openLabel={`Stunden von ${employee.displayName}: Details`}
                       />
                     </TableRow>
                   ))}

@@ -20,6 +20,7 @@ import {
   type Calendar,
   type CalendarDay,
   type Employee,
+  type OvertimePay,
 } from '../../../lib/dienstplanApi'
 import {
   WEEKDAY_LETTERS,
@@ -101,11 +102,17 @@ export default function MonthView({
   loading,
   onCell,
   onOpenWeek,
+  pays,
+  onOpenHours,
 }: {
   calendar: Calendar
   monthStart: string
   area: AreaFilter
   loading: boolean
+  /** Geschätzte Überstundenbezahlung des Monats je Person (Stundenübersicht). */
+  pays?: ReadonlyMap<number, OvertimePay>
+  /** Stunden einer Person: Details öffnen. */
+  onOpenHours?: (employeeId: number) => void
   onCell: (
     anchor: HTMLElement,
     employee: Employee,
@@ -234,6 +241,13 @@ export default function MonthView({
                       <HoursCell
                         employeeId={employee.id}
                         hours={hours.get(employee.id)}
+                        pay={pays?.get(employee.id)}
+                        onOpen={
+                          onOpenHours
+                            ? () => onOpenHours(employee.id)
+                            : undefined
+                        }
+                        openLabel={`Stunden von ${employee.displayName}: Details`}
                       />
                     </TableRow>
                   ))}

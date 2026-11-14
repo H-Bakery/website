@@ -13,6 +13,7 @@
  *   GET/POST/PATCH/DELETE /api/dienstplan/shifts
  *   GET/POST/PATCH/DELETE /api/dienstplan/absences
  *   GET    /api/dienstplan/balance?year[&employeeId]
+ *   GET    /api/dienstplan/hours?week|month[&area]   Stunden und geschätzte Überstundenbezahlung
  *
  * Gerechnet wird hier nichts - Feiertage, Ruhetag, Urlaubstage und Salden
  * kommen aus `apps/bakery-api/src/services/vacation.core.js` über die API
@@ -51,6 +52,11 @@ export interface Employee {
   color: string | null
   employmentType: EmploymentType | null
   weeklyHours: number | null
+  /**
+   * Bruttostundenlohn in Cent, `null` = nicht erfasst („Stundenlohn offen“).
+   * Nur für die geschätzte Überstundenbezahlung; nur der Inhaber sieht ihn.
+   */
+  hourlyWageCents: number | null
   entryDate: string | null
   exitDate: string | null
   active: boolean
@@ -68,6 +74,7 @@ export interface EmployeeInput {
   color?: string | null
   employmentType?: EmploymentType | null
   weeklyHours?: number | null
+  hourlyWageCents?: number | null
   entryDate?: string | null
   exitDate?: string | null
   userId?: number | null
@@ -260,6 +267,61 @@ export interface PlannedHours {
   status: 'ok' | 'no-target'
 }
 
+/**
+ * Geschätzte Bezahlung der Überstunden (`overtimePay` in
+ * `vacation.core.js`): Überstunden (Plan über Soll) × Stundenlohn, ohne
+ * Zuschläge. `no-target`: kein Soll; `no-overtime`: Plan ≤ Soll (0 €);
+ * `no-wage`: Überstunden ohne Stundenlohn - Betrag `null`, nie 0 €.
+ */
+export interface OvertimePay {
+  status: 'ok' | 'no-target' | 'no-overtime' | 'no-wage'
+  overtimeMinutes: number | null
+  hourlyWageCents: number | null
+  amountCents: number | null
+}
+
+/** Stunden eines Zeitraums mit der geschätzten Überstundenbezahlung. */
+export interface PeriodHours extends PlannedHours {
+  pay: OvertimePay
+}
+
+/** Summen eines Zeitraums (`hoursOverview`); `null` = offen, nie 0. */
+export interface HoursTotals {
+  plannedMinutes: number
+  targetMinutes: number | null
+  overtimeMinutes: number | null
+  /** Summe nur der Personen mit Stundenlohn. */
+  amountCents: number | null
+  estimatedCount: number
+  /** Personen mit Überstunden, aber ohne Stundenlohn. */
+  missingWageCount: number
+  noTargetCount: number
+}
+
+export interface HoursOverviewRow {
+  employeeId: number
+  hourlyWageCents: number | null
+  week?: PeriodHours
+  month: PeriodHours
+}
+
+/**
+ * `GET /api/dienstplan/hours`: Woche (bei `week`) und Monat - bei `week` der
+ * Monat ihres Donnerstags (wie die Kalenderwoche).
+ */
+export interface HoursOverview {
+  today: string
+  area: 'alle' | Area
+  periods: {
+    week: { from: string; to: string } | null
+    month: { from: string; to: string }
+  }
+  closedWeekdays: ClosedWeekdays
+  employees: Employee[]
+  rows: HoursOverviewRow[]
+  totals: { week?: HoursTotals; month: HoursTotals }
+}
+
 export interface Calendar {
   from: string
   to: string
@@ -290,8 +352,11 @@ export interface EmployeeProfile {
   absences: ProfileAbsence[]
   /** Kommende Schichten ab heute (höchstens 20). */
   upcomingShifts: Shift[]
-  /** Plan und Soll in der laufenden Woche und im laufenden Monat. */
-  hours: { week: PlannedHours; month: PlannedHours }
+  /**
+   * Plan und Soll in der laufenden Woche und im laufenden Monat, je mit der
+   * geschätzten Überstundenbezahlung.
+   */
+  hours: { week: PeriodHours; month: PeriodHours }
   closedWeekdays: ClosedWeekdays
 }
 
@@ -492,6 +557,23 @@ export async function fetchBalances(
   )
 }
 
+/**
+ * Stundenübersicht: `week` (ein Tag der Woche) → Woche und Monat ihres
+ * Donnerstags, `month` (`JJJJ-MM`) → nur der Monat. `area` filtert Personen
+ * und Summen.
+ */
+export async function fetchHoursOverview(
+  period: { week: string } | { month: string },
+  area?: Area
+): Promise<HoursOverview> {
+  return unwrap(
+    await apiClient.get<HoursOverview>(`${BASE}/hours`, {
+      ...period,
+      ...(area ? { area } : {}),
+    })
+  )
+}
+
 export async function fetchBalance(
   employeeId: number,
   year?: number
@@ -683,4 +765,85 @@ export function parseHoursInput(text: string): number | null {
 export function numberToInput(value: number | null | undefined): string {
   if (value === null || value === undefined) return ''
   return String(value).replace('.', ',')
+}
+
+const EURO = new Intl.NumberFormat('de-DE', {
+  style: 'currency',
+  currency: 'EUR',
+})
+
+/** Cent als Euro: `1390` → `13,90 €`. */
+export function formatCents(cents: number): string {
+  return EURO.format(cents / 100)
+}
+
+/** Stundenlohn: `1390` → `13,90 €/h`, `null` → `offen`. */
+export function formatWage(cents: number | null | undefined): string {
+  return cents === null || cents === undefined
+    ? 'offen'
+    : `${formatCents(cents)}/h`
+}
+
+/**
+ * Stundenlohn-Eingabe lesen (Euro, Komma oder Punkt, höchstens zwei
+ * Nachkommastellen): leer = `null` (offen), sonst Cent 1-99999. `NaN` =
+ * ungültig. Die Grenzen prüft die API noch einmal.
+ */
+export function parseWageInput(text: string): number | null {
+  const t = text.trim().replace(/\s*€$/, '').replace(',', '.')
+  if (t === '') return null
+  if (!/^\d{1,3}(\.\d{1,2})?$/.test(t)) return NaN
+  const [euros, cents = ''] = t.split('.')
+  const value = Number(euros) * 100 + Number(cents.padEnd(2, '0'))
+  return value >= 1 && value <= 99999 ? value : NaN
+}
+
+/** Cent fürs Eingabefeld: `1390` → `13,90`, `null` → leer. */
+export function wageToInput(cents: number | null | undefined): string {
+  if (cents === null || cents === undefined) return ''
+  return `${Math.floor(cents / 100)},${String(cents % 100).padStart(2, '0')}`
+}
+
+/**
+ * Geschätzte Überstundenbezahlung als Text - gerechnet hat die API:
+ * `≈ 34,75 €`, „Stundenlohn offen“ (nie 0 €), „keine Überstunden“ oder
+ * „Soll offen“.
+ */
+export function payText(pay: OvertimePay): string {
+  switch (pay.status) {
+    case 'ok':
+      return `≈ ${formatCents(pay.amountCents ?? 0)}`
+    case 'no-wage':
+      return 'Stundenlohn offen'
+    case 'no-overtime':
+      return 'keine Überstunden'
+    default:
+      return 'Soll offen'
+  }
+}
+
+/** Rechenweg der Schätzung: `2:30 h × 13,90 €/h`; `null` ohne Betrag. */
+export function payFormula(pay: OvertimePay): string | null {
+  if (
+    pay.status !== 'ok' ||
+    pay.overtimeMinutes === null ||
+    pay.hourlyWageCents === null
+  ) {
+    return null
+  }
+  return `${formatMinutes(pay.overtimeMinutes)} × ${formatWage(
+    pay.hourlyWageCents
+  )}`
+}
+
+/**
+ * Summe der geschätzten Überstundenbezahlung: `≈ 95,30 €`; fehlt bei
+ * Personen mit Überstunden der Lohn, „mindestens“ davor - und ohne jeden
+ * Betrag „offen“.
+ */
+export function totalPayText(totals: HoursTotals): string {
+  if (totals.amountCents === null) return 'offen'
+  const amount = formatCents(totals.amountCents)
+  if (totals.amountCents === 0 && totals.missingWageCount === 0) return amount
+  return totals.missingWageCount > 0 ? `mind. ${amount}` : `≈ ${amount}`
 }

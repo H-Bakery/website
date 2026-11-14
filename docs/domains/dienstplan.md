@@ -2,8 +2,8 @@
 
 Der Inhaber plant in der Verwaltung, **wer wann arbeitet** (Schichten, alle Bereiche), **wer
 abwesend ist** (Urlaub, frei, abwesend), sieht **wann der Laden offen ist und wer dann im Verkauf
-steht** (Besetzung), die **geplanten Stunden** je Person neben dem Soll und führt je Person und
-Jahr ein **Urlaubskonto**.
+steht** (Besetzung), die **geplanten Stunden** je Person neben dem Soll mit einer **geschätzten
+Überstundenbezahlung** (Stundenlohn) und führt je Person und Jahr ein **Urlaubskonto**.
 Mitarbeitende sehen noch nichts (später: eigene Ansicht, Urlaubsantrag). Ursprünglich laut D11
 nicht Teil des Pilots; jetzt im Pilot für den Inhaber freigegeben (Entscheidung 2026-11-08).
 
@@ -112,6 +112,26 @@ Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). AP
   - **Ohne Wochenstunden ist das Soll „offen“**, nie 0, und es gibt keine Differenz.
   - **Differenz** = Plan − Soll, als Text mit Vorzeichen („+2:30 h“, „−4:00 h“, „±0:00 h“).
   - **Später** (nicht Teil dieser Stufe): Ist-Stunden aus der Stechuhr und der Vergleich Plan/Ist.
+- **Stundenlohn und geschätzte Überstundenbezahlung** (11/2026, `overtimePay`/`hoursOverview` in
+  `vacation.core.js`):
+  - **Stundenlohn** (brutto, €/h) ist Personendaten wie die übrigen Stammdaten: SQLite der Box,
+    nur Inhaber, nie in `hq`; gepflegt im Profil („Bearbeiten“). Nicht erfasst = **„offen“**, nie 0.
+    Das Audit-Log sagt nur, dass er sich geändert hat (`hourlyWageChanged`), nie den Betrag.
+  - **Überstunden** = Plan − Soll eines Zeitraums, nur wenn positiv; **Bezahlung geschätzt** =
+    Überstunden × Stundenlohn, auf den Cent gerundet. **Keine Zuschläge**, keine Verrechnung mit
+    Minusstunden eines anderen Zeitraums, kein Freizeitausgleich - eine Schätzung nach Plan, keine
+    Lohnabrechnung, überall „geschätzt“ beschriftet.
+  - Ohne Soll: „Soll offen“; Plan ≤ Soll: „keine Überstunden“ (0 €); Überstunden ohne Lohn:
+    **„Stundenlohn offen“**, nie 0 €. Die Summe zählt nur Personen mit Lohn und heißt dann
+    „mind. … €“ mit „n × Stundenlohn offen“; ohne jeden Betrag „offen“.
+  - **Woche und Monat:** die Woche (Mo-So) und **der Monat ihres Donnerstags** (wie die
+    Kalenderwoche; KW 49/2026 = 30.11.-06.12. gehört zum Dezember, die Seite sagt das). Jeder Tag
+    zählt in dem Monat, in dem er liegt. Das Profil zeigt die laufende Woche und den laufenden
+    Kalendermonat.
+  - **Offene Inhaber-Fragen** (bewusst nicht erfunden): Zuschläge (Nacht, Sonntag, Feiertag)?
+    Werden Überstunden bezahlt oder abgefeiert, und gleicht der Monat Minusstunden einer Woche aus?
+    Minijob-Grenze bei Überstunden? Braucht es eine Summe der Lohnkosten je Monat (Plan ×
+    Stundenlohn)? Ab wann zählen Ist-Stunden statt Plan?
 - **Feiertage Saarland sind geschlossen** (Neujahr, Karfreitag, Ostermontag, 1. Mai, Christi
   Himmelfahrt, Pfingstmontag, Fronleichnam, Mariä Himmelfahrt, 3. Oktober, Allerheiligen, beide
   Weihnachtsfeiertage): sie zählen nie als Urlaubstag und stehen im Kalender wie der Ruhetag als
@@ -124,7 +144,9 @@ Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). AP
   „geändert“).
 - **Datenbank:** Migration `20270301000000-dienstplan.js` (sortiert nach den Backzettel-v2-
   Migrationen von `main`, daher nicht das im Task genannte `20270107…`), Tabellen `employees`,
-  `vacation_entitlements`, `shift_templates`, `shifts`, `absences` in der SQLite der Box.
+  `vacation_entitlements`, `shift_templates`, `shifts`, `absences` in der SQLite der Box. Der
+  Stundenlohn kam mit `20270401000000-dienstplan-hourly-wage.js` (Spalte
+  `employees.hourly_wage_cents`, additiv, bestehende Personen „offen“).
 
 ## Oberfläche
 
@@ -169,16 +191,27 @@ Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). AP
     eigene Meldung über der Seite. Am Handy steht der Rest zusätzlich unter dem Namen, weil die
     Kontospalte ganz rechts liegt. Das Jahr reicht von 2000 bis 2100 (so weit rechnet die API das
     Konto); ein anderes `?jahr=` zeigt das laufende Jahr.
+  - **Stunden und Überstunden** (unter Woche und Monat, `HoursOverview.tsx`): Kennzahlen Plan/Soll
+    und geschätzte Überstundenbezahlung je Zeitraum (Woche und Monat ihres Donnerstags; im Monat
+    nur der Monat), darunter je Person der Stundenlohn und je Zeitraum die Differenz, Plan / Soll
+    und bei Überstunden „≈ … €“ oder „Stundenlohn offen“. Folgt dem Bereichsfilter (Summen von der
+    API). Person antippen - oder ihre Zelle in der Stundenspalte des Rasters - öffnet eine
+    Schublade mit Woche und Monat (Plan, Soll, Differenz, Bezahlung mit Rechenweg „2:30 h ×
+    13,90 €/h“) und dem Weg ins Profil („Stundenlohn im Profil eintragen“). Die Stundenspalte des
+    Rasters zeigt zusätzlich „Überstd. ≈ … €“ oder „Stundenlohn offen“. Scheitert nur die
+    Übersicht, steht der Kalender trotzdem. Liest nur `GET /api/dienstplan/hours`, rechnet nichts.
   - **Meldungen** („Schicht angelegt.“, Fehler beim Löschen) gehören zum Zeitraum und verschwinden
     beim Blättern oder Ansichtswechsel. Höchstens zwei stehen über dem Kalender: ein Fehler ersetzt
     die Erfolgsmeldung, und ein Ladefehler beim Nachladen zeigt sich nur, solange kein Fehler einer
     Aktion dasteht.
   - Farbe ist nie der einzige Träger: Kürzel, Text und eine Legende stehen dabei.
 - **`/admin/dienstplan/mitarbeiter` - Liste** (aktiv / ausgeschieden / alle), Mitarbeiter anlegen.
-- **`/admin/dienstplan/mitarbeiter/[id]` - Profil:** Stammdaten, Urlaubskonto des Jahres
-  (Anspruch, Übertrag, genehmigt, geplant, verfallen, Rest), Anspruch je Jahr, Abwesenheiten des
-  Jahres, **Stunden** der laufenden Woche und des laufenden Monats (Plan, Soll, Differenz),
-  kommende Schichten.
+- **`/admin/dienstplan/mitarbeiter/[id]` - Profil:** Stammdaten (mit **Stundenlohn**, ohne:
+  „offen“), Urlaubskonto des Jahres (Anspruch, Übertrag, genehmigt, geplant, verfallen, Rest),
+  Anspruch je Jahr, Abwesenheiten des Jahres, **Stunden** der laufenden Woche und des laufenden
+  Monats (Plan, Soll, Differenz; bei Überstunden die geschätzte Bezahlung mit Rechenweg oder
+  „Stundenlohn offen“), kommende Schichten. Den Stundenlohn ändert „Bearbeiten“ (Euro mit Komma,
+  leer = offen).
 - **Handy und Tablet:** die Raster scrollen waagrecht, die Namensspalte bleibt stehen. Alle eigenen
   klickbaren Flächen (Name als Link aufs Profil, Einträge der Woche, Tageszellen im Monat,
   Monatsköpfe und Monate im Jahr, Farbfelder, Vorlagen-Chips im Schichtdialog) sind auf
@@ -188,12 +221,13 @@ Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). AP
 - **Daten nur aus der API:** Woche, Monat und Jahr laden `GET /api/dienstplan?from&to`
   (Mitarbeiter, Schichten, Abwesenheiten, `days[]` mit Feiertagsname, Ruhetag, Gewicht,
   Öffnungszeit, „Verkauf besetzt“ und Besetzung, `hours[]` mit Plan und Soll je Person), das Jahr
-  zusätzlich das Konto. Kein FullCalendar (`resource-timegrid` ist
+  zusätzlich das Konto, Woche und Monat zusätzlich `GET /api/dienstplan/hours` (Stunden und
+  Überstunden). Kein FullCalendar (`resource-timegrid` ist
   ein kostenpflichtiges Plugin) und kein `date-fns`: eigene MUI-Tabellen auf dem Layout-Kit.
 
 ## Tests
 
-API: `tests/unit/vacationCore.test.js` (auch Öffnungszeiten, Besetzung, Stunden),
+API: `tests/unit/vacationCore.test.js` (auch Öffnungszeiten, Besetzung, Stunden, Überstunden),
 `tests/integration/dienstplan.test.ts`. Landing: `src/config/openingHours.spec.ts`. Verwaltung:
 `src/lib/dienstplanCalendar.spec.ts`, `src/lib/dienstplanApi.spec.ts`,
 `src/app/admin/dienstplan/**/*.spec.tsx`. Lokaler Seed mit erfundenen Personen:

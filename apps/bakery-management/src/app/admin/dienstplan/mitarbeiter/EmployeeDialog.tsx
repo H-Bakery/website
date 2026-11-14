@@ -27,7 +27,9 @@ import {
   employeeChanges,
   numberToInput,
   parseHoursInput,
+  parseWageInput,
   updateEmployee,
+  wageToInput,
   type Area,
   type Employee,
   type EmployeeInput,
@@ -92,6 +94,7 @@ export default function EmployeeDialog({
     EmploymentType | ''
   >(employee?.employmentType ?? '')
   const [hours, setHours] = React.useState(numberToInput(employee?.weeklyHours))
+  const [wage, setWage] = React.useState(wageToInput(employee?.hourlyWageCents))
   const [entryDate, setEntryDate] = React.useState(employee?.entryDate ?? '')
   const [exitDate, setExitDate] = React.useState(employee?.exitDate ?? '')
   const [color, setColor] = React.useState<string | null>(
@@ -125,12 +128,15 @@ export default function EmployeeDialog({
 
   const weeklyHours = parseHoursInput(hours)
   const hoursInvalid = Number.isNaN(weeklyHours)
+  const hourlyWageCents = parseWageInput(wage)
+  const wageInvalid = Number.isNaN(hourlyWageCents)
   const exitBeforeEntry = !!entryDate && !!exitDate && exitDate < entryDate
   const input: EmployeeInput = {
     displayName: displayName.trim(),
     area,
     employmentType: employmentType || null,
     weeklyHours: hoursInvalid ? null : weeklyHours,
+    hourlyWageCents: wageInvalid ? null : hourlyWageCents,
     entryDate: entryDate || null,
     exitDate: exitDate || null,
     color,
@@ -141,6 +147,7 @@ export default function EmployeeDialog({
   const invalid =
     !displayName.trim() ||
     hoursInvalid ||
+    wageInvalid ||
     exitBeforeEntry ||
     (!!employee && Object.keys(changes).length === 0)
 
@@ -235,6 +242,19 @@ export default function EmployeeDialog({
                 fullWidth
               />
             </Stack>
+            <TextField
+              label="Stundenlohn brutto (€, optional)"
+              value={wage}
+              onChange={(e) => setWage(e.target.value)}
+              inputProps={{ inputMode: 'decimal' }}
+              placeholder="z. B. 13,90"
+              error={wageInvalid}
+              helperText={
+                wageInvalid
+                  ? 'Ein Betrag von 0,01 bis 999,99 € (z. B. 13,90).'
+                  : 'Nur für die geschätzte Überstundenbezahlung im Dienstplan - nur du siehst ihn. Leer = offen.'
+              }
+            />
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
               <TextField
                 label="Eintritt"

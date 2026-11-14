@@ -37,7 +37,10 @@ import {
   formatDays,
   formatMinutes,
   formatOpenDays,
+  formatWage,
   numberToInput,
+  payFormula,
+  payText,
   parseDaysInput,
   saveEntitlement,
   updateEmployee,
@@ -390,7 +393,7 @@ export default function MitarbeiterProfilClient({ id }: { id: number }) {
 
       <PageSection
         title="Stunden (Plan)"
-        description="Geplante Schichten neben dem Soll aus den Wochenstunden; Urlaub und abwesend mindern das Soll, Ruhetag und Feiertage zählen nicht."
+        description="Geplante Schichten neben dem Soll aus den Wochenstunden; Urlaub und abwesend mindern das Soll, Ruhetag und Feiertage zählen nicht. Überstunden-Bezahlung geschätzt: Überstunden × Stundenlohn, ohne Zuschläge."
       >
         <HoursView hours={profile.hours} />
       </PageSection>
@@ -680,6 +683,12 @@ function MasterData({ employee }: { employee: Employee }) {
           employee.weeklyHours === null ? '–' : formatDays(employee.weeklyHours)
         }
       />
+      <DataRow
+        label="Stundenlohn (brutto)"
+        hint="nur für die geschätzte Überstundenbezahlung"
+        value={formatWage(employee.hourlyWageCents)}
+        testId="master-wage"
+      />
       <DataRow label="Eintritt" value={formatDateDe(employee.entryDate)} />
       <DataRow label="Austritt" value={formatDateDe(employee.exitDate)} />
       <DataRow
@@ -744,6 +753,24 @@ function HoursView({ hours }: { hours: EmployeeProfile['hours'] }) {
           />
         )
       })}
+      {rows
+        .filter(({ h }) => h.pay.status === 'ok' || h.pay.status === 'no-wage')
+        .map(({ key, h }) => (
+          <DataRow
+            key={`pay-${key}`}
+            label={`Überstunden ${
+              key === 'week' ? 'Woche' : 'Monat'
+            }: Bezahlung geschätzt`}
+            hint={
+              payFormula(h.pay) ??
+              `${formatMinutes(
+                h.pay.overtimeMinutes ?? 0
+              )} Überstunden - Stundenlohn unter „Bearbeiten“ eintragen`
+            }
+            value={payText(h.pay)}
+            testId={`pay-${key}`}
+          />
+        ))}
     </DataList>
   )
 }
