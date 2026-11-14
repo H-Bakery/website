@@ -1449,6 +1449,8 @@ describe('Monat bis heute, Verrechnung, Lohnkosten, Minijob (monthHours, hoursOv
     expect(core.MINIJOB_LIMIT_CENTS[2026]).toBe(60300)
     expect(core.minijobLimitCents(2026)).toBe(60300)
     expect(core.minijobLimitCents('2026')).toBe(60300)
+    // 2027: Mindestlohn 14,60 € × 130 ÷ 3 = 632,67 € → aufgerundet 633 €
+    expect(core.minijobLimitCents(2027)).toBe(63300)
     // 15,00 €/h: 40:12 h = 603,00 € exactly, one minute more is over
     expect(core.minijobCheck(core.wageCost(2412, 1500), 2026)).toEqual({
       status: 'ok',

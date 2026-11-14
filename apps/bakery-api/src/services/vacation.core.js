@@ -952,11 +952,12 @@ function overtimePay(hours, hourlyWageCents) {
 /**
  * Minijob-Verdienstgrenze je Monat in Cent, je Kalenderjahr (§ 8 Abs. 1a
  * SGB IV: Mindestlohn × 130 ÷ 3, auf volle Euro aufgerundet). 2026:
- * Mindestlohn 13,90 € → **603 €**. Ein neues Jahr bekommt hier eine neue
+ * Mindestlohn 13,90 € → **603 €**; 2027: Mindestlohn 14,60 € (Fünfte
+ * Mindestlohnanpassungsverordnung) → 632,67 € → **633 €**. Ein neues Jahr bekommt hier eine neue
  * Zeile; ein Jahr ohne Wert prüft nichts (`status: 'no-limit'`, „Grenze
  * offen“) - kein geschätzter Wert.
  */
-const MINIJOB_LIMIT_CENTS = Object.freeze({ 2026: 60300 })
+const MINIJOB_LIMIT_CENTS = Object.freeze({ 2026: 60300, 2027: 63300 })
 
 /** Minijob-Grenze des Jahres in Cent oder `null` (nicht hinterlegt). */
 function minijobLimitCents(year) {
