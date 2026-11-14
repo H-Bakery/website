@@ -1,8 +1,18 @@
 'use client'
 
 import React from 'react'
-import { Alert, Box, Button, CircularProgress, Typography } from '@mui/material'
+import {
+  Alert,
+  Box,
+  Button,
+  ButtonBase,
+  CircularProgress,
+  Typography,
+} from '@mui/material'
 import EventBusyIcon from '@mui/icons-material/EventBusy'
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
+import { BS_DESK } from './BackstubeRow'
+import { useBackstubeColors } from './backstubeColors'
 
 /**
  * Zustände, die Zettel, Backliste und Vorbereitung gleich zeigen: laden,
@@ -94,9 +104,10 @@ export function BackstubeClosedDay({
 }
 
 /**
- * Punktlinie vom Namen zur Menge (wie auf einer Preisliste): auf breiten
- * Zeilen (Desktop, Tablet quer) liegen Name und Zahl weit auseinander - die
- * Linie führt das Auge in derselben Zeile hinüber. Schmal unnötig.
+ * Punktlinie vom Namen zur Menge (wie auf einer Preisliste): auf dem
+ * Rechner liegen Name und Zahl weit auseinander - die Linie führt das Auge in
+ * derselben Zeile hinüber. Auf dem Tablet steht die Menge vorn (UI-Runde 2),
+ * dort braucht es keine Linie.
  */
 export function NameLeader() {
   return (
@@ -105,7 +116,8 @@ export function NameLeader() {
       aria-hidden
       data-print="hide"
       sx={{
-        display: { xs: 'none', md: 'block' },
+        display: 'none',
+        [BS_DESK]: { display: 'block' },
         flex: 1,
         minWidth: 24,
         ml: 1.5,
@@ -115,6 +127,80 @@ export function NameLeader() {
         borderColor: 'divider',
       }}
     />
+  )
+}
+
+/**
+ * UI-Runde 2: kurzer Hinweis „3 neue Nachträge“ - die Nachträge selbst
+ * stehen nur an einer Stelle (Backen: unten bei den Zeilen, mit „Gesehen“
+ * und gebacken-Haken). Ein Tipp springt dorthin.
+ */
+export function BackstubeDeltaBanner({
+  count,
+  onOpen,
+  testId,
+}: {
+  count: number
+  onOpen: () => void
+  testId: string
+}) {
+  const colors = useBackstubeColors()
+  return (
+    <ButtonBase
+      data-testid={testId}
+      data-print="hide"
+      onClick={onOpen}
+      sx={{
+        width: '100%',
+        minHeight: 64,
+        px: 2,
+        py: 1,
+        gap: 1.5,
+        justifyContent: 'flex-start',
+        textAlign: 'left',
+        borderRadius: 2,
+        border: '3px solid',
+        borderColor: colors.deltaEdge,
+        bgcolor: colors.deltaRow,
+        color: 'text.primary',
+        '&:focus-visible': { outline: '3px solid', outlineOffset: 2 },
+      }}
+    >
+      <Box
+        component="span"
+        sx={{
+          minWidth: 44,
+          height: 44,
+          px: 1,
+          borderRadius: 1.5,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          bgcolor: colors.deltaBg,
+          color: colors.deltaFg,
+          fontSize: '1.4rem',
+          fontWeight: 800,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {count}
+      </Box>
+      <Box component="span" sx={{ flex: 1, minWidth: 0 }}>
+        <Box
+          component="span"
+          sx={{ display: 'block', fontSize: '1.2rem', fontWeight: 800 }}
+        >
+          {count === 1 ? 'Neuer Nachtrag' : 'Neue Nachträge'}
+        </Box>
+        <Box
+          component="span"
+          sx={{ display: 'block', fontSize: '1rem', color: 'text.secondary' }}
+        >
+          Antippen zum Ansehen
+        </Box>
+      </Box>
+      <ArrowDownwardIcon sx={{ fontSize: 28 }} />
+    </ButtonBase>
   )
 }
 

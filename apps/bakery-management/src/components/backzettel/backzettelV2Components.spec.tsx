@@ -75,11 +75,18 @@ describe('Backzettel v2 - Bausteine', () => {
     expect(
       within(screen.getByTestId('machine-test-hefe')).getByText('Wasser')
     ).toBeInTheDocument()
-    expect(
-      within(screen.getByTestId('machine-test-korn-teig')).getByText(
-        'Testkorn 7,8 kg · Testholz 3,6 kg'
-      )
-    ).toBeInTheDocument()
+    // Zahl und „kg“ stehen in einem eigenen, nicht umbrechenden Teil
+    // (UI-Runde 2: kein „kg“ allein in der nächsten Zeile).
+    const members = within(
+      screen.getByTestId('machine-test-korn-teig')
+    ).getByText(
+      (_, el) =>
+        el?.tagName === 'P' &&
+        el.textContent === 'Testkorn 7,8 kg · Testholz 3,6 kg'
+    )
+    expect(within(members).getByText('7,8 kg')).toHaveStyle({
+      whiteSpace: 'nowrap',
+    })
     expect(
       within(screen.getByTestId('machine-test-korn-teig')).getByText(
         'Chargen: unbekannt'

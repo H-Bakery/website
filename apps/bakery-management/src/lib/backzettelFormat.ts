@@ -196,6 +196,27 @@ const UNIT_SUFFIX: Record<string, string> = {
   Charge: 'Charge',
 }
 
+/**
+ * Eine Mengenangabe in Zahl und Einheit zerlegt, nur für die Darstellung
+ * (Tablet: Zahl groß, Einheit kleiner daneben): „2 L“ → `{ figure: '2',
+ * unit: 'L' }`, „≥ 6“ → `{ figure: '≥ 6', unit: null }`. Ohne passende
+ * Einheit bleibt der Text ganz.
+ */
+export function splitQtyText(
+  text: string,
+  unit: BackzettelUnit | null
+): { figure: string; unit: string | null } {
+  const suffix = unit ? UNIT_SUFFIX[unit] : undefined
+  if (
+    suffix &&
+    text.endsWith(` ${suffix}`) &&
+    text.length > suffix.length + 1
+  ) {
+    return { figure: text.slice(0, -suffix.length - 1), unit: suffix }
+  }
+  return { figure: text, unit: null }
+}
+
 /** Menge mit Einheit; Stück ohne Zusatz („40“, „4,5 L“, „3 Bl.“, „1,12 Charge“). */
 export function formatQty(n: number, unit: BackzettelUnit | null): string {
   const suffix = unit ? UNIT_SUFFIX[unit] : undefined

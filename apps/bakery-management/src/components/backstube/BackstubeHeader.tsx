@@ -21,6 +21,8 @@ import ScheduleIcon from '@mui/icons-material/Schedule'
 import PrintOutlinedIcon from '@mui/icons-material/PrintOutlined'
 import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined'
 import CloudOffIcon from '@mui/icons-material/CloudOff'
+import CenterFocusStrongIcon from '@mui/icons-material/CenterFocusStrong'
+import ViewListIcon from '@mui/icons-material/ViewList'
 import type { Theme } from '@mui/material/styles'
 import LogoutButton from '../auth/LogoutButton'
 import { BS_TITLE_SX } from './backstubeType'
@@ -61,6 +63,12 @@ export interface BackstubeHeaderProps {
   adminHref: string | null
   /** Für die Höhe des festen Kopfes (Sprungziele, Seitenspalte). */
   headerRef?: React.Ref<HTMLElement>
+  /**
+   * Bäcker-Ansicht (UI-Runde 2): Knopf zum Wechseln zwischen ganzer Liste
+   * und einem Abschnitt; `null` = nicht im Reiter (Vorbereitung, nichts
+   * geladen).
+   */
+  focus?: { active: boolean; onToggle: () => void } | null
 }
 
 const ACTION_SX = {
@@ -100,6 +108,7 @@ export function BackstubeHeader({
   planHref,
   adminHref,
   headerRef,
+  focus = null,
 }: BackstubeHeaderProps) {
   const colors = useBackstubeColors()
   const percent =
@@ -187,6 +196,9 @@ export function BackstubeHeader({
             variant="h1"
             component="h1"
             data-testid="bs-date"
+            // UI-Runde 2: eine Zeile, auch „Heute, Samstag, …“ - sonst
+            // sprang der Kopf beim Reiterwechsel um eine Zeile.
+            noWrap
             sx={BS_TITLE_SX}
           >
             {title}
@@ -204,6 +216,49 @@ export function BackstubeHeader({
             gap: { xs: 1, sm: 1.5 },
           }}
         >
+          {focus && (
+            <Button
+              onClick={focus.onToggle}
+              variant={focus.active ? 'outlined' : 'contained'}
+              color="inherit"
+              disableElevation
+              data-testid="bs-focus-open"
+              aria-pressed={focus.active}
+              aria-label={focus.active ? 'Ganze Liste' : 'Bäcker-Ansicht'}
+              title={
+                focus.active
+                  ? 'Zurück zur ganzen Liste'
+                  : 'Bäcker-Ansicht: ein Abschnitt, groß, zum Blättern'
+              }
+              sx={{
+                ...ACTION_SX,
+                // Nur quer (= BS_WIDE, zwei Spalten): hochkant und am Handy
+                // steht der Knopf im Überblick bzw. in der Bäcker-Ansicht -
+                // im Kopf drückte er sonst die Reiter zusammen.
+                display: 'none',
+                '@media (min-width: 1080px)': { display: 'inline-flex' },
+                ...(focus.active
+                  ? {}
+                  : {
+                      bgcolor: 'text.primary',
+                      color: 'background.paper',
+                      borderColor: 'text.primary',
+                      '@media (hover: hover)': {
+                        '&:hover': { bgcolor: 'text.secondary' },
+                      },
+                    }),
+              }}
+            >
+              {focus.active ? (
+                <ViewListIcon sx={{ fontSize: 26 }} />
+              ) : (
+                <CenterFocusStrongIcon sx={{ fontSize: 26 }} />
+              )}
+              <Box component="span" sx={{ ml: 1 }}>
+                {focus.active ? 'Ganze Liste' : 'Bäcker-Ansicht'}
+              </Box>
+            </Button>
+          )}
           <IconButton
             onClick={onRefresh}
             aria-label="Neu laden"
@@ -310,62 +365,67 @@ export function BackstubeHeader({
           />
         </Tabs>
 
-        {dayChoice && (
-          <ToggleButtonGroup
-            data-print="hide"
-            exclusive
-            value={dayChoice.value}
-            onChange={(_, value: BackstubeChoice | null) => {
-              if (value) dayChoice.onChange(value)
-            }}
-            aria-label="Tag wählen"
-            sx={{
-              gridArea: 'toggle',
-              justifySelf: { xs: 'stretch', sm: 'end' },
-              alignSelf: 'center',
-              mb: { sm: 0.75 },
-              '& .MuiToggleButton-root': {
-                flex: { xs: 1, sm: 'none' },
-                minHeight: 56,
-                minWidth: { xs: 0, sm: 120 },
-                px: { xs: 0.75, sm: 1.75 },
-                fontSize: { xs: '1.05rem', sm: '1.1rem' },
-                fontWeight: 800,
-                textTransform: 'none',
-                lineHeight: 1.1,
-                flexDirection: 'column',
-                color: 'text.primary',
-                borderWidth: 2,
+        {/* UI-Runde 2: im Reiter Vorbereitung bleibt der Platz des
+            Umschalters (unsichtbar) - sonst sprang der Kopf beim
+            Reiterwechsel, am Handy um eine ganze Reihe. */}
+        <ToggleButtonGroup
+          data-print="hide"
+          data-testid="bs-day-choice"
+          exclusive
+          value={dayChoice?.value ?? null}
+          onChange={(_, value: BackstubeChoice | null) => {
+            if (value && dayChoice) dayChoice.onChange(value)
+          }}
+          aria-label="Tag wählen"
+          aria-hidden={dayChoice ? undefined : true}
+          disabled={!dayChoice}
+          sx={{
+            visibility: dayChoice ? 'visible' : 'hidden',
+            gridArea: 'toggle',
+            justifySelf: { xs: 'stretch', sm: 'end' },
+            alignSelf: 'center',
+            mb: { sm: 0.75 },
+            '& .MuiToggleButton-root': {
+              flex: { xs: 1, sm: 'none' },
+              minHeight: 56,
+              minWidth: { xs: 0, sm: 120 },
+              px: { xs: 0.75, sm: 1.75 },
+              fontSize: { xs: '1.05rem', sm: '1.1rem' },
+              fontWeight: 800,
+              textTransform: 'none',
+              lineHeight: 1.1,
+              flexDirection: 'column',
+              color: 'text.primary',
+              borderWidth: 2,
+            },
+            // Ausgewählt: invertiert (heller Knopf im dunklen Modus und
+            // umgekehrt) - das MUI-Grau läge unter 2:1.
+            '& .MuiToggleButton-root.Mui-selected, & .MuiToggleButton-root.Mui-selected:hover':
+              {
+                backgroundColor: (t: Theme) => t.palette.text.primary,
+                color: (t: Theme) => t.palette.background.paper,
               },
-              // Ausgewählt: invertiert (heller Knopf im dunklen Modus und
-              // umgekehrt) - das MUI-Grau läge unter 2:1.
-              '& .MuiToggleButton-root.Mui-selected, & .MuiToggleButton-root.Mui-selected:hover':
-                {
-                  backgroundColor: (t: Theme) => t.palette.text.primary,
-                  color: (t: Theme) => t.palette.background.paper,
-                },
-            }}
+          }}
+        >
+          <ToggleButton
+            value="heute"
+            data-testid={dayChoice ? 'bs-choice-heute' : undefined}
           >
-            <ToggleButton value="heute" data-testid="bs-choice-heute">
-              {dayChoice.today.label}
-              <Box
-                component="span"
-                sx={{ fontSize: '0.85rem', fontWeight: 500 }}
-              >
-                {dayChoice.today.sub}
-              </Box>
-            </ToggleButton>
-            <ToggleButton value="morgen" data-testid="bs-choice-morgen">
-              {dayChoice.next.label}
-              <Box
-                component="span"
-                sx={{ fontSize: '0.85rem', fontWeight: 500 }}
-              >
-                {dayChoice.next.sub}
-              </Box>
-            </ToggleButton>
-          </ToggleButtonGroup>
-        )}
+            {dayChoice?.today.label ?? 'Heute'}
+            <Box component="span" sx={{ fontSize: '0.85rem', fontWeight: 500 }}>
+              {dayChoice?.today.sub ?? '–'}
+            </Box>
+          </ToggleButton>
+          <ToggleButton
+            value="morgen"
+            data-testid={dayChoice ? 'bs-choice-morgen' : undefined}
+          >
+            {dayChoice?.next.label ?? 'Morgen'}
+            <Box component="span" sx={{ fontSize: '0.85rem', fontWeight: 500 }}>
+              {dayChoice?.next.sub ?? '–'}
+            </Box>
+          </ToggleButton>
+        </ToggleButtonGroup>
       </Box>
       {/* Fortschritt des Reiters über die ganze Breite - beim Scrollen
           sichtbar, ohne Platz zu kosten. */}

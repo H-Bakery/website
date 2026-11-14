@@ -22,6 +22,13 @@ import {
 } from '../../lib/backzettelFormat'
 import { useBackstubeColors } from './backstubeColors'
 import { NameLeader } from './BackstubeStates'
+import {
+  MAIN_CELL_SX,
+  QTY_CELL_SX,
+  QtyFigure,
+  TICK_CELL_SX,
+  rowGridSx,
+} from './BackstubeRow'
 
 // Seit Review Z10 Runde 2 in backzettelFormat.ts (auch die Planung braucht sie).
 export { lineBreakdown }
@@ -44,8 +51,9 @@ export interface BackstubeLineProps {
 }
 
 /**
- * Eine Zeile des Backzettels auf dem Tablet: Name groß, Gesamt sehr groß,
- * ein großer Haken (72 px) rechts. Nachträge stehen als Badge an der Zeile
+ * Eine Zeile des Backzettels auf dem Tablet: Gesamt sehr groß vorn (auf dem
+ * Rechner rechts hinter der Punktlinie), Name groß, ein großer Haken (72 px)
+ * rechts. Nachträge stehen als Badge an der Zeile
  * und sind **nicht** im Gesamt - die Karte oben sagt das.
  */
 export function BackstubeLine({
@@ -88,9 +96,7 @@ export function BackstubeLine({
       data-done={done ? 'true' : 'false'}
       data-reopened={reopened ? 'true' : undefined}
       sx={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: { xs: 1.5, sm: 2 },
+        ...rowGridSx(tickable),
         px: { xs: 1.5, sm: 2 },
         py: 1.5,
         minHeight: 88,
@@ -106,7 +112,7 @@ export function BackstubeLine({
           : 'background.paper',
       }}
     >
-      <Box sx={{ flex: 1, minWidth: 0 }}>
+      <Box sx={MAIN_CELL_SX}>
         <Typography
           component="div"
           sx={{
@@ -114,7 +120,8 @@ export function BackstubeLine({
             fontWeight: 700,
             lineHeight: 1.2,
             color: draft ? 'text.secondary' : 'text.primary',
-            overflowWrap: 'anywhere',
+            overflowWrap: 'break-word',
+            hyphens: 'auto',
             display: 'flex',
             alignItems: 'baseline',
           }}
@@ -247,20 +254,13 @@ export function BackstubeLine({
         )}
       </Box>
 
-      <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
-        <Typography
-          component="div"
-          data-testid={`bs-total-${line.key}`}
-          sx={{
-            fontSize: { xs: '2rem', sm: '2.75rem' },
-            fontWeight: 800,
-            lineHeight: 1,
-            fontVariantNumeric: 'tabular-nums',
-            color: draft || ticked ? 'text.secondary' : 'text.primary',
-          }}
-        >
-          {minQtyText(line, line.unit)}
-        </Typography>
+      <Box sx={QTY_CELL_SX}>
+        <QtyFigure
+          testId={`bs-total-${line.key}`}
+          text={minQtyText(line, line.unit)}
+          unit={line.unit}
+          muted={draft || ticked}
+        />
         {reopened && afterDone && (
           <Typography
             component="div"
@@ -305,6 +305,7 @@ export function BackstubeLine({
           onClick={() => onToggle(line)}
           data-testid={`bs-tick-${line.key}`}
           sx={{
+            ...TICK_CELL_SX,
             width: 72,
             height: 72,
             flexShrink: 0,

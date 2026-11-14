@@ -530,6 +530,19 @@ zu den Namenskacheln). Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhabe
   (`src/lib/backstubeProgress.ts`, rein und getestet; ein Nachtrag nach dem Haken öffnet die Zeile wieder).
   Ein gescheiterter Haken meldet sich unten fest im Bild, auch wenn die Zeile weit unten lag. Am Handy
   läuft der Kopf mit (vier Reihen wären ein Drittel des Bildschirms).
+- **UI-Runde 2 (2026-11):** Erledigte bzw. gebackene Zeilen klappen je Abschnitt zu einer Zeile
+  „✓ n erledigt" zusammen (antippen klappt auf, der Haken lässt sich dort zurücknehmen); eine gerade
+  abgehakte Zeile bleibt 5 s stehen. „Erledigte ausblenden" im Überblick gilt je Gerät
+  (`localStorage` `bakery-backstube-hide-done`, Vorgabe an; gesperrter Speicher → Vorgabe); beim
+  Drucken stehen alle Zeilen da (`BackstubeView.tsx`). **Menge zuerst:** unter 1300 px steht die Menge
+  groß links vor dem Namen (aus 1-2 m lesbar), ab 1300 px und im Druck Name - Punktlinie - Menge
+  (`BackstubeRow.tsx`). **Bäcker-Ansicht** (`BackstubeFocus.tsx`): nur ein Abschnitt, beginnt beim
+  ersten offenen, blättert mit zwei großen Knöpfen unten, Wischen oder Pfeiltasten; „Ganze Liste"/Esc
+  führt zurück. Start im Kopf (ab 1080 px) bzw. im Überblick; keine eigenen Daten, nur
+  `sheetProgress`/`bakeProgress`. **Nachträge nur einmal:** im Reiter Backen stehen sie nur im Abschnitt
+  „Nachträge" (je Zeile Haken + „Gesehen", oben „Alle gesehen"), links ein Hinweis mit Zahl, der dorthin
+  springt; der Zettel behält seinen (kompakteren) Kasten. Der Kopf ist in allen Reitern gleich hoch
+  (Heute/Morgen hält in Vorbereitung unsichtbar den Platz); „7,8 kg" in der Maschinenleiste bricht nicht um.
 - **Welcher Tag:** `src/lib/backstubeDay.ts` (rein, getestet). Vor **12 Uhr** (Ortszeit des Tablets,
   `BACKSTUBE_SWITCH_HOUR`) heute - die Schicht ab 2 Uhr läuft -, ab 12 Uhr der nächste
   Produktionstag; ist heute kein Produktionstag, immer der nächste. Der Umschalter „Heute"/„Morgen"

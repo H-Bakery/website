@@ -16,7 +16,10 @@ import {
 } from '../../lib/backzettelFormat'
 import { BS_SECTION_TITLE_SX } from './backstubeType'
 import { useBackstubeColors } from './backstubeColors'
-import { BS_WIDE } from './BackstubeLayout'
+import { BS_ANCHOR_SX, BS_WIDE } from './BackstubeLayout'
+
+/** Sprungziel des Nachtrags-Kastens (z. B. aus der Bäcker-Ansicht). */
+export const DELTAS_ANCHOR = 'bs-anchor-deltas'
 
 /** Ab hier (Tablet hochkant) steht „Gesehen“ neben dem Namen. */
 const ROW_LAYOUT = '@media (min-width: 600px)'
@@ -87,7 +90,7 @@ export function groupHeadline(
   }
 }
 
-function groupDetail(group: BackstubeDeltaGroup): string {
+export function groupDetail(group: BackstubeDeltaGroup): string {
   if (group.deltas.length === 1) {
     const d = group.deltas[0]
     return [
@@ -140,11 +143,11 @@ export function BackstubeDeltas({
   const seen = deltas.length - open.length
   const busy = ackingKey !== null
   const buttonSx = (active: boolean) => ({
-    minHeight: 64,
-    minWidth: 140,
-    px: 3,
+    minHeight: 56,
+    minWidth: 128,
+    px: 2.5,
     borderRadius: 2,
-    fontSize: '1.3rem',
+    fontSize: '1.2rem',
     fontWeight: 800,
     bgcolor: colors.deltaBg,
     color: colors.deltaFg,
@@ -155,10 +158,12 @@ export function BackstubeDeltas({
     <Paper
       component="section"
       aria-labelledby="bs-deltas-title"
+      id={DELTAS_ANCHOR}
       data-testid="bs-deltas"
       variant="outlined"
       sx={{
-        p: { xs: 2, sm: 3 },
+        ...BS_ANCHOR_SX,
+        p: { xs: 1.5, sm: 2 },
         borderWidth: 3,
         borderColor: colors.deltaEdge,
         bgcolor: colors.deltaRow,
@@ -179,7 +184,7 @@ export function BackstubeDeltas({
           component="h2"
           sx={{
             ...BS_SECTION_TITLE_SX,
-            fontSize: { xs: '1.4rem', sm: '1.65rem' },
+            fontSize: { xs: '1.3rem', sm: '1.5rem' },
           }}
         >
           {open.length === 1
@@ -203,12 +208,12 @@ export function BackstubeDeltas({
           </ButtonBase>
         )}
       </Box>
-      <Typography sx={{ fontSize: '1.1rem', mb: 2 }}>
-        Nicht in den Mengen unten enthalten – zusätzlich backen bzw. weglassen,
-        dann „Gesehen“ tippen.
+      <Typography sx={{ fontSize: '1.05rem', mt: 0.5, mb: 1.5 }}>
+        Nicht in den Mengen unten – zusätzlich backen bzw. weglassen, dann
+        „Gesehen“.
         {seen > 0 ? ` ${seen} bereits gesehen.` : ''}
       </Typography>
-      <Stack spacing={1.5}>
+      <Stack spacing={1}>
         {groups.map((g) => {
           const d = g.deltas[0]
           const label = lineLabel(
@@ -227,32 +232,32 @@ export function BackstubeDeltas({
               key={g.key}
               data-testid={`bs-delta-group-${g.key}`}
               sx={{
-                // Schmal (Handy, Seitenspalte am Desktop): Zahl + Name,
-                // „Gesehen“ über die ganze Breite darunter. Hochkant am
-                // Tablet alles in einer Reihe.
+                // UI-Runde 2, kompakt: schmal (Handy, Seitenspalte) die Zahl
+                // und „Gesehen“ oben, der Name über die ganze Breite darunter
+                // - vorher stand „Gesehen“ als eigener breiter Balken unter
+                // jeder Zeile und die Seitenspalte war nach zwei Nachträgen
+                // voll. Hochkant ohne Seitenspalte alles in einer Reihe.
                 display: 'grid',
                 alignItems: 'center',
-                columnGap: 2,
-                rowGap: 1.25,
-                gridTemplateColumns: 'auto minmax(0, 1fr)',
-                gridTemplateAreas: '"fig name" "btn btn"',
+                columnGap: 1.5,
+                rowGap: 0.5,
+                gridTemplateColumns: 'minmax(0, 1fr) auto',
+                gridTemplateAreas: '"fig btn" "name name"',
                 [ROW_LAYOUT]: {
+                  columnGap: 2,
                   gridTemplateColumns: 'auto minmax(0, 1fr) auto',
                   gridTemplateAreas: '"fig name btn"',
                 },
                 [BS_WIDE]: {
-                  gridTemplateColumns: 'auto minmax(0, 1fr)',
-                  gridTemplateAreas: '"fig name" "btn btn"',
+                  columnGap: 1.5,
+                  gridTemplateColumns: 'minmax(0, 1fr) auto',
+                  gridTemplateAreas: '"fig btn" "name name"',
                 },
-                p: 1.5,
+                px: 1.5,
+                py: 1,
                 borderRadius: 1.5,
                 bgcolor: 'background.paper',
-                '& > .bs-delta-ack': {
-                  gridArea: 'btn',
-                  width: '100%',
-                  [ROW_LAYOUT]: { width: 'auto' },
-                  [BS_WIDE]: { width: '100%' },
-                },
+                '& > .bs-delta-ack': { gridArea: 'btn' },
               }}
             >
               <Typography
