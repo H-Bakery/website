@@ -227,10 +227,35 @@ describe('TemplatesClient - nur die Positionen des Tages (r1)', () => {
   })
 
   it('zeigt zuerst nur die bestückten Produkte, der Rest über „Alle Produkte zeigen“', async () => {
+    // Jede eingefügte und wieder entfernte Zeile mitschreiben - auch eine, die
+    // nur einen Frame lang im DOM stand.
+    const touched: Element[] = []
+    const collect = (records: MutationRecord[]) => {
+      for (const record of records)
+        Array.from(record.addedNodes)
+          .concat(Array.from(record.removedNodes))
+          .forEach((node) => {
+            if (node instanceof Element) touched.push(node)
+          })
+    }
+    const observer = new MutationObserver(collect)
+    observer.observe(document.body, { childList: true, subtree: true })
     renderTwo()
     expect(await screen.findByLabelText('Menge Musterbrot')).toHaveValue(4)
+    collect(observer.takeRecords())
+    observer.disconnect()
     // Vorher stand jedes Katalogprodukt als „0“ da.
     expect(screen.queryByLabelText('Menge Mustersemmel')).toBeNull()
+    // Auch nicht für einen Frame nach dem Laden (vorher wurde der Tag erst
+    // per Effekt gesetzt: kurz der ganze Katalog mit leeren Mengen - und
+    // findBy erwischte manchmal genau diesen Frame).
+    expect(
+      touched.some(
+        (node) =>
+          node.matches('[aria-label="Menge Mustersemmel"]') ||
+          node.querySelector('[aria-label="Menge Mustersemmel"]') != null
+      )
+    ).toBe(false)
     expect(screen.getByTestId('template-summary')).toHaveTextContent(
       '1 Position · 4 Stück · Warenwert 12,80 €'
     )
