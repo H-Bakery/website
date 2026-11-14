@@ -294,7 +294,8 @@ export function BackstubeHefeteig({
         id="bs-hefeteig-title"
         variant="h2"
         component="h2"
-        sx={{ ...BS_SECTION_TITLE_SX, mb: 2 }}
+        tabIndex={-1}
+        sx={{ ...BS_SECTION_TITLE_SX, mb: 2, outline: 'none' }}
       >
         Hefeteig &amp; Füllungen
       </Typography>
@@ -311,11 +312,19 @@ export function BackstubeHefeteig({
             >
               Füllungen
             </Typography>
-            <Stack spacing={1.5}>
+            {/* Nebeneinander, sobald zwei Karten Platz haben (Desktop). */}
+            <Box
+              sx={{
+                display: 'grid',
+                gap: 1.5,
+                gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+                alignItems: 'start',
+              }}
+            >
               {list.map((f) => (
                 <Filling key={f.id} filling={f} muted={draft} />
               ))}
-            </Stack>
+            </Box>
           </Box>
         )}
       </Stack>

@@ -21,6 +21,7 @@ import {
   type DeltaAfterDone,
 } from '../../lib/backzettelFormat'
 import { useBackstubeColors } from './backstubeColors'
+import { NameLeader } from './BackstubeStates'
 
 // Seit Review Z10 Runde 2 in backzettelFormat.ts (auch die Planung braucht sie).
 export { lineBreakdown }
@@ -114,9 +115,14 @@ export function BackstubeLine({
             lineHeight: 1.2,
             color: draft ? 'text.secondary' : 'text.primary',
             overflowWrap: 'anywhere',
+            display: 'flex',
+            alignItems: 'baseline',
           }}
         >
-          {label}
+          <Box component="span" sx={{ minWidth: 0 }}>
+            {label}
+          </Box>
+          <NameLeader />
         </Typography>
         <Typography
           component="div"
