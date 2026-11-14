@@ -114,7 +114,9 @@ export default function TemplatesClient({
   const [partner, setPartner] = useState<Partner | null>(null)
   const [saved, setSaved] = useState<QuantityMap>({})
   const [drafts, setDrafts] = useState<QuantityMap>({})
-  const [weekday, setWeekday] = useState<number | null>(null)
+  // Vom Nutzer gewählter Tag; der angezeigte Tag (`weekday`) wird daraus
+  // abgeleitet, siehe unten.
+  const [selectedWeekday, setWeekday] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -186,16 +188,17 @@ export default function TemplatesClient({
 
   const hasDeliveryDays = (partner?.deliveryDays ?? []).length > 0
 
-  // Erst nach dem Laden einen Wochentag wählen. Solange der Partner unbekannt
+  // Erst nach dem Laden einen Wochentag zeigen. Solange der Partner unbekannt
   // ist, stehen alle sieben Tage zur Wahl - würde hier schon Montag gesetzt,
-  // rendern die Tabs für einen Frame mit einem Wert, den es bei Di-Sa nicht
-  // gibt, und MUI meldet einen ungültigen Tabs-Value.
-  useEffect(() => {
-    if (loading) return
-    setWeekday((current) =>
-      current != null && weekdays.includes(current) ? current : weekdays[0]
-    )
-  }, [weekdays, loading])
+  // rendern die Tabs mit einem Wert, den es bei Di-Sa nicht gibt, und MUI
+  // meldet einen ungültigen Tabs-Value. Abgeleitet statt per Effekt gesetzt:
+  // sonst stand nach dem Laden für einen Frame kein Tag fest, und die Seite
+  // zeigte kurz den ganzen Katalog mit leeren Mengen.
+  const weekday = loading
+    ? null
+    : selectedWeekday != null && weekdays.includes(selectedWeekday)
+    ? selectedWeekday
+    : weekdays[0] ?? null
 
   const currentDraft = useMemo<Quantities>(
     () => (weekday != null ? drafts[weekday] ?? {} : {}),
