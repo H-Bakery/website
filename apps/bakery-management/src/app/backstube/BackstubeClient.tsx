@@ -40,9 +40,12 @@ import {
 } from '../../lib/backstubeTab'
 import {
   bakeProgress,
+  focusStartIndex,
   isReopened,
+  openDeltaCount,
   sectionsByBakeDay,
   sheetProgress,
+  type BackstubeTocEntry,
 } from '../../lib/backstubeProgress'
 import { useSession } from '../../lib/session'
 import { hasBackstubeRights, isPathAllowedForRole } from '../../lib/roles'
@@ -63,10 +66,15 @@ import {
 import { BackstubeSheet } from '../../components/backstube/BackstubeSheet'
 import {
   BackstubeClosedDay,
+  BackstubeDeltaBanner,
   BackstubeLoadFailed,
   BackstubeLoading,
   BackstubeStaleNotice,
 } from '../../components/backstube/BackstubeStates'
+import { BackstubeFocus } from '../../components/backstube/BackstubeFocus'
+import { BackstubeViewProvider } from '../../components/backstube/BackstubeView'
+import { jumpTo } from '../../components/backstube/BackstubeOverview'
+import { DELTAS_ANCHOR } from '../../components/backstube/BackstubeDeltas'
 
 type TabId = BackstubeTabId
 
@@ -226,6 +234,18 @@ export default function BackstubeClient({
     tab: TabId
     date: string
   } | null>(null)
+
+  /**
+   * Bäcker-Ansicht (UI-Runde 2): je Reiter, mit dem gezeigten Abschnitt
+   * (`null` = beim ersten offenen beginnen). Kein eigener Abruf - die
+   * Abschnitte sind die des Überblicks.
+   */
+  const [focusChoice, setFocusChoice] = React.useState<{
+    tab: TabId
+    anchor: string | null
+  } | null>(null)
+  /** Nach dem Verlassen der Bäcker-Ansicht dorthin springen (z. B. Nachträge). */
+  const pendingJump = React.useRef<string | null>(null)
 
   const [result, setResult] = React.useState<BackzettelDayResult | null>(null)
   const [loadedAt, setLoadedAt] = React.useState<Date | null>(null)
@@ -915,6 +935,46 @@ export default function BackstubeClient({
       : null
   const headerLoadedAt =
     tab === 'zettel' ? loadedAt : tab === 'backen' ? bakeLoadedAt : null
+
+  // Bäcker-Ansicht: Abschnitte des Reiters, welcher gerade gezeigt wird.
+  const focusEntries: BackstubeTocEntry[] =
+    tab === 'zettel' && day
+      ? sheetDone?.entries ?? []
+      : tab === 'backen' && bakeDone
+      ? bakeDone.entries
+      : []
+  const focusIndex = (() => {
+    if (!focusChoice || focusChoice.tab !== tab || focusEntries.length === 0) {
+      return -1
+    }
+    const at = focusChoice.anchor
+      ? focusEntries.findIndex((e) => e.anchor === focusChoice.anchor)
+      : -1
+    return at >= 0 ? at : focusStartIndex(focusEntries)
+  })()
+  const focusEntry = focusIndex >= 0 ? focusEntries[focusIndex] : null
+  const focusAnchor = focusEntry?.anchor ?? null
+  const closeFocus = (jump: string | null = null) => {
+    pendingJump.current = jump
+    setFocusChoice(null)
+  }
+  React.useEffect(() => {
+    if (focusAnchor || !pendingJump.current) return
+    const target = pendingJump.current
+    pendingJump.current = null
+    jumpTo(target)
+  })
+  const focusFrame = (verb: string, content: React.ReactNode) => (
+    <BackstubeFocus
+      entries={focusEntries}
+      index={focusIndex}
+      onIndex={(i) => setFocusChoice({ tab, anchor: focusEntries[i].anchor })}
+      onClose={() => closeFocus(focusAnchor)}
+      verb={verb}
+    >
+      {content}
+    </BackstubeFocus>
+  )
   const headerStale =
     (tab === 'zettel' && !!loadError) || (tab === 'backen' && !!bakeError)
 
@@ -969,7 +1029,7 @@ export default function BackstubeClient({
         </BackstubeLayout>
       )
     }
-    return (
+    const sheet = (
       <BackstubeSheet
         day={day}
         config={config}
@@ -980,7 +1040,25 @@ export default function BackstubeClient({
         onAck={(group, key) => void ack(group, key)}
         deltasPending={deltasPending}
         notice={stale}
+        only={focusAnchor ?? undefined}
       />
+    )
+    if (!focusAnchor) return sheet
+    // Neue Nachträge verlangen ein „Gesehen“ - auch in der Bäcker-Ansicht
+    // sichtbar, ein Tipp führt zur Liste mit ihnen.
+    const unseen = day.status === 'confirmed' ? openDeltaCount(day.deltas) : 0
+    return focusFrame(
+      'erledigt',
+      <Box sx={{ display: 'grid', gap: 2 }}>
+        {unseen > 0 && (
+          <BackstubeDeltaBanner
+            count={unseen}
+            testId="bs-focus-deltas"
+            onOpen={() => closeFocus(DELTAS_ANCHOR)}
+          />
+        )}
+        {sheet}
+      </Box>
     )
   })()
 
@@ -1035,28 +1113,38 @@ export default function BackstubeClient({
         </BackstubeLayout>
       )
     }
+    const main = (
+      <BakeListMain
+        list={bakeShown}
+        config={config}
+        canTick={canWork}
+        pendingKeys={bakePending}
+        onToggleLine={(line) => void toggleBakeLine(line)}
+        onToggleDeltas={(group) => void toggleBakeDeltas(group)}
+        canAck={canWork}
+        ackingKey={ackingKey}
+        onAck={(group, key) => void ackBake(group, key)}
+        only={focusAnchor ?? undefined}
+      />
+    )
+    if (focusAnchor) {
+      return (
+        <Box data-testid="bs-bake-list">
+          {focusFrame(
+            'gebacken',
+            <Box sx={{ display: 'grid', gap: 2 }}>
+              {stale}
+              {main}
+            </Box>
+          )}
+        </Box>
+      )
+    }
     return (
       <Box data-testid="bs-bake-list">
-        <BackstubeLayout
-          aside={
-            <BakeListAside
-              list={bakeShown}
-              config={config}
-              canAck={canWork}
-              ackingKey={ackingKey}
-              onAck={(group, key) => void ackBake(group, key)}
-            />
-          }
-        >
+        <BackstubeLayout aside={<BakeListAside list={bakeShown} />}>
           {stale}
-          <BakeListMain
-            list={bakeShown}
-            config={config}
-            canTick={canWork}
-            pendingKeys={bakePending}
-            onToggleLine={(line) => void toggleBakeLine(line)}
-            onToggleDeltas={(group) => void toggleBakeDeltas(group)}
-          />
+          {main}
         </BackstubeLayout>
       </Box>
     )
@@ -1095,170 +1183,190 @@ export default function BackstubeClient({
   )
 
   return (
-    <Box
-      ref={rootRef}
-      sx={{
-        minHeight: '100vh',
-        bgcolor: 'background.default',
-        color: 'text.primary',
-        pb: 8,
-        // global.css blendet jedes <section> beim Einhängen 0,8 s ein. Auf
-        // dem Tablet (Tag wechseln, Neuladen) stünde der Zettel dann blass da.
-        '& section, & .MuiChip-root': { animation: 'none' },
-        // Gedruckt wird über „Planung & Druck“ (Z7); Strg+P hier soll
-        // wenigstens keine Bedienelemente und keinen dunklen Grund drucken.
-        '@media print': {
-          minHeight: 0,
-          pb: 0,
-          bgcolor: '#fff',
-          color: '#000',
-          '& [data-print="hide"]': { display: 'none !important' },
-          '& header': { position: 'static' },
-          // Dunkle Karten und farbige Banner würden mit schwarzer Schrift
-          // unlesbar - im Druck alles schwarz auf weiß, Rahmen bleiben.
-          '& *': {
-            backgroundColor: 'transparent !important',
-            backgroundImage: 'none !important',
-            color: '#000 !important',
-            boxShadow: 'none !important',
-            opacity: '1 !important',
-            // W4-verify r2: Rahmen in `text.primary`/`divider` sind im
-            // dunklen Modus weiß - auf Papier fehlten die leeren Kästchen.
-            borderColor: '#888 !important',
-          },
-          // global.css blendet `.MuiPaper-root` mit `transition:
-          // background-color 0.3s !important` um. Beim Wechsel ins Druckbild
-          // lief die Überblendung noch, und Hefeteig & Füllungen kam aus dem
-          // Dunkelmodus fast schwarz aufs Papier. Zwei Klassen schlagen die
-          // eine globale.
-          '& .MuiPaper-root, & *': { transition: 'none !important' },
-          '& [role="checkbox"]': { borderColor: '#000 !important' },
-          // UI-Runde 1: Zeilen- und Füllungskarten nicht über zwei Seiten
-          // zerschneiden.
-          '& [data-testid^="bs-line-"], & [data-testid^="bs-filling-"], & [data-testid^="bs-weigh-"]':
-            { breakInside: 'avoid' },
-          // Zwei Spalten gibt es auf Papier nicht.
-          '& [data-testid="bs-main"], & [data-testid="bs-aside"]': {
-            gridColumn: '1 / -1',
-          },
-        },
-      }}
+    <BackstubeViewProvider
+      startFocus={
+        focusEntries.length > 0 && !focusAnchor
+          ? () => setFocusChoice({ tab, anchor: null })
+          : null
+      }
     >
-      <BackstubeHeader
-        headerRef={headerRef}
-        userName={session.user?.displayName ?? null}
-        title={
-          tab !== 'vorbereitung'
-            ? formatDateLong(date)
-            : `Heute, ${formatDateLong(dates.today)}`
-        }
-        tab={tab}
-        onTab={(value) => {
-          setTabChoice({ tab: value, date })
-          showActionError(null)
+      <Box
+        ref={rootRef}
+        sx={{
+          minHeight: '100vh',
+          bgcolor: 'background.default',
+          color: 'text.primary',
+          pb: 8,
+          // global.css blendet jedes <section> beim Einhängen 0,8 s ein. Auf
+          // dem Tablet (Tag wechseln, Neuladen) stünde der Zettel dann blass da.
+          '& section, & .MuiChip-root': { animation: 'none' },
+          // Gedruckt wird über „Planung & Druck“ (Z7); Strg+P hier soll
+          // wenigstens keine Bedienelemente und keinen dunklen Grund drucken.
+          '@media print': {
+            minHeight: 0,
+            pb: 0,
+            bgcolor: '#fff',
+            color: '#000',
+            '& [data-print="hide"]': { display: 'none !important' },
+            '& header': { position: 'static' },
+            // Dunkle Karten und farbige Banner würden mit schwarzer Schrift
+            // unlesbar - im Druck alles schwarz auf weiß, Rahmen bleiben.
+            '& *': {
+              backgroundColor: 'transparent !important',
+              backgroundImage: 'none !important',
+              color: '#000 !important',
+              boxShadow: 'none !important',
+              opacity: '1 !important',
+              // W4-verify r2: Rahmen in `text.primary`/`divider` sind im
+              // dunklen Modus weiß - auf Papier fehlten die leeren Kästchen.
+              borderColor: '#888 !important',
+            },
+            // global.css blendet `.MuiPaper-root` mit `transition:
+            // background-color 0.3s !important` um. Beim Wechsel ins Druckbild
+            // lief die Überblendung noch, und Hefeteig & Füllungen kam aus dem
+            // Dunkelmodus fast schwarz aufs Papier. Zwei Klassen schlagen die
+            // eine globale.
+            '& .MuiPaper-root, & *': { transition: 'none !important' },
+            '& [role="checkbox"]': { borderColor: '#000 !important' },
+            // UI-Runde 1: Zeilen- und Füllungskarten nicht über zwei Seiten
+            // zerschneiden.
+            '& [data-testid^="bs-line-"], & [data-testid^="bs-filling-"], & [data-testid^="bs-weigh-"]':
+              { breakInside: 'avoid' },
+            // Zwei Spalten gibt es auf Papier nicht.
+            '& [data-testid="bs-main"], & [data-testid="bs-aside"]': {
+              gridColumn: '1 / -1',
+            },
+          },
         }}
-        // Die Vorbereitung gilt immer dem nächsten Backtag - dort kein Umschalter.
-        dayChoice={
-          tab === 'vorbereitung'
-            ? null
-            : {
-                value: effective,
-                onChange: (value) => setChoice({ value, rule }),
-                today: {
-                  label: 'Heute',
-                  sub: dates.todayIsProductionDay
-                    ? formatDateShort(dates.today)
-                    : 'Ruhetag',
-                },
-                next: {
-                  label: nextLabel(dates),
-                  sub:
-                    nextLabel(dates) === 'Morgen'
-                      ? formatDateShort(dates.next)
-                      : 'nächster Backtag',
-                },
-              }
-        }
-        refreshing={refreshing}
-        onRefresh={refresh}
-        loadedAt={headerLoadedAt ? timeOf(headerLoadedAt) : null}
-        stale={headerStale}
-        progress={headerProgress}
-        planHref={tab !== 'vorbereitung' && mayPlan ? planPath : null}
-        adminHref={mayAdmin ? '/admin' : null}
-      />
+      >
+        <BackstubeHeader
+          headerRef={headerRef}
+          userName={session.user?.displayName ?? null}
+          title={
+            tab !== 'vorbereitung'
+              ? formatDateLong(date)
+              : `Heute, ${formatDateLong(dates.today)}`
+          }
+          tab={tab}
+          onTab={(value) => {
+            setTabChoice({ tab: value, date })
+            showActionError(null)
+          }}
+          // Die Vorbereitung gilt immer dem nächsten Backtag - dort kein Umschalter.
+          dayChoice={
+            tab === 'vorbereitung'
+              ? null
+              : {
+                  value: effective,
+                  onChange: (value) => setChoice({ value, rule }),
+                  today: {
+                    label: 'Heute',
+                    sub: dates.todayIsProductionDay
+                      ? formatDateShort(dates.today)
+                      : 'Ruhetag',
+                  },
+                  next: {
+                    label: nextLabel(dates),
+                    sub:
+                      nextLabel(dates) === 'Morgen'
+                        ? formatDateShort(dates.next)
+                        : 'nächster Backtag',
+                  },
+                }
+          }
+          refreshing={refreshing}
+          onRefresh={refresh}
+          loadedAt={headerLoadedAt ? timeOf(headerLoadedAt) : null}
+          stale={headerStale}
+          progress={headerProgress}
+          planHref={tab !== 'vorbereitung' && mayPlan ? planPath : null}
+          adminHref={mayAdmin ? '/admin' : null}
+          focus={
+            focusEntries.length > 0
+              ? {
+                  active: !!focusAnchor,
+                  onToggle: () =>
+                    focusAnchor
+                      ? closeFocus(focusAnchor)
+                      : setFocusChoice({ tab, anchor: null }),
+                }
+              : null
+          }
+        />
 
-      {tab === 'zettel' ? zettel : tab === 'backen' ? backen : vorbereitung}
+        {tab === 'zettel' ? zettel : tab === 'backen' ? backen : vorbereitung}
 
-      {/* Hochkant steht der Überblick über den Zeilen - weit unten führt
+        {/* Hochkant steht der Überblick über den Zeilen - weit unten führt
           ein Knopf zurück (quer bleibt er links stehen). */}
-      {scrolledDown && tab !== 'vorbereitung' && (
-        <Fab
-          variant="extended"
-          data-print="hide"
-          aria-label="Zum Überblick"
-          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-          sx={{
-            position: 'fixed',
-            right: { xs: 16, sm: 24 },
-            bottom: actionError ? { xs: 96, sm: 112 } : { xs: 16, sm: 24 },
-            zIndex: 3,
-            minHeight: 56,
-            height: 56,
-            px: 2.5,
-            fontSize: '1.05rem',
-            fontWeight: 800,
-            textTransform: 'none',
-            bgcolor: 'text.primary',
-            color: 'background.paper',
-            '&:hover': { bgcolor: 'text.secondary' },
-            [BS_WIDE]: { display: 'none' },
-          }}
-        >
-          <KeyboardArrowUpIcon sx={{ mr: 0.5, fontSize: 28 }} />
-          Überblick
-        </Fab>
-      )}
-
-      {/* Fehler eines Hakens unten fest im Bild - auch wenn die Zeile weit
-          unten lag; bleibt stehen, bis sie geschlossen oder gelöst ist. */}
-      {actionError && (
-        <Box
-          data-print="hide"
-          sx={{
-            position: 'fixed',
-            left: 0,
-            right: 0,
-            bottom: { xs: 12, sm: 24 },
-            zIndex: 4,
-            px: { xs: 1.5, sm: 3 },
-            display: 'flex',
-            justifyContent: 'center',
-            pointerEvents: 'none',
-          }}
-        >
-          <Alert
-            severity="error"
-            variant="filled"
-            onClose={() => showActionError(null)}
+        {scrolledDown && tab !== 'vorbereitung' && !focusAnchor && (
+          <Fab
+            variant="extended"
+            data-print="hide"
+            aria-label="Zum Überblick"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
             sx={{
-              pointerEvents: 'auto',
-              width: '100%',
-              maxWidth: 760,
-              fontSize: '1.15rem',
-              alignItems: 'center',
-              boxShadow: 6,
-              '& .MuiAlert-action': { pt: 0 },
-              '& .MuiAlert-action .MuiIconButton-root': {
-                width: 48,
-                height: 48,
-              },
+              position: 'fixed',
+              right: { xs: 16, sm: 24 },
+              bottom: actionError ? { xs: 96, sm: 112 } : { xs: 16, sm: 24 },
+              zIndex: 3,
+              minHeight: 56,
+              height: 56,
+              px: 2.5,
+              fontSize: '1.05rem',
+              fontWeight: 800,
+              textTransform: 'none',
+              bgcolor: 'text.primary',
+              color: 'background.paper',
+              '&:hover': { bgcolor: 'text.secondary' },
+              [BS_WIDE]: { display: 'none' },
             }}
           >
-            {actionError}
-          </Alert>
-        </Box>
-      )}
-    </Box>
+            <KeyboardArrowUpIcon sx={{ mr: 0.5, fontSize: 28 }} />
+            Überblick
+          </Fab>
+        )}
+
+        {/* Fehler eines Hakens unten fest im Bild - auch wenn die Zeile weit
+          unten lag; bleibt stehen, bis sie geschlossen oder gelöst ist. */}
+        {actionError && (
+          <Box
+            data-print="hide"
+            sx={{
+              position: 'fixed',
+              left: 0,
+              right: 0,
+              // Bäcker-Ansicht: über der Blätter-Leiste.
+              bottom: focusAnchor ? { xs: 112, sm: 120 } : { xs: 12, sm: 24 },
+              zIndex: 4,
+              px: { xs: 1.5, sm: 3 },
+              display: 'flex',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+            }}
+          >
+            <Alert
+              severity="error"
+              variant="filled"
+              onClose={() => showActionError(null)}
+              sx={{
+                pointerEvents: 'auto',
+                width: '100%',
+                maxWidth: 760,
+                fontSize: '1.15rem',
+                alignItems: 'center',
+                boxShadow: 6,
+                '& .MuiAlert-action': { pt: 0 },
+                '& .MuiAlert-action .MuiIconButton-root': {
+                  width: 48,
+                  height: 48,
+                },
+              }}
+            >
+              {actionError}
+            </Alert>
+          </Box>
+        )}
+      </Box>
+    </BackstubeViewProvider>
   )
 }

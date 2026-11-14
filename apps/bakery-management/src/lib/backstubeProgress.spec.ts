@@ -3,10 +3,14 @@ import {
   HEFETEIG_ANCHOR,
   bakeDayHeading,
   bakeProgress,
+  focusStartIndex,
   isLineBaked,
   isLineDone,
+  nextOpenIndex,
+  openDeltaCount,
   sectionAnchor,
   sheetProgress,
+  splitDone,
 } from './backstubeProgress'
 import {
   SAT,
@@ -138,5 +142,69 @@ describe('bakeProgress (Überblick der Backliste)', () => {
   it('ohne Nachträge kein Eintrag „Nachträge“', () => {
     const p = bakeProgress(tuesdayBakeList({ deltas: [] }))
     expect(p.entries.map((e) => e.label)).toEqual(['Brot', 'Brötchen'])
+  })
+})
+
+describe('Erledigte zuklappen und Bäcker-Ansicht (UI-Runde 2)', () => {
+  const entry = (label: string, done: number, total: number) => ({
+    anchor: `bs-anchor-${label}`,
+    label,
+    group: null,
+    done,
+    total,
+  })
+
+  it('splitDone: Erledigte zur Seite, gerade Abgehakte bleiben stehen', () => {
+    const lines = [
+      { k: 'a', done: true },
+      { k: 'b', done: false },
+      { k: 'c', done: true },
+      { k: 'd', done: false },
+    ]
+    const r = splitDone(
+      lines,
+      (l) => l.done,
+      (l) => l.k === 'c'
+    )
+    expect(r.shown.map((l) => l.k)).toEqual(['b', 'c', 'd'])
+    expect(r.hidden.map((l) => l.k)).toEqual(['a'])
+  })
+
+  it('Bäcker-Ansicht beginnt beim ersten offenen Abschnitt', () => {
+    expect(focusStartIndex([])).toBe(-1)
+    expect(
+      focusStartIndex([
+        entry('Hefeteig & Füllungen', 0, 0),
+        entry('Brot', 3, 3),
+        entry('Brötchen', 1, 4),
+      ])
+    ).toBe(2)
+    // Alles erledigt: der erste Abschnitt.
+    expect(focusStartIndex([entry('Brot', 3, 3), entry('Kuchen', 1, 1)])).toBe(
+      0
+    )
+  })
+
+  it('nächster offener Abschnitt ringsum, sonst -1', () => {
+    const entries = [
+      entry('Brot', 1, 3),
+      entry('Brötchen', 2, 2),
+      entry('Kuchen', 0, 1),
+    ]
+    expect(nextOpenIndex(entries, 0)).toBe(2)
+    expect(nextOpenIndex(entries, 2)).toBe(0)
+    expect(nextOpenIndex([entry('Brot', 1, 3)], 0)).toBe(-1)
+  })
+
+  it('openDeltaCount zählt nur nicht quittierte Nachträge', () => {
+    const deltas = tuesdayBakeList().deltas
+    expect(openDeltaCount(deltas)).toBe(
+      deltas.filter((d) => !d.acknowledgedAt).length
+    )
+    expect(
+      openDeltaCount(
+        deltas.map((d) => ({ ...d, acknowledgedAt: '2026-12-01T03:00:00Z' }))
+      )
+    ).toBe(0)
   })
 })

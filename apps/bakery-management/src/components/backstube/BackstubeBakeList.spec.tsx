@@ -147,8 +147,11 @@ describe('BackstubeBakeList - gebacken-Haken (Z10 O5)', () => {
     const onToggleDeltas = jest.fn()
     renderList(tuesdayBakeList(), { onToggleDeltas })
     const section = within(screen.getByTestId('bs-bake-deltas'))
+    // UI-Runde 2: der Zusatz steht kleiner hinter „Nachträge“.
     expect(
-      section.getByText('Nachträge (nicht in den Zahlen oben)')
+      section.getByRole('heading', {
+        name: 'Nachträge (nicht in den Zahlen oben)',
+      })
     ).toBeInTheDocument()
     expect(
       section.getByTestId(`bs-bake-dgroup-figure-${DOPPEL}`)

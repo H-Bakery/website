@@ -252,6 +252,25 @@ describe('Backstube-Tablet - Teigtag-Zettel und Backliste (Z10)', () => {
     await waitFor(() => expect(mocked.fetchBakeList).toHaveBeenCalledTimes(2))
   })
 
+  it('Backen: Nachträge stehen nur einmal - links ein Hinweis, „Gesehen“ an der Zeile (UI-Runde 2)', async () => {
+    const scrollIntoView = jest.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    renderTablet(at(V2_TUE, 3))
+    const list = within(await screen.findByTestId('bs-bake-list'))
+    // Kein zweiter Gesehen-Kasten neben der Nachtrags-Liste.
+    expect(list.queryByTestId('bs-deltas')).not.toBeInTheDocument()
+    expect(list.getAllByRole('button', { name: /gesehen$/ })).toHaveLength(1)
+    const banner = list.getByTestId('bs-bake-deltas-banner')
+    expect(banner).toHaveTextContent('1Neuer Nachtrag')
+    expect(
+      within(list.getByTestId('bs-aside')).getByTestId('bs-bake-deltas-banner')
+    ).toBe(banner)
+    fireEvent.click(banner)
+    expect(scrollIntoView.mock.contexts[0]).toBe(
+      list.getByTestId('bs-bake-deltas')
+    )
+  })
+
   it('Fehler der Backliste: deutsche Meldung, kein „Failed to fetch“', async () => {
     mocked.fetchBakeList.mockRejectedValue(new TypeError('Failed to fetch'))
     renderTablet(at(SUN, 3))
@@ -405,8 +424,10 @@ describe('Backstube-Tablet - Teigtag-Zettel und Backliste (Z10)', () => {
         bakedBy: null,
       })
       renderTablet(at(V2_TUE, 3))
+      // UI-Runde 2: Gebackenes steht zugeklappt - erst aufklappen.
+      fireEvent.click(await screen.findByTestId('bs-done-bake-broetchen'))
       fireEvent.click(
-        await screen.findByRole('checkbox', { name: 'Testdoppel gebacken' })
+        screen.getByRole('checkbox', { name: 'Testdoppel gebacken' })
       )
       await waitFor(() =>
         expect(mocked.setLineBaked).toHaveBeenCalledWith(V2_TUE, 205, false, 44)
@@ -429,12 +450,14 @@ describe('Backstube-Tablet - Teigtag-Zettel und Backliste (Z10)', () => {
         })
       )
       expect(mocked.setDeltasBaked).toHaveBeenCalledWith(V2_TUE, [31], true)
-      // optimistisch gebacken und gesehen: die Gesehen-Karte oben ist weg
+      // optimistisch gebacken und gesehen: „Gesehen“ an der Zeile ist weg
       expect(screen.getByTestId(`bs-bake-dtick-${DOPPEL}`)).toHaveAttribute(
         'aria-checked',
         'true'
       )
-      expect(screen.queryByTestId('bs-deltas')).not.toBeInTheDocument()
+      expect(
+        screen.queryByTestId(`bs-bake-dseen-${DOPPEL}`)
+      ).not.toBeInTheDocument()
       pending.resolve([
         {
           ...tuesdayBakeList().deltas[0],
@@ -484,7 +507,7 @@ describe('Backstube-Tablet - Teigtag-Zettel und Backliste (Z10)', () => {
       )
       // Die Antwort kam, während der Haken noch speichert: verworfen.
       await waitFor(() => expect(mocked.fetchBakeList).toHaveBeenCalledTimes(2))
-      expect(screen.getByTestId('bs-deltas')).toBeInTheDocument()
+      expect(screen.getByTestId(`bs-bake-dseen-${DOPPEL}`)).toBeInTheDocument()
       pending.resolve({
         id: 205,
         date: SAT,
@@ -497,7 +520,9 @@ describe('Backstube-Tablet - Teigtag-Zettel und Backliste (Z10)', () => {
       // Haken fertig: neu geladen, das „Gesehen“ steht.
       await waitFor(() => expect(mocked.fetchBakeList).toHaveBeenCalledTimes(3))
       await waitFor(() =>
-        expect(screen.queryByTestId('bs-deltas')).not.toBeInTheDocument()
+        expect(
+          screen.queryByTestId(`bs-bake-dseen-${DOPPEL}`)
+        ).not.toBeInTheDocument()
       )
     })
 
@@ -518,7 +543,7 @@ describe('Backstube-Tablet - Teigtag-Zettel und Backliste (Z10)', () => {
         'aria-checked',
         'false'
       )
-      expect(screen.getByTestId('bs-deltas')).toBeInTheDocument()
+      expect(screen.getByTestId(`bs-bake-dseen-${DOPPEL}`)).toBeInTheDocument()
     })
 
     it('Verkauf sieht die Backliste ohne Haken', async () => {

@@ -209,3 +209,49 @@ export function bakeProgress(
     entries,
   }
 }
+
+/**
+ * UI-Runde 2: welche Zeilen eines Abschnitts stehen, wenn Erledigte
+ * zugeklappt sind. Offene Zeilen bleiben in ihrer Reihenfolge; `keep`
+ * (gerade abgehakt - der Haken lässt sich noch zurücknehmen) bleibt kurz
+ * stehen. Gezählt wird nur, was `isDone` sagt.
+ */
+export function splitDone<T>(
+  lines: T[],
+  isDone: (line: T) => boolean,
+  keep: (line: T) => boolean = () => false
+): { shown: T[]; hidden: T[] } {
+  const shown: T[] = []
+  const hidden: T[] = []
+  for (const l of lines) (isDone(l) && !keep(l) ? hidden : shown).push(l)
+  return { shown, hidden }
+}
+
+/**
+ * Bäcker-Ansicht: mit welchem Abschnitt sie beginnt - dem ersten, in dem
+ * noch etwas offen ist; ist alles erledigt (oder nichts abhakbar), dem
+ * ersten überhaupt. `-1` = keine Abschnitte.
+ */
+export function focusStartIndex(entries: BackstubeTocEntry[]): number {
+  if (entries.length === 0) return -1
+  const open = entries.findIndex((e) => e.total > 0 && e.done < e.total)
+  return open >= 0 ? open : 0
+}
+
+/** Nächster Abschnitt mit offenen Zeilen nach `from` (ringsum), sonst `-1`. */
+export function nextOpenIndex(
+  entries: BackstubeTocEntry[],
+  from: number
+): number {
+  for (let i = 1; i < entries.length; i++) {
+    const j = (from + i) % entries.length
+    const e = entries[j]
+    if (e.total > 0 && e.done < e.total) return j
+  }
+  return -1
+}
+
+/** Offene (nicht quittierte) Nachträge - für den kurzen Hinweis „n neu“. */
+export function openDeltaCount(deltas: BackzettelDeltaEntry[]): number {
+  return deltas.filter((d) => !d.acknowledgedAt).length
+}

@@ -5,6 +5,7 @@ import { Box, ButtonBase, Paper, Typography } from '@mui/material'
 import CheckIcon from '@mui/icons-material/Check'
 import type { BackstubeTocEntry } from '../../lib/backstubeProgress'
 import { useBackstubeColors } from './backstubeColors'
+import { FocusStartButton, HideDoneToggle } from './BackstubeView'
 
 export interface BackstubeOverviewProps {
   /** „4 von 15 erledigt“; `null` = kein Zähler (Entwurf). */
@@ -115,6 +116,20 @@ export function BackstubeOverview({
               {status}
             </Typography>
           )}
+        </Box>
+      )}
+      {(progress || banner) && (
+        <Box
+          sx={{
+            mt: 1.5,
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 1,
+            '&:empty': { display: 'none' },
+          }}
+        >
+          <FocusStartButton />
+          {progress && !countOnly && <HideDoneToggle verb={progress.verb} />}
         </Box>
       )}
       {entries.length > 0 && (

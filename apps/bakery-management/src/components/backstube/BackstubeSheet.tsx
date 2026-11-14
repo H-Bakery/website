@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { Alert, Box, Stack, Typography } from '@mui/material'
+import { Alert, Box, Typography } from '@mui/material'
 import {
   deltaTotalsByKey,
   isDoughDaySheet,
@@ -20,10 +20,12 @@ import {
 import {
   HEFETEIG_ANCHOR,
   bakeDayHeading,
+  isLineDone,
   sectionAnchor,
   sectionsByBakeDay,
   sheetProgress,
 } from '../../lib/backstubeProgress'
+import { BackstubeLines } from './BackstubeView'
 import { BackstubeLine } from './BackstubeLine'
 import { BackstubeHefeteig } from './BackstubeHefeteig'
 import { BackstubeDeltas } from './BackstubeDeltas'
@@ -51,6 +53,11 @@ export interface BackstubeSheetProps {
   deltasPending: boolean
   /** Über der Hauptspalte (z. B. „Neu laden fehlgeschlagen“). */
   notice?: React.ReactNode
+  /**
+   * Bäcker-Ansicht (UI-Runde 2): nur dieser Abschnitt (Sprungziel
+   * `bs-anchor-…`), ohne Seitenspalte und ohne Teige-Leiste.
+   */
+  only?: string
 }
 
 /**
@@ -70,6 +77,7 @@ export function BackstubeSheet({
   onAck,
   deltasPending,
   notice,
+  only,
 }: BackstubeSheetProps) {
   const colors = useBackstubeColors()
   const draft = day.status === 'draft'
@@ -77,12 +85,15 @@ export function BackstubeSheet({
   const v2 = isDoughDaySheet(day)
   const progress = sheetProgress(day)
 
+  const isDone = (line: BackzettelLine) =>
+    !draft && isLineDone(line, day.deltas)
   const renderSection = (
     section: BackzettelSection,
     id: string,
     stripBakeDate: boolean
   ) =>
-    section.lines.length === 0 ? null : (
+    section.lines.length === 0 ||
+    (only && only !== sectionAnchor(id)) ? null : (
       <Box
         component="section"
         key={id}
@@ -100,8 +111,13 @@ export function BackstubeSheet({
         >
           {section.label}
         </Typography>
-        <Stack spacing={1}>
-          {section.lines.map((line) => (
+        <BackstubeLines
+          lines={section.lines}
+          sectionId={id}
+          verb="erledigt"
+          lineKey={(line) => line.key}
+          isDone={isDone}
+          renderLine={(line) => (
             <BackstubeLine
               key={line.key}
               // Unter der Backtag-Überschrift kein „· für …“ am Namen.
@@ -113,8 +129,8 @@ export function BackstubeSheet({
               pending={line.id !== null && pendingIds.has(line.id)}
               onToggle={onToggle}
             />
-          ))}
-        </Stack>
+          )}
+        />
       </Box>
     )
 
@@ -237,6 +253,65 @@ export function BackstubeSheet({
     </>
   )
 
+  const sections = v2
+    ? sectionsByBakeDay(day).map((group) => {
+        const rolls = (day.rolls ?? []).find(
+          (r) => r.bakeDate === group.bakeDate
+        )
+        const inGroup = group.sections.map((section) =>
+          renderSection(section, `${group.bakeDate}-${section.id}`, true)
+        )
+        // Bäcker-Ansicht: nur der eine Abschnitt, ohne Gruppen-Kopf und Bruch.
+        if (only) {
+          return <React.Fragment key={group.bakeDate}>{inGroup}</React.Fragment>
+        }
+        return (
+          <Box
+            key={group.bakeDate}
+            data-testid={`bs-bakeday-${group.bakeDate}`}
+            sx={{ display: 'grid', gap: 1 }}
+          >
+            <BackstubeGroupHeading>
+              {bakeDayHeading(group.bakeDate, day.date)}
+            </BackstubeGroupHeading>
+            {rolls && rolls.groups.length > 0 && (
+              <Box
+                component="ul"
+                data-testid={`bs-bruch-${group.bakeDate}`}
+                sx={{
+                  m: 0,
+                  mt: 0.5,
+                  p: { xs: 1.5, sm: 2 },
+                  pl: { xs: 4, sm: 5 },
+                  borderRadius: 2,
+                  bgcolor: 'action.hover',
+                  fontSize: { xs: '1.1rem', sm: '1.3rem' },
+                  fontWeight: 700,
+                  '& li + li': { mt: 0.5 },
+                }}
+              >
+                {rolls.groups.map((g) => (
+                  <li key={g.key}>
+                    {g.name}: {bruchGroupText(g)}
+                  </li>
+                ))}
+              </Box>
+            )}
+            {inGroup}
+          </Box>
+        )
+      })
+    : day.sections.map((section) => renderSection(section, section.id, false))
+
+  if (only) {
+    return (
+      <>
+        {notice}
+        {only === HEFETEIG_ANCHOR ? hefeteig : sections}
+      </>
+    )
+  }
+
   return (
     <BackstubeLayout aside={aside}>
       {notice}
@@ -273,56 +348,7 @@ export function BackstubeSheet({
 
       {isSaturday && hefeteig}
 
-      {v2
-        ? sectionsByBakeDay(day).map((group) => {
-            const rolls = (day.rolls ?? []).find(
-              (r) => r.bakeDate === group.bakeDate
-            )
-            return (
-              <Box
-                key={group.bakeDate}
-                data-testid={`bs-bakeday-${group.bakeDate}`}
-                sx={{ display: 'grid', gap: 1 }}
-              >
-                <BackstubeGroupHeading>
-                  {bakeDayHeading(group.bakeDate, day.date)}
-                </BackstubeGroupHeading>
-                {rolls && rolls.groups.length > 0 && (
-                  <Box
-                    component="ul"
-                    data-testid={`bs-bruch-${group.bakeDate}`}
-                    sx={{
-                      m: 0,
-                      mt: 0.5,
-                      p: { xs: 1.5, sm: 2 },
-                      pl: { xs: 4, sm: 5 },
-                      borderRadius: 2,
-                      bgcolor: 'action.hover',
-                      fontSize: { xs: '1.1rem', sm: '1.3rem' },
-                      fontWeight: 700,
-                      '& li + li': { mt: 0.5 },
-                    }}
-                  >
-                    {rolls.groups.map((g) => (
-                      <li key={g.key}>
-                        {g.name}: {bruchGroupText(g)}
-                      </li>
-                    ))}
-                  </Box>
-                )}
-                {group.sections.map((section) =>
-                  renderSection(
-                    section,
-                    `${group.bakeDate}-${section.id}`,
-                    true
-                  )
-                )}
-              </Box>
-            )
-          })
-        : day.sections.map((section) =>
-            renderSection(section, section.id, false)
-          )}
+      {sections}
 
       {progress.total === 0 && (
         <Typography sx={{ fontSize: '1.4rem', py: 4 }}>
