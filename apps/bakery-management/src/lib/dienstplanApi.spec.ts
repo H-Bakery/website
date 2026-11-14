@@ -20,12 +20,17 @@ import {
   formatCents,
   formatWage,
   groupByArea,
+  minijobText,
+  monthBasisText,
   parseDaysInput,
   parseHoursInput,
   parseWageInput,
   payFormula,
   payText,
   totalPayText,
+  totalWageCostText,
+  wageCostFormula,
+  wageCostText,
   wageToInput,
   type HoursTotals,
   saveEntitlement,
@@ -338,5 +343,73 @@ describe('Stundenlohn und geschätzte Überstundenbezahlung', () => {
       totalPayText(totals({ amountCents: null, missingWageCount: 1 }))
     ).toBe('offen')
     expect(plain(totalPayText(totals({})))).toBe('0,00 €')
+  })
+
+  it('Monat: bis heute, ganzer Monat oder geplant; künftig noch keine Überstunden', () => {
+    expect(monthBasisText({ phase: 'current', asOf: '2026-11-14' })).toBe(
+      'bis heute (14.11.)'
+    )
+    expect(monthBasisText({ phase: 'past', asOf: null })).toBe('ganzer Monat')
+    expect(monthBasisText({ phase: 'future', asOf: null })).toBe('geplant')
+    expect(
+      payText({
+        status: 'future',
+        overtimeMinutes: null,
+        hourlyWageCents: 1390,
+        amountCents: null,
+      })
+    ).toBe('Monat noch nicht begonnen')
+  })
+
+  it('Lohnkosten: Plan × Lohn mit Rechenweg; ohne Lohn offen (nie 0 €); Summe „mind.“', () => {
+    const ok = {
+      status: 'ok' as const,
+      plannedMinutes: 720,
+      hourlyWageCents: 1390,
+      amountCents: 16680,
+    }
+    expect(plain(wageCostText(ok))).toBe('≈ 166,80 €')
+    expect(plain(wageCostFormula(ok))).toBe('12:00 h × 13,90 €/h')
+    const open = {
+      status: 'no-wage' as const,
+      plannedMinutes: 720,
+      hourlyWageCents: null,
+      amountCents: null,
+    }
+    expect(wageCostText(open)).toBe('Stundenlohn offen')
+    expect(wageCostFormula(open)).toBeNull()
+    expect(
+      plain(totalWageCostText({ amountCents: 16680, missingWageCount: 0 }))
+    ).toBe('≈ 166,80 €')
+    expect(
+      plain(totalWageCostText({ amountCents: 16680, missingWageCount: 2 }))
+    ).toBe('mind. 166,80 €')
+    expect(totalWageCostText({ amountCents: null, missingWageCount: 1 })).toBe(
+      'offen'
+    )
+  })
+
+  it('Minijob-Grenze als Text: über, innerhalb, offen', () => {
+    const base = { limitCents: 60300, plannedCostCents: 61500, overCents: null }
+    expect(
+      plain(minijobText({ ...base, status: 'over', overCents: 1200 }))
+    ).toBe('über der Minijob-Grenze (603,00 €) um 12,00 €')
+    expect(plain(minijobText({ ...base, status: 'ok' }))).toBe(
+      'innerhalb der Minijob-Grenze (603,00 €)'
+    )
+    expect(
+      minijobText({ ...base, status: 'no-wage', plannedCostCents: null })
+    ).toBe('Minijob-Grenze offen: Stundenlohn fehlt')
+    expect(
+      minijobText(
+        {
+          status: 'no-limit',
+          limitCents: null,
+          plannedCostCents: 1,
+          overCents: null,
+        },
+        '2031'
+      )
+    ).toBe('Minijob-Grenze 2031 nicht hinterlegt')
   })
 })

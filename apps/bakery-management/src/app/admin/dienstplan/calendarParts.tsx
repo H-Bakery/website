@@ -254,12 +254,15 @@ export function HoursCell({
   employeeId,
   hours,
   pay,
+  payPrefix = 'Überstd.',
   onOpen,
   openLabel,
 }: {
   employeeId: number
   hours: PlannedHours | undefined
   pay?: OvertimePay
+  /** Vor dem Betrag, z. B. „Überstd. bis heute“ im laufenden Monat. */
+  payPrefix?: string
   onOpen?: () => void
   openLabel?: string
 }) {
@@ -312,7 +315,7 @@ export function HoursCell({
           title="Überstunden-Bezahlung, geschätzt"
           sx={{ overflowWrap: 'anywhere' }}
         >
-          {pay.status === 'ok' ? `Überstd. ${payText(pay)}` : payText(pay)}
+          {pay.status === 'ok' ? `${payPrefix} ${payText(pay)}` : payText(pay)}
         </Typography>
       )}
     </>

@@ -38,9 +38,13 @@ import {
   formatMinutes,
   formatOpenDays,
   formatWage,
+  minijobText,
+  monthBasisText,
   numberToInput,
   payFormula,
   payText,
+  wageCostFormula,
+  wageCostText,
   parseDaysInput,
   saveEntitlement,
   updateEmployee,
@@ -50,6 +54,7 @@ import {
   type Employee,
   type EmployeeProfile,
   type Entitlement,
+  type PlannedHours,
   type Shift,
   type VacationBalance,
 } from '../../../../../lib/dienstplanApi'
@@ -66,6 +71,7 @@ import {
   type ResponsiveColumn,
 } from '../../../../../components/layout'
 import EmployeeDialog, { ColorDot, messageOf } from '../EmployeeDialog'
+import { InfoButton } from '../../HoursInfo'
 import AbsenceDialog, {
   useFullScreenDialog,
   useSubmit,
@@ -393,7 +399,7 @@ export default function MitarbeiterProfilClient({ id }: { id: number }) {
 
       <PageSection
         title="Stunden (Plan)"
-        description="Geplante Schichten neben dem Soll aus den Wochenstunden; Urlaub und abwesend mindern das Soll, Ruhetag und Feiertage zählen nicht. Überstunden-Bezahlung geschätzt: Überstunden × Stundenlohn, ohne Zuschläge."
+        description="Geplante Schichten neben dem Soll aus den Wochenstunden; Urlaub und abwesend mindern das Soll, Ruhetag und Feiertage zählen nicht. Bezahlt wird der Monat: bis heute, Minusstunden einer Woche gleichen Überstunden einer anderen aus; die Woche ist nur ein Richtwert. Bezahlung und Lohnkosten geschätzt (× Stundenlohn), ohne Zuschläge."
       >
         <HoursView hours={profile.hours} />
       </PageSection>
@@ -674,8 +680,14 @@ function MasterData({ employee }: { employee: Employee }) {
         value={
           employee.employmentType
             ? EMPLOYMENT_TYPE_LABELS[employee.employmentType]
-            : '–'
+            : 'offen'
         }
+        hint={
+          employee.employmentType === 'minijob'
+            ? 'Lohnkosten des Monats werden gegen die Minijob-Grenze geprüft'
+            : undefined
+        }
+        testId="master-employment"
       />
       <DataRow
         label="Wochenstunden (Soll)"
@@ -685,7 +697,7 @@ function MasterData({ employee }: { employee: Employee }) {
       />
       <DataRow
         label="Stundenlohn (brutto)"
-        hint="nur für die geschätzte Überstundenbezahlung"
+        hint="für die geschätzte Überstundenbezahlung und die Lohnkosten"
         value={formatWage(employee.hourlyWageCents)}
         testId="master-wage"
       />
@@ -713,64 +725,133 @@ function MasterData({ employee }: { employee: Employee }) {
 }
 
 /**
- * Plan und Soll der laufenden Woche und des laufenden Monats (aus der API,
- * `plannedHours`). Ohne Wochenstunden steht das Soll „offen“, nie 0.
+ * Plan und Soll des laufenden Monats und der laufenden Woche (aus der API,
+ * `monthHours`/`plannedHours`). Bezahlt wird der Monat: bis heute, netto
+ * (Minusstunden einer Woche gleichen Überstunden einer anderen aus); daneben
+ * der ganze Monat, die Lohnkosten und bei Minijob die Grenze. Die Woche ist
+ * nur ein Richtwert. Ohne Wochenstunden steht das Soll „offen“, nie 0.
  */
 function HoursView({ hours }: { hours: EmployeeProfile['hours'] }) {
-  const rows = [
-    {
-      key: 'week',
-      label: `Woche ${formatDateShortDe(hours.week.from)} – ${formatDateDe(
-        hours.week.to
-      )}`,
-      h: hours.week,
-    },
-    {
-      key: 'month',
-      label: `Monat ${formatDateShortDe(hours.month.from)} – ${formatDateDe(
-        hours.month.to
-      )}`,
-      h: hours.month,
-    },
-  ]
+  const month = hours.month
+  const week = hours.week
+  const plannedHint = (h: PlannedHours) =>
+    `Plan ${hoursTexts(h).plan} · Soll ${hoursTexts(h).target}${
+      h.targetMinutes !== null && h.creditedDays > 0
+        ? ` (ohne ${formatDays(h.creditedDays)} ${
+            h.creditedDays === 1 ? 'Tag' : 'Tage'
+          } Urlaub/abwesend)`
+        : ''
+    }`
+  const payHint = (h: EmployeeProfile['hours']['week']) =>
+    payFormula(h.pay) ??
+    (h.pay.status === 'no-wage'
+      ? `${formatMinutes(
+          h.pay.overtimeMinutes ?? 0
+        )} Überstunden - Stundenlohn unter „Bearbeiten“ eintragen`
+      : undefined)
+  const showPay = (h: EmployeeProfile['hours']['week']) =>
+    h.pay.status === 'ok' || h.pay.status === 'no-wage'
+  const current = month.phase === 'current'
   return (
     <DataList>
-      {rows.map(({ key, label, h }) => {
-        const t = hoursTexts(h)
-        return (
-          <DataRow
-            key={key}
-            label={label}
-            hint={`Plan ${t.plan} · Soll ${t.target}${
-              h.targetMinutes !== null && h.creditedDays > 0
-                ? ` (ohne ${formatDays(h.creditedDays)} ${
-                    h.creditedDays === 1 ? 'Tag' : 'Tage'
-                  } Urlaub/abwesend)`
-                : ''
-            }`}
-            value={t.diff ?? 'Soll offen'}
-            testId={`hours-${key}`}
-          />
-        )
-      })}
-      {rows
-        .filter(({ h }) => h.pay.status === 'ok' || h.pay.status === 'no-wage')
-        .map(({ key, h }) => (
-          <DataRow
-            key={`pay-${key}`}
-            label={`Überstunden ${
-              key === 'week' ? 'Woche' : 'Monat'
-            }: Bezahlung geschätzt`}
-            hint={
-              payFormula(h.pay) ??
-              `${formatMinutes(
-                h.pay.overtimeMinutes ?? 0
-              )} Überstunden - Stundenlohn unter „Bearbeiten“ eintragen`
-            }
-            value={payText(h.pay)}
-            testId={`pay-${key}`}
-          />
-        ))}
+      <DataRow
+        label={
+          <>
+            {`Monat ${monthBasisText(month)} · ${formatDateShortDe(
+              month.from
+            )} – ${formatDateDe(month.to)}`}
+            <InfoButton info="bisHeute" />
+          </>
+        }
+        hint={plannedHint(month)}
+        value={hoursTexts(month).diff ?? 'Soll offen'}
+        testId="hours-month"
+      />
+      {showPay(month) && (
+        <DataRow
+          label={
+            <>
+              Überstunden Monat: Bezahlung geschätzt (netto im Monat)
+              <InfoButton info="verrechnung" />
+            </>
+          }
+          hint={payHint(month)}
+          value={payText(month.pay)}
+          testId="pay-month"
+        />
+      )}
+      {current && (
+        <DataRow
+          label={`Ganzer Monat geplant · bis ${formatDateDe(month.full.to)}`}
+          hint={plannedHint(month.full)}
+          value={hoursTexts(month.full).diff ?? 'Soll offen'}
+          testId="hours-month-full"
+        />
+      )}
+      {month.wageCost.toDate && (
+        <DataRow
+          label={
+            <>
+              {`Lohnkosten ${monthBasisText(month)} (geschätzt)`}
+              <InfoButton info="lohnkosten" />
+            </>
+          }
+          hint={
+            wageCostFormula(month.wageCost.toDate) ??
+            'Stundenlohn unter „Bearbeiten“ eintragen'
+          }
+          value={wageCostText(month.wageCost.toDate)}
+          testId="cost-month"
+        />
+      )}
+      {current && (
+        <DataRow
+          label="Lohnkosten ganzer Monat geplant (geschätzt)"
+          hint={wageCostFormula(month.wageCost.full) ?? undefined}
+          value={wageCostText(month.wageCost.full)}
+          testId="cost-month-full"
+        />
+      )}
+      {month.minijob && (
+        <DataRow
+          label={
+            <>
+              Minijob-Grenze
+              <InfoButton
+                info="minijob"
+                context={{
+                  minijobLimitCents: month.minijob.limitCents,
+                  year: month.from.slice(0, 4),
+                }}
+              />
+            </>
+          }
+          hint="geplante Lohnkosten des ganzen Monats"
+          value={minijobText(month.minijob, month.from.slice(0, 4))}
+          testId="minijob"
+        />
+      )}
+      <DataRow
+        label={`Woche ${formatDateShortDe(week.from)} – ${formatDateDe(
+          week.to
+        )} · Richtwert`}
+        hint={plannedHint(week)}
+        value={hoursTexts(week).diff ?? 'Soll offen'}
+        testId="hours-week"
+      />
+      {showPay(week) && (
+        <DataRow
+          label={
+            <>
+              Überstunden Woche: Richtwert (bezahlt wird der Monat)
+              <InfoButton info="woche" />
+            </>
+          }
+          hint={payHint(week)}
+          value={payText(week.pay)}
+          testId="pay-week"
+        />
+      )}
     </DataList>
   )
 }

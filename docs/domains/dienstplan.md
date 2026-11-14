@@ -3,7 +3,8 @@
 Der Inhaber plant in der Verwaltung, **wer wann arbeitet** (Schichten, alle Bereiche), **wer
 abwesend ist** (Urlaub, frei, abwesend), sieht **wann der Laden offen ist und wer dann im Verkauf
 steht** (Besetzung), die **geplanten Stunden** je Person neben dem Soll mit einer **geschätzten
-Überstundenbezahlung** (Stundenlohn) und führt je Person und Jahr ein **Urlaubskonto**.
+Überstundenbezahlung** und **Lohnkosten** (Stundenlohn), der **Minijob-Grenze** und führt je
+Person und Jahr ein **Urlaubskonto**.
 Mitarbeitende sehen noch nichts (später: eigene Ansicht, Urlaubsantrag). Ursprünglich laut D11
 nicht Teil des Pilots; jetzt im Pilot für den Inhaber freigegeben (Entscheidung 2026-11-08).
 
@@ -112,26 +113,48 @@ Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). AP
   - **Ohne Wochenstunden ist das Soll „offen“**, nie 0, und es gibt keine Differenz.
   - **Differenz** = Plan − Soll, als Text mit Vorzeichen („+2:30 h“, „−4:00 h“, „±0:00 h“).
   - **Später** (nicht Teil dieser Stufe): Ist-Stunden aus der Stechuhr und der Vergleich Plan/Ist.
-- **Stundenlohn und geschätzte Überstundenbezahlung** (11/2026, `overtimePay`/`hoursOverview` in
-  `vacation.core.js`):
+- **Stundenlohn und geschätzte Überstundenbezahlung** (11/2026, `overtimePay`/`monthHours`/
+  `hoursOverview` in `vacation.core.js`):
   - **Stundenlohn** (brutto, €/h) ist Personendaten wie die übrigen Stammdaten: SQLite der Box,
     nur Inhaber, nie in `hq`; gepflegt im Profil („Bearbeiten“). Nicht erfasst = **„offen“**, nie 0.
     Das Audit-Log sagt nur, dass er sich geändert hat (`hourlyWageChanged`), nie den Betrag.
   - **Überstunden** = Plan − Soll eines Zeitraums, nur wenn positiv; **Bezahlung geschätzt** =
-    Überstunden × Stundenlohn, auf den Cent gerundet. **Keine Zuschläge**, keine Verrechnung mit
-    Minusstunden eines anderen Zeitraums, kein Freizeitausgleich - eine Schätzung nach Plan, keine
-    Lohnabrechnung, überall „geschätzt“ beschriftet.
+    Überstunden × Stundenlohn, auf den Cent gerundet. Kein Freizeitausgleich - eine Schätzung nach
+    Plan, keine Lohnabrechnung, überall „geschätzt“ beschriftet.
   - Ohne Soll: „Soll offen“; Plan ≤ Soll: „keine Überstunden“ (0 €); Überstunden ohne Lohn:
     **„Stundenlohn offen“**, nie 0 €. Die Summe zählt nur Personen mit Lohn und heißt dann
     „mind. … €“ mit „n × Stundenlohn offen“; ohne jeden Betrag „offen“.
+  - **Bezahlt wird der Monat, bis heute** (vorläufig, Entscheidung 2026-11-14, der Inhaber kann sie
+    ändern): im **laufenden Monat** stehen als Hauptzahl Plan bis heute gegen Soll bis heute
+    (Erster bis heute, einschließlich) - daraus Überstunden und Bezahlung; der ganze Monat steht
+    daneben („ganzer Monat geplant 150:00 h / Soll 120:00 h“). **Vergangener Monat:** der ganze
+    Monat. **Künftiger Monat:** nur geplant gegen Soll, **noch keine Überstunden** („Monat noch
+    nicht begonnen“). „Heute“ ist das Datum der Box (API, `today` an den Core), nie die Uhr des
+    Browsers.
+  - **Verrechnung im Monat** (vorläufig): Minusstunden einer Woche gleichen Überstunden einer
+    anderen Woche **im selben Monat** aus - Überstunden des Monats = max(0, Plan − Soll des
+    Monats bis heute), Bezahlung = das × Stundenlohn. Die **Woche** zeigt ihre eigene Differenz und
+    eine Bezahlung nur als **Richtwert**; die Summe, auf die man schaut, ist der Monat (so
+    beschriftet). **Kein Übertrag zwischen Monaten** (offen).
+  - **Zuschläge:** keine (Nacht, Sonntag, Feiertag) - weiter offen.
+  - **Lohnkosten (geschätzt)** (vorläufig) = Plan-Stunden × Stundenlohn (brutto, ohne
+    Arbeitgeberanteile) je Person für den Monat: bis heute und ganzer Monat geplant, dazu die
+    Summe. Ohne Lohn bei geplanten Stunden „Stundenlohn offen“ (nie 0 €), die Summe dann
+    „mind. … €“ mit „n × Stundenlohn offen“; wer nichts geplant hat, kostet 0 €.
+  - **Minijob-Grenze** (vorläufig): bei Beschäftigung **Minijob** warnt die Seite, wenn die
+    geplanten Lohnkosten des **ganzen Monats** über der Grenze liegen (genau die Grenze ist noch in
+    Ordnung). Grenze **2026: 603 € im Monat**, einmal in `MINIJOB_LIMIT_CENTS` (`vacation.core.js`,
+    je Jahr; Mindestlohn × 130 ÷ 3). Ein Jahr ohne Wert prüft nichts („Minijob-Grenze … nicht
+    hinterlegt“), ohne Stundenlohn „Minijob-Grenze offen“. Die Beschäftigung (Vollzeit, Teilzeit,
+    Minijob, Aushilfe; leer = „offen“) gab es schon im Profil (`employment_type`) - keine Migration.
   - **Woche und Monat:** die Woche (Mo-So) und **der Monat ihres Donnerstags** (wie die
     Kalenderwoche; KW 49/2026 = 30.11.-06.12. gehört zum Dezember, die Seite sagt das). Jeder Tag
     zählt in dem Monat, in dem er liegt. Das Profil zeigt die laufende Woche und den laufenden
-    Kalendermonat.
+    Kalendermonat (bis heute und ganz).
   - **Offene Inhaber-Fragen** (bewusst nicht erfunden): Zuschläge (Nacht, Sonntag, Feiertag)?
-    Werden Überstunden bezahlt oder abgefeiert, und gleicht der Monat Minusstunden einer Woche aus?
-    Minijob-Grenze bei Überstunden? Braucht es eine Summe der Lohnkosten je Monat (Plan ×
-    Stundenlohn)? Ab wann zählen Ist-Stunden statt Plan?
+    Werden Überstunden bezahlt oder abgefeiert? Übertrag von Plus-/Minusstunden in den nächsten
+    Monat? Die vorläufigen Entscheidungen oben (bis heute, Verrechnung im Monat, Lohnkosten,
+    Minijob) bestätigen. Minijob-Grenze ab 2027 eintragen. Ab wann zählen Ist-Stunden statt Plan?
 - **Feiertage Saarland sind geschlossen** (Neujahr, Karfreitag, Ostermontag, 1. Mai, Christi
   Himmelfahrt, Pfingstmontag, Fronleichnam, Mariä Himmelfahrt, 3. Oktober, Allerheiligen, beide
   Weihnachtsfeiertage): sie zählen nie als Urlaubstag und stehen im Kalender wie der Ruhetag als
@@ -191,27 +214,38 @@ Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). AP
     eigene Meldung über der Seite. Am Handy steht der Rest zusätzlich unter dem Namen, weil die
     Kontospalte ganz rechts liegt. Das Jahr reicht von 2000 bis 2100 (so weit rechnet die API das
     Konto); ein anderes `?jahr=` zeigt das laufende Jahr.
-  - **Stunden und Überstunden** (unter Woche und Monat, `HoursOverview.tsx`): Kennzahlen Plan/Soll
-    und geschätzte Überstundenbezahlung je Zeitraum (Woche und Monat ihres Donnerstags; im Monat
-    nur der Monat), darunter je Person der Stundenlohn und je Zeitraum die Differenz, Plan / Soll
-    und bei Überstunden „≈ … €“ oder „Stundenlohn offen“. Folgt dem Bereichsfilter (Summen von der
-    API). Person antippen - oder ihre Zelle in der Stundenspalte des Rasters - öffnet eine
-    Schublade mit Woche und Monat (Plan, Soll, Differenz, Bezahlung mit Rechenweg „2:30 h ×
-    13,90 €/h“) und dem Weg ins Profil („Stundenlohn im Profil eintragen“). Die Stundenspalte des
-    Rasters zeigt zusätzlich „Überstd. ≈ … €“ oder „Stundenlohn offen“. Scheitert nur die
-    Übersicht, steht der Kalender trotzdem. Liest nur `GET /api/dienstplan/hours`, rechnet nichts.
+  - **Stunden und Überstunden** (unter Woche und Monat, `HoursOverview.tsx`): oben die Kennzahlen
+    des **Monats** („November 2026 · bis heute (14.11.) · wird bezahlt“: Plan bis heute mit Soll,
+    Überstunden netto, Lohnkosten bis heute, ganzer Monat geplant mit Lohnkosten), darunter in der
+    Woche die Kennzahlen der **KW als Richtwert**; ein Hinweis nennt Minijobs über der Grenze.
+    Die Tabelle je Person: Stundenlohn, Monat (Differenz, Plan / Soll bis heute, „≈ … €“ oder
+    „Stundenlohn offen“, „ganzer Monat …“), in der Woche die KW (Richtwert), Lohnkosten (bis heute,
+    ganzer Monat, Minijob-Grenze). Folgt dem Bereichsfilter (Summen von der API). Person antippen -
+    oder ihre Zelle in der Stundenspalte des Rasters - öffnet eine Schublade mit Monat (bis heute,
+    ganzer Monat, Lohnkosten mit Rechenweg, Minijob) und Woche (Richtwert) und dem Weg ins Profil
+    („Stundenlohn im Profil eintragen“). Die Stundenspalte des Rasters zeigt zusätzlich
+    „Überstd. ≈ … €“ (im laufenden Monat „Überstd. bis heute ≈ … €“) oder „Stundenlohn offen“.
+    Scheitert nur die Übersicht, steht der Kalender trotzdem. Liest nur
+    `GET /api/dienstplan/hours`, rechnet nichts.
+  - **Regeln erklärt:** ein kleiner (i)-Knopf neben Kennzahlen und Bezeichnungen (Übersicht,
+    Schublade, Profil) öffnet per Tippen eine kurze Erklärung (bis heute / ganzer Monat,
+    Verrechnung im Monat, Woche als Richtwert, geschätzte Bezahlung ohne Zuschläge, Lohnkosten,
+    Minijob-Grenze); „So rechnet die App“ unter den Kennzahlen klappt alle auf einmal auf. Die
+    Texte stehen einmal in `src/lib/dienstplanInfo.ts` (du-Form); Werte wie die Minijob-Grenze
+    kommen aus der API-Antwort (`limitCents`, dieselbe Konstante wie die Rechnung), nie
+    abgetippt.
   - **Meldungen** („Schicht angelegt.“, Fehler beim Löschen) gehören zum Zeitraum und verschwinden
     beim Blättern oder Ansichtswechsel. Höchstens zwei stehen über dem Kalender: ein Fehler ersetzt
     die Erfolgsmeldung, und ein Ladefehler beim Nachladen zeigt sich nur, solange kein Fehler einer
     Aktion dasteht.
   - Farbe ist nie der einzige Träger: Kürzel, Text und eine Legende stehen dabei.
 - **`/admin/dienstplan/mitarbeiter` - Liste** (aktiv / ausgeschieden / alle), Mitarbeiter anlegen.
-- **`/admin/dienstplan/mitarbeiter/[id]` - Profil:** Stammdaten (mit **Stundenlohn**, ohne:
-  „offen“), Urlaubskonto des Jahres (Anspruch, Übertrag, genehmigt, geplant, verfallen, Rest),
-  Anspruch je Jahr, Abwesenheiten des Jahres, **Stunden** der laufenden Woche und des laufenden
-  Monats (Plan, Soll, Differenz; bei Überstunden die geschätzte Bezahlung mit Rechenweg oder
-  „Stundenlohn offen“), kommende Schichten. Den Stundenlohn ändert „Bearbeiten“ (Euro mit Komma,
-  leer = offen).
+- **`/admin/dienstplan/mitarbeiter/[id]` - Profil:** Stammdaten (mit **Beschäftigung** und
+  **Stundenlohn**, ohne: „offen“), Urlaubskonto des Jahres (Anspruch, Übertrag, genehmigt, geplant,
+  verfallen, Rest), Anspruch je Jahr, Abwesenheiten des Jahres, **Stunden** des laufenden Monats
+  (bis heute und ganzer Monat: Plan, Soll, Differenz; Überstunden-Bezahlung netto im Monat;
+  Lohnkosten; bei Minijob die Grenze) und der laufenden Woche (Richtwert), kommende Schichten.
+  Beschäftigung und Stundenlohn ändert „Bearbeiten“ (Euro mit Komma, leer = offen).
 - **Handy und Tablet:** die Raster scrollen waagrecht, die Namensspalte bleibt stehen. Alle eigenen
   klickbaren Flächen (Name als Link aufs Profil, Einträge der Woche, Tageszellen im Monat,
   Monatsköpfe und Monate im Jahr, Farbfelder, Vorlagen-Chips im Schichtdialog) sind auf
@@ -227,7 +261,8 @@ Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). AP
 
 ## Tests
 
-API: `tests/unit/vacationCore.test.js` (auch Öffnungszeiten, Besetzung, Stunden, Überstunden),
+API: `tests/unit/vacationCore.test.js` (auch Öffnungszeiten, Besetzung, Stunden, Überstunden,
+Monat bis heute, Verrechnung, Lohnkosten, Minijob-Grenze),
 `tests/integration/dienstplan.test.ts`. Landing: `src/config/openingHours.spec.ts`. Verwaltung:
 `src/lib/dienstplanCalendar.spec.ts`, `src/lib/dienstplanApi.spec.ts`,
 `src/app/admin/dienstplan/**/*.spec.tsx`. Lokaler Seed mit erfundenen Personen:

@@ -221,10 +221,15 @@ export default function EmployeeDialog({
                 onChange={(e) =>
                   setEmploymentType(e.target.value as EmploymentType | '')
                 }
+                helperText={
+                  employmentType === 'minijob'
+                    ? 'Lohnkosten des Monats werden gegen die Minijob-Grenze geprüft'
+                    : undefined
+                }
                 fullWidth
               >
                 <MenuItem value="">
-                  <em>nicht angegeben</em>
+                  <em>offen</em>
                 </MenuItem>
                 {EMPLOYMENT_TYPES.map((t) => (
                   <MenuItem key={t} value={t}>

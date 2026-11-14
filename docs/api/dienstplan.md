@@ -40,15 +40,17 @@ people only.
 | `GET /api/dienstplan/balance?year=[&employeeId=]`                | one balance, or a list of all employees employed in that year (`+ displayName, area, active`)                                       |
 | `GET /api/dienstplan/hours?week=\|month=[&area=]`                | `{ today, area, periods: { week \| null, month }, closedWeekdays, employees[], rows[], totals }` - hours and estimated overtime pay |
 
-The profile's `hours` is `{ week, month }`: `plannedHours` (below) plus `pay` (`overtimePay`) for
-the current week (Mon-Sun) and the current month (Berlin today), independent of `year`.
+The profile's `hours` is `{ week, month }`: the current week (Mon-Sun) as `plannedHours` (below)
+plus `pay` (`overtimePay`), and the current month (Berlin today) as `monthHours` (through today,
+whole month in `full`, wage costs, Minijob check), independent of `year`.
 
 `/hours`: `week=JJJJ-MM-TT` (any day) → that week and the month of its Thursday (`weekMonth`, ISO
 week rule); `month=JJJJ-MM` → only the month (`periods.week: null`). Exactly one of them, years
 2000-2100 (else 400 `invalid_period`); `area` one of the areas or `alle` (else 400 `invalid_area`)
 filters rows and totals. Employees as in the calendar (active + inactive with entries in the
-range). Each row `{ employeeId, hourlyWageCents, week?, month }`, each period `plannedHours` +
-`pay`; `totals.week|month` from `hoursOverview` (below).
+range). Each row `{ employeeId, hourlyWageCents, week?, month }`: `week` = `plannedHours` + `pay`
+(indicative only), `month` = `monthHours` (below); `totals.week|month` from `hoursOverview`. The
+service passes `today` (`this.today()`, the box's date) into the core.
 
 In the profile each absence also carries `daysInYear`: its vacation days inside the shown year
 (the part the balance counts), next to `days` for the whole range - they differ for an absence
@@ -152,13 +154,31 @@ diffMinutes, targetDays, creditedDays, status }`. Plan = Σ (end − start − b
 - **Overtime pay** (`overtimePay(hours, hourlyWageCents)`): overtime = `max(0, diffMinutes)`;
   `status` `ok` (`amountCents = round(overtime × cents ÷ 60)`) | `no-overtime` (0) | `no-wage`
   (overtime but no wage: `amountCents: null`, never 0) | `no-target` (no weekly hours). No
-  surcharges, no carry-over between periods - an estimate from the plan. `hourlyWageCents` is an
+  surcharges, no carry-over between months - an estimate from the plan.
+- **Month** (`monthHours({ month, today, employee, shifts, absences, closedWeekdays })`,
+  provisional 2026-11-14): `phase` = `monthPhase(month, today)` `past` | `current` | `future`
+  (`today` is required - the core never reads the clock; missing → `TypeError`). The
+  `plannedHours` fields cover the counted range: `current` → first of the month … `today`
+  (inclusive), else the whole month; `asOf` = `today` when current; `full` = `plannedHours` of the
+  whole month. `pay` = `overtimePay` of the counted range - net within the month (minus hours of
+  one week offset overtime of another); `future` → `{ status: 'future', overtimeMinutes: null,
+  amountCents: null }`. `wageCost: { toDate (null when future), full }` from `wageCost(minutes,
+  wage)` = round(plan × wage ÷ 60), `status` `ok` | `no-wage` (planned hours without a wage:
+  `amountCents: null`, never 0; nothing planned = 0). `minijob` only for `employmentType:
+  'minijob'`: `minijobCheck(wageCost.full, year)` → `{ status: ok | over | no-wage | no-limit,
+  limitCents, plannedCostCents, overCents }`; over = strictly above the limit.
+  `MINIJOB_LIMIT_CENTS` = `{ 2026: 60300 }` (603 €; a year without a value → `no-limit`). `hourlyWageCents` is an
   integer 1-99999 (0,01-999,99 €, `MAX_HOURLY_WAGE_CENTS`; else 400 `validation_failed`), `null`
-  clears it. `hoursOverview({ periods, employees, shifts, absences, closedWeekdays })` runs
-  `plannedHours` + `overtimePay` per period and sums `{ plannedMinutes, targetMinutes,
-overtimeMinutes, amountCents, estimatedCount, missingWageCount, noTargetCount }`: target and
-  overtime only over people with a target; `amountCents` only over people with a wage, `null`
-  when overtime exists only without a wage. Helpers `weekOf`, `monthOf`, `weekMonth`.
+  clears it. `hoursOverview({ periods: { week?, month? }, today, employees, shifts, absences,
+closedWeekdays })` runs `plannedHours` + `overtimePay` for the week and `monthHours` for the
+  month and sums `{ plannedMinutes, targetMinutes, overtimeMinutes, amountCents, estimatedCount,
+missingWageCount, noTargetCount }` (the month over its counted range): target and overtime only
+  over people with a target; `amountCents` only over people with a wage, `null` when overtime
+  exists only without a wage. The month totals add `phase`, `asOf`, `full: { plannedMinutes,
+targetMinutes, noTargetCount }`, `wageCost: { toDate | null, full }` each `{ amountCents
+(known wages only, null if none), missingWageCount }` and `minijob: { count, overCount,
+openCount, limitCents }`; a future month has `overtimeMinutes`/`amountCents` `null`. Helpers
+  `weekOf`, `monthOf`, `weekMonth`.
 - **`days[]`**: `{ date, weekday (ISO), holidayName, restDay, closed, weight, halfDayName,
 openingHours, kind, kindLabel, kindDetail, calendar, verkaufBesetzt, besetzung }`.
   **Calendar (Z14):** `closed`, `openingHours` and `kind` (`normal` | `ruhetag` | `geschlossen` |
@@ -189,10 +209,13 @@ nothing and returns no warnings.
 
 `tests/unit/vacationCore.test.js` (Easter and holidays over several years, Ruhetag, half days,
 24./31.12., entry/exit mid-year, carryover expiry, no-config, opening hours, Besetzung, planned vs.
-target hours, overtime pay incl. a missing wage, month boundaries and a week across two months),
+target hours, overtime pay incl. a missing wage, month boundaries and a week across two months,
+month through today incl. today = first/last day, netting within the month, future month, wage
+costs with open wages, Minijob limit exact/over),
 `tests/integration/dienstplan.test.ts` (401/403 for other roles and PIN sessions, validation,
 overlaps, warnings, audit without notes, calendar with opening hours, Besetzung and hours, profile
-hours, hourly wage validation and audit, `/hours`), `tests/migrations/pilotBaseline.test.ts`
+hours, hourly wage validation and audit, `/hours` incl. current/past/future month, wage costs
+and the Minijob limit), `tests/migrations/pilotBaseline.test.ts`
 (also: existing employees keep their rows, wage `NULL`). `createApp({ dienstplan: { today, financeDir } })`
 pins the clock and the finance dir. The setup-dev seed (`seedDienstplan` in
 `.claude/skills/setup-dev/scripts/lib/seed-next.mjs`) creates eight invented people with invented
