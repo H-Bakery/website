@@ -19,6 +19,7 @@ route of that name.
   (`libs/shared/hq-products`, CommonJS, also used by the Digitale Bäckerei's `sync-products`);
   `products.ts` keeps only the landing mapping (fallback images, category labels, mock fallback).
 - **Product images rendered from the 3D models (DB13):** see [below](#product-images-from-the-3d-models).
+- **Navigation and accessibility:** see [below](#navigation-and-accessibility).
 - **Opening hours** have one source, `src/config/openingHours.ts`, mirrored into
   `libs/shared/ui/src/lib/footer/footer-openings.tsx` and the shop's
   `libs/bakery-shop/feature-cart/src/lib/pickup.ts` - change all three together.
@@ -30,6 +31,32 @@ route of that name.
   Öffnungszeiten bitte telefonisch erfragen“), never „geöffnet“, and the next opening skips holidays.
 - Shared brand claims (`REVIEW_SUMMARY` etc.) live in `libs/shared/utils/src/lib/brand.ts`; the
   shop's rules for them (nothing invented, snapshot values) are in [shop.md](./shop.md).
+
+## Navigation and accessibility
+
+- **Header** (`components/header/`): a `<header>` (banner); the links sit in a
+  `<nav aria-label="Hauptnavigation">` (one on desktop, one inside the mobile dialog).
+  - desktop: Sortiment, Neuigkeiten, Über uns, Kontakt in the middle, Bestellen as CTA. Logo and CTA
+    sit in equally wide side slots (`SIDE_SLOT`), so the menu is centred in normal flow and cannot
+    overlap them (checked at 900 and 1440 px). The current page gets `aria-current="page"`.
+  - mobile: the hamburger (44x44 hit area) opens a MUI `Modal` whose panel is
+    `role="dialog" aria-modal aria-label="Hauptmenü"`, with the same links in its own
+    „Hauptnavigation“, a phone link (`LEGAL.phoneHref`) and a „Menü schließen“ button. The
+    hamburger's X stays visible but is `aria-hidden` while the dialog is open, so the dialog needs
+    its own button; Escape and a tap beside the menu close it too.
+- **Skip link** „Zum Inhalt springen“ (`app/layout.tsx`): the first focusable element, visible only
+  on focus, targets `<main id="inhalt" tabIndex={-1}>`.
+- **Featured products carousel** (`components/home/FeaturedProducts.tsx`, WCAG 2.2.2): advances
+  every 5 s, but not with `prefers-reduced-motion: reduce`, pauses while hovered or focused, and
+  stops for good on pointerdown/touch, sideways scrolling (trackpad, shift + wheel) or any key
+  inside it; a vertical wheel that scrolls the page past it does not stop it. A pause/play button next
+  to the dots stops or (deliberately) restarts it. The dots are buttons „Produkt N von M“ with
+  `aria-current`, 44 px hit area (narrowing to 32 px wide on very small screens).
+- **404** (`app/not-found.tsx`): Next 16 reads `metadata` from `not-found.tsx` as the last level
+  after the layout, also for the export's `404.html`. It sets its own title and `robots: null`,
+  which drops the layout's `index, follow`; Next writes `<meta name="robots" content="noindex">`
+  for every 404 itself, so the page carries exactly one `noindex` (asserted by
+  `landing-smoke.spec.ts` against the export).
 
 ## Product images from the 3D models
 

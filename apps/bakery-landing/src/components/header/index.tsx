@@ -1,9 +1,11 @@
 'use client'
 import React from 'react'
 import { Box } from '@mui/material'
+import PhoneIcon from '@mui/icons-material/Phone'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { HeusserLogo } from '../icons'
+import { LEGAL } from '../../config/legal'
 import Hamburger from './Hamburger'
 import Item from './Item'
 import Modal from './Modal'
@@ -19,6 +21,7 @@ const items: MenuItem[] = [
   { label: 'Sortiment', path: '/products' },
   { label: 'Neuigkeiten', path: '/news' },
   { label: 'Über uns', path: '/about' },
+  { label: 'Kontakt', path: '/contact' },
 ]
 
 const ctaItems: MenuItem[] = [
@@ -45,19 +48,26 @@ const Header = () => {
 
   return (
     <Box
+      component="header"
       sx={{
         position: 'relative',
         height: HEADER_SPACE,
       }}
     >
       <Box sx={styles.header}>
-        <Link href="/" aria-label="Bäckerei Heusser – Startseite">
-          <Box sx={styles.logo}>
-            <HeusserLogo color="#5A2E2A" />
-          </Box>
-        </Link>
+        <Box sx={styles.logoSlot}>
+          <Link href="/" aria-label="Bäckerei Heusser – Startseite">
+            <Box sx={styles.logo}>
+              <HeusserLogo color="#5A2E2A" />
+            </Box>
+          </Link>
+        </Box>
         {/* Desktop navigation */}
-        <Box sx={{ display: { xs: 'none', md: 'flex' } }}>
+        <Box
+          component="nav"
+          aria-label="Hauptnavigation"
+          sx={styles.desktopNav}
+        >
           <Box sx={styles.menu}>
             {items.map((item) => (
               <Item key={item.label} {...item} />
@@ -76,8 +86,9 @@ const Header = () => {
       </Box>
       <Modal setOpen={setOpen} open={open}>
         <Box
-          id="mobile-menu"
-          sx={{ ...styles.mobileMenu, display: { xs: 'flex', md: 'none' } }}
+          component="nav"
+          aria-label="Hauptnavigation"
+          sx={styles.mobileMenu}
         >
           {items.map((item) => (
             <MobileItem key={item.label} {...item} />
@@ -86,10 +97,22 @@ const Header = () => {
             <MobileItem key={item.label} {...item} />
           ))}
         </Box>
+        <Box component="a" href={LEGAL.phoneHref} sx={styles.mobilePhone}>
+          <PhoneIcon fontSize="small" aria-hidden="true" />
+          Anrufen: {LEGAL.phone}
+        </Box>
       </Modal>
     </Box>
   )
 }
+
+/**
+ * Breite, die Logo und Bestellen-Knopf in der Desktop-Leiste mindestens
+ * belegen. Beide Seiten sind gleich breit, damit das Menü dazwischen genau in
+ * der Mitte der Leiste steht - und es kann sie nicht überdecken, weil es im
+ * normalen Fluss liegt statt absolut darüber.
+ */
+const SIDE_SLOT = 140
 
 const styles = {
   header: {
@@ -108,22 +131,32 @@ const styles = {
     borderRadius: '8px',
     p: { xs: 1, sm: 2 },
   },
+  logoSlot: {
+    display: 'flex',
+    flexShrink: 0,
+    minWidth: { md: SIDE_SLOT },
+  },
   logo: {
     cursor: 'pointer',
     '& svg': {
+      display: 'block',
       maxHeight: 40,
       width: 'auto',
     },
   },
+  desktopNav: {
+    display: { xs: 'none', md: 'flex' },
+    flex: 1,
+    alignItems: 'center',
+  },
   menu: {
     display: 'flex',
-    position: 'absolute' as const,
-    top: 16,
-    left: '50%',
-    transform: 'translateX(-50%)',
+    flex: 1,
+    justifyContent: 'center',
+    px: 1,
 
     '& .menu-item': {
-      mx: 1,
+      mx: { md: 0.5, lg: 1 },
       fontFamily: '"Merriweather", serif',
       fontSize: '0.95rem',
     },
@@ -131,16 +164,24 @@ const styles = {
   mobileMenu: {
     display: 'flex',
     flexDirection: 'column' as const,
-
-    '& .menu-item': {
-      mb: 2,
-    },
+    gap: 1,
+  },
+  mobilePhone: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    gap: 1,
+    minHeight: 44,
+    mt: 2,
+    color: 'text.primary',
+    textDecoration: 'underline',
+    textUnderlineOffset: '4px',
   },
   ctas: {
     display: 'flex',
-    '& .menu-item': {
-      ml: 1,
-    },
+    flexShrink: 0,
+    justifyContent: 'flex-end',
+    minWidth: SIDE_SLOT,
   },
 }
 

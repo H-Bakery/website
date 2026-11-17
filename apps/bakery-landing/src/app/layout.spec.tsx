@@ -1,5 +1,26 @@
+import React from 'react'
 import { render, screen } from '@testing-library/react'
 import RootLayout, { metadata } from './layout'
+
+jest.mock('next/navigation', () => ({
+  usePathname: () => '/',
+  // AppRouterCacheProvider (ThemeRegistry) meldet hier sein CSS an.
+  useServerInsertedHTML: jest.fn(),
+}))
+
+/**
+ * Rendert den Inhalt von `<body>` aus dem Layout. `<html>` selbst lässt sich
+ * in einem `<div>` nicht sinnvoll rendern; geprüft wird, was im Body steht.
+ */
+function renderLayoutBody() {
+  const html = RootLayout({ children: <p>Seiteninhalt</p> })
+  const body = React.Children.toArray(html.props.children).find(
+    (child): child is React.ReactElement<{ children: React.ReactNode }> =>
+      React.isValidElement(child) && child.type === 'body'
+  )
+  if (!body) throw new Error('Layout ohne <body>')
+  return render(<>{body.props.children}</>)
+}
 
 describe('Landing RootLayout', () => {
   it('includes correct metadata', () => {
@@ -56,5 +77,22 @@ describe('Landing RootLayout', () => {
     expect(metadata.formatDetection.email).toBe(false)
     expect(metadata.formatDetection.address).toBe(false)
     expect(metadata.formatDetection.telephone).toBe(false)
+  })
+
+  it('beginnt mit dem Sprunglink „Zum Inhalt springen“ auf main#inhalt', () => {
+    const { container } = renderLayoutBody()
+
+    const links = screen.getAllByRole('link')
+    expect(links[0]).toHaveAccessibleName('Zum Inhalt springen')
+    expect(links[0]).toHaveAttribute('href', '#inhalt')
+    // Erstes fokussierbares Element überhaupt, noch vor dem Logo.
+    expect(container.querySelector('a[href], button, [tabindex="0"]')).toBe(
+      links[0]
+    )
+
+    const main = screen.getByRole('main')
+    expect(main).toHaveAttribute('id', 'inhalt')
+    expect(main).toHaveAttribute('tabindex', '-1')
+    expect(main).toHaveTextContent('Seiteninhalt')
   })
 })
