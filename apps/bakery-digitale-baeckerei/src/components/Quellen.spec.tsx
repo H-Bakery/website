@@ -1,7 +1,7 @@
 import React from 'react'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import Quellen, { INTRO_NOCHMAL_TEXT } from './Quellen'
+import Quellen, { INTRO_NOCHMAL_TEXT, QUELLEN_TITEL } from './Quellen'
 import { VERBOTEN, zeige } from './testdaten'
 
 describe('Quellen', () => {
@@ -28,9 +28,49 @@ describe('Quellen', () => {
     )
     expect(within(dialog).getAllByRole('listitem')).toHaveLength(5)
     for (const link of within(dialog).getAllByRole('link')) {
+      expect(link).toHaveAttribute('target', '_blank')
       expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'))
     }
     expect(text).not.toMatch(VERBOTEN)
+  })
+
+  it('heißt weiter „Quellen“ - Knopf und Dialog (andere Specs suchen danach)', async () => {
+    expect(QUELLEN_TITEL).toBe('Quellen')
+    const user = userEvent.setup()
+    zeige(<Quellen />)
+    await user.click(screen.getByRole('button', { name: 'Quellen' }))
+    expect(screen.getByRole('dialog', { name: 'Quellen' })).toBeInTheDocument()
+  })
+
+  it('zeigt das Impressum der Landingpage gleich daneben - ohne den Dialog', () => {
+    zeige(<Quellen />)
+    const impressum = screen.getByRole('link', { name: 'Impressum' })
+    expect(impressum).toBeVisible()
+    // Wurzelrelativ: dieselbe Seite wie im Fuß der Landingpage, nicht unter
+    // dem Unterpfad der App.
+    expect(impressum).toHaveAttribute('href', '/imprint')
+    expect(impressum).toHaveAttribute('target', '_blank')
+    expect(impressum).toHaveAttribute(
+      'rel',
+      expect.stringContaining('noopener')
+    )
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('nennt im Dialog Impressum und Datenschutz', async () => {
+    const user = userEvent.setup()
+    zeige(<Quellen />)
+    await user.click(screen.getByRole('button', { name: 'Quellen' }))
+    const dialog = screen.getByRole('dialog', { name: 'Quellen' })
+    const rechtliches = within(dialog).getByRole('region', {
+      name: 'Rechtliches',
+    })
+    expect(
+      within(rechtliches).getByRole('link', { name: 'Impressum' })
+    ).toHaveAttribute('href', '/imprint')
+    expect(
+      within(rechtliches).getByRole('link', { name: 'Datenschutz' })
+    ).toHaveAttribute('href', '/datenschutz')
   })
 
   it('schließt über „Schließen“ und mit Escape', async () => {

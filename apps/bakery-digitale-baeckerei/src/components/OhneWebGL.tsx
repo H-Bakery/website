@@ -1,12 +1,25 @@
 'use client'
 import React from 'react'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
 import type { BlickpunktKurz } from '../config/raeume'
-import type { ListenZeile } from '../lib/karte'
+import { type Karte, type ListenZeile, hatLangenText } from '../lib/karte'
+import {
+  DATENSCHUTZ_PFAD,
+  DATENSCHUTZ_TEXT,
+  IMPRESSUM_PFAD,
+  IMPRESSUM_TEXT,
+  NEUER_TAB,
+  STARTSEITE_PFAD,
+  STARTSEITE_TEXT,
+} from '../lib/links'
+import { MEHR_LESEN_TEXT, WEBSITE_LINK_TEXT } from './ProduktSheet'
 import { KEINE_PRODUKTINFOS_TEXT, gruppiereEintraege } from './produktliste'
-import { rand } from './theme'
+import { TOUCH_TARGET, rand } from './theme'
 
 export const OHNE_WEBGL_TEXT =
   'Die 3D-Ansicht ist auf diesem Gerät nicht verfügbar.'
@@ -56,8 +69,9 @@ const UNSICHTBAR = {
 
 /**
  * Alles, was im Laden liegt, als Text: je Blickpunkt ein Abschnitt mit Name,
- * Einheit und Kurztext. Ersatz, wenn das Gerät kein 3D kann, und der Weg für
- * Screenreader.
+ * Einheit, Kurztext und - wenn es ihn gibt - dem langen Text. Ersatz, wenn das
+ * Gerät kein 3D kann (dann mit „Mehr auf der Website“ und einem Fuß mit
+ * Impressum und Datenschutz), und der Weg für Screenreader.
  */
 export default function OhneWebGL({
   raeume,
@@ -188,6 +202,7 @@ export default function OhneWebGL({
                               {produkt.kurztext}
                             </Typography>
                           )}
+                          <Mehr produkt={produkt} ersatz={ersatz} />
                         </Box>
                       ))}
                     </Paper>
@@ -196,6 +211,144 @@ export default function OhneWebGL({
               )
             })}
           </Box>
+        ))}
+
+        {ersatz && <Fuss />}
+      </Box>
+    </Box>
+  )
+}
+
+/** Leise Links im Fuß: 44 px hoch, unterstrichen. */
+const FUSS_LINK = {
+  minHeight: TOUCH_TARGET,
+  px: 1,
+  color: 'text.secondary',
+  fontSize: '0.875rem',
+  textDecoration: 'underline',
+  textUnderlineOffset: '3px',
+  '&:hover': { textDecoration: 'underline' },
+} as const
+
+/**
+ * Langer Text und „Mehr auf der Website“ unter dem Kurztext.
+ *
+ * Im Ersatz klappt der lange Text in einem `<details>` auf (geht ohne
+ * JavaScript-Zustand und bleibt nach dem Aufklappen stehen). Neben der
+ * laufenden 3D-Ansicht steht er offen da und ohne Link: Die Liste ist dort
+ * unsichtbar - ein Link oder ein `<summary>` wäre ein Tab-Halt, den niemand
+ * sieht.
+ */
+function Mehr({ produkt, ersatz }: { produkt: Karte; ersatz: boolean }) {
+  const lang = hatLangenText(produkt) ? produkt.text.trim() : null
+  if (!ersatz) {
+    return lang ? (
+      <Typography sx={{ mt: 0.5, whiteSpace: 'pre-line' }}>{lang}</Typography>
+    ) : null
+  }
+  if (!lang && !produkt.seite) return null
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'flex-start',
+        columnGap: 1,
+        mt: 0.25,
+        // Die Touch-Ziele (44 px) reichen in den Rand der Zeile hinein, der
+        // Text darin steht bündig mit Name und Kurztext.
+        mb: -1,
+        ml: -1,
+      }}
+    >
+      {lang && (
+        <Box
+          component="details"
+          sx={{
+            minWidth: 0,
+            // Aufgeklappt bekommt der Text die ganze Breite; der Link
+            // rutscht darunter.
+            '&[open]': { flexBasis: '100%' },
+            '&[open] > summary svg': { transform: 'rotate(180deg)' },
+          }}
+        >
+          <Box
+            component="summary"
+            sx={{
+              display: 'flex',
+              width: 'fit-content',
+              alignItems: 'center',
+              gap: 0.25,
+              minHeight: TOUCH_TARGET,
+              px: 1,
+              borderRadius: 1,
+              cursor: 'pointer',
+              listStyle: 'none',
+              color: 'primary.main',
+              fontSize: '0.875rem',
+              fontWeight: 500,
+              '&::-webkit-details-marker': { display: 'none' },
+              '@media (hover: hover)': {
+                '&:hover': { bgcolor: 'action.hover' },
+              },
+              '&:focus-visible': {
+                outline: '3px solid',
+                outlineOffset: 2,
+              },
+            }}
+          >
+            {MEHR_LESEN_TEXT}
+            <ExpandMoreIcon aria-hidden sx={{ fontSize: 20 }} />
+          </Box>
+          <Typography
+            sx={{ px: 1, pb: 1.5, lineHeight: 1.6, whiteSpace: 'pre-line' }}
+          >
+            {lang}
+          </Typography>
+        </Box>
+      )}
+      {produkt.seite && (
+        <Button
+          component="a"
+          href={produkt.seite}
+          endIcon={<OpenInNewIcon aria-hidden sx={{ fontSize: 18 }} />}
+          {...NEUER_TAB}
+        >
+          {WEBSITE_LINK_TEXT}
+        </Button>
+      )}
+    </Box>
+  )
+}
+
+/**
+ * Fuß des Ersatzes: Startseite, Impressum und Datenschutzerklärung der
+ * Landingpage (gleicher Ursprung, darum wurzelrelativ und ein einfaches `<a>`).
+ */
+function Fuss() {
+  return (
+    <Box
+      component="footer"
+      sx={{ mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}
+    >
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', columnGap: 1, ml: -1 }}>
+        {(
+          [
+            [STARTSEITE_PFAD, STARTSEITE_TEXT],
+            [IMPRESSUM_PFAD, IMPRESSUM_TEXT],
+            [DATENSCHUTZ_PFAD, DATENSCHUTZ_TEXT],
+          ] as const
+        ).map(([href, text]) => (
+          <Button
+            key={href}
+            component="a"
+            href={href}
+            color="inherit"
+            sx={FUSS_LINK}
+            {...NEUER_TAB}
+          >
+            {text}
+          </Button>
         ))}
       </Box>
     </Box>

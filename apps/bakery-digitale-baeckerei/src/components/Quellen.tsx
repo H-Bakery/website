@@ -10,47 +10,80 @@ import Link from '@mui/material/Link'
 import ReplayIcon from '@mui/icons-material/Replay'
 import Typography from '@mui/material/Typography'
 import useMediaQuery from '@mui/material/useMediaQuery'
+import {
+  DATENSCHUTZ_PFAD,
+  DATENSCHUTZ_TEXT,
+  IMPRESSUM_PFAD,
+  IMPRESSUM_TEXT,
+  NEUER_TAB,
+} from '../lib/links'
 import { TOUCH_TARGET, WENIGER_BEWEGUNG } from './theme'
 
 export const QUELLEN_TITEL = 'Quellen'
 export const INTRO_NOCHMAL_TEXT = 'Flug von der Straße noch einmal ansehen'
+export const RECHTLICHES_TITEL = 'Rechtliches'
 
 export interface QuellenProps {
   /** Zeigt den Flug zum Start noch einmal. Ohne diese Funktion fehlt der Knopf. */
   onIntroNochmal?: () => void
 }
 
-const extern = { target: '_blank', rel: 'noopener noreferrer' } as const
+/** „Quellen“ und „Impressum“ in der Leiste: klein, leise, aber 44 px hoch. */
+const LEISE = {
+  minHeight: TOUCH_TARGET,
+  minWidth: TOUCH_TARGET,
+  px: 1.5,
+  color: 'text.secondary',
+  fontSize: '0.8125rem',
+  whiteSpace: 'nowrap',
+  textDecoration: 'underline',
+  textUnderlineOffset: '3px',
+  '&:hover': { textDecoration: 'underline' },
+} as const
+
+/** Ein Link im Dialog, der allein steht: als Touch-Ziel 44 px hoch. */
+const RECHTS_LINK = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  minHeight: TOUCH_TARGET,
+} as const
 
 /**
  * Kleiner Eintrag „Quellen“, der die Herkunft von Modell und Außenraum in
- * einem Dialog nennt (Plan, Abschnitt „Rechte und Datenschutz“).
+ * einem Dialog nennt (Plan, Abschnitt „Rechte und Datenschutz“), daneben der
+ * Link auf das Impressum der Landingpage. Der Dialog nennt Impressum und
+ * Datenschutzerklärung noch einmal.
  */
 export default function Quellen({ onIntroNochmal }: QuellenProps = {}) {
   const [offen, setOffen] = useState(false)
   const titelId = useId()
+  const rechtlichesId = useId()
   const wenigerBewegung = useMediaQuery(WENIGER_BEWEGUNG)
 
   return (
     <>
-      <Button
-        color="inherit"
-        size="small"
-        onClick={() => setOffen(true)}
-        aria-haspopup="dialog"
-        sx={{
-          minHeight: TOUCH_TARGET,
-          minWidth: TOUCH_TARGET,
-          px: 1.5,
-          color: 'text.secondary',
-          fontSize: '0.8125rem',
-          textDecoration: 'underline',
-          textUnderlineOffset: '3px',
-          '&:hover': { textDecoration: 'underline' },
-        }}
-      >
-        {QUELLEN_TITEL}
-      </Button>
+      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+        <Button
+          color="inherit"
+          size="small"
+          onClick={() => setOffen(true)}
+          aria-haspopup="dialog"
+          sx={LEISE}
+        >
+          {QUELLEN_TITEL}
+        </Button>
+        {/* Ein einfaches <a>, kein next/link: Das hängte den Unterpfad davor. */}
+        <Button
+          component="a"
+          href={IMPRESSUM_PFAD}
+          color="inherit"
+          size="small"
+          sx={LEISE}
+          {...NEUER_TAB}
+        >
+          {IMPRESSUM_TEXT}
+        </Button>
+      </Box>
       <Dialog
         open={offen}
         onClose={() => setOffen(false)}
@@ -70,7 +103,7 @@ export default function Quellen({ onIntroNochmal }: QuellenProps = {}) {
               <Link
                 href="https://www.govdata.de/dl-de/by-2-0"
                 sx={{ whiteSpace: 'nowrap' }}
-                {...extern}
+                {...NEUER_TAB}
               >
                 dl-de/by-2-0
               </Link>
@@ -80,7 +113,7 @@ export default function Quellen({ onIntroNochmal }: QuellenProps = {}) {
               <Link
                 href="https://www.openstreetmap.org/copyright"
                 sx={{ whiteSpace: 'nowrap' }}
-                {...extern}
+                {...NEUER_TAB}
               >
                 OpenStreetMap-Mitwirkende
               </Link>
@@ -90,7 +123,7 @@ export default function Quellen({ onIntroNochmal }: QuellenProps = {}) {
               3D-Modell: aus dem{' '}
               <Link
                 href="https://github.com/Open-Kirrberg/saar-lidar-explorer"
-                {...extern}
+                {...NEUER_TAB}
               >
                 Saar LiDAR Explorer
               </Link>{' '}
@@ -102,6 +135,28 @@ export default function Quellen({ onIntroNochmal }: QuellenProps = {}) {
             <Typography component="li" variant="body2">
               Name, Schriftzug und Texte gehören der Bäckerei Heusser.
             </Typography>
+          </Box>
+          <Box
+            component="section"
+            aria-labelledby={rechtlichesId}
+            sx={{ mt: 2 }}
+          >
+            <Typography
+              id={rechtlichesId}
+              component="h3"
+              variant="subtitle2"
+              sx={{ fontWeight: 700 }}
+            >
+              {RECHTLICHES_TITEL}
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', columnGap: 3 }}>
+              <Link href={IMPRESSUM_PFAD} sx={RECHTS_LINK} {...NEUER_TAB}>
+                {IMPRESSUM_TEXT}
+              </Link>
+              <Link href={DATENSCHUTZ_PFAD} sx={RECHTS_LINK} {...NEUER_TAB}>
+                {DATENSCHUTZ_TEXT}
+              </Link>
+            </Box>
           </Box>
           {onIntroNochmal && (
             <Button

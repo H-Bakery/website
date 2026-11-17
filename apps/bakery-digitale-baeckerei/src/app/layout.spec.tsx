@@ -84,3 +84,30 @@ describe('RootLayout: das Modell vorab laden', () => {
     window.history.replaceState(null, '', '/')
   })
 })
+
+describe('RootLayout: Link-Vorschau (Open Graph)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { metadata } = require('./layout') as typeof import('./layout')
+
+  it('nennt Titel, Beschreibung, Adresse, Seite und Sprache - ohne Bild', () => {
+    expect(metadata.openGraph).toEqual({
+      title: 'Digitale Bäckerei – Bäckerei Heusser',
+      description: metadata.description,
+      url: 'https://xn--bckerei-heusser-0kb.de/digitale-baeckerei/',
+      siteName: 'Bäckerei Heusser',
+      locale: 'de_DE',
+      type: 'website',
+    })
+    expect(metadata.openGraph?.title).toBe(metadata.title)
+    expect(metadata.description).toMatch(/\S/)
+    expect(metadata.openGraph).not.toHaveProperty('images')
+  })
+
+  it('bleibt aus dem Suchindex (noindex, nofollow)', () => {
+    expect(metadata.robots).toEqual({
+      index: false,
+      follow: false,
+      googleBot: { index: false, follow: false },
+    })
+  })
+})

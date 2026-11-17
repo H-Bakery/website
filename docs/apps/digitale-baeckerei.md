@@ -2,10 +2,12 @@
 
 Status: **P0–P4 gemergt und live** unter `/digitale-baeckerei/` (Deploy #137, 2026-11-13; `noindex`,
 nicht verlinkt). **Ausbau P5–P8 gemergt** (2026-11-13): weitere Räume (#148, #150), 3D-Bilder für die
-Landingpage (#146), Einrichtung des Verkaufsraums (#151); Produktmodelle im Stil DB10 für alle
-106 hq-Produkte. **Seit 2026-11-13 veröffentlicht (DB14):** Die Produktmodelle liegen im Laden, die
-Landingpage baut aus hq und zeigt die gerenderten Bilder - Quelle ist der Export `hq/produkte-3d/`.
-Eine Einrichtung gibt es in hq noch nicht. **Offen beim Inhaber:** siehe „Offen (Inhaber)“.
+Landingpage (#146), Einrichtung des Verkaufsraums (#151); Produktmodelle im Stil DB10, heute
+„gemalt mit Kontur“, für 114 hq-Produkte. **Seit 2026-11-13 veröffentlicht (DB14):** Die
+Produktmodelle liegen im Laden (Regal-Modelle auf den Plätzen, Nahansicht „In 3D ansehen“ für die
+ausgelegten Produkte), die Landingpage baut aus hq und zeigt die gerenderten Bilder - Quelle ist
+der Export `hq/produkte-3d/` (114 Modelle). Eine Einrichtung gibt es in hq noch nicht. Die App
+verlinkt Impressum und Datenschutz der Landingpage. **Offen beim Inhaber:** siehe „Offen (Inhaber)“.
 Dieses Dokument ist der Auftrag für die Umsetzung.
 
 Besucher schauen sich die Bäckerei Heusser in 3D an: die Theke mit Vitrine, das Brotregal und die
@@ -92,6 +94,15 @@ Landingpage auf GitHub Pages). Nicht im Pilot, nicht auf der Box.
   Produkten (`DIGITALE_BAECKEREI_FIXTURE=1`).
 - Kein Tracking, keine Cookies, kein Gerätespeicher (`localStorage`), keine Fremd-Fonts. Keine
   Personen, keine Fotos von Dritten.
+- **Impressum und Datenschutz** sind die der Landingpage (`/imprint`, `/datenschutz` - dieselbe
+  Domain, die App liegt in deren Export). Die Leiste zeigt „Impressum“ gleich neben „Quellen“, der
+  Dialog „Quellen“ nennt unter „Rechtliches“ beide, und der Ersatz ohne WebGL hat sie im Fuß (dazu
+  „Zur Website“). Alle öffnen einen neuen Tab, die 3D-Ansicht bleibt offen. Die Pfade stehen einmal
+  in `src/lib/links.ts`, wurzelrelativ für ein einfaches `<a>` - **nie `next/link`**, das hängte den
+  Unterpfad davor (`/digitale-baeckerei/imprint` gibt es nicht).
+- **Link-Vorschau (Open Graph):** Titel, Beschreibung, Adresse (`LANDING_URL` +
+  `/digitale-baeckerei/`), Seitenname und `de_DE` - **ohne Bild**: Ein Standbild des echten Modells
+  gehört nicht ins Repo. `noindex, nofollow` bleibt.
 
 ## Produktdaten (DB6)
 
@@ -315,7 +326,7 @@ Gut zu wissen:
 
 - **Warum nur lesend?** Das Secret liegt beim öffentlichen Repo `website`. Ein Deploy-Key ohne Schreibrecht kann in hq nichts ändern und gilt nur für hq, für kein anderes Repo. Der private Schlüssel der vorhandenen GitHub App gehört deshalb **nicht** hierher: Mit ihm ließe sich alles tun, was die App darf.
 - **Warum nur `products/`?** Der Deploy holt nur diesen Ordner. Finanzen, Kassenberichte, Rezepte und HACCP kommen nie auf die Build-Maschine. Der Schlüssel selbst könnte ganz hq lesen - darum gilt das Environment nur für `main`.
-- **Was ist danach öffentlich?** Aus hq nur Name, Kategorie, Kurztext und Text der 48 Produkte, die im Modell liegen - ohne Preise, ohne Allergene. Dazu das 3D-Modell ohne Preisschilder. Sonst nichts aus hq. Die Landingpage bleibt, wie sie ist.
+- **Was ist danach öffentlich?** In der Digitalen Bäckerei aus hq nur Name, Kategorie, Einheit, Kurztext, Text und der Link auf die Produktseite der 48 Produkte, die im Modell liegen - ohne Preise, ohne Allergene. Dazu das 3D-Modell des Ladens ohne Preisschilder und aus dem Export `hq/produkte-3d/` (seit DB14) die Nahansicht und das Regal-Modell dieser Produkte. Die Landingpage baut seit DB14 ebenfalls aus `hq/products` (alle Produkte, mit Preisen) und zeigt für Produkte ohne Foto das aus ihrem Modell gerenderte Bild. Sonst nichts aus hq.
 - **Noch nicht verlinkt:** Die Seite steht auf `noindex` und ist von der Landingpage aus nicht verlinkt. Wer die Adresse kennt, kann sie aber öffnen.
 - **Schlüssel tauschen** (bei Verdacht, sonst etwa einmal im Jahr): Schritte 1, 2, 4 und 5 mit einem neuen Paar, dann den alten Deploy-Key in hq löschen und Schritt 6.
 - **Wenn das Secret fehlt** (oder der Deploy-Key in hq gelöscht ist): Der Deploy bricht mit einer deutschen Meldung ab und veröffentlicht nichts. Die Seite bleibt auf dem letzten Stand - auch Änderungen an der Landingpage gehen dann erst wieder live, wenn der Schlüssel da ist.
