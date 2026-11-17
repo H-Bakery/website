@@ -89,6 +89,17 @@ const ACTION_LABEL_SX = {
 } as const
 
 /**
+ * Kurzname „Planung“ am Tablet quer (md bis lg, darüber steht der volle
+ * Name). Hochkant (sm) bliebe das Datum daneben nicht ganz stehen - an der
+ * Station wäre „Donnerstag, 19.11.2026“ bei 768 px abgeschnitten -, dort
+ * bleibt es beim Zeichen.
+ */
+export const PLAN_SHORT_LABEL_SX = {
+  display: { xs: 'none', md: 'inline', lg: 'none' },
+  ml: 1,
+} as const
+
+/**
  * Kopf des Backstube-Tablets: welcher Tag (groß, mit Heute/Morgen daneben),
  * die drei Reiter, Stand + Neu laden und Abmelden. Unten eine Leiste mit dem
  * Fortschritt des Reiters - auch beim Scrollen sichtbar (der Kopf bleibt
@@ -287,7 +298,17 @@ export function BackstubeHeader({
               sx={ACTION_SX}
             >
               <PrintOutlinedIcon sx={{ fontSize: 26 }} />
-              {/* Auf dem Tablet nur das Zeichen - der Kopf bleibt eine Zeile. */}
+              {/* Am Tablet quer das kurze „Planung“ (dort wird
+                  freigegeben; nur ein Drucker-Zeichen fand niemand), ab lg
+                  der volle Name. Der Name für Vorlesen bleibt „Planung &
+                  Druck“. */}
+              <Box
+                component="span"
+                data-testid="bs-plan-label-short"
+                sx={PLAN_SHORT_LABEL_SX}
+              >
+                Planung
+              </Box>
               <Box component="span" sx={ACTION_LABEL_SX}>
                 Planung &amp; Druck
               </Box>

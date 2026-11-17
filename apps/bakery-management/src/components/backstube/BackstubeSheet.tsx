@@ -1,7 +1,10 @@
 'use client'
 
 import React from 'react'
-import { Alert, Box, Typography } from '@mui/material'
+import Link from 'next/link'
+import { Alert, Box, Button, Typography } from '@mui/material'
+import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined'
+import { TOUCH_MEDIA } from '../../lib/muiTheme'
 import {
   deltaTotalsByKey,
   isDoughDaySheet,
@@ -58,6 +61,12 @@ export interface BackstubeSheetProps {
    * `bs-anchor-…`), ohne Seitenspalte und ohne Teige-Leiste.
    */
   only?: string
+  /**
+   * Tagesplanung des Tages (`/admin/backzettel/<datum>`), nur für wen
+   * planen und freigeben darf: im Entwurf führt der Knopf „Prüfen und
+   * freigeben“ im Banner dorthin. `null` = kein Knopf.
+   */
+  planHref?: string | null
 }
 
 /**
@@ -78,6 +87,7 @@ export function BackstubeSheet({
   deltasPending,
   notice,
   only,
+  planHref = null,
 }: BackstubeSheetProps) {
   const colors = useBackstubeColors()
   const draft = day.status === 'draft'
@@ -194,7 +204,6 @@ export function BackstubeSheet({
         banner={
           draft ? (
             <Box
-              role="status"
               data-testid="bs-draft-banner"
               sx={{
                 p: { xs: 2, sm: 2.5 },
@@ -203,19 +212,71 @@ export function BackstubeSheet({
                 color: colors.draftFg,
               }}
             >
-              <Typography
-                sx={{
-                  fontSize: { xs: '1.5rem', sm: '1.8rem' },
-                  fontWeight: 800,
-                  lineHeight: 1.15,
-                }}
-              >
-                Noch nicht freigegeben
-              </Typography>
-              <Typography sx={{ fontSize: '1.1rem', mt: 0.5 }}>
-                Die Mengen sind ein Entwurf und können sich noch ändern. Abhaken
-                geht erst nach der Freigabe.
-              </Typography>
+              <Box role="status">
+                <Typography
+                  sx={{
+                    fontSize: { xs: '1.5rem', sm: '1.8rem' },
+                    fontWeight: 800,
+                    lineHeight: 1.15,
+                  }}
+                >
+                  Noch nicht freigegeben
+                </Typography>
+                <Typography sx={{ fontSize: '1.1rem', mt: 0.5 }}>
+                  Die Mengen sind ein Entwurf und können sich noch ändern.
+                  Abhaken geht erst nach der Freigabe.
+                </Typography>
+              </Box>
+              {/* Weg zur Freigabe direkt vom Tablet: die Tagesplanung zum
+                  Prüfen, dort „Freigeben“ (nur wer freigeben darf). */}
+              {planHref && (
+                <Button
+                  component={Link}
+                  href={planHref}
+                  variant="contained"
+                  disableElevation
+                  data-print="hide"
+                  data-testid="bs-draft-release"
+                  startIcon={<FactCheckOutlinedIcon />}
+                  sx={{
+                    mt: 2,
+                    minHeight: 56,
+                    // Das Theme setzt Knöpfe am Tablet auf 44 px
+                    // (`TOUCH_MEDIA`) - hier zählt die Mehl-Hand: 56 px.
+                    [TOUCH_MEDIA]: { minHeight: 56 },
+                    width: '100%',
+                    px: 2.5,
+                    fontSize: '1.15rem',
+                    fontWeight: 800,
+                    textTransform: 'none',
+                    lineHeight: 1.2,
+                    // Umgekehrtes Bannerpaar: dieselben ≥ 7:1 wie der Text.
+                    bgcolor: colors.draftFg,
+                    color: colors.draftBg,
+                    '& .MuiButton-startIcon > *:nth-of-type(1)': {
+                      fontSize: 26,
+                    },
+                    // Fokusring in Schriftfarbe: der blaue der App ginge auf
+                    // dem Gelb unter.
+                    '&.Mui-focusVisible': {
+                      outline: '3px solid',
+                      outlineColor: colors.draftFg,
+                      outlineOffset: 2,
+                    },
+                    // MUI färbte ihn beim Tippen sonst blau (primary).
+                    '&:hover': {
+                      bgcolor: colors.draftFg,
+                      opacity: 0.88,
+                      '@media (hover: none)': {
+                        bgcolor: colors.draftFg,
+                        opacity: 1,
+                      },
+                    },
+                  }}
+                >
+                  Prüfen und freigeben
+                </Button>
+              )}
             </Box>
           ) : null
         }

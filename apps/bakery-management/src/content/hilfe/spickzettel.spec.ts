@@ -82,7 +82,7 @@ describe('Spickzettel (P6)', () => {
       'Kästchen',
       'Nachträge seit der Freigabe',
       'Gesehen',
-      'Vorbereitung heute',
+      'Reiter **Vorbereitung**:',
       'Drucken',
       'Noch nicht freigegeben',
       'Notfallblatt',
@@ -94,6 +94,23 @@ describe('Spickzettel (P6)', () => {
     ]) {
       expect(t).toContain(needle)
     }
+  })
+
+  it('Backstube: beschreibt das Tablet, wie es ist (Befund 2026-11-17)', () => {
+    const t = text('backstube')
+    // „Planung & Druck“ steht oben rechts im Kopf, nicht unten.
+    expect(t).toContain('Oben rechts **Planung & Druck**')
+    expect(t).toContain('**Planung**')
+    expect(t).not.toMatch(/Unten \*\*Planung/)
+    // Der Teigtag-Zettel hat meist zwei Blätter, samstags drei
+    // (docs/domains/backzettel.md, „Blätter und Dichte“).
+    expect(t).toContain('meist zwei Blätter, samstags drei')
+    expect(t).not.toContain('auf einer Seite')
+    // Der Reiter heißt „Vorbereitung“.
+    expect(t).toContain('Reiter **Vorbereitung**:')
+    expect(t).not.toContain('Vorbereitung heute')
+    // Weg zur Freigabe: der Knopf im Entwurfs-Banner.
+    expect(t).toContain('**Prüfen und freigeben**')
   })
 
   it('Rezepte: Backstube liest, Backstubenleitung und Inhaber legen an und ändern', () => {

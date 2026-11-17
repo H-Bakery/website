@@ -38,7 +38,7 @@ import {
   CorrectionEditor,
   type CorrectionSaveOptions,
 } from './CorrectionEditor'
-import { DeltaChip } from './BackzettelSectionView'
+import { DeltaChip, tableFitSx } from './BackzettelSectionView'
 
 export interface V2EditProps {
   config: BackzettelConfigData | null
@@ -69,6 +69,25 @@ const NUM = { textAlign: 'right' as const, whiteSpace: 'nowrap' as const }
  * stehen nebeneinander, nie der Stift unter der Zahl (Abschlussprüfung Z10).
  */
 const VALUE_COL = { ...NUM, minWidth: 136 }
+/** Spalte „Brot“ (Name, Backtag, Hinweis - bricht um). */
+const NAME_COL_MIN = 140
+/** Spalte „Teig“: „15,68 kg“ ohne Umbruch. */
+const KG_COL = { ...NUM, minWidth: 96 }
+
+/**
+ * Breite, ab der die Brot-Tabelle neben sich nichts abschneidet (px, mit
+ * Rahmen): Name + je Größe eine Mengen-Spalte (+ „Menge“) + Teig. Darunter
+ * stehen die Karten (`tableFitSx`). Längere Inhalte (Abzeichen „Grundmenge
+ * offen“, „44 Stück“ neben dem Stift) machen Spalten breiter - das misst
+ * `BreadTable` nach und hebt die Grenze.
+ */
+export function breadTableMinWidth(
+  bread: Pick<BreadView, 'sizes' | 'rows'>
+): number {
+  const hasSingle = bread.sizes.length === 0 || bread.rows.some((r) => r.single)
+  const valueCols = bread.sizes.length + (hasSingle ? 1 : 0)
+  return NAME_COL_MIN + valueCols * VALUE_COL.minWidth + KG_COL.minWidth + 2
+}
 
 function rowKg(row: BreadRow): string {
   // Alte Liter-Posten haben keinen Teig: keine kg-Angabe statt „unbekannt“.
@@ -214,9 +233,11 @@ function rowCells(
  * Brote ohne Größe stehen in einer eigenen Spalte „Menge“ mit Einheit („26
  * Stück“, „7,25 L“), rechtsbündig wie die übrigen Mengen - nie unter einer
  * Größenspalte, wo sie sich wie Laibe dieser Größe läse (Review Z10 Runde 2),
- * und nicht lose neben dem Namen (Abschlussprüfung). Ab `md` eine Tabelle, darunter je
- * Brot eine Karte mit allen Größen (am Handy fielen sonst Spalten aus dem
- * Bild). Nachträge stehen als Abzeichen an der Zelle.
+ * und nicht lose neben dem Namen (Abschlussprüfung). Passt die Tabelle in
+ * die Breite des Inhalts (`breadTableMinWidth`, nachgemessen), eine Tabelle,
+ * sonst je Brot eine Karte mit allen Größen - am Handy und am Tablet quer
+ * neben der Seitenleiste fielen sonst Spalten aus dem Bild. Nachträge stehen
+ * als Abzeichen an der Zelle.
  */
 export function BreadTable({
   bread,
@@ -229,7 +250,44 @@ export function BreadTable({
   onEdit,
   onSaveCorrection,
 }: BreadTableProps) {
+  // Breiter als geschätzt (lange Abzeichen, Einheit neben dem Stift): die
+  // sichtbare Tabelle läuft über ihren Rahmen hinaus. Dann gilt die
+  // gemessene Breite als Grenze - die Karten übernehmen, statt dass Spalten
+  // seitlich verschwinden. Gilt bis neue Daten kommen.
+  const wrapRef = React.useRef<HTMLDivElement | null>(null)
+  const tableRef = React.useRef<HTMLTableElement | null>(null)
+  const [measured, setMeasured] = React.useState<{
+    bread: BreadView
+    width: number
+  } | null>(null)
+  React.useEffect(() => {
+    const wrap = wrapRef.current
+    const table = tableRef.current
+    const box = table?.parentElement
+    if (!bread || !wrap || !table || !box) return
+    if (typeof ResizeObserver === 'undefined') return
+    const check = () => {
+      // Karten zu sehen: die Tabelle ist ausgeblendet, nichts zu messen.
+      if (box.clientWidth === 0) return
+      const overflow = table.scrollWidth - box.clientWidth
+      if (overflow <= 1) return
+      const width = Math.ceil(wrap.clientWidth + overflow)
+      setMeasured((m) =>
+        m && m.bread === bread && m.width >= width ? m : { bread, width }
+      )
+    }
+    const observer = new ResizeObserver(check)
+    observer.observe(box)
+    observer.observe(table)
+    return () => observer.disconnect()
+  }, [bread])
+
   if (!bread || bread.rows.length === 0) return null
+  const minWidth = Math.max(
+    breadTableMinWidth(bread),
+    measured && measured.bread === bread ? measured.width : 0
+  )
+  const fit = tableFitSx(minWidth)
   const sizes = bread.sizes
   // Spalte „Menge“ nur, wenn ein Brot ohne Größe auf dem Zettel steht
   // (ohne Größen überhaupt: die einzige Mengen-Spalte).
@@ -256,10 +314,15 @@ export function BreadTable({
   )
 
   return (
-    <>
+    <Box
+      ref={wrapRef}
+      sx={{ ...fit.container, mb: 2 }}
+      data-testid="bread-fit"
+      data-table-min-width={minWidth}
+    >
       <Paper
         variant="outlined"
-        sx={{ mb: 2, overflow: 'hidden', display: { xs: 'none', md: 'block' } }}
+        sx={{ overflow: 'hidden', ...fit.table }}
         data-testid="bread-table"
       >
         <Box sx={{ px: 2, py: 1.5, bgcolor: 'action.hover' }}>
@@ -268,17 +331,17 @@ export function BreadTable({
           </Typography>
         </Box>
         <TableContainer sx={{ overflowX: 'auto' }}>
-          <Table size="small" aria-label="Brot je Laibgröße">
+          <Table size="small" aria-label="Brot je Laibgröße" ref={tableRef}>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ minWidth: 140 }}>Brot</TableCell>
+                <TableCell sx={{ minWidth: NAME_COL_MIN }}>Brot</TableCell>
                 {sizes.map((s) => (
                   <TableCell key={s.id} sx={VALUE_COL}>
                     {s.label}
                   </TableCell>
                 ))}
                 {hasSingle && <TableCell sx={VALUE_COL}>Menge</TableCell>}
-                <TableCell sx={{ ...NUM, minWidth: 80 }}>Teig</TableCell>
+                <TableCell sx={KG_COL}>Teig</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -377,10 +440,11 @@ export function BreadTable({
         </TableContainer>
       </Paper>
 
-      {/* Karten unter md: je Brot alle Größen untereinander, nichts seitlich außer Sicht */}
+      {/* Karten, wenn die Tabelle nicht passt: je Brot alle Größen
+          untereinander, nichts seitlich außer Sicht */}
       <Paper
         variant="outlined"
-        sx={{ mb: 2, overflow: 'hidden', display: { xs: 'block', md: 'none' } }}
+        sx={{ overflow: 'hidden', ...fit.cards }}
         data-testid="bread-cards"
       >
         <Box sx={{ px: 2, py: 1.5, bgcolor: 'action.hover' }}>
@@ -453,7 +517,7 @@ export function BreadTable({
           )
         })}
       </Paper>
-    </>
+    </Box>
   )
 }
 

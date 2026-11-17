@@ -20,6 +20,7 @@ import {
   saturdayDraft,
 } from '../../lib/backzettelFixtures'
 import type { PilotRole } from '../../lib/roles'
+import { PLAN_SHORT_LABEL_SX } from '../../components/backstube/BackstubeHeader'
 
 jest.mock('../../lib/backzettelApi', () => {
   const actual = jest.requireActual('../../lib/backzettelApi')
@@ -1009,6 +1010,59 @@ describe('Backstube-Tablet', () => {
     expect(
       screen.getByRole('link', { name: 'Planung & Druck' })
     ).toHaveAttribute('href', `/admin/backzettel/${SAT}`)
+  })
+
+  it('Kopf: „Planung & Druck“ behält seinen Namen und zeigt am Tablet „Planung“', async () => {
+    renderTablet()
+    await screen.findByTestId('bs-progress')
+    const link = screen.getByRole('link', { name: 'Planung & Druck' })
+    // Sichtbarer Kurzname im Link, am Tablet quer (md) eingeblendet, ab lg
+    // der volle Name - vorher stand am Tablet nur ein Drucker-Zeichen.
+    // Hochkant (sm) bleibt es beim Zeichen, sonst würde das Datum gekürzt.
+    expect(within(link).getByTestId('bs-plan-label-short')).toHaveTextContent(
+      /^Planung$/
+    )
+    expect(PLAN_SHORT_LABEL_SX.display).toEqual({
+      xs: 'none',
+      md: 'inline',
+      lg: 'none',
+    })
+  })
+
+  it.each([
+    ['backstube', 'station'],
+    ['inhaber', 'personal'],
+    ['backstubenleiter', 'station'],
+  ] as const)(
+    'Entwurf als %s: „Prüfen und freigeben“ im Banner führt zur Tagesplanung',
+    async (role, sessionKind) => {
+      mocked.fetchBackzettelDay.mockResolvedValue(saturdayDraft())
+      renderTablet({ session: fakeSession({ role, sessionKind }) })
+      const banner = await screen.findByTestId('bs-draft-banner')
+      const link = within(banner).getByRole('link', {
+        name: 'Prüfen und freigeben',
+      })
+      expect(link).toHaveAttribute('href', `/admin/backzettel/${SAT}`)
+    }
+  )
+
+  it('Entwurf als Verkauf (darf nicht freigeben): Banner ohne „Prüfen und freigeben“', async () => {
+    mocked.fetchBackzettelDay.mockResolvedValue(saturdayDraft())
+    renderTablet({ role: 'verkauf' })
+    const banner = await screen.findByTestId('bs-draft-banner')
+    expect(banner).toHaveTextContent('Noch nicht freigegeben')
+    expect(
+      screen.queryByRole('link', { name: 'Prüfen und freigeben' })
+    ).not.toBeInTheDocument()
+  })
+
+  it('Freigegebener Tag: kein Banner, kein „Prüfen und freigeben“', async () => {
+    renderTablet()
+    await screen.findByTestId('bs-progress')
+    expect(screen.queryByTestId('bs-draft-banner')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: 'Prüfen und freigeben' })
+    ).not.toBeInTheDocument()
   })
 
   it('„Zur Verwaltung“ nur mit persönlicher Sitzung, nicht an der Station', async () => {
