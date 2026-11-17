@@ -1880,7 +1880,15 @@ export default function AbholListeClient({
               })}`}
               variant="outlined"
               startIcon={<SearchIcon />}
-              sx={{ ...TOUCH, width: { xs: '100%', sm: 'auto' } }}
+              sx={{
+                ...TOUCH,
+                width: { xs: '100%', sm: 'auto' },
+                // Am Handy ohne Symbol in einer Zeile.
+                px: { xs: 1, sm: 2 },
+                '& .MuiButton-startIcon': {
+                  display: { xs: 'none', sm: 'inherit' },
+                },
+              }}
             >
               In allen Vorbestellungen suchen
             </Button>
