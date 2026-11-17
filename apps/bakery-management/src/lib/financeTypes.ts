@@ -185,8 +185,8 @@ export interface FinanceKasse {
 
 /**
  * Kasse eines Monats mit Abdeckung: Öffnungstage (Wochenplan + hq-Kalender)
- * gegen Tage mit Kassenbericht, gezählt bis gestern. Nur ein vollständiger
- * Monat (`complete`) geht in den Kassenabgleich.
+ * gegen Tage mit Kassenbericht, gezählt bis gestern (heute nur mit Bericht).
+ * Nur ein vollständiger Monat (`complete`) geht in den Kassenabgleich.
  */
 export interface FinanceKasseMonth extends FinanceKasse {
   /** Öffnungstage; `null` = ohne Wochenplan/Kalender nicht prüfbar. */

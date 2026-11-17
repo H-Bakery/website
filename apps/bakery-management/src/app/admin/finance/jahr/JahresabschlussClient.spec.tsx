@@ -141,7 +141,12 @@ describe('JahresabschlussClient', () => {
     expect(screen.getByTestId('reconciliation-total')).toHaveTextContent(
       /^−1\.000,00\s*€$/
     )
-    expect(screen.getByText(/8 volle Monate/)).toBeInTheDocument()
+    // Am Bildschirm (die Druckfassung nennt die Zahl auch).
+    expect(
+      within(document.querySelector('.fin-screen') as HTMLElement).getByText(
+        /8 volle Monate/
+      )
+    ).toBeInTheDocument()
 
     // Hinweise: Warnung sichtbar abgesetzt
     const notes = screen.getByTestId('year-notes')
@@ -412,12 +417,39 @@ describe('JahresabschlussClient', () => {
 
     // „Kasse und Konto“ nennt den Monat, der fehlt - einmal, nicht noch
     // einmal unten in den Hinweisen.
-    expect(screen.getByText(/7 volle Monate/)).toBeInTheDocument()
+    // Am Bildschirm (die Druckfassung nennt die Zahl auch).
+    expect(
+      within(document.querySelector('.fin-screen') as HTMLElement).getByText(
+        /7 volle Monate/
+      )
+    ).toBeInTheDocument()
     expect(screen.getByTestId('kasse-incomplete-note')).toHaveTextContent(
       'Nicht im Kassenabgleich: September'
     )
     expect(screen.getByTestId('year-notes')).not.toHaveTextContent(
       'Nicht im Kassenabgleich'
+    )
+  })
+
+  it('ein einziger Abgleichsmonat: „1 voller Monat (August 2026)“', async () => {
+    const report = kasseIncompleteYearFixture()
+    if (!report.reconciliation) throw new Error('Fixture ohne Abgleich')
+    report.reconciliation = {
+      ...report.reconciliation,
+      months: 1,
+      from: '2026-08',
+      to: '2026-08',
+    }
+    respondWith({ '/api/finance/year': report })
+    renderWithTheme(<JahresabschlussClient />)
+    await screen.findByTestId('kasse-incomplete-note')
+    const screenPart = document.querySelector('.fin-screen') as HTMLElement
+    expect(
+      within(screenPart).getByText(/1 voller Monat \(August 2026\)\./)
+    ).toBeInTheDocument()
+    expect(screenPart).not.toHaveTextContent('August 2026 bis August 2026')
+    expect(screen.getByTestId('print-section-kasse')).toHaveTextContent(
+      '1 voller Monat, August 2026.'
     )
   })
 

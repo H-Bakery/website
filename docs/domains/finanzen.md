@@ -73,7 +73,8 @@ Aus derselben bereinigten `finance-summary.json` plus den Monatssummen der Kasse
 - **Kassenabgleich** (Kasse bar + Karte gegen Bareinzahlungen + Kartenabrechnungen) nur über
   Monate, in denen **Bank und Kasse** vollständig sind - Jahr (`reconciliation.months/from/to`)
   wie Monat (`reconciliation: null`). Die Kasse ist vollständig, wenn an jedem Öffnungstag ein
-  Bericht vorliegt (`kasseCoverage` in `finance-report.core.js`, gezählt bis gestern):
+  Bericht vorliegt (`kasseCoverage` in `finance-report.core.js`, gezählt bis gestern - heute
+  nur, wenn sein Bericht schon da ist):
 
   - Öffnungstage aus `kalender.core` `dayKind` mit den Backzettel-Stammdaten (Wochenplan +
     `kalender.yaml`); `finance.routes.js` bekommt sie als `calendarConfig` von

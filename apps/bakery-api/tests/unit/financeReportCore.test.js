@@ -635,16 +635,37 @@ describe('finance-report.core - Kasse nur über vollständige Kassenmonate', () 
       today: '2026-04-30',
     }).data
     expect(running.months[3].coverage).toBe('complete')
+    // Der heutige Bericht (30.04.) ist schon da: er zählt mit, wie in `days`.
     expect(running.months[3].kasse).toMatchObject({
-      open_days: 24,
-      report_days: 24,
+      days: 25,
+      open_days: 25,
+      report_days: 25,
       complete: false,
-      note: 'Monat läuft noch: bisher 24 von 24 Öffnungstagen',
+      note: 'Monat läuft noch: bisher 25 von 25 Öffnungstagen',
     })
     expect(running.reconciliation).toMatchObject({
       months: 1,
       from: '2026-03',
       to: '2026-03',
+    })
+    // Noch ohne heutigen Bericht: bis gestern, heute fehlt (noch) nicht.
+    const morning = report.buildYearReport(summary, '2026', {
+      kasseByMonth: {
+        ...kasseByMonth,
+        '2026-04': kasseMonthOn(
+          '2026-04',
+          openDates(CONFIG, '2026-04', { to: '2026-04-29' })
+        ),
+      },
+      calendarConfig: CONFIG,
+      today: '2026-04-30',
+    }).data
+    expect(morning.months[3].kasse).toMatchObject({
+      days: 24,
+      open_days: 24,
+      report_days: 24,
+      complete: false,
+      note: 'Monat läuft noch: bisher 24 von 24 Öffnungstagen',
     })
     // Einen Tag später ist April abgeschlossen und zählt mit.
     const next = report.buildYearReport(summary, '2026', {

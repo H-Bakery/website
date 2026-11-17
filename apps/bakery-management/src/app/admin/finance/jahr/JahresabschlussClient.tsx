@@ -803,9 +803,13 @@ export default function JahresabschlussClient({
                     report.reconciliation.months ?? 0,
                     'voller Monat',
                     'volle Monate'
-                  )} (${formatMonth(
-                    report.reconciliation.from
-                  )} bis ${formatMonth(report.reconciliation.to)}).`
+                  )} (${
+                    report.reconciliation.from === report.reconciliation.to
+                      ? formatMonth(report.reconciliation.to)
+                      : `${formatMonth(
+                          report.reconciliation.from
+                        )} bis ${formatMonth(report.reconciliation.to)}`
+                  }).`
                 : 'Was die Kasse eingenommen hat und was davon aufs Konto kam.'
             }
           >

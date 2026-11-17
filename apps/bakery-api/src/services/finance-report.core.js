@@ -408,8 +408,8 @@ const KASSE_UNCHECKED_SENTENCE =
  *     Wochenplan; ein gesetzlicher Feiertag **ohne** Bericht zählt dann nicht
  *     als fehlend (ob offen war, weiß niemand). Ein Schließtag wird nie
  *     erfunden: mit Bericht zählt der Feiertag mit.
- *   - Gezählt wird bis gestern - der heutige Bericht kann noch kommen. Der
- *     laufende Monat ist nie vollständig.
+ *   - Gezählt wird bis gestern - der heutige Bericht kann noch kommen; ist er
+ *     schon da, zählt heute mit. Der laufende Monat ist nie vollständig.
  *   - Ohne Stammdaten (Wochenplan) oder ohne gültigen Kalender ist nichts
  *     prüfbar: `open_days: null`, nie vollständig.
  *
@@ -424,14 +424,21 @@ function kasseCoverage(month, aggregate, ctx = {}) {
   const last = `${month}-${String(daysInMonth(month)).padStart(2, '0')}`
   const today = isValidDate(ctx.today) ? ctx.today : null
   const running = Boolean(today && last >= today)
-  const end = running ? kalender.addDays(today, -1) : last
-  const dates = []
-  for (let d = first; d <= end; d = kalender.addDays(d, 1)) dates.push(d)
-
   const missingDays =
     isPlainObject(aggregate) && Array.isArray(aggregate.missingDays)
       ? new Set(aggregate.missingDays)
       : null
+  // Bis gestern; ist der heutige Bericht schon da (Pipeline am Nachmittag),
+  // zählt heute mit - sonst sagte „bisher 14 von 14“ weniger Tage als die
+  // Kasse schon hat (`report_days` = `days`).
+  const end = !running
+    ? last
+    : today >= first && missingDays && !missingDays.has(today)
+    ? today
+    : kalender.addDays(today, -1)
+  const dates = []
+  for (let d = first; d <= end; d = kalender.addDays(d, 1)) dates.push(d)
+
   const config = isPlainObject(ctx.calendarConfig) ? ctx.calendarConfig : null
   const reason = !missingDays
     ? 'no_days'

@@ -9,6 +9,7 @@ import {
 import { PRINT_CHART_WIDTH } from '../../../../components/finance/FinanceCharts'
 import {
   finalYearFixture,
+  kasseIncompleteYearFixture,
   provisionalYearFixture,
 } from '../../../../lib/financeReportFixtures'
 
@@ -93,6 +94,31 @@ describe('JahresabschlussPrint', () => {
     expect(statusStamp(final)).toBeUndefined()
     renderPrint(final)
     expect(screen.queryByTestId('print-projection')).toBeNull()
+  })
+
+  it('Kasse und Konto: Zahl der Monate, ausgelassene Monate dort statt in den Anmerkungen', () => {
+    renderPrint(kasseIncompleteYearFixture())
+    const section = screen.getByTestId('print-section-kasse')
+    // Januar bis August, aber nur 7 Monate (März ohne Kasse).
+    expect(section).toHaveTextContent(
+      'aufs Konto kam – 7 volle Monate, Januar bis August 2026.'
+    )
+    expect(screen.getByTestId('print-kasse-note')).toHaveTextContent(
+      'Nicht im Kassenabgleich: September'
+    )
+    expect(screen.getByTestId('print-notes')).not.toHaveTextContent(
+      'Nicht im Kassenabgleich'
+    )
+  })
+
+  it('ohne Abgleich: der Grund vom Server', () => {
+    const report = kasseIncompleteYearFixture()
+    report.reconciliation = null
+    renderPrint(report)
+    expect(screen.queryByTestId('print-reconciliation')).toBeNull()
+    expect(screen.getByTestId('print-kasse-note')).toHaveTextContent(
+      'Nicht im Kassenabgleich: September'
+    )
   })
 
   it('Bankdatenbereich: Jahresgrenzen, ohne Daten keiner', () => {
