@@ -5,6 +5,7 @@ import MonatsanalyseClient from './MonatsanalyseClient'
 import { formatEuro } from '../../../../lib/reportFormat'
 import {
   completeMonthFixture,
+  kasseIncompleteMonthFixture,
   partialMonthFixture,
 } from '../../../../lib/financeReportFixtures'
 
@@ -391,5 +392,59 @@ describe('MonatsanalyseClient', () => {
     } finally {
       window.print = original
     }
+  })
+
+  it('Kasse unvollständig: der Hinweis statt Differenz und Warnung', async () => {
+    respond(kasseIncompleteMonthFixture())
+    renderWithTheme(<MonatsanalyseClient month="2026-09" />)
+    const reason = await screen.findByTestId('no-reconciliation')
+    expect(reason).toHaveAttribute('data-reason', 'kasse_incomplete')
+    expect(reason).toHaveTextContent(
+      'Kasse unvollständig: 8 von 26 Öffnungstagen (Kassenberichte gibt es erst ab 22.09.2026).'
+    )
+    expect(screen.queryByTestId('reconciliation')).toBeNull()
+    expect(screen.queryByTestId('reconciliation-total')).toBeNull()
+    expect(screen.getByTestId('kasse-tile')).toHaveTextContent(
+      '8 von 26 Öffnungstagen'
+    )
+    // Der Hinweis steht bei „Kasse und Konto“, nicht noch einmal unten.
+    expect(screen.getByTestId('month-notes')).not.toHaveTextContent(
+      'Kasse unvollständig'
+    )
+    expect(document.body).not.toHaveTextContent('Mehr auf dem Konto')
+    // Die Druckfassung zeigt denselben Hinweis.
+    expect(screen.getByTestId('print-no-reconciliation')).toHaveTextContent(
+      'Kasse unvollständig: 8 von 26 Öffnungstagen'
+    )
+  })
+
+  it('ein einziger Vergleichsmonat: „Ø 1 Monat“ und „des Vormonats“', async () => {
+    const report = completeMonthFixture()
+    const average = report.comparison.average
+    if (!average) throw new Error('Fixture ohne Ø')
+    report.comparison.average = {
+      ...average,
+      months: 1,
+      from: '2026-08',
+      to: '2026-08',
+    }
+    respond(report)
+    renderWithTheme(<MonatsanalyseClient month="2026-09" />)
+    const income = await screen.findByTestId('income-table')
+    expect(
+      within(income).getByRole('columnheader', { name: 'Ø 1 Monat' })
+    ).toBeInTheDocument()
+    expect(screen.getByTestId('comparison-average')).toHaveTextContent(
+      'Ø 1 voller Monat davor'
+    )
+    expect(
+      screen.getByText(/Der Strich im Balken ist der Wert des Vormonats\./)
+    ).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/(^|\D)1 Monate/)
+    expect(document.body).not.toHaveTextContent('der 1 vollen Monate')
+    // Druck: Spaltenkopf und Einleitung ebenso.
+    const print = screen.getByTestId('print-income')
+    expect(print).toHaveTextContent('Ø 1 Monat')
+    expect(screen.getByText('Mit dem Wert des Vormonats.')).toBeInTheDocument()
   })
 })

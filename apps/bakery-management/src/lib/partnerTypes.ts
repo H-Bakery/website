@@ -325,15 +325,8 @@ export function weekdayOf(businessDate: string): number | null {
   return js === 0 ? 7 : js
 }
 
-/** `1 Besuch`, `2 Besuche` - Zahl im deutschen Format. */
-export function plural(
-  count: number | null | undefined,
-  one: string,
-  many: string
-): string {
-  const n = count == null || !Number.isFinite(count) ? 0 : count
-  return `${n.toLocaleString('de-DE')} ${n === 1 ? one : many}`
-}
+/** `1 Besuch`, `2 Besuche` - die gemeinsame Fassung aus `plural.ts`. */
+export { plural } from './plural'
 
 /**
  * Einzelpreis einer Report-Zeile; hat sich der Preis im Zeitraum geändert,

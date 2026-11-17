@@ -183,6 +183,25 @@ export interface FinanceKasse {
   unpaid: number
 }
 
+/**
+ * Kasse eines Monats mit Abdeckung: Öffnungstage (Wochenplan + hq-Kalender)
+ * gegen Tage mit Kassenbericht, gezählt bis gestern. Nur ein vollständiger
+ * Monat (`complete`) geht in den Kassenabgleich.
+ */
+export interface FinanceKasseMonth extends FinanceKasse {
+  /** Öffnungstage; `null` = ohne Wochenplan/Kalender nicht prüfbar. */
+  open_days: number | null
+  /** Tage mit Kassenbericht. */
+  report_days: number
+  /** An jedem Öffnungstag ein Bericht und der Monat ist vorbei. */
+  complete: boolean
+  /**
+   * Kurzer Hinweis vom Server, z. B. „Kasse unvollständig: 8 von 26
+   * Öffnungstagen“ (`null`, wenn vollständig).
+   */
+  note: string | null
+}
+
 /** Kasse gegen Konto (bar und Karte). */
 export interface FinanceReconciliation {
   kasse_revenue: number
@@ -198,7 +217,10 @@ export interface FinanceReconciliation {
   kasse_total: number
   /** Konto bar + Karte */
   bank_total: number
-  /** Nur im Jahresabschluss: über welche vollständigen Monate verglichen wurde. */
+  /**
+   * Nur im Jahresabschluss: über welche Monate verglichen wurde - nur solche,
+   * in denen Bank und Kasse vollständig sind.
+   */
   months?: number
   from?: string
   to?: string
@@ -229,7 +251,7 @@ export interface FinanceYearMonthRow {
   has_data: boolean
   /** Ergebnis seit Jahres- bzw. Datenbeginn bis Ende dieses Monats (`null` ohne Daten). */
   cumulative_result: number | null
-  kasse: FinanceKasse | null
+  kasse: FinanceKasseMonth | null
 }
 
 /** Ein Monat der Hochrechnung: ganzer Monat (Ist + geschätzter Rest). */
@@ -374,9 +396,12 @@ export interface FinanceMonthReport {
   net_change: number
   transactions: number
   statement: FinanceStatement
-  kasse: FinanceKasse | null
-  kasse_previous_year: FinanceKasse | null
-  /** Nur für vollständige Monate. */
+  kasse: FinanceKasseMonth | null
+  kasse_previous_year: FinanceKasseMonth | null
+  /**
+   * Nur, wenn Bank und Kasse den Monat vollständig haben; sonst steht der
+   * Grund in `notes` (`kasse_incomplete`).
+   */
   reconciliation: FinanceReconciliation | null
   /** Bei angebrochenen Monaten alle drei `null`. */
   comparison: {

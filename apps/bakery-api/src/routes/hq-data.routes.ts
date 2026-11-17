@@ -7,9 +7,12 @@
  *     GET /api/reports/daily?from=&to=, /api/reports/daily/:date,
  *         /api/reports/monthly/:month
  *     GET /api/analytics/{revenue-trends,product-performance,payment-methods,summary}
- *   src/routes/finance.routes.js   install(app, auth, { financeDir })
+ *   src/routes/finance.routes.js   install(app, auth, { financeDir, reportsDir,
+ *                                  today, calendarConfig })
  *     GET /api/finance/summary, /api/finance/months?from=&to=,
  *         /api/finance/year[/:year], /api/finance/month[/:month]
+ *     (`calendarConfig`: Backzettel master data + kalender.yaml, for the
+ *     opening days the Kassenabgleich checks a month against)
  *   src/routes/targets.routes.js   install(app, auth, { financeDir, reportsDir })
  *     GET /api/finance/targets, /targets/status?date=, /targets/period?from=&to=
  *
@@ -28,6 +31,10 @@ import { RequestHandler, Router } from 'express'
 
 import { requirePersonalSession, requireRole } from '../auth/middleware'
 import type { UserRole } from '../auth/types'
+import {
+  BackzettelSourceOptions,
+  createBackzettelSource,
+} from '../services/backzettel-source'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 // CommonJS modules; literal requires so esbuild bundles them (and the
@@ -110,10 +117,37 @@ export interface HqDataOptions {
   reportsDir?: string
   /** `hq/data/finance`. Default: `HQ_FINANCE_DIR`, else `<website>/../hq/data/finance`. */
   financeDir?: string
-  /** Tagesziel "today" (tests). Default: the real date. */
+  /** Tagesziel and Kassenabgleich "today" (tests). Default: the real date. */
   today?: string | (() => string)
   /** Logger for the modules' startup and "no data" lines (default `console`). */
   log?: Log
+  /**
+   * Opening days for the Kassenabgleich: the normalised Backzettel master
+   * data with `calendar` (weekly plan + kalender.yaml), or `null` when they
+   * cannot be loaded - then no cash month counts as complete. Default: a
+   * Backzettel source of its own (`backzettel` paths, else the environment,
+   * as `app.ts` uses), created on the first finance request.
+   */
+  calendarConfig?: () => unknown | null
+  /** Paths for that default source (tests). */
+  backzettel?: BackzettelSourceOptions
+}
+
+/**
+ * The default `calendarConfig`: a Backzettel source created on first use
+ * (no file is read when the router is built), `null` when the master data
+ * are missing or invalid. A missing or invalid kalender.yaml leaves
+ * `config.calendar` at `null`; the core treats that as "not checkable".
+ */
+function lazyCalendarConfig(
+  sourceOptions: BackzettelSourceOptions = {}
+): () => unknown | null {
+  let source: ReturnType<typeof createBackzettelSource> | null = null
+  return () => {
+    if (!source) source = createBackzettelSource(sourceOptions)
+    const loaded = source.load()
+    return loaded.ok ? loaded.config : null
+  }
 }
 
 /**
@@ -135,6 +169,9 @@ export function createHqDataRouter(options: HqDataOptions = {}): Router {
   financeRoutes.install(router, auth, {
     financeDir: options.financeDir,
     reportsDir: options.reportsDir,
+    today: options.today,
+    calendarConfig:
+      options.calendarConfig ?? lazyCalendarConfig(options.backzettel),
     log,
   })
   targetsRoutes.install(router, auth, {

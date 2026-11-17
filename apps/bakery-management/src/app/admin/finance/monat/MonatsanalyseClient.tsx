@@ -41,6 +41,7 @@ import type {
   FinanceReportRow,
 } from '../../../../lib/financeTypes'
 import { formatEuro, formatMonth } from '../../../../lib/reportFormat'
+import { plural } from '../../../../lib/plural'
 import {
   EmptyState,
   KeyFigures,
@@ -141,12 +142,44 @@ function MonthSwitcher({ report }: { report: FinanceMonthReport }) {
   )
 }
 
+/** „Ø 12 Monate“, „Ø 1 Monat“ - Spaltenkopf und Legende des Durchschnitts. */
+export function averageLabelOf(months: number | undefined): string {
+  return months ? `Ø ${plural(months, 'Monat', 'Monate')}` : 'Ø'
+}
+
+/** Worauf sich der Ø-Strich bezieht: „der Durchschnitt der 3 vollen Monate davor“. */
+export function averageBasisText(months: number): string {
+  return months === 1
+    ? 'der Wert des Vormonats'
+    : `der Durchschnitt der ${months} vollen Monate davor`
+}
+
+/**
+ * Warum Kasse und Konto nicht verglichen werden, obwohl die Bank den Monat
+ * vollständig hat: die Kasse hat nicht jeden Öffnungstag (Text vom Server).
+ */
+export function kasseIncompleteText(report: FinanceMonthReport): string | null {
+  const note = report.notes.find((n) => n.key === 'kasse_incomplete')
+  if (note) return note.text
+  return report.kasse && !report.kasse.complete ? report.kasse.note : null
+}
+
+function kasseHint(report: FinanceMonthReport): string {
+  const { kasse } = report
+  if (!kasse) return 'kein Kassenbericht'
+  const days =
+    !kasse.complete && kasse.open_days !== null
+      ? `${kasse.report_days} von ${kasse.open_days} Öffnungstagen`
+      : plural(kasse.days, 'Öffnungstag', 'Öffnungstage')
+  return `${days} · ${formatEuro(kasse.revenue)}`
+}
+
 function keyFigures(report: FinanceMonthReport, complete: boolean) {
   // Für angebrochene Monate liefert der Server keinen Ø (`null`).
   const avg = report.comparison.average
   const avgHint = (value: number | undefined) =>
     avg && value !== undefined
-      ? `Ø ${avg.months} Monate: ${formatEuro(value)}`
+      ? `${averageLabelOf(avg.months)}: ${formatEuro(value)}`
       : undefined
   const items: KeyFigure[] = [
     {
@@ -169,11 +202,7 @@ function keyFigures(report: FinanceMonthReport, complete: boolean) {
     {
       label: 'Kasse Ø je Öffnungstag',
       value: report.kasse ? formatEuro(report.kasse.avg_day) : '–',
-      hint: report.kasse
-        ? `${report.kasse.days} Öffnungstage · ${formatEuro(
-            report.kasse.revenue
-          )}`
-        : 'kein Kassenbericht',
+      hint: kasseHint(report),
       'data-testid': 'kasse-tile',
     },
   ]
@@ -391,9 +420,11 @@ export function comparisonRows(report: FinanceMonthReport): ComparisonRow[] {
   if (average) {
     rows.push({
       key: 'average',
-      label: `Ø ${average.months} volle Monat${
-        average.months === 1 ? '' : 'e'
-      } davor`,
+      label: `Ø ${plural(
+        average.months,
+        'voller Monat',
+        'volle Monate'
+      )} davor`,
       data: average,
       diff: average.diff_result,
     })
@@ -568,8 +599,12 @@ export default function MonatsanalyseClient({
   // angebrochene Monate ist er `null` (halbe gegen ganze Monate ergäben nur
   // Scheinabweichungen). Einzelne Zeilen ohne Ø zeigen „–“.
   const comparison = avg !== null
-  const averageLabel = avg ? `Ø ${avg.months} Monate` : 'Ø'
-  const notes = report.notes.filter((note) => note.key !== 'partial')
+  const averageLabel = averageLabelOf(avg?.months)
+  // `partial` und `kasse_incomplete` stehen an ihrer Stelle, nicht unten.
+  const notes = report.notes.filter(
+    (note) => note.key !== 'partial' && note.key !== 'kasse_incomplete'
+  )
+  const kasseIncomplete = kasseIncompleteText(report)
   const { statement } = report
 
   return (
@@ -587,6 +622,7 @@ export default function MonatsanalyseClient({
         highlightsEmptyText={emptyHighlightsText(report)}
         comparisonRows={comparisonRows(report)}
         notes={notes}
+        kasseNote={kasseIncomplete}
       />
       <Box className="fin-screen">
         <PageLayout
@@ -687,8 +723,10 @@ export default function MonatsanalyseClient({
           <PageSection
             title="Wohin das Geld ging"
             description={
-              comparison
-                ? `Ausgaben nach Art, die größten zuerst. Der Strich im Balken ist der Durchschnitt der ${avg?.months} vollen Monate davor.`
+              comparison && avg
+                ? `Ausgaben nach Art, die größten zuerst. Der Strich im Balken ist ${averageBasisText(
+                    avg.months
+                  )}.`
                 : 'Ausgaben nach Art, die größten zuerst.'
             }
             disablePadding
@@ -751,10 +789,18 @@ export default function MonatsanalyseClient({
               <Typography
                 color="text.secondary"
                 data-testid="no-reconciliation"
+                data-reason={
+                  !complete
+                    ? 'partial'
+                    : kasseIncomplete
+                    ? 'kasse_incomplete'
+                    : 'no_kasse'
+                }
               >
-                {complete
-                  ? 'Für diesen Monat gibt es keine Kassenberichte.'
-                  : 'Der Abgleich folgt, wenn der Monat vollständig ist – Einzahlungen der letzten Tage fehlen sonst noch.'}
+                {!complete
+                  ? 'Der Abgleich folgt, wenn der Monat vollständig ist – Einzahlungen der letzten Tage fehlen sonst noch.'
+                  : kasseIncomplete ??
+                    'Für diesen Monat gibt es keine Kassenberichte.'}
               </Typography>
             )}
             {report.kasse_previous_year && (

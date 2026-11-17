@@ -33,6 +33,7 @@ import {
   PageSection,
 } from '../../../components/layout'
 import { TOUCH_MEDIA } from '../../../lib/muiTheme'
+import { plural } from '../../../lib/plural'
 import DateRangeFilter from '../../../components/analytics/DateRangeFilter'
 import {
   formatIsoRange,
@@ -86,10 +87,6 @@ export function newestFirst<T extends { date: string }>(
   days: readonly T[]
 ): T[] {
   return [...days].sort((a, b) => b.date.localeCompare(a.date))
-}
-
-function plural(count: number, one: string, many: string) {
-  return `${count} ${count === 1 ? one : many}`
 }
 
 /** Nebenwerte eines Tages als kurze Textteile (statt je eines Chips). */

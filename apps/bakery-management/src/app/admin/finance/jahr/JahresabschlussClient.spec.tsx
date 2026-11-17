@@ -5,6 +5,7 @@ import JahresabschlussClient from './JahresabschlussClient'
 import { formatEuro } from '../../../../lib/reportFormat'
 import {
   finalYearFixture,
+  kasseIncompleteYearFixture,
   provisionalYearFixture,
 } from '../../../../lib/financeReportFixtures'
 
@@ -393,5 +394,56 @@ describe('JahresabschlussClient', () => {
     } finally {
       window.print = original
     }
+  })
+
+  it('markiert Monate mit unvollständiger Kasse in „Kasse-Umsatz“', async () => {
+    respondWith({ '/api/finance/year': kasseIncompleteYearFixture() })
+    renderWithTheme(<JahresabschlussClient />)
+    const september = await screen.findByTestId('kasse-2026-09')
+    expect(september).toHaveTextContent(/3\.100,00\s*€/)
+    expect(screen.getByTestId('kasse-incomplete-2026-09')).toHaveTextContent(
+      'Kasse unvollständig: 8 von 26 Öffnungstagen'
+    )
+    // Der laufende Monat sagt, dass er noch läuft; volle Monate bleiben ohne.
+    expect(screen.getByTestId('kasse-incomplete-2026-10')).toHaveTextContent(
+      'Monat läuft noch: bisher 11 von 11 Öffnungstagen'
+    )
+    expect(screen.queryByTestId('kasse-incomplete-2026-08')).toBeNull()
+
+    // „Kasse und Konto“ nennt den Monat, der fehlt - einmal, nicht noch
+    // einmal unten in den Hinweisen.
+    expect(screen.getByText(/7 volle Monate/)).toBeInTheDocument()
+    expect(screen.getByTestId('kasse-incomplete-note')).toHaveTextContent(
+      'Nicht im Kassenabgleich: September'
+    )
+    expect(screen.getByTestId('year-notes')).not.toHaveTextContent(
+      'Nicht im Kassenabgleich'
+    )
+  })
+
+  it('ohne vollständigen Kassenmonat: der Grund statt einer Differenz', async () => {
+    const report = kasseIncompleteYearFixture()
+    report.reconciliation = null
+    report.coverage = { ...report.coverage, complete_months: 1 }
+    report.notes = report.notes.map((note) =>
+      note.key === 'kasse_incomplete'
+        ? {
+            ...note,
+            text: 'Ohne Wochenplan und Öffnungskalender aus hq lässt sich nicht prüfen, ob an jedem Öffnungstag ein Kassenbericht vorliegt – deshalb kein Kassenabgleich.',
+          }
+        : note
+    )
+    respondWith({ '/api/finance/year': report })
+    renderWithTheme(<JahresabschlussClient />)
+    expect(await screen.findByTestId('no-reconciliation')).toHaveTextContent(
+      'deshalb kein Kassenabgleich'
+    )
+    expect(screen.queryByTestId('reconciliation')).toBeNull()
+    // Einzahl: „1 voller Monat“, nicht „1 volle Monat“.
+    expect(
+      within(document.querySelector('.fin-screen') as HTMLElement).getByText(
+        '1 voller Monat'
+      )
+    ).toBeInTheDocument()
   })
 })

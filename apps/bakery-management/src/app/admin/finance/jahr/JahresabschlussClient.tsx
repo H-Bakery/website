@@ -41,6 +41,7 @@ import {
   formatMonth,
   formatReportDate,
 } from '../../../../lib/reportFormat'
+import { plural } from '../../../../lib/plural'
 import {
   EmptyState,
   KeyFigures,
@@ -307,8 +308,28 @@ function MonthsTable({ report }: { report: FinanceYearReport }) {
                     ...cell,
                     color: row.kasse ? undefined : 'text.secondary',
                   }}
+                  data-testid={`kasse-${row.month}`}
                 >
                   {row.kasse ? formatEuro(row.kasse.revenue) : '–'}
+                  {row.kasse && !row.kasse.complete && row.kasse.note && (
+                    // Nicht im Kassenabgleich: der Grund vom Server, z. B.
+                    // „Kasse unvollständig: 8 von 26 Öffnungstagen“.
+                    <Typography
+                      component="span"
+                      variant="caption"
+                      color="text.secondary"
+                      data-testid={`kasse-incomplete-${row.month}`}
+                      sx={{
+                        display: 'block',
+                        whiteSpace: 'normal',
+                        lineHeight: 1.3,
+                        maxWidth: 200,
+                        ml: 'auto',
+                      }}
+                    >
+                      {row.kasse.note}
+                    </Typography>
+                  )}
                 </TableCell>
               </TableRow>
             )
@@ -536,9 +557,11 @@ function keyFigures(report: FinanceYearReport): KeyFigure[] {
     {
       label: 'Einnahmen',
       value: formatEuro(statement.income.total),
-      hint: `${report.coverage.complete_months} volle Monat${
-        report.coverage.complete_months === 1 ? '' : 'e'
-      }`,
+      hint: plural(
+        report.coverage.complete_months,
+        'voller Monat',
+        'volle Monate'
+      ),
     },
     { label: 'Ausgaben', value: formatEuro(statement.expense.total) },
     {
@@ -668,6 +691,10 @@ export default function JahresabschlussClient({
   }
 
   const { report } = state
+  // Welche Monate nicht im Kassenabgleich sind und warum (vom Server) - steht
+  // bei „Kasse und Konto“, nicht noch einmal in den Hinweisen.
+  const kasseNote = report.notes.find((note) => note.key === 'kasse_incomplete')
+  const notes = report.notes.filter((note) => note.key !== 'kasse_incomplete')
   return (
     <Box className="fin-report" data-testid="jahresabschluss">
       <FinanceReportPrintStyles />
@@ -768,11 +795,11 @@ export default function JahresabschlussClient({
             title="Kasse und Konto"
             description={
               report.reconciliation?.from && report.reconciliation.to
-                ? `Was die Kasse eingenommen hat und was davon aufs Konto kam – ${
-                    report.reconciliation.months
-                  } volle Monat${
-                    report.reconciliation.months === 1 ? '' : 'e'
-                  } (${formatMonth(
+                ? `Was die Kasse eingenommen hat und was davon aufs Konto kam – ${plural(
+                    report.reconciliation.months ?? 0,
+                    'voller Monat',
+                    'volle Monate'
+                  )} (${formatMonth(
                     report.reconciliation.from
                   )} bis ${formatMonth(report.reconciliation.to)}).`
                 : 'Was die Kasse eingenommen hat und was davon aufs Konto kam.'
@@ -790,12 +817,25 @@ export default function JahresabschlussClient({
                   {formatEuro(report.reconciliation.kasse_revenue)} an{' '}
                   {report.reconciliation.kasse_days} Öffnungstagen.
                 </Typography>
+                {kasseNote && (
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ mt: 1 }}
+                    data-testid="kasse-incomplete-note"
+                  >
+                    {kasseNote.text}
+                  </Typography>
+                )}
               </>
             ) : (
-              <Typography color="text.secondary">
-                Für dieses Jahr gibt es noch keinen vollen Monat mit Bankdaten
-                und Kassenberichten – der Vergleich folgt, sobald einer
-                abgeschlossen ist.
+              <Typography
+                color="text.secondary"
+                data-testid="no-reconciliation"
+              >
+                {kasseNote
+                  ? kasseNote.text
+                  : 'Für dieses Jahr gibt es noch keinen Monat, in dem Bankdaten und Kassenberichte vollständig sind – der Vergleich folgt, sobald einer abgeschlossen ist.'}
               </Typography>
             )}
           </PageSection>
@@ -804,8 +844,8 @@ export default function JahresabschlussClient({
             title="Was dieser Abschluss nicht enthält"
             data-testid="year-notes"
           >
-            {report.notes.length > 0 ? (
-              <ReportNotes notes={report.notes} />
+            {notes.length > 0 ? (
+              <ReportNotes notes={notes} />
             ) : (
               <Typography color="text.secondary">Keine Hinweise.</Typography>
             )}
