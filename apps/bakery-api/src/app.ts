@@ -59,6 +59,10 @@ import { createRecipesRouter } from './routes/recipes.routes'
 import { RecipesOptions } from './services/recipes.service'
 import { createRestRouter, RestRouterOptions } from './routes/rest.routes'
 import {
+  createAbgleichRouter,
+  AbgleichRouterOptions,
+} from './routes/abgleich.routes'
+import {
   createDienstplanRouter,
   DienstplanRouterOptions,
 } from './routes/dienstplan.routes'
@@ -129,6 +133,11 @@ export interface CreateAppOptions {
    * Default: `hq.reportsDir` / `hq.today`, the Backzettel's master data.
    */
   rest?: RestRouterOptions
+  /**
+   * „Abgleich Produktion ↔ Kasse“ (inhaber): clock and reports dir for
+   * tests. Default: `hq.reportsDir` / `hq.today`.
+   */
+  abgleich?: AbgleichRouterOptions
   /**
    * Dienstplan (TASK-042, in the pilot for the owner): clock and finance dir (Ruhetage
    * from `config/targets.json`) for tests. Default: `hq.financeDir`.
@@ -297,6 +306,17 @@ export function createApp(options: CreateAppOptions = {}): Application {
           }
         : {}),
       ...options.rest,
+    })
+  )
+  // „Abgleich Produktion ↔ Kasse“ (inhaber): gebacken − CAP − verkauft −
+  // Rest per bake day and item - the same sources as Rest am Abend.
+  app.use(
+    '/api/abgleich',
+    createAbgleichRouter(backzettel.source, backzettel.service, {
+      reportsDir: options.hq?.reportsDir,
+      today: options.hq?.today,
+      log: options.hq?.log?.warn,
+      ...options.abgleich,
     })
   )
   // Z14: closed days of the calendar (kalender.yaml) block the pickup date.

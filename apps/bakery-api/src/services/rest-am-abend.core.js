@@ -1515,6 +1515,18 @@ module.exports = {
   lineKey,
   rowKey,
   isoWeek,
+  // Bausteine, die der Abgleich Produktion ↔ Kasse (`abgleich.core.js`)
+  // mitbenutzt - eine Regel, keine Kopie.
+  round2,
+  itemsById,
+  isCountable,
+  isSizeItem,
+  variantLabel,
+  sectionOrder,
+  rowsByLine,
+  qtyCell,
+  pct,
+  rate,
   listDates,
   isCalendarDate,
   isoWeekday,

@@ -87,7 +87,7 @@ function parseLineRows(raw: unknown): string[] | null {
 }
 
 /** Stored counts as the core reads them (plain, numbers, user refs). */
-async function loadRows(
+export async function loadRows(
   where: Record<string, unknown>,
   transaction?: Transaction
 ) {
