@@ -40,7 +40,7 @@ type AutoplayMode = 'auto' | 'playing' | 'stopped'
  * Es blättert alle fünf Sekunden weiter (WCAG 2.2.2: abschaltbar), aber
  * - nicht, wenn das Gerät „Bewegung reduzieren“ meldet,
  * - nie wieder, sobald jemand selbst eingreift: Tippen/Klicken, Wischen
- *   oder Mausrad im Karussell, eine Taste,
+ *   oder seitliches Scrollen im Karussell, eine Taste,
  * - nicht, solange die Maus darüber steht oder der Fokus darin liegt,
  * - und der Knopf neben den Punkten hält es an oder startet es wieder.
  */
@@ -60,6 +60,15 @@ const FeaturedProducts: React.FC<FeaturedProductsProps> = ({ products }) => {
 
   const stopAutoplay = useCallback(() => setMode('stopped'), [])
   const isPlaying = mode !== 'stopped'
+
+  // Nur seitliches Scrollen blättert im Karussell (Trackpad, Mausrad mit
+  // Umschalttaste). Wer mit dem Mausrad die Seite daran vorbei scrollt, greift
+  // nicht ein - sonst hielte fast jeder Besuch am Computer es für immer an.
+  const handleWheel = (event: React.WheelEvent) => {
+    if (event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+      stopAutoplay()
+    }
+  }
 
   const scrollToIndex = useCallback(
     (index: number) => {
@@ -159,7 +168,7 @@ const FeaturedProducts: React.FC<FeaturedProductsProps> = ({ products }) => {
           <Box
             ref={scrollRef}
             onScroll={handleScroll}
-            onWheel={stopAutoplay}
+            onWheel={handleWheel}
             sx={{
               display: 'flex',
               gap: { xs: 2, md: 3 },

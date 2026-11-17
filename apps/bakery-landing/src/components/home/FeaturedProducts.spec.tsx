@@ -99,6 +99,32 @@ describe('FeaturedProducts', () => {
     expect(currentDot()).toBe(1)
   })
 
+  it('bleibt nach seitlichem Scrollen stehen, nicht aber, wenn die Seite daran vorbei scrollt', () => {
+    renderWithTheme(<FeaturedProducts products={PRODUCTS} />)
+    const card = screen.getByText('Testbrot Alpha')
+
+    // Mausrad senkrecht: Die Seite scrollt am Karussell vorbei.
+    fireEvent.wheel(card, { deltaX: 0, deltaY: 120 })
+    advance(AUTOPLAY_MS)
+    expect(currentDot()).toBe(2)
+
+    // Trackpad seitlich: Das ist Blättern im Karussell.
+    fireEvent.wheel(card, { deltaX: 80, deltaY: 4 })
+    advance(15_000)
+    expect(currentDot()).toBe(2)
+  })
+
+  it('bleibt nach Mausrad mit Umschalttaste (seitlich) stehen', () => {
+    renderWithTheme(<FeaturedProducts products={PRODUCTS} />)
+
+    fireEvent.wheel(screen.getByText('Testbrot Alpha'), {
+      deltaY: 120,
+      shiftKey: true,
+    })
+    advance(15_000)
+    expect(currentDot()).toBe(1)
+  })
+
   it('hält mit dem Knopf an und startet wieder', () => {
     renderWithTheme(<FeaturedProducts products={PRODUCTS} />)
 

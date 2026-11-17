@@ -42,7 +42,8 @@ route of that name.
   on focus, targets `<main id="inhalt" tabIndex={-1}>`.
 - **Featured products carousel** (`components/home/FeaturedProducts.tsx`, WCAG 2.2.2): advances
   every 5 s, but not with `prefers-reduced-motion: reduce`, pauses while hovered or focused, and
-  stops for good on pointerdown/touch, mouse wheel or any key inside it. A pause/play button next
+  stops for good on pointerdown/touch, sideways scrolling (trackpad, shift + wheel) or any key
+  inside it; a vertical wheel that scrolls the page past it does not stop it. A pause/play button next
   to the dots stops or (deliberately) restarts it. The dots are buttons „Produkt N von M“ with
   `aria-current`, 44 px hit area (narrowing to 32 px wide on very small screens).
 - **404** (`app/not-found.tsx`): Next 16 reads `metadata` from `not-found.tsx` as the last level
