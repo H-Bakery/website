@@ -1,9 +1,13 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import type { Product } from '../types/product'
 import {
   getHQProducts,
+  isListed,
+  loadListedProducts,
   loadProducts,
+  relatedProducts,
   renderedImageFor,
   resolveProductImage,
 } from './products'
@@ -164,5 +168,105 @@ describe('getHQProducts / loadProducts mit Bilder-Index', () => {
       '{"version":9}'
     )
     expect(() => loadProducts()).toThrow(/version 1/)
+  })
+})
+
+describe('nicht angebotene Produkte (available: false)', () => {
+  let tmp: string
+  const env = { ...process.env }
+
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'landing-listed-'))
+    const products = path.join(tmp, 'products')
+    fs.mkdirSync(products)
+    const md = (id: string, n: number, available: string) =>
+      `---\nid: ${id}\nnumeric_id: ${n}\nname: ${id}\ncategory: brot\nprice: 1.5\n${available}seasonal: false\nshort_description: "Nur für Tests."\n---\n`
+    fs.writeFileSync(
+      path.join(products, '1-testbrot.md'),
+      md('testbrot', 1, 'available: true\n')
+    )
+    fs.writeFileSync(
+      path.join(products, '2-probebrot-alt.md'),
+      md('probebrot-alt', 2, 'available: false\n')
+    )
+    // Ohne Feld: gilt als angeboten.
+    fs.writeFileSync(
+      path.join(products, '3-musterbrot.md'),
+      md('musterbrot', 3, '')
+    )
+    process.env.HQ_PRODUCTS_DIR = products
+    process.env.LANDING_PRODUKTBILDER_INDEX = path.join(tmp, 'index.json')
+  })
+  afterEach(() => {
+    process.env = { ...env }
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it('loadProducts behält es - jede hq-Datei bekommt ihre Seite', () => {
+    const products = loadProducts()
+    expect(products.map((p) => p.id)).toEqual([1, 2, 3])
+    expect(products.find((p) => p.id === 2)?.available).toBe(false)
+  })
+
+  it('loadListedProducts lässt es weg, das Produkt ohne Feld bleibt', () => {
+    expect(loadListedProducts().map((p) => p.id)).toEqual([1, 3])
+  })
+
+  it('isListed folgt der einen Regel', () => {
+    expect(isListed({ available: false })).toBe(false)
+    expect(isListed({ available: true })).toBe(true)
+    expect(isListed({})).toBe(true)
+  })
+})
+
+describe('relatedProducts', () => {
+  const p = (id: number, category = 'Brot', available = true): Product => ({
+    id,
+    name: `Testprodukt ${id}`,
+    category,
+    price: 1,
+    available,
+  })
+  // Brot 1-7 (5 nicht angeboten), dazwischen Brötchen.
+  const ALL = [
+    p(1),
+    p(2),
+    p(3),
+    p(4),
+    p(5, 'Brot', false),
+    p(6),
+    p(7),
+    p(8, 'Brötchen'),
+    p(9, 'Brötchen'),
+  ]
+  const ids = (list: Product[]) => list.map((x) => x.id)
+
+  it('nimmt die nächsten vier der Kategorie nach der eigenen ID', () => {
+    expect(ids(relatedProducts(ALL, ALL[0]))).toEqual([2, 3, 4, 6])
+  })
+
+  it('springt am Ende an den Anfang der Kategorie zurück', () => {
+    expect(ids(relatedProducts(ALL, ALL[3]))).toEqual([6, 7, 1, 2])
+    expect(ids(relatedProducts(ALL, ALL[6]))).toEqual([1, 2, 3, 4])
+  })
+
+  it('nie das Produkt selbst, nie ein nicht angebotenes, nie eine andere Kategorie', () => {
+    for (const current of ALL) {
+      const related = relatedProducts(ALL, current)
+      expect(ids(related)).not.toContain(current.id)
+      expect(ids(related)).not.toContain(5)
+      for (const r of related) expect(r.category).toBe(current.category)
+    }
+  })
+
+  it('für ein nicht angebotenes Produkt: die angebotenen Nachbarn als Alternativen', () => {
+    expect(ids(relatedProducts(ALL, ALL[4]))).toEqual([6, 7, 1, 2])
+  })
+
+  it('unabhängig von der Reihenfolge der Liste und mit weniger als vier Nachbarn', () => {
+    expect(ids(relatedProducts([...ALL].reverse(), ALL[0]))).toEqual([
+      2, 3, 4, 6,
+    ])
+    expect(ids(relatedProducts(ALL, ALL[7]))).toEqual([9])
   })
 })

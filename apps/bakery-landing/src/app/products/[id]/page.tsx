@@ -1,5 +1,7 @@
 import { notFound } from 'next/navigation'
 import {
+  Alert,
+  AlertTitle,
   Box,
   Container,
   Typography,
@@ -9,13 +11,14 @@ import {
   Link,
   Button,
   Card,
+  CardActionArea,
   CardContent,
   Divider,
 } from '@mui/material'
 import HomeIcon from '@mui/icons-material/Home'
 import ShoppingBasketIcon from '@mui/icons-material/ShoppingBasket'
 import VerifiedIcon from '@mui/icons-material/Verified'
-import LocalShippingIcon from '@mui/icons-material/LocalShipping'
+import FamilyRestroomIcon from '@mui/icons-material/FamilyRestroom'
 import WorkspacePremiumIcon from '@mui/icons-material/WorkspacePremium'
 import ScheduleIcon from '@mui/icons-material/Schedule'
 import PhoneIcon from '@mui/icons-material/Phone'
@@ -24,16 +27,22 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import GrainIcon from '@mui/icons-material/Grain'
 import Image from 'next/image'
-import { loadProducts } from '../../../lib/products'
+import {
+  isListed,
+  loadProducts,
+  relatedProducts as pickRelatedProducts,
+} from '../../../lib/products'
+import { pageOpenGraph } from '../../../lib/seo/pageMetadata'
 import RenderedImage from '../../../components/products/RenderedImage'
 import { formatPrice } from '../../../utils/formatPrice'
 import {
   getContactPageHours,
-  getEarliestOpeningTime,
+  getEarliestOpeningLabel,
   getCompactHoursSummary,
 } from '../../../utils/openingHours'
 import { Metadata } from 'next'
-import { SITE_URL } from '../../../config/legal'
+import { BRAND_FACTS } from '@bakery/shared/utils'
+import { LEGAL, SITE_URL } from '../../../config/legal'
 
 interface ProductPageProps {
   params: Promise<{
@@ -43,6 +52,9 @@ interface ProductPageProps {
 
 export const dynamicParams = false
 
+// Alle Produkte, auch die nicht angebotenen (available: false in hq): alte
+// Links bleiben erreichbar, und der Deploy-Wächter erwartet genau eine Seite
+// je hq-Datei. Die Seite sagt dann, dass es das Produkt derzeit nicht gibt.
 export async function generateStaticParams() {
   const products = loadProducts()
   return products.map((product) => ({
@@ -78,6 +90,10 @@ export async function generateMetadata({
 
   return {
     title: `${product.name} - Bäckerei Heusser`,
+    // Nicht angeboten: Seite bleibt für alte Links, aber nicht im Index.
+    // `robots` der Seite ersetzt das aus layout.tsx ganz - damit fällt auch
+    // dessen googleBot-`index` weg.
+    ...(isListed(product) ? {} : { robots: { index: false, follow: true } }),
     description:
       product.description ||
       `${product.name} aus unserer Bäckerei. Frisch gebacken und von höchster Qualität. Täglich frisch in unserer traditionellen Handwerksbäckerei hergestellt.`,
@@ -85,13 +101,12 @@ export async function generateMetadata({
     alternates: {
       canonical: `${baseUrl}/products/${product.id}`,
     },
-    openGraph: {
+    openGraph: pageOpenGraph({
       title: `${product.name} - Bäckerei Heusser`,
       description:
         product.description ||
         `Frische ${product.name} aus unserer traditionellen Handwerksbäckerei`,
       url: `${baseUrl}/products/${product.id}`,
-      siteName: 'Bäckerei Heusser',
       images: [
         {
           url: socialImage,
@@ -100,9 +115,7 @@ export async function generateMetadata({
           alt: product.name,
         },
       ],
-      locale: 'de_DE',
-      type: 'website',
-    },
+    }),
     twitter: {
       card: 'summary_large_image',
       title: `${product.name} - Bäckerei Heusser`,
@@ -122,6 +135,10 @@ export default async function ProductPage({ params }: ProductPageProps) {
   if (!product) {
     notFound()
   }
+
+  // hq: available: false - die Seite bleibt, sagt es aber deutlich und zeigt
+  // weder Preis noch Bestell-Knopf, dafür angebotene Alternativen.
+  const listed = isListed(product)
 
   const imageSrc =
     product.image ||
@@ -176,10 +193,8 @@ export default async function ProductPage({ params }: ProductPageProps) {
     </Box>
   )
 
-  // Get related products from same category
-  const relatedProducts = products
-    .filter((p) => p.category === product.category && p.id !== product.id)
-    .slice(0, 4)
+  // Die nächsten angebotenen Produkte der Kategorie nach diesem (rundum).
+  const relatedProducts = pickRelatedProducts(products, product)
 
   return (
     <>
@@ -194,7 +209,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
       >
         <Container maxWidth="lg">
           <Breadcrumbs
-            aria-label="breadcrumb"
+            aria-label="Seitenpfad"
             sx={{
               '& .MuiBreadcrumbs-separator': { color: 'grey.500' },
               '& .MuiLink-root': {
@@ -315,29 +330,59 @@ export default async function ProductPage({ params }: ProductPageProps) {
                 )}
               </Box>
 
-              {/* Price Display */}
-              <Box sx={{ mb: 4 }}>
-                <Typography
-                  variant="h2"
-                  sx={{
-                    fontWeight: 700,
-                    color: 'primary.main',
-                    fontSize: { xs: '2.25rem', md: '2.75rem' },
-                    display: 'inline',
-                  }}
-                >
-                  {formatPrice(product.price)}
-                </Typography>
-                {product.unit && (
-                  <Typography
-                    variant="h6"
-                    color="text.secondary"
-                    sx={{ display: 'inline', ml: 1.5 }}
+              {!listed && (
+                <Alert severity="info" sx={{ mb: 4 }}>
+                  <AlertTitle sx={{ fontWeight: 600 }}>
+                    Derzeit nicht im Sortiment
+                  </AlertTitle>
+                  Dieses Produkt bieten wir derzeit nicht an. Gerne beraten wir
+                  Sie telefonisch zu Alternativen:{' '}
+                  <Link
+                    href={LEGAL.phoneHref}
+                    sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}
                   >
-                    / {product.unit}
+                    {LEGAL.phone}
+                  </Link>
+                  .
+                  <Box sx={{ mt: 2 }}>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      href="/products"
+                      startIcon={<ShoppingBasketIcon />}
+                      sx={{ textTransform: 'none', fontWeight: 600 }}
+                    >
+                      Zum aktuellen Sortiment
+                    </Button>
+                  </Box>
+                </Alert>
+              )}
+
+              {/* Price Display */}
+              {listed && (
+                <Box sx={{ mb: 4 }}>
+                  <Typography
+                    variant="h2"
+                    sx={{
+                      fontWeight: 700,
+                      color: 'primary.main',
+                      fontSize: { xs: '2.25rem', md: '2.75rem' },
+                      display: 'inline',
+                    }}
+                  >
+                    {formatPrice(product.price)}
                   </Typography>
-                )}
-              </Box>
+                  {product.unit && (
+                    <Typography
+                      variant="h6"
+                      color="text.secondary"
+                      sx={{ display: 'inline', ml: 1.5 }}
+                    >
+                      / {product.unit}
+                    </Typography>
+                  )}
+                </Box>
+              )}
 
               <Divider sx={{ mb: 4 }} />
 
@@ -355,201 +400,208 @@ export default async function ProductPage({ params }: ProductPageProps) {
                   `Genießen Sie ${product.name} - täglich frisch in unserer Bäckerei hergestellt. Mit ausgewählten Zutaten und traditioneller Handwerkskunst gebacken.`}
               </Typography>
 
-              {/* Professional Feature Highlights */}
-              <Box sx={{ mb: 5 }}>
-                <Typography
-                  variant="subtitle2"
-                  sx={{ color: 'grey.700', mb: 2, fontWeight: 600 }}
-                >
-                  Produktvorteile
-                </Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={6}>
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        p: 2,
-                        bgcolor: 'grey.50',
-                        borderRadius: 1,
-                        border: '1px solid',
-                        borderColor: 'grey.200',
-                      }}
-                    >
-                      <ScheduleIcon
+              {/* Professional Feature Highlights - nur, was belegt ist
+                  (Öffnungszeit, BRAND_FACTS), und nur für ein Produkt, das
+                  wir anbieten. */}
+              {listed && (
+                <Box sx={{ mb: 5 }}>
+                  <Typography
+                    variant="subtitle2"
+                    sx={{ color: 'grey.700', mb: 2, fontWeight: 600 }}
+                  >
+                    Produktvorteile
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6}>
+                      <Box
                         sx={{
-                          color: 'primary.main',
-                          mr: 2,
-                          fontSize: 20,
-                          mt: 0.5,
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          p: 2,
+                          bgcolor: 'grey.50',
+                          borderRadius: 1,
+                          border: '1px solid',
+                          borderColor: 'grey.200',
                         }}
-                      />
-                      <Box>
-                        <Typography
-                          variant="body2"
-                          fontWeight="600"
-                          color="text.primary"
-                        >
-                          Täglich frisch
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Ab {getEarliestOpeningTime()} Uhr morgens gebacken
-                        </Typography>
+                      >
+                        <ScheduleIcon
+                          sx={{
+                            color: 'primary.main',
+                            mr: 2,
+                            fontSize: 20,
+                            mt: 0.5,
+                          }}
+                        />
+                        <Box>
+                          <Typography
+                            variant="body2"
+                            fontWeight="600"
+                            color="text.primary"
+                          >
+                            Frisch im Laden
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {getEarliestOpeningLabel()} geöffnet
+                          </Typography>
+                        </Box>
                       </Box>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        p: 2,
-                        bgcolor: 'grey.50',
-                        borderRadius: 1,
-                        border: '1px solid',
-                        borderColor: 'grey.200',
-                      }}
-                    >
-                      <LocalShippingIcon
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Box
                         sx={{
-                          color: 'primary.main',
-                          mr: 2,
-                          fontSize: 20,
-                          mt: 0.5,
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          p: 2,
+                          bgcolor: 'grey.50',
+                          borderRadius: 1,
+                          border: '1px solid',
+                          borderColor: 'grey.200',
                         }}
-                      />
-                      <Box>
-                        <Typography
-                          variant="body2"
-                          fontWeight="600"
-                          color="text.primary"
-                        >
-                          Regionale Zutaten
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Aus lokalem Anbau
-                        </Typography>
+                      >
+                        <FamilyRestroomIcon
+                          sx={{
+                            color: 'primary.main',
+                            mr: 2,
+                            fontSize: 20,
+                            mt: 0.5,
+                          }}
+                        />
+                        <Box>
+                          <Typography
+                            variant="body2"
+                            fontWeight="600"
+                            color="text.primary"
+                          >
+                            Familienbetrieb
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            In {BRAND_FACTS.generation}. Generation
+                          </Typography>
+                        </Box>
                       </Box>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        p: 2,
-                        bgcolor: 'grey.50',
-                        borderRadius: 1,
-                        border: '1px solid',
-                        borderColor: 'grey.200',
-                      }}
-                    >
-                      <WorkspacePremiumIcon
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Box
                         sx={{
-                          color: 'primary.main',
-                          mr: 2,
-                          fontSize: 20,
-                          mt: 0.5,
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          p: 2,
+                          bgcolor: 'grey.50',
+                          borderRadius: 1,
+                          border: '1px solid',
+                          borderColor: 'grey.200',
                         }}
-                      />
-                      <Box>
-                        <Typography
-                          variant="body2"
-                          fontWeight="600"
-                          color="text.primary"
-                        >
-                          Handwerksqualität
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Traditionelle Herstellung
-                        </Typography>
+                      >
+                        <WorkspacePremiumIcon
+                          sx={{
+                            color: 'primary.main',
+                            mr: 2,
+                            fontSize: 20,
+                            mt: 0.5,
+                          }}
+                        />
+                        <Box>
+                          <Typography
+                            variant="body2"
+                            fontWeight="600"
+                            color="text.primary"
+                          >
+                            Handwerksqualität
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Traditionelle Herstellung
+                          </Typography>
+                        </Box>
                       </Box>
-                    </Box>
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        p: 2,
-                        bgcolor: 'grey.50',
-                        borderRadius: 1,
-                        border: '1px solid',
-                        borderColor: 'grey.200',
-                      }}
-                    >
-                      <VerifiedIcon
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Box
                         sx={{
-                          color: 'primary.main',
-                          mr: 2,
-                          fontSize: 20,
-                          mt: 0.5,
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          p: 2,
+                          bgcolor: 'grey.50',
+                          borderRadius: 1,
+                          border: '1px solid',
+                          borderColor: 'grey.200',
                         }}
-                      />
-                      <Box>
-                        <Typography
-                          variant="body2"
-                          fontWeight="600"
-                          color="text.primary"
-                        >
-                          Über 90 Jahre Erfahrung
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Seit 1933 in Familienbesitz
-                        </Typography>
+                      >
+                        <VerifiedIcon
+                          sx={{
+                            color: 'primary.main',
+                            mr: 2,
+                            fontSize: 20,
+                            mt: 0.5,
+                          }}
+                        />
+                        <Box>
+                          <Typography
+                            variant="body2"
+                            fontWeight="600"
+                            color="text.primary"
+                          >
+                            Über 90 Jahre Erfahrung
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Seit {BRAND_FACTS.foundedYear} in Familienbesitz
+                          </Typography>
+                        </Box>
                       </Box>
-                    </Box>
+                    </Grid>
                   </Grid>
-                </Grid>
-              </Box>
+                </Box>
+              )}
 
-              {/* Action Buttons */}
-              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                <Button
-                  variant="contained"
-                  size="large"
-                  startIcon={<PhoneIcon />}
-                  href="tel:068412229"
-                  sx={{
-                    py: 1.5,
-                    px: 4,
-                    fontSize: '1rem',
-                    fontWeight: 600,
-                    borderRadius: 1,
-                    bgcolor: 'primary.main',
-                    boxShadow: 'none',
-                    textTransform: 'none',
-                    '&:hover': {
-                      bgcolor: 'primary.dark',
-                      boxShadow: '0 2px 8px rgba(208, 56, 186, 0.3)',
-                    },
-                  }}
-                >
-                  Telefonisch bestellen
-                </Button>
-                <Button
-                  variant="outlined"
-                  size="large"
-                  startIcon={<ArrowBackIcon />}
-                  href="/products"
-                  sx={{
-                    py: 1.5,
-                    px: 3,
-                    fontSize: '1rem',
-                    fontWeight: 600,
-                    borderRadius: 1,
-                    borderColor: 'grey.300',
-                    color: 'text.primary',
-                    textTransform: 'none',
-                    '&:hover': {
-                      borderColor: 'primary.main',
-                      bgcolor: 'grey.50',
-                    },
-                  }}
-                >
-                  Zurück zum Sortiment
-                </Button>
-              </Box>
+              {/* Action Buttons - ohne Angebot steht der Weg zum Sortiment
+                  schon im Hinweis oben. */}
+              {listed && (
+                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                  <Button
+                    variant="contained"
+                    size="large"
+                    startIcon={<PhoneIcon />}
+                    href={LEGAL.phoneHref}
+                    sx={{
+                      py: 1.5,
+                      px: 4,
+                      fontSize: '1rem',
+                      fontWeight: 600,
+                      borderRadius: 1,
+                      bgcolor: 'primary.main',
+                      boxShadow: 'none',
+                      textTransform: 'none',
+                      '&:hover': {
+                        bgcolor: 'primary.dark',
+                        boxShadow: '0 2px 8px rgba(208, 56, 186, 0.3)',
+                      },
+                    }}
+                  >
+                    Telefonisch bestellen
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="large"
+                    startIcon={<ArrowBackIcon />}
+                    href="/products"
+                    sx={{
+                      py: 1.5,
+                      px: 3,
+                      fontSize: '1rem',
+                      fontWeight: 600,
+                      borderRadius: 1,
+                      borderColor: 'grey.300',
+                      color: 'text.primary',
+                      textTransform: 'none',
+                      '&:hover': {
+                        borderColor: 'primary.main',
+                        bgcolor: 'grey.50',
+                      },
+                    }}
+                  >
+                    Zurück zum Sortiment
+                  </Button>
+                </Box>
+              )}
             </Box>
           </Grid>
         </Grid>
@@ -592,7 +644,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
                   Telefonische Bestellung
                 </Typography>
                 <Typography variant="h6" fontWeight="700" color="primary.main">
-                  06841 2229
+                  {LEGAL.phone}
                 </Typography>
                 <Typography
                   variant="body2"
@@ -626,13 +678,6 @@ export default async function ProductPage({ params }: ProductPageProps) {
                 </Typography>
                 <Typography variant="body1" color="text.primary">
                   66424 Homburg
-                </Typography>
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ mt: 1 }}
-                >
-                  Kostenlose Parkplätze vorhanden
                 </Typography>
               </Box>
             </Grid>
@@ -683,7 +728,9 @@ export default async function ProductPage({ params }: ProductPageProps) {
               fontWeight="600"
               sx={{ mb: 4, color: 'text.primary' }}
             >
-              Ähnliche Produkte
+              {listed
+                ? 'Ähnliche Produkte'
+                : 'Alternativen aus unserem Sortiment'}
             </Typography>
             <Grid container spacing={3}>
               {relatedProducts.map((relatedProduct) => (
@@ -695,7 +742,6 @@ export default async function ProductPage({ params }: ProductPageProps) {
                       borderColor: 'grey.200',
                       boxShadow: 'none',
                       transition: 'all 0.2s',
-                      cursor: 'pointer',
                       '&:hover': {
                         borderColor: 'primary.main',
                         transform: 'translateY(-2px)',
@@ -703,95 +749,92 @@ export default async function ProductPage({ params }: ProductPageProps) {
                       },
                     }}
                   >
-                    <CardContent sx={{ p: 2.5 }}>
-                      <Box
-                        sx={{
-                          height: 120,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          mb: 2,
-                          bgcolor: 'grey.50',
-                          borderRadius: 1,
-                        }}
-                      >
-                        {relatedProduct.renderedImage ? (
-                          <RenderedImage
-                            image={relatedProduct.renderedImage}
-                            alt={relatedProduct.name}
-                            sizes="110px"
-                            style={{ width: 110, height: 110 }}
-                          />
-                        ) : (
-                          <Image
-                            width={90}
-                            height={90}
-                            src={
-                              relatedProduct.image ||
-                              relatedProduct.imageUrl ||
-                              '/assets/images/products/erdbeertorte.jpg'
-                            }
-                            alt={relatedProduct.name}
-                            style={{ objectFit: 'contain' }}
-                          />
-                        )}
-                      </Box>
-                      <Typography
-                        variant="body1"
-                        fontWeight="600"
-                        sx={{
-                          mb: 1,
-                          // Zwei Zeilen statt nowrap: Die Gewichtsangabe steht
-                          // am Ende des Namens ("Mischbrot 1000g") und fiel bei
-                          // 150px Kartenbreite sonst der Ellipse zum Opfer.
-                          lineHeight: 1.3,
-                          // Höhe in Zeilen reservieren, nicht in em: global.css
-                          // erzwingt unter 600px line-height 1.7 (!important),
-                          // mit 2.6em stünden Preis und Button in einer Reihe
-                          // sonst auf verschiedener Höhe.
-                          minHeight: '2lh',
-                          // Einzelne Wörter wie „Puddingstückchen" passen nicht
-                          // in die Spalte - umbrechen statt abschneiden. Kein
-                          // hyphens: auto - Chrome trennt „Pud-/dingstück-…"
-                          // und braucht damit mehr Zeilen, nicht weniger.
-                          overflowWrap: 'anywhere',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                        }}
-                      >
-                        {relatedProduct.name}
-                      </Typography>
-                      <Typography
-                        variant="h6"
-                        fontWeight="700"
-                        color="primary.main"
-                        sx={{ mb: 2 }}
-                      >
-                        {formatPrice(relatedProduct.price)}
-                      </Typography>
-                      <Button
-                        fullWidth
-                        variant="outlined"
-                        size="small"
-                        href={`/products/${relatedProduct.id}`}
-                        sx={{
-                          borderColor: 'grey.300',
-                          color: 'text.primary',
-                          textTransform: 'none',
-                          fontWeight: 600,
-                          '&:hover': {
-                            borderColor: 'primary.main',
-                            bgcolor: 'primary.light',
-                            color: 'primary.main',
-                          },
-                        }}
-                      >
-                        Produkt ansehen
-                      </Button>
-                    </CardContent>
+                    {/* Die ganze Karte ist der Link (wie EnhancedProductCard),
+                        nicht nur ein kleiner Knopf darunter. Mit `href`
+                        rendert ButtonBase selbst ein <a>; `component={Link}`
+                        aus next/link geht in dieser Server-Komponente nicht
+                        (Funktionen lassen sich nicht an Client-Komponenten
+                        übergeben). */}
+                    <CardActionArea
+                      href={`/products/${relatedProduct.id}`}
+                      sx={{
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'stretch',
+                        justifyContent: 'flex-start',
+                      }}
+                    >
+                      <CardContent sx={{ p: 2.5 }}>
+                        <Box
+                          sx={{
+                            height: 120,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            mb: 2,
+                            bgcolor: 'grey.50',
+                            borderRadius: 1,
+                          }}
+                        >
+                          {relatedProduct.renderedImage ? (
+                            <RenderedImage
+                              image={relatedProduct.renderedImage}
+                              alt={relatedProduct.name}
+                              sizes="110px"
+                              style={{ width: 110, height: 110 }}
+                            />
+                          ) : (
+                            <Image
+                              width={90}
+                              height={90}
+                              src={
+                                relatedProduct.image ||
+                                relatedProduct.imageUrl ||
+                                '/assets/images/products/erdbeertorte.jpg'
+                              }
+                              alt={relatedProduct.name}
+                              style={{ objectFit: 'contain' }}
+                            />
+                          )}
+                        </Box>
+                        <Typography
+                          variant="body1"
+                          fontWeight="600"
+                          sx={{
+                            mb: 1,
+                            // Zwei Zeilen statt nowrap: Die Gewichtsangabe steht
+                            // am Ende des Namens ("Mischbrot 1000g") und fiel bei
+                            // 150px Kartenbreite sonst der Ellipse zum Opfer.
+                            lineHeight: 1.3,
+                            // Höhe in Zeilen reservieren, nicht in em: global.css
+                            // erzwingt unter 600px line-height 1.7 (!important),
+                            // mit 2.6em stünden Preis und Button in einer Reihe
+                            // sonst auf verschiedener Höhe.
+                            minHeight: '2lh',
+                            // Einzelne Wörter wie „Puddingstückchen" passen nicht
+                            // in die Spalte - umbrechen statt abschneiden. Kein
+                            // hyphens: auto - Chrome trennt „Pud-/dingstück-…"
+                            // und braucht damit mehr Zeilen, nicht weniger.
+                            overflowWrap: 'anywhere',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                          }}
+                        >
+                          {relatedProduct.name}
+                        </Typography>
+                        <Typography
+                          variant="h6"
+                          fontWeight="700"
+                          color="primary.main"
+                        >
+                          {formatPrice(relatedProduct.price)}
+                        </Typography>
+                      </CardContent>
+                    </CardActionArea>
                   </Card>
                 </Grid>
               ))}

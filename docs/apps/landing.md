@@ -18,6 +18,10 @@ route of that name.
   Reading and parsing the files lives once in the lib `@bakery/shared/hq-products`
   (`libs/shared/hq-products`, CommonJS, also used by the Digitale Bäckerei's `sync-products`);
   `products.ts` keeps only the landing mapping (fallback images, category labels, mock fallback).
+  A product with `available: false` in hq is not on offer: it is left out of the listing, the
+  search, the start page, the related products and the sitemap (`isListedHqProduct`, one rule
+  in the lib), but keeps its page for old links - with a notice, no price or order button,
+  alternatives from its category, and `noindex`.
 - **Product images rendered from the 3D models (DB13):** see [below](#product-images-from-the-3d-models).
 - **Opening hours** have one source, `src/config/openingHours.ts`, mirrored into
   `libs/shared/ui/src/lib/footer/footer-openings.tsx` and the shop's

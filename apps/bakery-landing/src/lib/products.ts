@@ -1,5 +1,9 @@
 import path from 'path'
-import { findMonorepoRoot, readHqProducts } from '@bakery/shared/hq-products'
+import {
+  findMonorepoRoot,
+  isListedHqProduct,
+  readHqProducts,
+} from '@bakery/shared/hq-products'
 import {
   bildVarianten,
   readBilderIndex,
@@ -186,7 +190,7 @@ export function getProductsByCategory(): ProductsByCategory[] {
 
   const grouped = new Map<string, HQProduct[]>()
   for (const product of products) {
-    if (!product.available) continue
+    if (!isListed(product)) continue
     const cat = product.category
     if (!grouped.has(cat)) grouped.set(cat, [])
     grouped.get(cat)!.push(product)
@@ -199,10 +203,6 @@ export function getProductsByCategory(): ProductsByCategory[] {
   }))
 }
 
-/**
- * Load all HQ products and map them to the display Product format.
- * Runs at build time (server component / static generation).
- */
 /**
  * Fallback: gebündelte Produktliste (src/mocks/products), falls das externe
  * HQ-Produktverzeichnis nicht verfügbar ist (z. B. im CI-Build für GitHub Pages).
@@ -242,6 +242,15 @@ function loadFallbackProducts(): Product[] {
   })
 }
 
+/**
+ * Load all HQ products and map them to the display Product format.
+ * Runs at build time (server component / static generation).
+ *
+ * All of them, including the ones hq marks `available: false`: every product
+ * keeps its page (old links, and the deploy guard wants one page per hq file).
+ * What customers browse - listing, search, featured, related, sitemap - goes
+ * through `loadListedProducts()` / `isListed()`.
+ */
 export function loadProducts(): Product[] {
   const hq = getHQProducts()
   if (hq.length === 0) {
@@ -260,4 +269,40 @@ export function loadProducts(): Product[] {
     available: p.available,
     seasonal: p.seasonal,
   }))
+}
+
+/**
+ * Whether a product is currently offered (`available` is not `false` in hq).
+ * The rule itself lives once in `@bakery/shared/hq-products`.
+ */
+export function isListed(product: { available?: boolean | null }): boolean {
+  return isListedHqProduct(product)
+}
+
+/** The products currently offered: listing, search and the start page. */
+export function loadListedProducts(): Product[] {
+  return loadProducts().filter(isListed)
+}
+
+/**
+ * Related products for a product page: the next `count` offered products of
+ * the same category by id after `current`, wrapping around to the start of
+ * the category - so every product page links to its neighbours, not all of
+ * them to the first four. Never `current` itself, never an unlisted product.
+ * Works for an unlisted `current` too (then: alternatives).
+ */
+export function relatedProducts(
+  all: Product[],
+  current: Product,
+  count = 4
+): Product[] {
+  const sameCategory = all
+    .filter(
+      (p) =>
+        p.category === current.category && p.id !== current.id && isListed(p)
+    )
+    .sort((a, b) => a.id - b.id)
+  const after = sameCategory.filter((p) => p.id > current.id)
+  const before = sameCategory.filter((p) => p.id < current.id)
+  return [...after, ...before].slice(0, count)
 }
