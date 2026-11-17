@@ -21,6 +21,7 @@ import DirectionsIcon from '@mui/icons-material/Directions'
 import PhoneIcon from '@mui/icons-material/Phone'
 import { MapErrorBoundary } from './MapErrorBoundary'
 import { MapConsent } from './MapConsent'
+import { LEGAL } from '../../../config/legal'
 
 const Map: React.FC = () => {
   const theme = useTheme()
@@ -29,17 +30,19 @@ const Map: React.FC = () => {
   const position: [number, number] = [49.301429495245586, 7.369493502873482]
   const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${position[0]},${position[1]}&travelmode=driving`
 
+  // Die Karte ist auf dem Handy 300 px hoch; der Hinweis davor wächst mit
+  // seinem Inhalt (MapConsent), deshalb hier keine feste Höhe für xs.
   const mapElement = (
     <Box
       sx={{
-        height: { xs: '300px', md: '100%' },
+        height: { md: '100%' },
         minHeight: { md: '450px' },
-        borderRadius: { xs: '12px', md: '12px' },
+        borderRadius: '12px',
         overflow: 'hidden',
         boxShadow: '0 2px 12px rgba(90, 46, 42, 0.08)',
       }}
     >
-      <MapConsent>
+      <MapConsent height={{ xs: 300, md: '100%' }}>
         <MapErrorBoundary>
           <DynamicMap
             position={position}
@@ -116,7 +119,9 @@ const Map: React.FC = () => {
                       align="right"
                       sx={{
                         color:
-                          item.value === 'Geschlossen' ? '#928168' : '#3B2B28',
+                          item.value === 'Geschlossen'
+                            ? 'text.secondary'
+                            : '#3B2B28',
                         fontSize: { xs: '1rem', md: '1.05rem' },
                         fontFamily: '"Merriweather", serif',
                         borderColor: '#E6D8C3',
@@ -158,7 +163,7 @@ const Map: React.FC = () => {
             </Typography>
             <Typography
               sx={{
-                color: '#928168',
+                color: 'text.secondary',
                 fontSize: { xs: '1rem', md: '1.05rem' },
                 fontFamily: '"Merriweather", serif',
                 mb: 0.5,
@@ -184,7 +189,7 @@ const Map: React.FC = () => {
             </Typography>
             <Typography
               component="a"
-              href="tel:068412229"
+              href={LEGAL.phoneHref}
               sx={{
                 display: 'block',
                 color: '#3B2B28',
@@ -196,17 +201,17 @@ const Map: React.FC = () => {
                 '&:hover': { color: '#d038ba' },
               }}
             >
-              06841 2229
+              {LEGAL.phone}
             </Typography>
             <Typography
               sx={{
-                color: '#928168',
+                color: 'text.secondary',
                 fontSize: { xs: '0.95rem', md: '1rem' },
                 fontFamily: '"Merriweather", serif',
                 mb: 2,
               }}
             >
-              0170 6133279
+              {LEGAL.mobile}
             </Typography>
 
             {/* Action Buttons */}
@@ -233,7 +238,7 @@ const Map: React.FC = () => {
                 variant="outlined"
                 fullWidth
                 startIcon={<PhoneIcon />}
-                href="tel:068412229"
+                href={LEGAL.phoneHref}
                 sx={{
                   minHeight: 48,
                   fontSize: { xs: '1rem', md: '1.05rem' },
