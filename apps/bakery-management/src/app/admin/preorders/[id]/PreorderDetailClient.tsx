@@ -278,6 +278,13 @@ export interface PreorderDetailClientProps {
    * Bekommt die geladene Bestellung, solange es eine gibt.
    */
   backHref?: (preorder: Preorder | null) => string
+  /**
+   * Fester Zurück-Link, geht vor `backHref`. Serialisierbar - eine
+   * Server-Seite kann ihn setzen (`[id]/page.tsx`: aus der Abholliste
+   * geöffnet zurück auf denselben Tag, Ort und dieselbe Suche). Bleibt auch
+   * nach dem Speichern, wenn die Bestellung auf einen anderen Tag wandert.
+   */
+  backTo?: string
   backLabel?: string
 }
 
@@ -285,9 +292,11 @@ const DEFAULT_BACK = () => '/admin/preorders'
 
 export default function PreorderDetailClient({
   id,
-  backHref = DEFAULT_BACK,
+  backHref: backHrefFor = DEFAULT_BACK,
+  backTo,
   backLabel = 'Alle Vorbestellungen',
 }: PreorderDetailClientProps) {
+  const backHref = (current: Preorder | null) => backTo || backHrefFor(current)
   const session = useOptionalSession()
   const role = session?.user?.role ?? null
   const canWrite = canWritePreorders(role)

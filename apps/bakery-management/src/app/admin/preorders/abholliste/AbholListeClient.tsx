@@ -77,7 +77,9 @@ import {
   fetchPickupPoints,
   fetchPreorderDay,
   isPreorderConflict,
+  listPreorders,
   preorderErrorMessage,
+  preorderPageQuery,
   requestFailureKind,
   type RequestFailureKind,
 } from '../../../../lib/preordersApi'
@@ -87,6 +89,7 @@ import {
   formatCurrency,
   formatDate,
   formatDateWithWeekday,
+  formatShortDate,
   isBusinessDate,
   isProductionDay,
   itemName,
@@ -103,6 +106,14 @@ import {
   abholActions,
   abhollisteHref,
   bulkRequestFailedMessage,
+  codeTargets,
+  preorderHrefFromAbholliste,
+  preorderPlace,
+  remoteSearchRange,
+  searchHitLabel,
+  targetLabel,
+  wantsRemoteSearch,
+  type AbholTarget,
   changeAlreadyApplied,
   singleRequestFailedMessage,
   defaultPickupDate,
@@ -126,6 +137,18 @@ import {
 
 /** Alle so oft still neu laden, solange niemand gerade etwas tut. */
 const REFRESH_MS = 60_000
+
+/** Erst suchen, wenn so lange nicht mehr getippt wurde (andere Tage, API). */
+const REMOTE_SEARCH_DELAY_MS = 300
+/** So viele Treffer anderer Tage stehen unter der leeren Liste. */
+const REMOTE_HITS_SHOWN = 6
+
+/** Suche über den Tag hinaus (`GET /api/preorders?q=&from=&to=`). */
+type RemoteSearch =
+  | { phase: 'idle' }
+  | { phase: 'loading'; query: string }
+  | { phase: 'done'; query: string; hits: Preorder[]; from: string; to: string }
+  | { phase: 'failed'; query: string }
 
 /**
  * Spaltenbreiten des Ausdrucks in mm (W4-verify r4). A4 hoch mit 12 mm Rand
@@ -477,6 +500,8 @@ export interface AbholListeClientProps {
   initialDate?: string
   /** `laden` oder die ID einer Sammelstelle. */
   initialPlace?: string
+  /** Suche aus der URL (`?q=`) - z. B. zurück aus einer Bestellung. */
+  initialQuery?: string
 }
 
 /**
@@ -489,6 +514,7 @@ export interface AbholListeClientProps {
 export default function AbholListeClient({
   initialDate,
   initialPlace,
+  initialQuery,
 }: AbholListeClientProps) {
   const router = useRouter()
   const session = useOptionalSession()
@@ -511,7 +537,7 @@ export default function AbholListeClient({
   const [printedAt, setPrintedAt] = useState('')
   const [loadedAt, setLoadedAt] = useState('')
 
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(initialQuery ?? '')
   const [sort, setSort] = useState<AbholSort | null>(null)
   const [hideDone, setHideDone] = useState(false)
 
@@ -743,11 +769,27 @@ export default function AbholListeClient({
     load()
   }, [load])
 
-  // URL mitführen: Neuladen und „Zurück“ landen auf demselben Tag und Ort.
+  // URL mitführen: Neuladen und „Zurück“ landen auf demselben Tag, Ort und
+  // derselben Suche. Tippt nur jemand, ersetzt `replaceState` die Adresse -
+  // `router.replace` fragte sonst je Tastendruck den Server nach der Seite.
+  const searchParam = query.trim()
+  const urlPlaceRef = useRef('')
   useEffect(() => {
     if (!isBusinessDate(date) || !place) return
-    router.replace(abhollisteHref(date, place), { scroll: false })
-  }, [date, place, router])
+    const href = abhollisteHref(date, place, searchParam)
+    const listKey = `${date}|${place}`
+    if (urlPlaceRef.current !== listKey) {
+      urlPlaceRef.current = listKey
+      router.replace(href, { scroll: false })
+      return
+    }
+    if (window.location.pathname + window.location.search === href) return
+    try {
+      window.history.replaceState(window.history.state, '', href)
+    } catch {
+      // Safari begrenzt `replaceState` je Sekunde - die Liste geht vor.
+    }
+  }, [date, place, searchParam, router])
 
   // Still nachladen (zweites Gerät, Fahrer), aber nicht mitten in einer Aktion.
   const quietRef = useRef(true)
@@ -1201,6 +1243,73 @@ export default function AbholListeClient({
       groupPreorders(visible, effectiveSort, { window: point?.window ?? null }),
     [visible, effectiveSort, point]
   )
+
+  // Nichts auf dieser Liste: die Kundin kommt einen Tag zu spät, oder der
+  // Code vom Zettel gehört zu einem anderen Tag oder Ort. Ein Code zeigt
+  // ohne Anfrage auf seine Liste; sonst fragt die API über die Tage hinaus.
+  const searchMissed = Boolean(day) && searching && visible.length === 0
+  const codeTargetList = useMemo(
+    () => (searchMissed ? codeTargets(query, points) : null),
+    [searchMissed, query, points]
+  )
+  const otherCodeTargets = (codeTargetList ?? []).filter(
+    (t) => !(t.date === date && t.place === place)
+  )
+  const remoteQuery =
+    searchMissed &&
+    !(codeTargetList && codeTargetList.length > 0) &&
+    wantsRemoteSearch(searchParam)
+      ? searchParam
+      : null
+  const [remote, setRemote] = useState<RemoteSearch>({ phase: 'idle' })
+  const remoteRequestRef = useRef(0)
+  /** Die API lässt diese Rolle nicht suchen (403) - dann nicht mehr fragen. */
+  const remoteRefusedRef = useRef(false)
+  useEffect(() => {
+    // Jede neue Eingabe macht ältere Antworten ungültig (Reihenfolge im WLAN).
+    const request = ++remoteRequestRef.current
+    if (!remoteQuery || !isBusinessDate(today) || remoteRefusedRef.current) {
+      setRemote({ phase: 'idle' })
+      return undefined
+    }
+    setRemote({ phase: 'loading', query: remoteQuery })
+    const range = remoteSearchRange(today)
+    const timer = window.setTimeout(() => {
+      listPreorders({ q: remoteQuery, ...range })
+        .then((hits) => {
+          if (request !== remoteRequestRef.current) return
+          setRemote({ phase: 'done', query: remoteQuery, hits, ...range })
+        })
+        .catch((err) => {
+          if (request !== remoteRequestRef.current) return
+          const status = (err as { status?: unknown } | null)?.status
+          if (status === 401 || status === 403) {
+            // Keine Leserechte (oder Sitzung abgelaufen - darum kümmert
+            // sich die Anmeldung): still weglassen, keine Fehlermeldung.
+            if (status === 403) remoteRefusedRef.current = true
+            setRemote({ phase: 'idle' })
+            return
+          }
+          setRemote({ phase: 'failed', query: remoteQuery })
+        })
+    }, REMOTE_SEARCH_DELAY_MS)
+    return () => window.clearTimeout(timer)
+  }, [remoteQuery, today])
+  const remoteHits = useMemo(
+    () =>
+      remote.phase === 'done' && remote.query === remoteQuery
+        ? remote.hits
+            .filter(
+              (p) => !(p.pickupDate === date && preorderPlace(p) === place)
+            )
+            .sort(
+              (a, b) =>
+                a.pickupDate.localeCompare(b.pickupDate) ||
+                a.code.localeCompare(b.code)
+            )
+        : [],
+    [remote, remoteQuery, date, place]
+  )
   // Stornierte stehen nicht auf dem Blatt - außer schon bezahlte: deren Geld
   // muss zurück, und das Blatt ist der Ersatz bei Ausfall (W4-verify r3).
   const printRefundCancelled = useMemo(
@@ -1244,6 +1353,32 @@ export default function AbholListeClient({
   const changeDate = (next: string) => {
     setQuery('')
     setDate(next)
+  }
+
+  /**
+   * Zur Liste eines anderen Tages/Orts, die Suche bleibt - dort steht dann
+   * gleich die gesuchte Bestellung. Ohne Seitenwechsel: ein Link auf
+   * dieselbe Seite änderte nur die Adresse, nicht Tag und Ort der Liste.
+   */
+  const openOtherList = (
+    event: React.MouseEvent,
+    target: AbholTarget,
+    nextQuery: string
+  ) => {
+    if (
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return
+    }
+    event.preventDefault()
+    setDay(null)
+    setPlace(target.place)
+    setDate(target.date)
+    setQuery(nextQuery)
   }
 
   const changePlace = (next: string) => {
@@ -1582,6 +1717,173 @@ export default function AbholListeClient({
 
   /** Am Handy nur bei offenem „Filter“, ab `sm` immer. */
   const filterDisplay = { xs: filtersOpen ? 'flex' : 'none', sm: 'flex' }
+
+  /** Ein Treffer auf einer anderen Liste, mit dem Weg dorthin. */
+  const renderElsewhere = (
+    key: string,
+    target: AbholTarget,
+    label: string,
+    code: string,
+    nextQuery: string
+  ) => (
+    <Box
+      key={key}
+      component="li"
+      data-testid={`abhol-elsewhere-${code}`}
+      sx={{
+        listStyle: 'none',
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        columnGap: 2,
+        rowGap: 1,
+        py: 1.25,
+        '&:not(:first-of-type)': { borderTop: 1, borderColor: 'divider' },
+      }}
+    >
+      <Box sx={{ flex: '1 1 240px', minWidth: 0 }}>
+        <Typography sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>
+          {label}
+        </Typography>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ fontFamily: 'monospace' }}
+        >
+          {code}
+        </Typography>
+      </Box>
+      <Button
+        component={NextLink}
+        href={abhollisteHref(target.date, target.place, nextQuery)}
+        onClick={(event: React.MouseEvent) =>
+          openOtherList(event, target, nextQuery)
+        }
+        variant="outlined"
+        endIcon={<NextIcon />}
+        aria-label={`Zur Abholliste dieses Tages: ${targetLabel(
+          target,
+          points
+        )}`}
+        sx={{ ...TOUCH, flex: { xs: '1 1 100%', sm: '0 0 auto' } }}
+      >
+        Zur Abholliste dieses Tages
+      </Button>
+    </Box>
+  )
+
+  /**
+   * Suche ohne Treffer auf dieser Liste: (a) ein Code zeigt auf seinen Tag
+   * und Ort, (b) sonst die Treffer anderer Tage aus der API, (c) immer der
+   * Weg in die Suche über alle Vorbestellungen.
+   */
+  const renderSearchMiss = () => {
+    const code = searchParam.toUpperCase()
+    const elsewhereList = { m: 0, p: 0, width: '100%' } as const
+    return (
+      <EmptyState
+        data-testid="abhol-search-miss"
+        title={`Keine Bestellung zu „${searchParam}“.`}
+        action={
+          <Stack
+            spacing={2}
+            alignItems="center"
+            sx={{ width: '100%', maxWidth: 640, mx: 'auto' }}
+          >
+            {otherCodeTargets.length > 0 && (
+              <Box
+                component="section"
+                aria-label="Abholliste dieses Codes"
+                sx={{ width: '100%', textAlign: 'left' }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  Der Code gehört zu einem anderen Tag oder Ort:
+                </Typography>
+                <Box component="ul" sx={elsewhereList}>
+                  {otherCodeTargets.map((target) =>
+                    renderElsewhere(
+                      `${target.date}|${target.place}`,
+                      target,
+                      targetLabel(target, points),
+                      code,
+                      code
+                    )
+                  )}
+                </Box>
+              </Box>
+            )}
+            {remoteQuery && remote.phase === 'loading' && (
+              <Stack
+                direction="row"
+                spacing={1}
+                alignItems="center"
+                data-testid="abhol-remote-loading"
+              >
+                <CircularProgress size={16} />
+                <Typography variant="body2" color="text.secondary">
+                  Suche an anderen Tagen …
+                </Typography>
+              </Stack>
+            )}
+            {remoteQuery && remote.phase === 'failed' && (
+              <Typography variant="body2" color="text.secondary">
+                Andere Tage konnten gerade nicht durchsucht werden.
+              </Typography>
+            )}
+            {remoteQuery &&
+              remote.phase === 'done' &&
+              remoteHits.length === 0 && (
+                <Typography variant="body2" color="text.secondary">
+                  Auch an anderen Tagen ({formatShortDate(remote.from)} bis{' '}
+                  {formatShortDate(remote.to)}) nichts gefunden.
+                </Typography>
+              )}
+            {remoteHits.length > 0 && (
+              <Box
+                component="section"
+                aria-label="An einem anderen Tag oder Ort gefunden"
+                data-testid="abhol-remote-hits"
+                sx={{ width: '100%', textAlign: 'left' }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  An einem anderen Tag/Ort gefunden:
+                </Typography>
+                <Box component="ul" sx={elsewhereList}>
+                  {remoteHits
+                    .slice(0, REMOTE_HITS_SHOWN)
+                    .map((hit) =>
+                      renderElsewhere(
+                        String(hit.id),
+                        { date: hit.pickupDate, place: preorderPlace(hit) },
+                        searchHitLabel(hit, points),
+                        hit.code,
+                        searchParam
+                      )
+                    )}
+                </Box>
+                {remoteHits.length > REMOTE_HITS_SHOWN && (
+                  <Typography variant="body2" color="text.secondary">
+                    … und {remoteHits.length - REMOTE_HITS_SHOWN} weitere.
+                  </Typography>
+                )}
+              </Box>
+            )}
+            <Button
+              component={NextLink}
+              href={`/admin/preorders?${preorderPageQuery({
+                q: searchParam,
+              })}`}
+              variant="outlined"
+              startIcon={<SearchIcon />}
+              sx={TOUCH}
+            >
+              In allen Vorbestellungen suchen
+            </Button>
+          </Stack>
+        }
+      />
+    )
+  }
 
   return (
     <Box>
@@ -1931,7 +2233,7 @@ export default function AbholListeClient({
             <LoadingState label="Abholliste wird geladen …" />
           ) : (
             day &&
-            (preorders.length === 0 ? (
+            (preorders.length === 0 && !searching ? (
               <EmptyState
                 title="Für diesen Tag ist hier nichts vorbestellt."
                 action={
@@ -1949,13 +2251,11 @@ export default function AbholListeClient({
                 }
               />
             ) : groups.length === 0 ? (
-              <EmptyState
-                title={
-                  searching
-                    ? `Keine Bestellung zu „${query.trim()}“.`
-                    : 'Alles abgeholt.'
-                }
-              />
+              searching ? (
+                renderSearchMiss()
+              ) : (
+                <EmptyState title="Alles abgeholt." />
+              )
             ) : (
               <Box>
                 {groups.map((group) => (
@@ -2236,7 +2536,11 @@ export default function AbholListeClient({
           <MenuItem
             sx={TOUCH}
             component={NextLink}
-            href={`/admin/preorders/${menuPreorder.id}`}
+            href={preorderHrefFromAbholliste(menuPreorder.id, {
+              date,
+              place,
+              q: query,
+            })}
             onClick={closeMenu}
           >
             <ListItemIcon>

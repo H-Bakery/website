@@ -3,6 +3,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import PreorderDetailClient from './PreorderDetailClient'
+import PreorderDetailPage from './page'
 import {
   cancelPreorder,
   changePreorderStatus,
@@ -687,5 +688,98 @@ describe('detailActions', () => {
       'unpaid…',
       'reopen',
     ])
+  })
+})
+
+describe('Rückweg zur Abholliste (Personal-Rückmeldung)', () => {
+  /** Die Server-Seite `[id]/page.tsx` mit Query, wie Next sie aufruft. */
+  function pageFor(
+    searchParams: Record<string, string | string[] | undefined>
+  ) {
+    return PreorderDetailPage({
+      params: Promise.resolve({ id: '7' }),
+      searchParams: Promise.resolve(searchParams),
+    })
+  }
+
+  // Erst die Seite auflösen, dann ohne `await` dazwischen anzeigen - sonst
+  // käme die geladene Bestellung außerhalb von `act` an.
+  function show(page: React.ReactElement) {
+    return renderWithTheme(
+      <WithSession value={fakeSession({ role: 'verkauf' })}>{page}</WithSession>
+    )
+  }
+
+  const FROM_LIST = {
+    von: 'abholliste',
+    date: '2026-11-17',
+    point: 'laden',
+    q: 'Erika',
+  }
+  const LIST_HREF =
+    '/admin/preorders/abholliste?date=2026-11-17&point=laden&q=Erika'
+
+  it('aus der Abholliste: „Zurück zur Abholliste“ auf denselben Tag, Ort und dieselbe Suche - auch nach dem Speichern', async () => {
+    const user = userEvent.setup()
+    // Gespeichert wandert die Bestellung auf einen anderen Tag (neuer Code) -
+    // zurück geht es trotzdem auf die Liste, von der man kam.
+    mockUpdate.mockResolvedValue(
+      preorder({ code: 'LA-2026-11-14-01', pickupDate: '2026-11-14' })
+    )
+    show(await pageFor(FROM_LIST))
+    const edit = await screen.findByRole('button', { name: 'Bearbeiten' })
+    expect(
+      screen.getByRole('link', { name: 'Zurück zur Abholliste' })
+    ).toHaveAttribute('href', LIST_HREF)
+    expect(
+      screen.queryByRole('link', { name: 'Alle Vorbestellungen' })
+    ).not.toBeInTheDocument()
+
+    await user.click(edit)
+    await user.click(
+      await screen.findByRole('button', { name: 'Kornbrot 500g eins mehr' })
+    )
+    await user.click(screen.getByRole('radio', { name: 'Sa 14.11.' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Änderungen speichern' })
+    )
+    expect(
+      await screen.findByText(/neuer Code LA-2026-11-14-01/)
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'Zurück zur Abholliste' })
+    ).toHaveAttribute('href', LIST_HREF)
+  })
+
+  it('auch während des Ladens und bei einem Fehler führt der Rückweg zur Liste', async () => {
+    mockGet.mockRejectedValue(
+      Object.assign(new Error('Diese Vorbestellung existiert nicht.'), {
+        status: 404,
+      })
+    )
+    show(await pageFor(FROM_LIST))
+    expect(
+      await screen.findByText('Diese Vorbestellung existiert nicht.')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'Zurück zur Abholliste' })
+    ).toHaveAttribute('href', LIST_HREF)
+  })
+
+  it.each([
+    ['ohne Herkunft', {}],
+    ['andere Herkunft', { ...FROM_LIST, von: 'tag' }],
+    ['ungültiger Tag', { ...FROM_LIST, date: '2026-02-30' }],
+    ['ohne Tag', { ...FROM_LIST, date: undefined }],
+    ['ungültiger Ort', { ...FROM_LIST, point: '../users' }],
+  ])('%s: zurück zu „Alle Vorbestellungen“', async (_label, searchParams) => {
+    show(await pageFor(searchParams))
+    await screen.findByRole('button', { name: 'Bearbeiten' })
+    expect(
+      screen.getByRole('link', { name: 'Alle Vorbestellungen' })
+    ).toHaveAttribute('href', '/admin/preorders')
+    expect(
+      screen.queryByRole('link', { name: 'Zurück zur Abholliste' })
+    ).not.toBeInTheDocument()
   })
 })

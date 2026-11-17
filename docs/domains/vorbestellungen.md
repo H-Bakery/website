@@ -179,7 +179,7 @@ und `/admin/preorders/tag?date=` (Summen je Produkt **und Sorte**, Abholliste, A
   Kanal), `bakery-management-preorder-recent` (zuletzt erfasste Produkte); „Häufig" rechnet zusätzlich
   über die Vorbestellungen der letzten 28 Tage.
 
-## Abholliste (P2, `/admin/preorders/abholliste?date=&point=`)
+## Abholliste (P2, `/admin/preorders/abholliste?date=&point=&q=`)
 
 Die Übergabeliste je Tag und Abholort (`point` = `laden` oder die id einer Sammelstelle) - am Tablet
 an der Theke, am Handy des Fahrers an der Sammelstelle, auf Papier, wenn beides ausfällt. Logik ohne
@@ -192,7 +192,21 @@ React in `src/lib/abholliste.ts`.
   {Fenster} Uhr") oder nach Name (Sammelstelle-Vorgabe; Anfangsbuchstabe, Umlaute auf den
   Grundbuchstaben). Stornierte stehen immer zuletzt, durchgestrichen, und fehlen im Druck.
 - **Suche** im Client: ein- bis zweistellige Zahl = laufende Nummer am Ende des Codes (sonst träfe „4"
-  jedes Datum), sonst Name oder Code, ab drei Ziffern auch die Telefonnummer.
+  jedes Datum), sonst Name oder Code, ab drei Ziffern auch die Telefonnummer. Sie steht als `q` in der
+  Adresse (Tippen ersetzt sie per `replaceState`, ohne Serveranfrage; Tag/Ort per `router.replace`).
+- **Nichts auf dieser Liste** (Kundin kommt einen Tag zu spät, Code vom Zettel eines anderen Tages):
+  (a) ein ganzer Code (`LA-2026-11-17-03`, auch klein getippt) zeigt ohne Anfrage auf seinen Tag und
+  Ort - `LA` = Laden, sonst die Sammelstelle mit dem Kürzel aus `codePrefixFor` der API (bei gleichem
+  Kürzel die an dem Tag belieferte); (b) sonst nach 300 ms Pause `GET /api/preorders?q=&from=&to=`
+  (14 Tage zurück, 30 voraus, nicht für eine laufende Nummer), Treffer als „Di 17.11. · Laden · Name
+  (nicht abgeholt)"; eine ältere Antwort zählt nicht mehr, lehnt die API ab (403), fehlt der Teil
+  still; (c) immer „In allen Vorbestellungen suchen" (`/admin/preorders?q=…&range=alle`). „Zur
+  Abholliste dieses Tages" wechselt Tag und Ort in der Seite und behält die Suche - dort steht dann
+  die Bestellung.
+- **„Bestellung öffnen"** (⋮) hängt die Herkunft an (`/admin/preorders/{id}?von=abholliste&date=&point=&q=`).
+  `[id]/page.tsx` prüft sie (`abhollisteBackFromQuery`) und gibt `PreorderDetailClient` einen festen
+  `backTo` mit „Zurück zur Abholliste" - auch nach dem Speichern, wenn die Bestellung den Tag wechselt.
+  Ungültige Herkunft → „Alle Vorbestellungen". Die App läuft am iPad ohne Browserleiste.
 - **Übergeben** setzt `abgeholt` über `POST /:id/status` mit `expectedUpdatedAt` (409 → Liste neu laden,
   Hinweis, nichts überschrieben). Bezahlt + Verkauf/Inhaber: ein Tipp mit „Rückgängig" (stellt Status,
   `paid` und `notCollected` von vorher wieder her). Sonst ein Dialog: „Bezahlt und übergeben" / „Ohne

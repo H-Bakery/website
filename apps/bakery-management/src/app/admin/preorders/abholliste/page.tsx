@@ -1,5 +1,5 @@
 import React from 'react'
-import { isBusinessDate } from '../../../../lib/preordersTypes'
+import { abhollisteParamsFromQuery } from '../../../../lib/abholliste'
 import AbholListeClient from './AbholListeClient'
 
 /**
@@ -10,25 +10,20 @@ import AbholListeClient from './AbholListeClient'
  *   `?date=YYYY-MM-DD` - Abholtag (Vorgabe: heute bzw. nächster Liefertag)
  *   `?point=laden|<id>` - Laden oder eine Sammelstelle (Vorgabe: Laden,
  *                         für Fahrer die Sammelstelle)
+ *   `?q=…`              - Suche (Name, Code, Telefon); bleibt beim Rückweg
+ *                         aus einer Bestellung erhalten
  */
 export default async function AbholListePage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const query = await searchParams
-  const first = (key: string) => {
-    const raw = query[key]
-    return Array.isArray(raw) ? raw[0] : raw
-  }
-  const date = first('date')
-  const point = first('point')
+  const { date, place, q } = abhollisteParamsFromQuery(await searchParams)
   return (
     <AbholListeClient
-      initialDate={isBusinessDate(date) ? date : undefined}
-      initialPlace={
-        point && /^[a-z0-9-]{1,64}$/.test(point) ? point : undefined
-      }
+      initialDate={date}
+      initialPlace={place}
+      initialQuery={q}
     />
   )
 }
