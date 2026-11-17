@@ -4,13 +4,18 @@
  *
  * URLs:
  *  - static routes
- *  - all product detail pages (/products/<id>) – like src/lib/products.ts:
- *    prefers the HQ product markdown directory (env HQ_PRODUCTS_DIR or
- *    <monorepo>/../hq/products) through the shared reader
- *    libs/shared/hq-products, falls back to src/mocks/products/*.json
+ *  - the product detail pages (/products/<id>) of the products on offer –
+ *    like src/lib/products.ts: prefers the HQ product markdown directory
+ *    (env HQ_PRODUCTS_DIR or <monorepo>/../hq/products) through the shared
+ *    reader libs/shared/hq-products, falls back to src/mocks/products/*.json.
+ *    Products with `available: false` keep their page (old links) but are not
+ *    listed here (isListedHqProduct - the same rule as the /products listing);
+ *    the page itself is noindex.
  *  - all news articles (/news/<slug>) from content/news/*.md
  *
  * Runs before `next build` (see project.json → build-static-standalone).
+ * Writes public/sitemap.xml only when run as a script; `require` it (tests)
+ * and it only exports buildUrls / generateSitemapXml.
  */
 
 const fs = require('fs')
@@ -18,6 +23,7 @@ const path = require('path')
 // Plain relative require: this script runs with bare node, without the
 // tsconfig path alias `@bakery/shared/hq-products`.
 const {
+  isListedHqProduct,
   readHqProducts,
 } = require('../../../libs/shared/hq-products/src/index.js')
 
@@ -68,12 +74,15 @@ function listMarkdownFiles(dir) {
 
 /**
  * Product ids from HQ markdown (numeric_id, like loadProducts()), read with
- * the shared reader - the same one src/lib/products.ts uses. Sorted by file
- * name so the sitemap does not depend on the order the file system lists them.
+ * the shared reader - the same one src/lib/products.ts uses. Only products on
+ * offer; `total` counts all of them, so a catalogue where nothing is on offer
+ * does not fall back to the bundled sample products. Sorted by file name so
+ * the sitemap does not depend on the order the file system lists them.
  */
 function getHQProducts() {
   const { dir, products } = readHqProducts({ cwd: APP_DIR })
-  const ids = [...products]
+  const ids = products
+    .filter(isListedHqProduct)
     .sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0))
     .map((product) => {
       const numericId = Number(product.numeric_id)
@@ -81,7 +90,7 @@ function getHQProducts() {
         ? numericId
         : product.id
     })
-  return { dir, ids }
+  return { dir, total: products.length, ids }
 }
 
 /** Product ids from bundled JSON mocks (fallback). */
@@ -107,8 +116,12 @@ function getMockProductIds() {
 
 function getProductIds() {
   const hq = getHQProducts()
-  if (hq.ids.length > 0) {
-    console.log(`📦 Products: ${hq.ids.length} from HQ (${hq.dir})`)
+  if (hq.total > 0) {
+    const hidden = hq.total - hq.ids.length
+    console.log(
+      `📦 Products: ${hq.ids.length} from HQ (${hq.dir})` +
+        (hidden > 0 ? `, ${hidden} not on offer (available: false)` : '')
+    )
     return hq.ids
   }
   const mockIds = getMockProductIds()
@@ -197,16 +210,24 @@ ${entries}
 `
 }
 
-const sitemapXml = generateSitemapXml()
-const publicDir = path.join(APP_DIR, 'public')
-const sitemapPath = path.join(publicDir, 'sitemap.xml')
+function writeSitemap() {
+  const sitemapXml = generateSitemapXml()
+  const publicDir = path.join(APP_DIR, 'public')
+  const sitemapPath = path.join(publicDir, 'sitemap.xml')
 
-if (!fs.existsSync(publicDir)) {
-  fs.mkdirSync(publicDir, { recursive: true })
+  if (!fs.existsSync(publicDir)) {
+    fs.mkdirSync(publicDir, { recursive: true })
+  }
+
+  fs.writeFileSync(sitemapPath, sitemapXml, 'utf-8')
+  console.log(`✅ Sitemap generated at: ${sitemapPath}`)
+  console.log(
+    `📝 Total URLs in sitemap: ${(sitemapXml.match(/<url>/g) || []).length}`
+  )
 }
 
-fs.writeFileSync(sitemapPath, sitemapXml, 'utf-8')
-console.log(`✅ Sitemap generated at: ${sitemapPath}`)
-console.log(
-  `📝 Total URLs in sitemap: ${(sitemapXml.match(/<url>/g) || []).length}`
-)
+if (require.main === module) {
+  writeSitemap()
+}
+
+module.exports = { buildUrls, generateSitemapXml }

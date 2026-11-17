@@ -1,7 +1,9 @@
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import type { Product } from '../../../types/product'
-import ProductPage, { generateMetadata } from './page'
+import { LEGAL } from '../../../config/legal'
+import { formatPrice } from '../../../utils/formatPrice'
+import ProductPage, { generateMetadata, generateStaticParams } from './page'
 
 jest.mock('next/navigation', () => ({
   notFound: jest.fn(),
@@ -61,11 +63,53 @@ const PRODUCTS: Product[] = [
     available: true,
     seasonal: false,
   },
+  // Erfundenes Produkt, das hq als nicht angeboten führt (available: false).
+  {
+    id: 7,
+    name: 'Probebrot Alt 750g',
+    category: 'Brot',
+    price: 9.87,
+    image: '/assets/images/products/brot-rund.svg',
+    imageUrl: '/assets/images/products/brot-rund.svg',
+    description: 'Ein Brot, das es nicht mehr gibt - nur für Tests.',
+    available: false,
+    seasonal: false,
+  },
+  {
+    id: 8,
+    name: 'Musterbrot Dunkel 500g',
+    category: 'Brot',
+    price: 2.8,
+    image: '/assets/images/products/brot-rund.svg',
+    imageUrl: '/assets/images/products/brot-rund.svg',
+    available: true,
+    seasonal: false,
+  },
+  {
+    id: 9,
+    name: 'Musterbrötchen',
+    category: 'Brötchen',
+    price: 0.5,
+    image: '/assets/images/products/broetchen.svg',
+    imageUrl: '/assets/images/products/broetchen.svg',
+    available: true,
+    seasonal: false,
+  },
 ]
 
+// Nur die Daten sind erfunden; isListed und relatedProducts sind die echten.
 jest.mock('../../../lib/products', () => ({
+  ...jest.requireActual('../../../lib/products'),
   loadProducts: () => PRODUCTS,
 }))
+
+/** Die Produkt-Links der Seite (ohne Brotkrumen), in ihrer Reihenfolge. */
+function productLinks(): string[] {
+  return screen
+    .getAllByRole('link')
+    .map((a) => a.getAttribute('href') || '')
+    .filter((href) => /^\/products\/\d+$/.test(href))
+}
 
 async function renderProduct(id: string) {
   const page = await ProductPage({ params: Promise.resolve({ id }) })
@@ -97,6 +141,164 @@ describe('Product detail page', () => {
       screen.getByRole('heading', { name: 'Mischbrot 1000g' })
     ).toBeInTheDocument()
     expect(screen.getByText('Handwerksqualität')).toBeInTheDocument()
+  })
+
+  it('verspricht nichts Unbelegtes: keine Parkplätze, keine regionalen Zutaten, keine Backzeit', async () => {
+    await renderProduct('3')
+
+    expect(screen.queryByText(/Parkpl/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Regionale Zutaten/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/lokalem Anbau/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/gebacken$/)).not.toBeInTheDocument()
+    expect(screen.getByText('Frisch im Laden')).toBeInTheDocument()
+    expect(
+      screen.getByText(/^Ab \d{1,2}:\d{2} Uhr geöffnet$/)
+    ).toBeInTheDocument()
+    expect(screen.getByText('Familienbetrieb')).toBeInTheDocument()
+    expect(screen.getByText('In 3. Generation')).toBeInTheDocument()
+  })
+
+  it('ruft über die internationale Nummer aus LEGAL an', async () => {
+    await renderProduct('3')
+
+    expect(
+      screen.getByRole('link', { name: /Telefonisch bestellen/ })
+    ).toHaveAttribute('href', LEGAL.phoneHref)
+    // Jeder tel:-Link international (+49…), keiner mit der nationalen Nummer.
+    for (const link of screen.getAllByRole('link')) {
+      expect(link.getAttribute('href')).not.toMatch(/^tel:[^+]/)
+    }
+  })
+
+  it('beschriftet den Seitenpfad auf Deutsch', async () => {
+    await renderProduct('3')
+
+    expect(
+      screen.getByRole('navigation', { name: 'Seitenpfad' })
+    ).toBeInTheDocument()
+  })
+
+  it('bleibt für ein angebotenes Produkt im Index, mit Preis und ohne Hinweis', async () => {
+    const meta = await generateMetadata({
+      params: Promise.resolve({ id: '3' }),
+    })
+    expect(meta.robots).toBeUndefined()
+
+    await renderProduct('3')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Dieses Produkt bieten wir/)).toBeNull()
+    // Der eigene Preis (2,50 €) - kein Nachbar kostet dasselbe.
+    expect(document.body.textContent).toMatch(/2,50/)
+    expect(screen.getByText('Ähnliche Produkte')).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: /Telefonisch bestellen/ })
+    ).toBeInTheDocument()
+  })
+})
+
+describe('Product detail page – ähnliche Produkte', () => {
+  it('zeigt die nächsten vier angebotenen der Kategorie nach diesem', async () => {
+    await renderProduct('3')
+
+    expect(screen.getByText('Ähnliche Produkte')).toBeInTheDocument()
+    expect(productLinks()).toEqual([
+      '/products/4',
+      '/products/5',
+      '/products/6',
+      '/products/8',
+    ])
+  })
+
+  it('springt rundum und überspringt das nicht angebotene Produkt', async () => {
+    await renderProduct('6')
+
+    // 7 ist nicht angeboten, 9 ist eine andere Kategorie.
+    expect(productLinks()).toEqual([
+      '/products/8',
+      '/products/3',
+      '/products/4',
+      '/products/5',
+    ])
+  })
+
+  it('macht die ganze Karte zum Link: Bild, Name und Preis liegen darin', async () => {
+    await renderProduct('3')
+
+    const link = screen.getByRole('link', { name: /Testbrot 500g/ })
+    expect(link).toHaveAttribute('href', '/products/6')
+    expect(
+      within(link).getByRole('img', { name: 'Testbrot 500g' })
+    ).toBeInTheDocument()
+    expect(within(link).getByText('Testbrot 500g')).toBeInTheDocument()
+    expect(within(link).getByText(/^1,50\s€$/)).toBeInTheDocument()
+    expect(screen.queryByText('Produkt ansehen')).not.toBeInTheDocument()
+  })
+})
+
+describe('Product detail page – nicht angeboten (available: false)', () => {
+  it('sagt es deutlich und führt zum aktuellen Sortiment', async () => {
+    await renderProduct('7')
+
+    expect(
+      screen.getByRole('heading', { name: 'Probebrot Alt 750g' })
+    ).toBeInTheDocument()
+    const hinweis = screen.getByRole('alert')
+    expect(hinweis).toHaveTextContent(
+      'Dieses Produkt bieten wir derzeit nicht an. Gerne beraten wir Sie telefonisch zu Alternativen'
+    )
+    expect(
+      within(hinweis).getByRole('link', { name: LEGAL.phone })
+    ).toHaveAttribute('href', LEGAL.phoneHref)
+    expect(
+      screen.getByRole('link', { name: /Zum aktuellen Sortiment/ })
+    ).toHaveAttribute('href', '/products')
+  })
+
+  it('zeigt weder Preis noch Bestell-Knopf', async () => {
+    await renderProduct('7')
+
+    // formatPrice setzt ein geschütztes Leerzeichen; getByText macht daraus ein
+    // gewöhnliches - darum der Vergleich über den Betrag.
+    expect(formatPrice(9.87)).toMatch(/^9,87\s€$/)
+    expect(screen.queryByText(/9,87/)).not.toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/9,87/)
+    expect(screen.queryByText(/Telefonisch bestellen/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Produktvorteile')).not.toBeInTheDocument()
+  })
+
+  it('zeigt angebotene Produkte der Kategorie als Alternativen', async () => {
+    await renderProduct('7')
+
+    expect(
+      screen.getByText('Alternativen aus unserem Sortiment')
+    ).toBeInTheDocument()
+    expect(productLinks()).toEqual([
+      '/products/8',
+      '/products/3',
+      '/products/4',
+      '/products/5',
+    ])
+  })
+
+  it('erscheint bei keinem anderen Produkt unter den ähnlichen', async () => {
+    for (const { id } of PRODUCTS.filter((p) => p.id !== 7)) {
+      const { unmount } = await renderProduct(String(id))
+      expect(productLinks()).not.toContain('/products/7')
+      unmount()
+    }
+  })
+
+  it('ist noindex, auch für den googleBot aus dem Layout', async () => {
+    const meta = await generateMetadata({
+      params: Promise.resolve({ id: '7' }),
+    })
+
+    expect(meta.robots).toEqual({ index: false, follow: true })
+    expect(JSON.stringify(meta.robots)).not.toMatch(/googleBot/)
+  })
+
+  it('behält seine Seite für alte Links', async () => {
+    expect(await generateStaticParams()).toContainEqual({ id: '7' })
   })
 })
 
