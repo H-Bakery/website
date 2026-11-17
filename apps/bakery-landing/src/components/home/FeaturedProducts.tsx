@@ -3,6 +3,8 @@ import React, { useRef, useState, useEffect, useCallback } from 'react'
 import { Box, Container, Typography, IconButton, Button } from '@mui/material'
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew'
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos'
+import PauseIcon from '@mui/icons-material/Pause'
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import NextLink from 'next/link'
 import { Product } from '../../types/product'
 import RenderedImage from '../products/RenderedImage'
@@ -11,18 +13,63 @@ interface FeaturedProductsProps {
   products: Product[]
 }
 
+/** Abstand des automatischen Weiterblätterns. */
+export const AUTOPLAY_MS = 5000
+
+const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia(REDUCED_MOTION).matches
+  )
+}
+
+/**
+ * - `auto`: blättert von selbst, pausiert aber, solange die Maus darüber
+ *   steht oder der Fokus darin liegt.
+ * - `playing`: mit dem Knopf bewusst gestartet - blättert auch unter der Maus.
+ * - `stopped`: aus, bis jemand den Knopf drückt.
+ */
+type AutoplayMode = 'auto' | 'playing' | 'stopped'
+
+/**
+ * Karussell „Frisch aus der Backstube“ auf der Startseite.
+ *
+ * Es blättert alle fünf Sekunden weiter (WCAG 2.2.2: abschaltbar), aber
+ * - nicht, wenn das Gerät „Bewegung reduzieren“ meldet,
+ * - nie wieder, sobald jemand selbst eingreift: Tippen/Klicken, Wischen
+ *   oder Mausrad im Karussell, eine Taste,
+ * - nicht, solange die Maus darüber steht oder der Fokus darin liegt,
+ * - und der Knopf neben den Punkten hält es an oder startet es wieder.
+ */
 const FeaturedProducts: React.FC<FeaturedProductsProps> = ({ products }) => {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [activeIndex, setActiveIndex] = useState(0)
-  const [isPaused, setIsPaused] = useState(false)
+  const [mode, setMode] = useState<AutoplayMode>('auto')
+  const [isHovered, setIsHovered] = useState(false)
+  const [hasFocus, setHasFocus] = useState(false)
   const totalProducts = products.length
+
+  // „Bewegung reduzieren“: gar nicht erst automatisch blättern. Der Knopf
+  // kann es trotzdem bewusst starten.
+  useEffect(() => {
+    if (prefersReducedMotion()) setMode('stopped')
+  }, [])
+
+  const stopAutoplay = useCallback(() => setMode('stopped'), [])
+  const isPlaying = mode !== 'stopped'
 
   const scrollToIndex = useCallback(
     (index: number) => {
       const el = scrollRef.current
       if (!el) return
       const cardWidth = el.scrollWidth / totalProducts
-      el.scrollTo({ left: cardWidth * index, behavior: 'smooth' })
+      el.scrollTo({
+        left: cardWidth * index,
+        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+      })
       setActiveIndex(index)
     },
     [totalProducts]
@@ -38,12 +85,19 @@ const FeaturedProducts: React.FC<FeaturedProductsProps> = ({ products }) => {
     scrollToIndex(newIndex)
   }, [activeIndex, totalProducts, scrollToIndex])
 
-  // Auto-advance every 5 seconds
+  const autoplay =
+    totalProducts > 1 &&
+    (mode === 'playing' || (mode === 'auto' && !isHovered && !hasFocus))
+
   useEffect(() => {
-    if (isPaused) return
-    const timer = setInterval(scrollNext, 5000)
+    if (!autoplay) return
+    const timer = setInterval(scrollNext, AUTOPLAY_MS)
     return () => clearInterval(timer)
-  }, [scrollNext, isPaused])
+  }, [scrollNext, autoplay])
+
+  // Der Knopf darf das Anhalten durch Antippen/Tastendruck nicht auslösen,
+  // sonst schaltet sein eigener Klick es gleich wieder ein.
+  const keepToggleOut = (event: React.SyntheticEvent) => event.stopPropagation()
 
   // Track scroll position for dot indicators
   const handleScroll = () => {
@@ -59,10 +113,17 @@ const FeaturedProducts: React.FC<FeaturedProductsProps> = ({ products }) => {
   return (
     <Box
       sx={{ py: { xs: 5, md: 7 }, backgroundColor: '#FFF3E6' }}
-      onMouseEnter={() => setIsPaused(true)}
-      onMouseLeave={() => setIsPaused(false)}
-      onFocus={() => setIsPaused(true)}
-      onBlur={() => setIsPaused(false)}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onFocus={() => setHasFocus(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setHasFocus(false)
+        }
+      }}
+      onPointerDown={stopAutoplay}
+      onTouchStart={stopAutoplay}
+      onKeyDown={stopAutoplay}
     >
       <Container maxWidth="lg">
         {/* Section Heading */}
@@ -84,7 +145,7 @@ const FeaturedProducts: React.FC<FeaturedProductsProps> = ({ products }) => {
           variant="body1"
           sx={{
             textAlign: 'center',
-            color: '#928168',
+            color: 'text.secondary',
             mb: { xs: 3, md: 4 },
             fontSize: { xs: '1rem', md: '1.1rem' },
           }}
@@ -98,12 +159,14 @@ const FeaturedProducts: React.FC<FeaturedProductsProps> = ({ products }) => {
           <Box
             ref={scrollRef}
             onScroll={handleScroll}
+            onWheel={stopAutoplay}
             sx={{
               display: 'flex',
               gap: { xs: 2, md: 3 },
               overflowX: 'auto',
               scrollSnapType: 'x mandatory',
               scrollBehavior: 'smooth',
+              [`@media ${REDUCED_MOTION}`]: { scrollBehavior: 'auto' },
               WebkitOverflowScrolling: 'touch',
               px: { xs: 1, md: 0 },
               pb: 1,
@@ -188,7 +251,7 @@ const FeaturedProducts: React.FC<FeaturedProductsProps> = ({ products }) => {
                   <Typography
                     variant="body2"
                     sx={{
-                      color: '#928168',
+                      color: 'text.secondary',
                       fontSize: { xs: '0.9rem', md: '0.95rem' },
                       lineHeight: 1.5,
                     }}
@@ -239,32 +302,86 @@ const FeaturedProducts: React.FC<FeaturedProductsProps> = ({ products }) => {
           </IconButton>
         </Box>
 
-        {/* Dot Indicators */}
+        {/* Anhalten/Abspielen und Punkte */}
         <Box
           sx={{
             display: 'flex',
             justifyContent: 'center',
+            alignItems: 'center',
             gap: 1,
-            mt: 3,
+            mt: 2,
           }}
         >
-          {products.map((_, index) => (
-            <Box
-              key={index}
-              onClick={() => scrollToIndex(index)}
-              role="button"
-              aria-label={`Produkt ${index + 1}`}
-              tabIndex={0}
+          {totalProducts > 1 && (
+            <IconButton
+              onClick={() => setMode(isPlaying ? 'stopped' : 'playing')}
+              onPointerDown={keepToggleOut}
+              onTouchStart={keepToggleOut}
+              onKeyDown={keepToggleOut}
+              aria-label={
+                isPlaying
+                  ? 'Automatisches Weiterblättern anhalten'
+                  : 'Automatisches Weiterblättern starten'
+              }
+              title={isPlaying ? 'Anhalten' : 'Abspielen'}
               sx={{
-                width: activeIndex === index ? 24 : 10,
-                height: 10,
-                borderRadius: '5px',
-                backgroundColor: activeIndex === index ? '#5A2E2A' : '#E6D8C3',
-                cursor: 'pointer',
-                transition: 'all 0.3s ease',
+                flexShrink: 0,
+                width: 44,
+                height: 44,
+                color: '#5A2E2A',
               }}
-            />
-          ))}
+            >
+              {isPlaying ? (
+                <PauseIcon fontSize="small" />
+              ) : (
+                <PlayArrowIcon fontSize="small" />
+              )}
+            </IconButton>
+          )}
+          <Box sx={{ display: 'flex', minWidth: 0 }}>
+            {products.map((product, index) => {
+              const isActive = activeIndex === index
+              return (
+                <Box
+                  key={product.id}
+                  component="button"
+                  type="button"
+                  onClick={() => scrollToIndex(index)}
+                  aria-label={`Produkt ${index + 1} von ${totalProducts}`}
+                  aria-current={isActive ? 'true' : undefined}
+                  sx={{
+                    // Trefferfläche 44x44 (auf sehr schmalen Bildschirmen
+                    // nicht unter 32 breit), der sichtbare Punkt bleibt klein.
+                    width: 44,
+                    flexShrink: 1,
+                    minWidth: 32,
+                    height: 44,
+                    p: 0,
+                    border: 0,
+                    bgcolor: 'transparent',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '8px',
+                    '&::before': {
+                      content: '""',
+                      display: 'block',
+                      width: isActive ? 24 : 10,
+                      height: 10,
+                      borderRadius: '5px',
+                      backgroundColor: isActive ? '#5A2E2A' : '#E6D8C3',
+                      transition: 'all 0.3s ease',
+                    },
+                    '&:focus-visible': {
+                      outline: '2px solid #5A2E2A',
+                      outlineOffset: '-4px',
+                    },
+                  }}
+                />
+              )
+            })}
+          </Box>
         </Box>
 
         {/* "Alle Produkte" Link */}

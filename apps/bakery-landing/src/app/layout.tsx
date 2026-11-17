@@ -60,6 +60,32 @@ export const metadata = {
   },
 }
 
+/**
+ * Sprunglink „Zum Inhalt springen“: unsichtbar, bis er per Tastatur den Fokus
+ * bekommt, dann oben links über der Kopfzeile (die liegt auf zIndex 10001).
+ */
+const skipLinkSx = {
+  position: 'fixed',
+  top: 16,
+  left: 16,
+  zIndex: 10002,
+  px: 2,
+  py: 1.5,
+  borderRadius: '8px',
+  bgcolor: 'primary.main',
+  color: 'primary.contrastText',
+  fontWeight: 700,
+  textDecoration: 'underline',
+  boxShadow: 3,
+  transform: 'translateY(calc(-100% - 24px))',
+  '&:focus': {
+    transform: 'none',
+    outline: '3px solid',
+    outlineColor: 'secondary.main',
+    outlineOffset: '2px',
+  },
+} as const
+
 export default function RootLayout({
   children,
 }: {
@@ -204,10 +230,23 @@ export default function RootLayout({
               flexDirection: 'column',
             }}
           >
+            {/* Erstes fokussierbares Element: springt an der Kopfzeile vorbei. */}
+            <Box component="a" href="#inhalt" sx={skipLinkSx}>
+              Zum Inhalt springen
+            </Box>
             <Header />
             <Box
               component="main"
-              sx={{ flex: 1, minHeight: 'calc(100vh - 332px)' }}
+              id="inhalt"
+              tabIndex={-1}
+              sx={{
+                flex: 1,
+                minHeight: 'calc(100vh - 332px)',
+                // Der Sprung landet nicht unter der fixierten Kopfzeile
+                // (Werte wie HEADER_SPACE in components/header).
+                scrollMarginTop: { xs: '72px', sm: '102px' },
+                '&:focus': { outline: 'none' },
+              }}
             >
               {children}
             </Box>

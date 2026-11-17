@@ -42,7 +42,7 @@ test.describe('Startseite', () => {
     ).toBeGreaterThan(0)
   })
 
-  test('Kopfzeile führt zu Sortiment, Neuigkeiten, Über uns und Bestellen', async ({
+  test('Kopfzeile führt zu Sortiment, Neuigkeiten, Über uns, Kontakt und Bestellen', async ({
     page,
     isMobile,
   }) => {
@@ -52,17 +52,25 @@ test.describe('Startseite', () => {
     )
     await page.goto('/')
 
+    const nav = page
+      .getByRole('banner')
+      .getByRole('navigation', { name: 'Hauptnavigation' })
     for (const [label, path, heading] of [
       ['Sortiment', '/products', 'Unser Sortiment'],
       ['Neuigkeiten', '/news', 'Neuigkeiten'],
       ['Über uns', '/about', 'Über uns'],
+      ['Kontakt', '/contact', 'Kontakt'],
       ['Bestellen', '/bestellen', 'Bestellen'],
     ] as const) {
-      await page.getByRole('link', { name: label, exact: true }).first().click()
+      await nav.getByRole('link', { name: label, exact: true }).click()
       await expect(page).toHaveURL(new RegExp(`${path}$`))
       await expect(page.getByRole('heading', { level: 1 })).toContainText(
         heading
       )
+      // Die aktuelle Seite ist in der Leiste markiert.
+      await expect(
+        nav.getByRole('link', { name: label, exact: true })
+      ).toHaveAttribute('aria-current', 'page')
     }
 
     // Das Logo führt zurück auf die Startseite.
@@ -72,20 +80,61 @@ test.describe('Startseite', () => {
     await expect(page).toHaveURL(/\/$/)
   })
 
-  test('mobiles Menü öffnet und navigiert', async ({ page, isMobile }) => {
+  test('mobiles Menü öffnet als Dialog, schließt und navigiert', async ({
+    page,
+    isMobile,
+  }) => {
     test.skip(!isMobile, 'Nur im Mobilprofil sichtbar.')
     await page.goto('/')
 
-    await page.getByRole('button', { name: 'Menü öffnen' }).click()
-    const menu = page.getByLabel('Mobiles Menü')
-    await expect(menu).toBeVisible()
+    const openButton = page.getByRole('button', { name: 'Menü öffnen' })
+    const menu = page.getByRole('dialog', { name: 'Hauptmenü' })
 
+    // Vor der Hydrierung tut der Knopf noch nichts - dann noch einmal tippen,
+    // aber nur, solange der Dialog nicht schon offen ist.
+    await expect(async () => {
+      if (!(await menu.isVisible())) await openButton.click({ timeout: 2_000 })
+      await expect(menu).toBeVisible({ timeout: 2_000 })
+    }).toPass()
+
+    // Der Dialog hat seinen eigenen Knopf zum Schließen.
+    await expect(
+      menu
+        .getByRole('navigation', { name: 'Hauptnavigation' })
+        .getByRole('link', { name: 'Kontakt' })
+    ).toHaveAttribute('href', '/contact')
+    await menu.getByRole('button', { name: 'Menü schließen' }).click()
+    await expect(menu).toBeHidden()
+
+    // Escape schließt ihn ebenfalls.
+    await openButton.click()
+    await expect(menu).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(menu).toBeHidden()
+
+    await openButton.click()
     await menu.getByRole('link', { name: 'Über uns' }).click()
     await expect(page).toHaveURL(/\/about$/)
     await expect(page.getByRole('heading', { level: 1 })).toContainText(
       'Über uns'
     )
     await expect(menu).toBeHidden()
+  })
+
+  test('Sprunglink führt an der Kopfzeile vorbei zum Inhalt', async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(isMobile, 'Tastaturbedienung - einmal reicht.')
+    await page.goto('/contact')
+
+    await page.keyboard.press('Tab')
+    const skipLink = page.getByRole('link', { name: 'Zum Inhalt springen' })
+    await expect(skipLink).toBeFocused()
+    await expect(skipLink).toBeInViewport()
+
+    await page.keyboard.press('Enter')
+    await expect(page.locator('main#inhalt')).toBeFocused()
   })
 })
 
@@ -166,6 +215,17 @@ test.describe('Seiten', () => {
     await expect(page.getByRole('heading', { level: 1 })).toContainText(
       'Seite nicht gefunden'
     )
+
+    // Eigener Titel und nur noindex (kein „index, follow“ aus dem Layout).
+    await expect(page).toHaveTitle('Seite nicht gefunden – Bäckerei Heusser')
+    const robots = await page
+      .locator('meta[name="robots"]')
+      .evaluateAll((metas) => metas.map((m) => m.getAttribute('content')))
+    expect(robots).toEqual(['noindex'])
+
+    await expect(
+      page.getByRole('link', { name: 'Zum Sortiment' })
+    ).toHaveAttribute('href', '/products')
 
     await page.getByRole('link', { name: 'Zur Startseite' }).click()
     await expect(page).toHaveURL(/\/$/)
