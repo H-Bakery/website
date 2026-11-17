@@ -1783,7 +1783,7 @@ export default function AbholListeClient({
     return (
       <EmptyState
         data-testid="abhol-search-miss"
-        title={`Keine Bestellung zu „${searchParam}“.`}
+        title={`Keine Bestellung zu „${searchParam}“ auf dieser Liste.`}
         action={
           <Stack
             spacing={2}
@@ -1875,7 +1875,7 @@ export default function AbholListeClient({
               })}`}
               variant="outlined"
               startIcon={<SearchIcon />}
-              sx={TOUCH}
+              sx={{ ...TOUCH, width: { xs: '100%', sm: 'auto' } }}
             >
               In allen Vorbestellungen suchen
             </Button>

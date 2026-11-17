@@ -682,7 +682,7 @@ describe('AbholListeClient (P2)', () => {
     await user.clear(search)
     await user.type(search, 'niemand')
     expect(
-      screen.getByText('Keine Bestellung zu „niemand“.')
+      screen.getByText('Keine Bestellung zu „niemand“ auf dieser Liste.')
     ).toBeInTheDocument()
   })
 
@@ -1622,7 +1622,9 @@ describe('Suche über den Tag hinaus und Rückweg (Personal-Rückmeldung)', () =
     await user.type(search(), 'la-2026-11-17-03')
 
     expect(
-      screen.getByText('Keine Bestellung zu „la-2026-11-17-03“.')
+      screen.getByText(
+        'Keine Bestellung zu „la-2026-11-17-03“ auf dieser Liste.'
+      )
     ).toBeInTheDocument()
     const hit = screen.getByTestId('abhol-elsewhere-LA-2026-11-17-03')
     expect(hit).toHaveTextContent('Di 17.11. · Laden')
@@ -1751,7 +1753,9 @@ describe('Suche über den Tag hinaus und Rückweg (Personal-Rückmeldung)', () =
       screen.queryByText(/nicht durchsucht werden/)
     ).not.toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(screen.getByText('Keine Bestellung zu „Otto“.')).toBeInTheDocument()
+    expect(
+      screen.getByText('Keine Bestellung zu „Otto“ auf dieser Liste.')
+    ).toBeInTheDocument()
 
     // Danach fragt die Seite nicht mehr nach.
     await user.clear(search())
