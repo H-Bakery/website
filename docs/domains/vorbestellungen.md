@@ -248,8 +248,12 @@ Navigationspunkt „Sammelstelle Mörsbach" (eigene Liste mit Bestellschluss, Ba
   sind die P1-Maske bzw. die P3-Ansicht mit vorbelegter Sammelstelle und Rückweg auf den Liefertag
   (`MoersbachPreorderClients.tsx`).
 - Die Liste zeigt Sorten, Code und bezahlt, verlinkt auf die Abholliste und storniert mit
-  `expectedUpdatedAt`. Unter `md` (Handy, Tablet hochkant) steht je Bestellung eine Karte statt der
-  Tabelle - Summe, Status und Aktion lagen sonst seitlich außer Sicht.
+  `expectedUpdatedAt`. Solange die Tabelle nicht neben die Seitenleiste passt (`useContentWide()`:
+  Handy, Tablet hochkant und quer bis knapp 1250 px), steht je Bestellung eine Karte statt der
+  Tabelle - Summe, Status und Stornieren lagen sonst seitlich außer Sicht.
+- Liste und Backliste werten beim Wechsel von Tag oder Sammelstelle nur die letzte Anfrage aus und
+  zeigen bis zur Antwort „wird geladen“ (kein „Drucken“): eine späte Antwort des alten Tags überschrieb
+  sonst den neuen, und die Backliste druckte ihn unter dem neuen Datum.
 - `PUT /api/preorders/pickup-points/:id` (nur `inhaber`) ändert die Sammelstelle; die Seite zeigt allen
   anderen die Felder **schreibgeschützt** (`readOnly`, Schalter gesperrt, kein „Speichern"), schickt
   `expectedUpdatedAt` mit (409 `stale_pickup_point` → Hinweis mit „Neu laden") und begrenzt die Texte

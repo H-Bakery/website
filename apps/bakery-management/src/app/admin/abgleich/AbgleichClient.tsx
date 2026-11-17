@@ -61,6 +61,39 @@ const ALERT_TOUCH = {
 } as const
 
 const HIDE_ON_PHONE = { display: { xs: 'none', sm: 'table-cell' } } as const
+/**
+ * CAP und „Nicht verkauft oder nicht kassiert“ erst ab `xl` (1536 px): quer
+ * am Tablet und bis 1440 px schoben sie Ungeklärt und Ampel aus dem Bild.
+ * Aufgeklappt stehen beide je Tag weiter da.
+ */
+const HIDE_BELOW_XL = { display: { xs: 'none', xl: 'table-cell' } } as const
+
+/** Spalten der Tabelle je Posten (Aufklappen, Posten, 7 Werte) - für `colSpan`. */
+const ITEM_COLUMNS = 9
+
+/**
+ * Engere Zellen bis `lg`: am Handy (390 px) steht die Ampel so neben dem
+ * Posten, am Tablet passen alle sichtbaren Spalten. Gilt auch für die
+ * aufgeklappten Tage. Die Aufklapp-Spalte (44 px Knopf) bekäme von MUI
+ * sonst noch 28 px Rand.
+ */
+const COMPACT_CELLS = {
+  '& th:not(.MuiTableCell-paddingCheckbox), & td:not(.MuiTableCell-paddingCheckbox)':
+    { px: { xs: 1, lg: 2 } },
+  '& th.MuiTableCell-paddingCheckbox, & td.MuiTableCell-paddingCheckbox': {
+    pl: { xs: 0.5, lg: 2 },
+    pr: { xs: 0, lg: 1.5 },
+  },
+} as const
+
+/**
+ * Mengen in einer Zeile („18 St.“ brach sonst nach der Zahl um); die
+ * Rechenwege darunter (`caption`) brechen weiter um.
+ */
+const AMOUNT = {
+  whiteSpace: 'nowrap',
+  '& .MuiTypography-caption': { whiteSpace: 'normal' },
+} as const
 
 const AMPEL_COLOR: Record<AbgleichAmpel, 'success' | 'warning' | 'error'> = {
   ok: 'success',
@@ -109,7 +142,14 @@ export function AmpelChip({
       label={label}
       color={AMPEL_COLOR[ampel]}
       data-ampel={ampel}
-      sx={{ fontWeight: 600 }}
+      // „prüfen (ohne Rest)“ bricht am Handy um, statt die Ampel neben dem
+      // Posten aus dem Bild zu schieben.
+      sx={{
+        fontWeight: 600,
+        height: 'auto',
+        minHeight: 24,
+        '& .MuiChip-label': { whiteSpace: 'normal', py: 0.25 },
+      }}
     />
   )
 }
@@ -148,8 +188,8 @@ export function unmatchedHint(item: AbgleichItem): string {
 }
 
 /** Was die Zeile zum Posten sagt: Richtung, Lücken, Restquote. */
-function ItemNotes({ item }: { item: AbgleichItem }) {
-  const notes: React.ReactNode[] = []
+function itemNotes(item: AbgleichItem): string[] {
+  const notes: string[] = []
   if (item.direction === 'fehlt') {
     notes.push(
       'Ware fehlt: weder an der Kasse noch im Rest (ohne Bon verkauft, Bruch, Personalverzehr oder verzählt?)'
@@ -206,38 +246,28 @@ function ItemNotes({ item }: { item: AbgleichItem }) {
       )} - Zählung prüfen`
     )
   }
-  if (notes.length === 0) return null
-  return (
-    <>
-      {notes.map((n, i) => (
-        <Typography
-          key={i}
-          variant="caption"
-          color="text.secondary"
-          component="div"
-        >
-          {n}
-        </Typography>
-      ))}
-    </>
-  )
+  return notes
 }
 
 function DayRowsTable({ item }: { item: AbgleichItem }) {
   const u = item.unit
   return (
-    <TableContainer sx={{ overflowX: 'auto' }}>
+    // `contain: inline-size`: die acht Spalten je Tag scrollen in ihrem eigenen
+    // Container, statt die Tabelle je Posten breiter zu machen (390 px: die
+    // Ampel lag sonst außer Sicht, sobald ein Posten aufgeklappt war).
+    <TableContainer sx={{ overflowX: 'auto', contain: 'inline-size' }}>
       <Table size="small" aria-label={`${postenLabel(item)} je Tag`}>
         <TableHead>
           <TableRow>
+            {/* Ergebnis vorn wie in der Zeile des Postens. */}
             <TableCell>Tag</TableCell>
+            <TableCell align="right">Ungeklärt</TableCell>
+            <TableCell>Ampel</TableCell>
             <TableCell align="right">Gebacken</TableCell>
             <TableCell align="right">CAP</TableCell>
             <TableCell align="right">Verkauft</TableCell>
             <TableCell align="right">Nicht verk./kass.</TableCell>
             <TableCell align="right">Rest</TableCell>
-            <TableCell align="right">Ungeklärt</TableCell>
-            <TableCell>Ampel</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -255,24 +285,7 @@ function DayRowsTable({ item }: { item: AbgleichItem }) {
                   </Typography>
                 )}
               </TableCell>
-              <TableCell align="right">
-                {bakedText(r.baked, r.bakedIsMinimum, u)}
-              </TableCell>
-              <TableCell align="right">{formatQtyUnit(r.cap, u)}</TableCell>
-              <TableCell align="right">
-                {!r.report
-                  ? 'kein Bericht'
-                  : r.status === 'einheit'
-                  ? `${formatNumber(r.soldPieces)} St. (Kasse)`
-                  : formatQtyUnit(r.sold, u)}
-              </TableCell>
-              <TableCell align="right">{formatSigned(r.open, u)}</TableCell>
-              <TableCell align="right">
-                {r.rest === null
-                  ? REST_STATUS_LABELS[r.restStatus]
-                  : formatQtyUnit(r.rest, u)}
-              </TableCell>
-              <TableCell align="right">
+              <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                 <strong>{formatSigned(r.unexplained, u)}</strong>
               </TableCell>
               <TableCell>
@@ -283,6 +296,30 @@ function DayRowsTable({ item }: { item: AbgleichItem }) {
                     {ROW_STATUS_LABELS[r.status]}
                   </Typography>
                 )}
+              </TableCell>
+              <TableCell align="right" sx={AMOUNT}>
+                {bakedText(r.baked, r.bakedIsMinimum, u)}
+              </TableCell>
+              <TableCell align="right" sx={AMOUNT}>
+                {formatQtyUnit(r.cap, u)}
+              </TableCell>
+              <TableCell align="right" sx={r.report ? AMOUNT : undefined}>
+                {!r.report
+                  ? 'kein Bericht'
+                  : r.status === 'einheit'
+                  ? `${formatNumber(r.soldPieces)} St. (Kasse)`
+                  : formatQtyUnit(r.sold, u)}
+              </TableCell>
+              <TableCell align="right" sx={AMOUNT}>
+                {formatSigned(r.open, u)}
+              </TableCell>
+              <TableCell
+                align="right"
+                sx={r.rest === null ? undefined : AMOUNT}
+              >
+                {r.rest === null
+                  ? REST_STATUS_LABELS[r.restStatus]
+                  : formatQtyUnit(r.rest, u)}
               </TableCell>
             </TableRow>
           ))}
@@ -309,12 +346,12 @@ function DayRowsTable({ item }: { item: AbgleichItem }) {
 function ItemRow({ item }: { item: AbgleichItem }) {
   const [open, setOpen] = useState(false)
   const u = item.unit
+  const notes = itemNotes(item)
+  // Trennlinie nur unter dem letzten Teil des Postens (Aufklapp-Zeile).
+  const noBorder = { '& > td': { borderBottom: 0 } }
   return (
     <>
-      <TableRow
-        data-testid={`item-${item.key}`}
-        sx={{ '& > td': { borderBottom: open ? 0 : undefined } }}
-      >
+      <TableRow data-testid={`item-${item.key}`} sx={noBorder}>
         <TableCell padding="checkbox">
           <IconButton
             size="small"
@@ -328,13 +365,81 @@ function ItemRow({ item }: { item: AbgleichItem }) {
             {open ? <CollapseIcon /> : <ExpandIcon />}
           </IconButton>
         </TableCell>
-        <TableCell sx={{ minWidth: { xs: 130, sm: 180 } }}>
-          <Typography variant="body2" fontWeight={600}>
+        <TableCell sx={{ minWidth: { xs: 128, sm: 140 } }}>
+          {/* Übliche Namen bleiben am Handy ganz; nur sehr lange
+              („Kürbiskernbrötchen“) werden getrennt, statt die Ampel aus dem
+              Bild zu schieben. */}
+          <Typography
+            variant="body2"
+            fontWeight={600}
+            sx={{ hyphens: 'auto', overflowWrap: 'break-word' }}
+          >
             {postenLabel(item)}
           </Typography>
-          <ItemNotes item={item} />
         </TableCell>
-        <TableCell align="right" sx={HIDE_ON_PHONE}>
+        {/* Das Ergebnis gleich hinter dem Posten: quer am Tablet lagen
+            Ungeklärt und Ampel sonst rechts außer Sicht. */}
+        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+          {item.unexplained !== null ? (
+            <>
+              <strong>{formatSigned(item.unexplained, u)}</strong>
+              {item.restDays < item.comparableDays && (
+                // Ungeklärt gilt nur für die gezählten Tage - die Rechnung
+                // dazu, damit die Spalten aufgehen.
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  component="div"
+                  data-testid={`ungeklaert-basis-${item.key}`}
+                  sx={{ whiteSpace: 'normal', minWidth: { sm: 96 } }}
+                >
+                  nur {item.restDays} von {item.comparableDays} Tagen:{' '}
+                  {formatNumber(item.restShopBaked)} −{' '}
+                  {formatNumber(item.restSold)} verkauft −{' '}
+                  {formatNumber(item.rest)} Rest
+                </Typography>
+              )}
+            </>
+          ) : (
+            <Box component="span" sx={{ color: 'text.secondary' }}>
+              {/* Ohne Rest nur „nicht verkauft oder nicht kassiert“ - mit
+                  „*“, solange dessen Spalte ausgeblendet ist (unter xl). */}
+              <Box
+                component="span"
+                sx={{ display: { xs: 'inline', xl: 'none' } }}
+              >
+                {formatSigned(item.open, u)}
+                {item.open !== null && '*'}
+              </Box>
+              <Box
+                component="span"
+                sx={{ display: { xs: 'none', xl: 'inline' } }}
+              >
+                –
+              </Box>
+            </Box>
+          )}
+        </TableCell>
+        <TableCell>
+          <AmpelChip ampel={item.ampel} basis={item.ampelBasis} />
+          {item.shortWithoutRest !== null && (
+            // Die Zahl hinter „prüfen (ohne Rest)“: an Tagen ohne Rest mehr
+            // verkauft als gebacken - übrige Ware anderer Tage gleicht das
+            // nicht aus, deshalb steht sie nicht in den Spalten daneben.
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              component="div"
+              data-testid={`mehr-verkauft-${item.key}`}
+              sx={{ minWidth: { sm: 96 } }}
+            >
+              {formatSigned(item.shortWithoutRest, u)} an{' '}
+              {item.shortDays === 1 ? 'einem Tag' : `${item.shortDays} Tagen`}{' '}
+              ohne Rest
+            </Typography>
+          )}
+        </TableCell>
+        <TableCell align="right" sx={{ ...HIDE_ON_PHONE, ...AMOUNT }}>
           {bakedText(item.baked, item.bakedIsMinimum, u)}
           {item.comparableDays > 0 && item.comparableDays < item.days && (
             // Gebacken zählt nur die vergleichbaren Tage, damit gebacken −
@@ -350,16 +455,16 @@ function ItemRow({ item }: { item: AbgleichItem }) {
             </Typography>
           )}
         </TableCell>
-        <TableCell align="right" sx={HIDE_ON_PHONE}>
+        <TableCell align="right" sx={{ ...HIDE_BELOW_XL, ...AMOUNT }}>
           {formatQtyUnit(item.cap, u)}
         </TableCell>
-        <TableCell align="right" sx={HIDE_ON_PHONE}>
+        <TableCell align="right" sx={{ ...HIDE_ON_PHONE, ...AMOUNT }}>
           {formatQtyUnit(item.sold, u)}
         </TableCell>
-        <TableCell align="right" sx={HIDE_ON_PHONE}>
+        <TableCell align="right" sx={{ ...HIDE_BELOW_XL, ...AMOUNT }}>
           {formatSigned(item.open, u)}
         </TableCell>
-        <TableCell align="right" sx={HIDE_ON_PHONE}>
+        <TableCell align="right" sx={{ ...HIDE_ON_PHONE, ...AMOUNT }}>
           {item.rest === null ? '–' : formatQtyUnit(item.rest, u)}
           {item.restDays > 0 && item.restDays < item.comparableDays && (
             <Typography
@@ -371,68 +476,30 @@ function ItemRow({ item }: { item: AbgleichItem }) {
             </Typography>
           )}
         </TableCell>
-        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-          {item.unexplained !== null ? (
-            <>
-              <strong>{formatSigned(item.unexplained, u)}</strong>
-              {item.restDays < item.comparableDays && (
-                // Ungeklärt gilt nur für die gezählten Tage - die Rechnung
-                // dazu, damit die Spalten aufgehen.
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  component="div"
-                  data-testid={`ungeklaert-basis-${item.key}`}
-                  sx={{ whiteSpace: 'normal', minWidth: 120 }}
-                >
-                  nur {item.restDays} von {item.comparableDays} Tagen:{' '}
-                  {formatNumber(item.restShopBaked)} −{' '}
-                  {formatNumber(item.restSold)} verkauft −{' '}
-                  {formatNumber(item.rest)} Rest
-                </Typography>
-              )}
-            </>
-          ) : (
-            <Box component="span" sx={{ color: 'text.secondary' }}>
-              {/* Ohne Rest nur „nicht verkauft oder nicht kassiert“. */}
-              <Box
-                component="span"
-                sx={{ display: { xs: 'inline', sm: 'none' } }}
-              >
-                {formatSigned(item.open, u)}
-                {item.open !== null && '*'}
-              </Box>
-              <Box
-                component="span"
-                sx={{ display: { xs: 'none', sm: 'inline' } }}
-              >
-                –
-              </Box>
-            </Box>
-          )}
-        </TableCell>
-        <TableCell>
-          <AmpelChip ampel={item.ampel} basis={item.ampelBasis} />
-          {item.shortWithoutRest !== null && (
-            // Die Zahl hinter „prüfen (ohne Rest)“: an Tagen ohne Rest mehr
-            // verkauft als gebacken - übrige Ware anderer Tage gleicht das
-            // nicht aus, deshalb steht sie nicht in den Spalten davor.
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              component="div"
-              data-testid={`mehr-verkauft-${item.key}`}
-              sx={{ minWidth: 110 }}
-            >
-              {formatSigned(item.shortWithoutRest, u)} an{' '}
-              {item.shortDays === 1 ? 'einem Tag' : `${item.shortDays} Tagen`}{' '}
-              ohne Rest
-            </Typography>
-          )}
-        </TableCell>
       </TableRow>
+      {notes.length > 0 && (
+        // Hinweise (Richtung, Lücken, Restquote) in einer zweiten Zeile über
+        // die ganze Breite: in der Spalte „Posten“ machten sie diese breit und
+        // schoben das Ergebnis aus dem Bild. Sie bleiben sichtbar (Lücken
+        // sind keine Details).
+        <TableRow data-testid={`notes-${item.key}`} sx={noBorder}>
+          <TableCell padding="checkbox" />
+          <TableCell colSpan={ITEM_COLUMNS - 1} sx={{ pt: 0 }}>
+            {notes.map((n, i) => (
+              <Typography
+                key={i}
+                variant="caption"
+                color="text.secondary"
+                component="div"
+              >
+                {n}
+              </Typography>
+            ))}
+          </TableCell>
+        </TableRow>
+      )}
       <TableRow>
-        <TableCell colSpan={9} sx={{ p: 0 }}>
+        <TableCell colSpan={ITEM_COLUMNS} sx={{ p: 0 }}>
           <Collapse in={open} timeout="auto" unmountOnExit>
             <Box sx={{ py: 1, bgcolor: 'action.hover' }}>
               <DayRowsTable item={item} />
@@ -748,28 +815,32 @@ export default function AbgleichClient() {
             }
           >
             <TableContainer sx={{ overflowX: 'auto' }}>
-              <Table size="small" aria-label="Abgleich je Posten">
+              <Table
+                size="small"
+                aria-label="Abgleich je Posten"
+                sx={COMPACT_CELLS}
+              >
                 <TableHead>
                   <TableRow>
                     <TableCell padding="checkbox" />
                     <TableCell>Posten</TableCell>
+                    <TableCell align="right">Ungeklärt</TableCell>
+                    <TableCell>Ampel</TableCell>
                     <TableCell align="right" sx={HIDE_ON_PHONE}>
                       Gebacken
                     </TableCell>
-                    <TableCell align="right" sx={HIDE_ON_PHONE}>
+                    <TableCell align="right" sx={HIDE_BELOW_XL}>
                       CAP
                     </TableCell>
                     <TableCell align="right" sx={HIDE_ON_PHONE}>
                       Verkauft (Kasse)
                     </TableCell>
-                    <TableCell align="right" sx={HIDE_ON_PHONE}>
+                    <TableCell align="right" sx={HIDE_BELOW_XL}>
                       Nicht verkauft oder nicht kassiert
                     </TableCell>
                     <TableCell align="right" sx={HIDE_ON_PHONE}>
                       Rest
                     </TableCell>
-                    <TableCell align="right">Ungeklärt</TableCell>
-                    <TableCell>Ampel</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -778,7 +849,7 @@ export default function AbgleichClient() {
                   ))}
                   {data.items.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={9}>
+                      <TableCell colSpan={ITEM_COLUMNS}>
                         Im Zeitraum gibt es nichts abzugleichen.
                       </TableCell>
                     </TableRow>
@@ -790,7 +861,7 @@ export default function AbgleichClient() {
               variant="caption"
               color="text.secondary"
               component="div"
-              sx={{ px: 2, py: 1, display: { xs: 'block', sm: 'none' } }}
+              sx={{ px: 2, py: 1, display: { xs: 'block', xl: 'none' } }}
             >
               * ohne gezählten Rest: nicht verkauft oder nicht kassiert
             </Typography>
