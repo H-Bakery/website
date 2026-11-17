@@ -19,9 +19,16 @@ route of that name.
   (`libs/shared/hq-products`, CommonJS, also used by the Digitale Bäckerei's `sync-products`);
   `products.ts` keeps only the landing mapping (fallback images, category labels, mock fallback).
 - **Product images rendered from the 3D models (DB13):** see [below](#product-images-from-the-3d-models).
+- **Navigation and accessibility:** see [below](#navigation-and-accessibility).
 - **Opening hours** have one source, `src/config/openingHours.ts`, mirrored into
   `libs/shared/ui/src/lib/footer/footer-openings.tsx` and the shop's
   `libs/bakery-shop/feature-cart/src/lib/pickup.ts` - change all three together.
+  The live status (hero badge, QuickInfoBar) comes from one `getOpenStatus()` in
+  `src/utils/openingHours.ts`, computed in German time (Europe/Berlin), not the device's. Saarland
+  legal holidays come from `src/config/holidays.ts`, a mirror of `holidaysSaarland` in the API's
+  `kalender.core.js`; `holidays.spec.ts` checks that both agree for 2024-2040. Holiday hours are not
+  configured (owner question): on a holiday the status is a neutral notice („Heute Feiertag (…) —
+  Öffnungszeiten bitte telefonisch erfragen“), never „geöffnet“, and the next opening skips holidays.
 - Shared brand claims (`REVIEW_SUMMARY` etc.) live in `libs/shared/utils/src/lib/brand.ts`; the
   shop's rules for them (nothing invented, snapshot values) are in [shop.md](./shop.md).
 
@@ -57,6 +64,32 @@ categories would match.
 - **E2E:** `apps/bakery-landing-e2e/src/sortiment.spec.ts` (keyboard, page 2 on the phone,
   `?search=`, Back); data-driven, so it runs against the bundled fallback in CI and the fixture
   locally.
+
+## Navigation and accessibility
+
+- **Header** (`components/header/`): a `<header>` (banner); the links sit in a
+  `<nav aria-label="Hauptnavigation">` (one on desktop, one inside the mobile dialog).
+  - desktop: Sortiment, Neuigkeiten, Über uns, Kontakt in the middle, Bestellen as CTA. Logo and CTA
+    sit in equally wide side slots (`SIDE_SLOT`), so the menu is centred in normal flow and cannot
+    overlap them (checked at 900 and 1440 px). The current page gets `aria-current="page"`.
+  - mobile: the hamburger (44x44 hit area) opens a MUI `Modal` whose panel is
+    `role="dialog" aria-modal aria-label="Hauptmenü"`, with the same links in its own
+    „Hauptnavigation“, a phone link (`LEGAL.phoneHref`) and a „Menü schließen“ button. The
+    hamburger's X stays visible but is `aria-hidden` while the dialog is open, so the dialog needs
+    its own button; Escape and a tap beside the menu close it too.
+- **Skip link** „Zum Inhalt springen“ (`app/layout.tsx`): the first focusable element, visible only
+  on focus, targets `<main id="inhalt" tabIndex={-1}>`.
+- **Featured products carousel** (`components/home/FeaturedProducts.tsx`, WCAG 2.2.2): advances
+  every 5 s, but not with `prefers-reduced-motion: reduce`, pauses while hovered or focused, and
+  stops for good on pointerdown/touch, sideways scrolling (trackpad, shift + wheel) or any key
+  inside it; a vertical wheel that scrolls the page past it does not stop it. A pause/play button next
+  to the dots stops or (deliberately) restarts it. The dots are buttons „Produkt N von M“ with
+  `aria-current`, 44 px hit area (narrowing to 32 px wide on very small screens).
+- **404** (`app/not-found.tsx`): Next 16 reads `metadata` from `not-found.tsx` as the last level
+  after the layout, also for the export's `404.html`. It sets its own title and `robots: null`,
+  which drops the layout's `index, follow`; Next writes `<meta name="robots" content="noindex">`
+  for every 404 itself, so the page carries exactly one `noindex` (asserted by
+  `landing-smoke.spec.ts` against the export).
 
 ## Product images from the 3D models
 
@@ -112,3 +145,23 @@ the export with the same checks as the data repo, but only if its `STAND.json` n
 pinned in the lock. That commit is a label there, not a content hash: the images carry no checksum,
 so whoever can write to `hq/produkte-3d` can change them - the same trust as `hq/products`. How to publish a new state:
 [digitale-baeckerei.md](./digitale-baeckerei.md#veröffentlichen-der-produktmodelle-db14).
+
+## Readability and tap targets
+
+- **Secondary text** is `text.secondary` of the light theme, `#6B5D50` - at least 4.5:1 (WCAG AA)
+  on white, cream `#FFF3E6` and soft beige `#F5EDE4`. Use the token, never a hex value; macchiato
+  `#928168` is only for decorative backgrounds (3.45:1 on cream is too weak for text). The theme
+  also carries MUI's German locale `deDE` (Pagination, Rating, Breadcrumbs labels).
+- **Footer** (`components/LocalFooter.tsx`, a server component, `<footer>` = landmark
+  `contentinfo`): dark brown with opaque text colours (`FOOTER_COLORS`), every link at least 44 px
+  high, column titles are paragraphs, not headings. The crest is the static
+  `public/assets/images/brand/wappen.svg` (cream fill baked in), loaded lazily as `<img alt="">` -
+  inline it was 55 KB of path data in every page. `icons/brand/Wappen.tsx` stays for the hero.
+  `src/theme/theme.spec.ts` computes every contrast.
+- **Map consent** (`components/home/map/MapConsent.tsx`, two-click solution for OpenStreetMap): its
+  `height` is the height of the loaded map (Leaflet needs a fixed one); before consent the notice
+  is only _at least_ that high and grows with its content, so on a phone nothing is cut off. The
+  frames around it (start page, `/contact`) set no fixed height of their own.
+- **Contact rows** on `/contact`: phone, WhatsApp and e-mail are full-row links (`LEGAL` targets).
+- e2e `apps/bakery-landing-e2e/src/lesbarkeit.spec.ts` (mobile profile) checks the consent notice
+  and the 44 px tap targets.

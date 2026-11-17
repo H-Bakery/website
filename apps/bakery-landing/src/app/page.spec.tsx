@@ -2,12 +2,17 @@ import { screen } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import LandingPage from './page'
 
-// Mock the openingHours utils
+// Mock the openingHours utils. Hero and QuickInfoBar read the live status
+// only through getOpenStatus - a fixed status keeps this spec independent of
+// the real date (a holiday or a Monday would otherwise turn it red).
 jest.mock('../utils/openingHours', () => ({
   ...jest.requireActual('../utils/openingHours'),
-  isCurrentlyOpen: () => true,
-  getTodayHours: () => '6:00 - 13:30 Uhr',
-  getNextOpening: () => ({ day: 'Dienstag', time: '6:00' }),
+  getOpenStatus: () => ({
+    kind: 'open',
+    todayHours: '6:00 - 13:30 Uhr',
+    opens: '6:00',
+    next: { day: 'Dienstag', time: '6:00' },
+  }),
   getEarliestOpeningTime: () => '6:00',
   getFooterHours: () => [
     { label: 'Mo', value: 'Geschlossen' },

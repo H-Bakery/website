@@ -1,5 +1,6 @@
 'use client'
 import { ThemeOptions, createTheme } from '@mui/material'
+import { deDE } from '@mui/material/locale'
 
 const headlines = {
   fontFamily: '"Cinzel", serif',
@@ -40,6 +41,9 @@ const brandColors = {
     800: '#3B2B28', // text
     900: '#2A1F18', // dark warm (footer)
   },
+  // Secondary text: darker than macchiato, so it reads with at least 4.5:1
+  // (WCAG AA) on white, cream and soft beige - see theme.spec.ts.
+  textSecondary: '#6B5D50',
   // Gold for star ratings
   gold: '#D4A574',
   // Leaf green for success/open states
@@ -84,7 +88,7 @@ const getThemeOptions = (mode: 'light' | 'dark'): ThemeOptions => ({
       mode === 'light'
         ? {
             primary: brandColors.warmScale[800], // #3B2B28
-            secondary: brandColors.warmScale[400], // macchiato #928168
+            secondary: brandColors.textSecondary, // #6B5D50
             disabled: brandColors.warmScale[300],
           }
         : {
@@ -108,9 +112,10 @@ const getThemeOptions = (mode: 'light' | 'dark'): ThemeOptions => ({
   },
 })
 
-// Create themes for both light and dark mode
-export const lightTheme = createTheme(getThemeOptions('light'))
-export const darkTheme = createTheme(getThemeOptions('dark'))
+// Create themes for both light and dark mode. `deDE` gives MUI's own texts
+// (Pagination, Rating, Breadcrumbs, Alert …) German labels.
+export const lightTheme = createTheme(getThemeOptions('light'), deDE)
+export const darkTheme = createTheme(getThemeOptions('dark'), deDE)
 
 // Default to light theme
 const theme = lightTheme

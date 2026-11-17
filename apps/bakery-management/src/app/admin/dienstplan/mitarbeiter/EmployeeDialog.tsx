@@ -37,9 +37,15 @@ import {
 } from '../../../../lib/dienstplanApi'
 import { fetchUsers, type AdminUser } from '../../../../lib/authApi'
 import { TOUCH_MEDIA } from '../../../../lib/muiTheme'
+import { describeAuthError } from '../../../../components/auth/authErrors'
 
+/**
+ * Fehlertext für den Dienstplan (Mitarbeiter, Schichten, Abwesenheiten,
+ * Vorlagen): deutsche Meldungen der API bleiben, was Browser und Proxy statt
+ * einer Antwort melden („Failed to fetch“, „HTTP 502“), nicht.
+ */
 export function messageOf(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback
+  return describeAuthError(error, fallback)
 }
 
 /** Farbpunkt eines Mitarbeiters (Kalenderfarbe); ohne Farbe ein Ring. */

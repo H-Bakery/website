@@ -6,6 +6,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
+import { ApiError } from '@bakery/shared/data-access'
 import ShiftTemplatesDialog from './ShiftTemplatesDialog'
 import * as dienstplanApi from '../../../lib/dienstplanApi'
 
@@ -179,5 +180,39 @@ describe('Dienstplan - Schichtvorlagen', () => {
     ).not.toBeInTheDocument()
     fireEvent.click(d.getByRole('button', { name: 'Erneut versuchen' }))
     expect(await d.findByTestId('shift-template-1')).toBeInTheDocument()
+  })
+
+  it('Laden ohne WLAN: deutscher Satz statt „Failed to fetch“', async () => {
+    api.fetchShiftTemplates.mockRejectedValueOnce(
+      new TypeError('Failed to fetch')
+    )
+    const { d } = renderDialog()
+    expect(
+      await d.findByText('Keine Verbindung zum Server – bitte WLAN prüfen.')
+    ).toBeInTheDocument()
+    expect(d.queryByText(/Failed to fetch/)).not.toBeInTheDocument()
+  })
+
+  it('Löschen bei 502 vom Proxy: deutscher Text, nie „HTTP 502“', async () => {
+    jest.spyOn(window, 'confirm').mockReturnValue(true)
+    api.deleteShiftTemplate.mockRejectedValueOnce(
+      new ApiError('HTTP 502: Bad Gateway', 502)
+    )
+    const { d } = renderDialog()
+    fireEvent.click(await d.findByRole('button', { name: 'Spät löschen' }))
+    expect(
+      await d.findByText('Keine Verbindung zum Server – bitte WLAN prüfen.')
+    ).toBeInTheDocument()
+    expect(d.queryByText(/HTTP 502|Bad Gateway/)).not.toBeInTheDocument()
+  })
+
+  it('eine deutsche Meldung der API mit Code bleibt, wie sie ist', async () => {
+    jest.spyOn(window, 'confirm').mockReturnValue(true)
+    api.deleteShiftTemplate.mockRejectedValueOnce(
+      new ApiError('Vorlage nicht gefunden.', 404, 'not_found')
+    )
+    const { d } = renderDialog()
+    fireEvent.click(await d.findByRole('button', { name: 'Spät löschen' }))
+    expect(await d.findByText('Vorlage nicht gefunden.')).toBeInTheDocument()
   })
 })
