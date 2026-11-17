@@ -178,13 +178,21 @@ describe('Product detail page', () => {
     ).toBeInTheDocument()
   })
 
-  it('bleibt für ein angebotenes Produkt im Index', async () => {
+  it('bleibt für ein angebotenes Produkt im Index, mit Preis und ohne Hinweis', async () => {
     const meta = await generateMetadata({
       params: Promise.resolve({ id: '3' }),
     })
-
     expect(meta.robots).toBeUndefined()
+
+    await renderProduct('3')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.queryByText(/Dieses Produkt bieten wir/)).toBeNull()
+    // Der eigene Preis (2,50 €) - kein Nachbar kostet dasselbe.
+    expect(document.body.textContent).toMatch(/2,50/)
+    expect(screen.getByText('Ähnliche Produkte')).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: /Telefonisch bestellen/ })
+    ).toBeInTheDocument()
   })
 })
 
