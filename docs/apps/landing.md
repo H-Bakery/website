@@ -25,6 +25,38 @@ route of that name.
 - Shared brand claims (`REVIEW_SUMMARY` etc.) live in `libs/shared/utils/src/lib/brand.ts`; the
   shop's rules for them (nothing invented, snapshot values) are in [shop.md](./shop.md).
 
+## Sortiment (`/products`)
+
+One component holds the whole listing: `components/home/products/index.tsx` (`Products` with
+`showCategoryFilter` and `syncUrl`, rendered by `app/products/ProductsPageClient.tsx`). It owns
+category, search, sort and page together, so a search inside a category knows whether other
+categories would match.
+
+- **Category tiles** (`components/products/Filter.tsx`) are toggle buttons (`aria-pressed`) in a
+  group „Kategorie“: reachable with Tab, Enter/Space selects. The value is the label as it stands
+  on the product (`Brot`, `Brötchen`, …).
+- **Search** (`searchProducts`, `normalizeSearch`): every word must appear in the name or the
+  category; case, umlauts and ß don't matter (`broetchen` = `Brötchen`, `weissbrot` = `Weißbrot`),
+  hyphens in names don't count (`kirschtorte`). Only if that finds nothing does the bare vowel
+  count for the umlaut (`brotchen`, `kase`) - otherwise „Brot“ would bring all Brötchen.
+  No hit in the chosen category but hits elsewhere → „In „Brot“ nichts zu „…“ gefunden“ with
+  „In allen Kategorien suchen“.
+- **Address:** category, search and page are mirrored as `?kategorie=Brot&search=…&seite=2`
+  (`history.replaceState`, defaults left out, other parameters kept) and read back once after
+  hydration from `window.location` - so browser Back from a product page restores the view and
+  `/products?search=…` (the `SearchAction` in `app/layout.tsx`) searches right away. Deliberately
+  no `useSearchParams`: in the static export it needs a Suspense boundary whose fallback would
+  drop the page-1 cards from the HTML. The HTML therefore always shows page 1 of „Alle“; the
+  address applies a moment later.
+- **Page change** scrolls the list heading („Alle Produkte“ / the category, count and page) into
+  view below the fixed header - smooth only without `prefers-reduced-motion` - and moves the
+  focus there. Pagination labels are German („Seite 2“, „Nächste Seite“ …), items at least
+  44 px; below `sm` without first/last buttons and neighbours, so it fits on one line. A visually
+  hidden status line („12 Produkte gefunden“) announces changes; the grid has no `aria-live`.
+- **E2E:** `apps/bakery-landing-e2e/src/sortiment.spec.ts` (keyboard, page 2 on the phone,
+  `?search=`, Back); data-driven, so it runs against the bundled fallback in CI and the fixture
+  locally.
+
 ## Product images from the 3D models
 
 The data repo `../produkte-3d` renders one image per product model (`npm run render` there →
