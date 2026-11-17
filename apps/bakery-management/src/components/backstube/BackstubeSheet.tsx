@@ -62,8 +62,8 @@ export interface BackstubeSheetProps {
    */
   only?: string
   /**
-   * Tagesplanung des Tages (`/admin/backzettel/<datum>`), nur für wen
-   * planen und freigeben darf: im Entwurf führt der Knopf „Prüfen und
+   * Tagesplanung des Tages (`/admin/backzettel/<datum>`), nur für Rollen,
+   * die planen und freigeben dürfen: im Entwurf führt der Knopf „Prüfen und
    * freigeben“ im Banner dorthin. `null` = kein Knopf.
    */
   planHref?: string | null
@@ -228,7 +228,8 @@ export function BackstubeSheet({
                 </Typography>
               </Box>
               {/* Weg zur Freigabe direkt vom Tablet: die Tagesplanung zum
-                  Prüfen, dort „Freigeben“ (nur wer freigeben darf). */}
+                  Prüfen, dort „Freigeben“ (nur Rollen, die freigeben
+                  dürfen). */}
               {planHref && (
                 <Button
                   component={Link}
