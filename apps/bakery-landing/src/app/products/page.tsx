@@ -1,4 +1,5 @@
-import { loadProducts } from '../../lib/products'
+import { loadListedProducts } from '../../lib/products'
+import { pageOpenGraph } from '../../lib/seo/pageMetadata'
 import ProductsPageClient from './ProductsPageClient'
 import { Metadata } from 'next'
 import { SITE_URL } from '../../config/legal'
@@ -10,16 +11,16 @@ export const metadata: Metadata = {
   alternates: {
     canonical: '/products',
   },
-  openGraph: {
+  openGraph: pageOpenGraph({
     title: 'Unsere Produkte - Bäckerei Heusser',
     description:
       'Brot, Brötchen, Baguettes, Kuchen, Torten und Snacks – täglich frisch gebacken in Homburg-Kirrberg.',
     url: `${SITE_URL}/products`,
-    type: 'website',
-  },
+  }),
 }
 
 export default function ProductsPage() {
-  const products = loadProducts()
+  // Nur was wir anbieten: Liste und Suche arbeiten auf dieser Auswahl.
+  const products = loadListedProducts()
   return <ProductsPageClient initialProducts={products} />
 }

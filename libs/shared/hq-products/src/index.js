@@ -140,10 +140,23 @@ function readHqProducts(options = {}) {
   return { dir, found: true, products }
 }
 
+/**
+ * Ob ein Produkt öffentlich im Sortiment steht: alles außer `available: false`.
+ * Fehlt das Feld, gilt das Produkt als angeboten (so stand es bisher überall).
+ * Die eine Regel für Sortiment, Suche, ähnliche Produkte und Sitemap der
+ * Landingpage; die Produktseite selbst bleibt für alte Links bestehen.
+ * @param {{ available?: boolean | null }} record
+ * @returns {boolean}
+ */
+function isListedHqProduct(record) {
+  return record.available !== false
+}
+
 module.exports = {
   findMonorepoRoot,
   resolveHqProductsDir,
   listHqProductFiles,
   parseHqProduct,
   readHqProducts,
+  isListedHqProduct,
 }
