@@ -583,7 +583,9 @@ export default function AbgleichClient() {
                   <Typography variant="body2">
                     <strong>Verkauft</strong>: Kassenbons über die Kassennummern
                     (PLU) des Postens, Stornos abgezogen, in die Einheit des
-                    Postens umgerechnet.
+                    Postens umgerechnet. Ein Stück-Posten, dessen Produkte je
+                    ein Stück sind, wird Stück gegen Stück verglichen
+                    (vorläufig).
                   </Typography>
                 </li>
                 <li>

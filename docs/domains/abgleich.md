@@ -42,8 +42,11 @@ Routen `src/routes/abgleich.routes.ts` (`/api/abgleich`) · Management-App
   ohne Zählung („prüfen (ohne Rest)“).
 - **Verkauft, aber nicht gebacken:** steht ein Posten nicht auf dem Backzettel des Tages, wurde
   aber verkauft, erscheint er mit gebacken 0 (Signal „mehr verkauft“).
-- **Einheiten:** verglichen wird nur, wenn jede Kassennummer einem Produkt des Postens mit Faktor
-  zugeordnet ist (`converted`). Sonst „nicht vergleichbar (Einheit)“ - z. B. ein Liter-Posten,
+- **Einheiten:** verglichen wird, wenn jede Kassennummer einem Produkt des Postens mit Faktor
+  zugeordnet ist (`converted`, `soldBasis: 'umgerechnet'`) - oder wenn Posten und Kasse beide
+  Stück zählen: ein Stück-Posten, dessen Produkte je ein Stück sind (Faktor 1), wird Stück gegen
+  Stück verglichen (`soldBasis: 'stueck'`, **vorläufig**; in hq sind die Kassennummern heute meist
+  nicht die `numeric_id` der Produkte). Sonst „nicht vergleichbar (Einheit)“ - z. B. ein Liter-Posten,
   dessen Kassennummer kein Produkt mit Faktor hat. **Ohne Kassennummer:** „keine Kassennummer“.
   Beide stehen getrennt unter „Ohne Kassennummer / nicht vergleichbar“ mit dem Hinweis, was in
   hq `config/backzettel.yaml` fehlt (`plu`, `products[].factor`).

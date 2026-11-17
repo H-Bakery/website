@@ -27,7 +27,9 @@ const THU = '2026-12-03'
 /**
  * Stammdaten mit Kassennummern: Plunder (906, Stück), Kranz gefüllt mit
  * Sorten und Viertel-Produkt (902/903, Faktor 1 und 0,25), Vollkorn mit
- * einer Kassennummer ohne eigenes Produkt (909 → nicht umrechenbar).
+ * einer Kassennummer ohne eigenes Produkt (909 → nicht umrechenbar),
+ * Schnecke (Stück, ohne Produkt, 990 → Stück gegen Stück) und Kranz
+ * (Produkte ganz und Viertel, 991 ohne Produkt → nicht umrechenbar).
  */
 function baseConfig(extra = {}) {
   const raw = fixture.config(extra)
@@ -36,6 +38,10 @@ function baseConfig(extra = {}) {
       ? { ...i, plu: [902, 903] }
       : i.id === 'vollkorn'
       ? { ...i, plu: [909] }
+      : i.id === 'schnecke'
+      ? { ...i, plu: [990] }
+      : i.id === 'kranz'
+      ? { ...i, plu: [991] }
       : i
   )
   return configCore.normalizeConfig(raw)
@@ -409,6 +415,59 @@ describe('reconcile', () => {
       ampel: null,
       allBaked: 2,
       soldPieces: 3,
+    })
+  })
+
+  it('Stück-Posten mit Produkten zu je einem Stück: Kasse zählt dasselbe, auch ohne Zuordnung', () => {
+    const s = run({
+      [TUE]: {
+        backzettel: bzDay('confirmed', [{ itemId: 'schnecke', total: 6 }]),
+        rows: [row('schnecke', 1)],
+        report: report(TUE, [[990, 5]]),
+      },
+    })
+    expect(posten(s, 'schnecke')).toMatchObject({
+      status: 'vergleichbar',
+      converted: true,
+      soldBasis: 'stueck',
+      sold: 5,
+      unexplained: 0,
+      ampel: 'ok',
+    })
+    expect(posten(s, 'plunder')).toBeUndefined()
+  })
+
+  it('Posten mit Teil-Produkten (Viertel) ohne Zuordnung bleibt nicht vergleichbar', () => {
+    const s = run(
+      {
+        [WED]: {
+          backzettel: bzDay('confirmed', [{ itemId: 'kranz', total: 2 }]),
+          rows: [],
+          report: report(WED, [[991, 4]]),
+        },
+      },
+      { from: WED, to: WED }
+    )
+    expect(posten(s, 'kranz')).toMatchObject({
+      status: 'einheit',
+      soldBasis: null,
+      soldPieces: 4,
+    })
+  })
+
+  it('ohne vergleichbaren Tag zeigt gebacken die Tage ohne Bericht', () => {
+    const s = run({
+      [TUE]: {
+        backzettel: bzDay('draft', [{ itemId: 'plunder', total: 12 }]),
+        rows: [],
+        report: null,
+      },
+    })
+    expect(posten(s, 'plunder')).toMatchObject({
+      comparableDays: 0,
+      baked: 12,
+      sold: null,
+      open: null,
     })
   })
 

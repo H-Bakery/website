@@ -24,12 +24,13 @@ Every other role gets 403 `forbidden`. Errors via `sendError`: 400 `invalid_date
   cash reports through `reports-files.core.js` `readDailyReportsInRange`.
 - **`items[]`** (comparable, sorted by Ampel then size of the signal) and **`unmatched[]`**
   (`status` `keine_plu` / `einheit`): per item `key`, `name`, `sizeLabel`, `unit`, `plu`,
-  `converted`, `tolerance`, `basis` (`freigegeben` / `geplant` / `gemischt`), `comparableDays`,
+  `converted`, `soldBasis` (`umgerechnet` via product factor / `stueck`: a Stück item whose
+  products are one piece each, compared piece for piece, provisional), `tolerance`, `basis` (`freigegeben` / `geplant` / `gemischt`), `comparableDays`,
   `restDays`, `baked`, `cap`, `shopBaked`, `sold`, `open`, `rest`, `unexplained`, `ampel`
   (`ok` / `auffaellig` / `pruefen` / `null`), `ampelBasis` (`mit_rest` / `ohne_rest`),
   `direction` (`fehlt` / `mehr_verkauft`), `rate`, `overproduction`, `gaps` (`noReport`,
   `restMissing`, `restPartial`), `variants[]`, `dayRows[]`. `baked/cap/sold/open` sum the
-  comparable days (report present, units convertible), `rest/unexplained` the days with a
+  comparable days (report present, units convertible; without any, `baked/cap` sum all days), `rest/unexplained` the days with a
   complete count. `key` is `itemId`, or `itemId|sizeId` when the item is compared per loaf size.
 - **`dayRows[]`:** `status` `ok` | `ohne_rest` | `kein_bericht` | `einheit` | `keine_plu`,
   `restStatus` `counted` | `partial` | `not_counted` | `not_on_backzettel`, per-Sorte `lines[]`.

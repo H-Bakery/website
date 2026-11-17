@@ -62,6 +62,7 @@ function item(overrides: Partial<AbgleichItem> = {}): AbgleichItem {
     unit: 'Stück',
     plu: [906],
     converted: true,
+    soldBasis: 'umgerechnet',
     tolerance: 1,
     status: 'vergleichbar',
     basis: 'freigegeben',

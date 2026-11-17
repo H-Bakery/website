@@ -63,6 +63,8 @@ export interface AbgleichItem {
   unit: string
   plu: number[]
   converted: boolean
+  /** `umgerechnet` (Produktfaktor) oder `stueck` (Stück gegen Stück, vorläufig). */
+  soldBasis: 'umgerechnet' | 'stueck' | null
   tolerance: number
   status: 'vergleichbar' | 'einheit' | 'keine_plu'
   basis: AbgleichBasis | null

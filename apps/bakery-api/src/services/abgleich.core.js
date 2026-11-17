@@ -32,9 +32,11 @@
 //     verkauft; „Ungeklärt“ gibt es erst mit gezähltem Rest. Ist schon
 //     dieser Wert negativ, kann kein Rest ihn retten - die Ampel zeigt das
 //     auch ohne Zählung (`ampelBasis: 'ohne_rest'`).
-//   - **Einheiten:** verglichen wird nur, wenn die Kasse in die Einheit des
-//     Postens umgerechnet werden kann (`itemSoldInfo(...).converted`), sonst
-//     „nicht vergleichbar (Einheit)“. Ohne Kassennummer: „keine
+//   - **Einheiten:** verglichen wird, wenn die Kasse in die Einheit des
+//     Postens umgerechnet werden kann (`itemSoldInfo(...).converted`) oder
+//     Posten und Kasse beide Stück zählen (Stück-Posten, jedes Produkt ein
+//     Stück - `countsPieces`, vorläufig), sonst „nicht vergleichbar
+//     (Einheit)“. Ohne Kassennummer: „keine
 //     Kassennummer“, getrennt aufgeführt.
 //   - **Sorten** (Nuss, Mohn …) haben an der Kasse keine eigene Nummer:
 //     verglichen wird der Posten über alle Sorten, die Sorten stehen nur zur
@@ -195,12 +197,44 @@ function pieceTolerance(info) {
 }
 
 /**
+ * Posten und Kasse zählen beide Stück: der Posten rechnet in Stück, und
+ * jedes seiner Produkte ist ein Stück (Faktor 1). Dann braucht es keine
+ * Umrechnung, auch wenn die Kassennummer keinem hq-Produkt zugeordnet ist
+ * (vorläufig).
+ */
+function countsPieces(item) {
+  if ((item.unit || 'Stück') !== 'Stück') return false
+  const products = Array.isArray(item.products) ? item.products : []
+  return products.every(
+    (p) =>
+      !p ||
+      p.factor === undefined ||
+      p.factor === null ||
+      Number(p.factor) === 1
+  )
+}
+
+/**
  * Wie ein Posten mit der Kasse verglichen wird: je Laibgröße, wenn jede
  * Größe eigene Kassennummern hat und sie zusammen alle Kassennummern des
  * Postens abdecken; sonst der ganze Posten.
+ *
+ * `soldBasis`: `umgerechnet` (jede Kassennummer ist ein Produkt des Postens
+ * mit Faktor, `itemSoldInfo(...).converted`), `stueck` (Stück-Posten mit
+ * Produkten zu je einem Stück - Kasse und Posten zählen dasselbe) oder
+ * `null` (nicht vergleichbar).
  */
 function comparison(item, resolve) {
-  const info = refCore.itemSoldInfo(item, resolve)
+  let info = refCore.itemSoldInfo(item, resolve)
+  let soldBasis = info.converted ? 'umgerechnet' : null
+  if (!info.converted && info.plu.length > 0 && countsPieces(item)) {
+    info = {
+      ...info,
+      factors: new Map(info.plu.map((key) => [key, 1])),
+      converted: true,
+    }
+    soldBasis = 'stueck'
+  }
   if (rest.isSizeItem(item) && info.plu.length > 0) {
     const sizes = new Map(
       item.sizes.map((s) => [s.id, refCore.sizeSoldInfo(info, s)])
@@ -212,10 +246,10 @@ function comparison(item, resolve) {
       [...sizes.values()].every(Boolean) &&
       info.plu.every((p) => covered.has(p))
     ) {
-      return { info, bySize: true, sizes }
+      return { info, soldBasis, bySize: true, sizes }
     }
   }
-  return { info, bySize: false, sizes: null }
+  return { info, soldBasis, bySize: false, sizes: null }
 }
 
 function sumBy(list, pick) {
@@ -324,8 +358,11 @@ function periodRow(g, config) {
       : 'gemischt'
   }
   const tolerance = pieceTolerance(g.info)
-  const baked = sumBy(comparable, (r) => r.baked)
-  const cap = sumBy(comparable, (r) => r.cap)
+  // Gebacken und CAP über die vergleichbaren Tage (damit gebacken − CAP −
+  // verkauft aufgeht); ohne vergleichbaren Tag über alle Tage.
+  const basisRows = comparable.length > 0 ? comparable : rows
+  const baked = sumBy(basisRows, (r) => r.baked)
+  const cap = sumBy(basisRows, (r) => r.cap)
   const shopBaked = round2(baked - cap)
   const sold = sumBy(comparable, (r) => r.sold)
   const open = round2(shopBaked - sold)
@@ -371,6 +408,7 @@ function periodRow(g, config) {
     unit: g.meta.unit,
     plu: g.info ? g.info.plu.map(Number) : [],
     converted: g.info ? g.info.converted : false,
+    soldBasis: g.info && g.info.converted ? g.soldBasis : null,
     tolerance,
     status,
     basis: basisOf(comparable) || basisOf(rows),
@@ -460,11 +498,12 @@ function reconcile(a) {
           key: `${itemId}|${variant || ''}`,
           sizeId: variant || null,
           info: (variant && c.sizes.get(variant)) || null,
+          soldBasis: c.soldBasis,
         }
       }
-      return { key: itemId, sizeId: null, info: c.info }
+      return { key: itemId, sizeId: null, info: c.info, soldBasis: c.soldBasis }
     }
-    return { key: itemId, sizeId: null, info: null }
+    return { key: itemId, sizeId: null, info: null, soldBasis: null }
   }
   const order = rest.sectionOrder(config)
   const configIndex = new Map(
@@ -632,6 +671,7 @@ function reconcile(a) {
           sizeId: bucket.sizeId,
           item: bucket.item,
           info: bucket.info,
+          soldBasis: bucket.soldBasis,
           meta: bucket.meta,
           dayRows: [],
         })
