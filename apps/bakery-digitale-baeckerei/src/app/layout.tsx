@@ -33,11 +33,10 @@ export const metadata: Metadata = {
   title: 'Digitale Bäckerei – Bäckerei Heusser',
   description:
     'Schau dich in der Bäckerei Heusser in 3D um: die Theke mit Vitrine, voll mit Backwaren.',
-  // Vorerst nicht im Index: öffentlich wird die Seite erst nach der Abnahme (P2).
-  robots: {
-    index: false,
-    follow: false,
-    googleBot: { index: false, follow: false },
+  // Öffentlich und verlinkt seit der Abnahme durch den Inhaber (P2): im Index,
+  // mit der Adresse auf der Landingpage als einziger gültiger.
+  alternates: {
+    canonical: 'https://xn--bckerei-heusser-0kb.de/digitale-baeckerei/',
   },
 }
 

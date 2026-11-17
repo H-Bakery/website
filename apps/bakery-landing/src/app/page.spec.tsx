@@ -61,6 +61,17 @@ describe('Landing Page', () => {
     expect(screen.getByText('Alle Produkte ansehen')).toBeInTheDocument()
   })
 
+  it('links to the Digitale Bäckerei with a plain link to the sub-path', () => {
+    renderWithTheme(<LandingPage />)
+
+    expect(
+      screen.getByRole('heading', { name: 'Ein Blick in unsere Bäckerei' })
+    ).toBeInTheDocument()
+    const link = screen.getByRole('link', { name: 'Digitale Bäckerei öffnen' })
+    // Trailing slash: without it GitHub Pages redirects first.
+    expect(link).toHaveAttribute('href', '/digitale-baeckerei/')
+  })
+
   it('renders testimonials section', () => {
     renderWithTheme(<LandingPage />)
 
