@@ -332,6 +332,60 @@ test.describe('Raum wechseln: Randfälle', () => {
   }
 })
 
+test.describe('Leiste mit Raumwechsel', () => {
+  test('390 px: der Hinweis steht über der dreizeiligen Leiste, „Quellen“ neben „Alles hier“', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await oeffne(page)
+    const leiste = page.getByTestId('blickpunkt-leiste')
+    const hinweis = page.getByTestId('hinweis')
+    await expect(hinweis).toHaveAttribute('data-sichtbar', 'true')
+    await expect(raumWechsel(page)).toBeVisible()
+
+    const rahmen = (locator: import('@playwright/test').Locator) =>
+      locator.evaluate((el) => {
+        const r = el.getBoundingClientRect()
+        return { links: r.left, rechts: r.right, oben: r.top, unten: r.bottom }
+      })
+    const box = await rahmen(hinweis)
+    const knoepfe = await leiste.locator('button').evaluateAll((alle) =>
+      alle.map((knopf) => {
+        const r = knopf.getBoundingClientRect()
+        return {
+          text: knopf.textContent ?? '',
+          links: r.left,
+          rechts: r.right,
+          oben: r.top,
+          unten: r.bottom,
+        }
+      })
+    )
+    expect(knoepfe.length).toBeGreaterThanOrEqual(6)
+    for (const knopf of knoepfe) {
+      const ueberlappt =
+        box.links < knopf.rechts &&
+        knopf.links < box.rechts &&
+        box.oben < knopf.unten &&
+        knopf.oben < box.unten
+      expect(ueberlappt, knopf.text).toBe(false)
+    }
+    expect(box.unten).toBeLessThanOrEqual((await rahmen(leiste)).oben)
+
+    // „Alles hier“ und „Quellen“ in einer Zeile, der Raumwechsel darunter.
+    const mitte = async (locator: import('@playwright/test').Locator) => {
+      const r = await rahmen(locator)
+      return (r.oben + r.unten) / 2
+    }
+    const allesHier = await mitte(
+      leiste.getByRole('button', { name: 'Alles hier' })
+    )
+    const quellen = await mitte(leiste.getByRole('button', { name: 'Quellen' }))
+    expect(Math.abs(allesHier - quellen)).toBeLessThan(2)
+    expect(await mitte(raumWechsel(page))).toBeGreaterThan(allesHier + 22)
+  })
+})
+
 test.describe('Link in einen Raum', () => {
   test('?raum=<id> öffnet die Testbackstube - ohne das Modell des Ladens zu laden', async ({
     page,

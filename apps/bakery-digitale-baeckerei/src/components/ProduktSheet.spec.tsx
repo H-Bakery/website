@@ -6,6 +6,7 @@ import ProduktSheet, {
   NAHANSICHT_TEXT,
   WEBSITE_LINK_TEXT,
   WENIGER_TEXT,
+  WISCH_ENTSCHEIDUNG,
   ZIEH_SCHWELLE,
 } from './ProduktSheet'
 import ThemeRegistry from './ThemeRegistry'
@@ -31,12 +32,39 @@ function setup(
 
 const sheet = () => screen.getByRole('dialog')
 
-/** jsdom kennt kein PointerEvent: ein MouseEvent mit dem Namen trägt clientY. */
+/**
+ * jsdom kennt kein PointerEvent: ein MouseEvent mit dem Namen trägt clientY,
+ * dazu die Angaben des Zeigers (Standard: die Maus).
+ */
 const zeiger = (
   ziel: Element,
-  typ: 'pointerdown' | 'pointermove' | 'pointerup',
-  clientY: number
-) => fireEvent(ziel, new MouseEvent(typ, { bubbles: true, clientY }))
+  typ: 'pointerdown' | 'pointermove' | 'pointerup' | 'pointercancel',
+  clientY: number,
+  { pointerType = 'mouse', pointerId = 1 } = {}
+) => {
+  const event = new MouseEvent(typ, { bubbles: true, clientY })
+  Object.defineProperties(event, {
+    pointerType: { value: pointerType },
+    pointerId: { value: pointerId },
+    isPrimary: { value: true },
+  })
+  return fireEvent(ziel, event)
+}
+const FINGER = { pointerType: 'touch' }
+const inhalt = () => screen.getByTestId('sheet-inhalt')
+/** Der Text ist so weit gescrollt (jsdom scrollt nicht selbst). */
+const scrollteSchon = (px: number) =>
+  Object.defineProperty(inhalt(), 'scrollTop', {
+    configurable: true,
+    value: px,
+  })
+/** touchmove wie im Browser: abbrechbar, mit einem Finger. */
+const fingerBewegt = (clientY: number) => {
+  const event = new Event('touchmove', { bubbles: true, cancelable: true })
+  Object.defineProperty(event, 'touches', { value: [{ clientY }] })
+  inhalt().dispatchEvent(event)
+  return event
+}
 const LANG = 'Der Teig ruht lange und wird von Hand geformt.'
 
 describe('ProduktSheet', () => {
@@ -147,6 +175,121 @@ describe('ProduktSheet', () => {
     zeiger(griff, 'pointermove', 500 + ZIEH_SCHWELLE + 20)
     zeiger(griff, 'pointerup', 500 + ZIEH_SCHWELLE + 20)
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('bindet den Zeiger beim Ziehen an den Griff', () => {
+    setup()
+    const griff = screen.getByTestId('sheet-griff')
+    const fange = jest.fn()
+    griff.setPointerCapture = fange
+    zeiger(griff, 'pointerdown', 500, { pointerId: 7 })
+    expect(fange).toHaveBeenCalledWith(7)
+    // Auf dem Schließen-Knopf beginnt kein Ziehen.
+    fange.mockClear()
+    zeiger(
+      screen.getByRole('button', { name: 'Schließen' }),
+      'pointerdown',
+      500
+    )
+    expect(fange).not.toHaveBeenCalled()
+  })
+
+  it('losgelassen neben dem Griff: federt zurück oder schließt', () => {
+    const { onClose } = setup()
+    const griff = screen.getByTestId('sheet-griff')
+
+    zeiger(griff, 'pointerdown', 500)
+    zeiger(griff, 'pointermove', 540)
+    expect(sheet().style.transform).toBe('translateY(40px)')
+    // Weitergezogen und losgelassen über der Szene, nicht über dem Griff.
+    zeiger(document.body, 'pointermove', 545)
+    expect(sheet().style.transform).toBe('translateY(45px)')
+    zeiger(document.body, 'pointerup', 540)
+    expect(sheet().style.transform).toBe('')
+    expect(onClose).not.toHaveBeenCalled()
+    // Danach zieht ein Zeiger ohne Druck nichts mehr mit.
+    zeiger(griff, 'pointermove', 600)
+    expect(sheet().style.transform).toBe('')
+
+    zeiger(griff, 'pointerdown', 500)
+    zeiger(document.body, 'pointerup', 500 + ZIEH_SCHWELLE + 1)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('ein abgebrochener Zeiger lässt die Karte zurückfedern', () => {
+    const { onClose } = setup()
+    const griff = screen.getByTestId('sheet-griff')
+    zeiger(griff, 'pointerdown', 500)
+    zeiger(griff, 'pointermove', 600)
+    zeiger(document.body, 'pointercancel', 600)
+    expect(sheet().style.transform).toBe('')
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('der Griff markiert beim Ziehen keinen Text', () => {
+    setup()
+    expect(screen.getByTestId('sheet-griff')).toHaveStyle({
+      userSelect: 'none',
+    })
+  })
+
+  it('ein Wisch nach unten auf dem Text schließt, wenn der Text oben steht', () => {
+    const { onClose } = setup()
+    scrollteSchon(0)
+    zeiger(inhalt(), 'pointerdown', 400, FINGER)
+    // Unter der Schwelle der Entscheidung: noch nichts.
+    zeiger(inhalt(), 'pointermove', 400 + WISCH_ENTSCHEIDUNG - 1, FINGER)
+    expect(sheet().style.transform).toBe('')
+    zeiger(inhalt(), 'pointermove', 420, FINGER)
+    expect(sheet().style.transform).toBe('translateY(20px)')
+    // Ab jetzt scrollt der Text nicht mit.
+    expect(fingerBewegt(430).defaultPrevented).toBe(true)
+    zeiger(inhalt(), 'pointermove', 400 + ZIEH_SCHWELLE + 30, FINGER)
+    zeiger(inhalt(), 'pointerup', 400 + ZIEH_SCHWELLE + 30, FINGER)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('ein kurzer Wisch auf dem Text federt zurück', () => {
+    const { onClose } = setup()
+    scrollteSchon(0)
+    zeiger(inhalt(), 'pointerdown', 400, FINGER)
+    zeiger(inhalt(), 'pointermove', 430, FINGER)
+    zeiger(inhalt(), 'pointerup', 430, FINGER)
+    expect(sheet().style.transform).toBe('')
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('ist der Text gescrollt, scrollt ein Wisch nach unten ihn zurück - die Karte bleibt', () => {
+    const { onClose } = setup()
+    scrollteSchon(30)
+    zeiger(inhalt(), 'pointerdown', 400, FINGER)
+    zeiger(inhalt(), 'pointermove', 420, FINGER)
+    expect(fingerBewegt(440).defaultPrevented).toBe(false)
+    zeiger(inhalt(), 'pointermove', 500, FINGER)
+    expect(sheet().style.transform).toBe('')
+    zeiger(inhalt(), 'pointerup', 500, FINGER)
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('ein Wisch nach oben scrollt den Text, auch wenn er danach nach unten geht', () => {
+    const { onClose } = setup()
+    scrollteSchon(0)
+    zeiger(inhalt(), 'pointerdown', 400, FINGER)
+    zeiger(inhalt(), 'pointermove', 380, FINGER)
+    zeiger(inhalt(), 'pointermove', 500, FINGER)
+    expect(sheet().style.transform).toBe('')
+    zeiger(inhalt(), 'pointerup', 500, FINGER)
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('mit der Maus zieht nur der Griff - auf dem Text wird markiert', () => {
+    const { onClose } = setup()
+    scrollteSchon(0)
+    zeiger(inhalt(), 'pointerdown', 400)
+    zeiger(inhalt(), 'pointermove', 500)
+    zeiger(inhalt(), 'pointerup', 500)
+    expect(sheet().style.transform).toBe('')
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   it('zieht nicht nach oben', () => {

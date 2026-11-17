@@ -1,9 +1,13 @@
 'use client'
 import React from 'react'
+import Box from '@mui/material/Box'
 import Paper from '@mui/material/Paper'
-import { BEWEGUNG_OK, EBENE, LEISTE_EINZEILIG } from './theme'
+import { BEWEGUNG_OK, EBENE, MIT_MAUS, ueberDerLeiste } from './theme'
 
+/** Der Bedienhinweis auf dem Handy (Touch) - und überall, wo keine Maus ist. */
 export const HINWEIS_TEXT = 'Ziehen zum Umschauen · Tippen für Infos'
+/** Derselbe Hinweis mit der Maus: Dort tippt man nicht, man klickt. */
+export const HINWEIS_TEXT_MAUS = 'Ziehen zum Umschauen · Klicken für Infos'
 
 export interface HinweisProps {
   /** `false` nach der ersten Geste: der Hinweis blendet aus */
@@ -13,13 +17,12 @@ export interface HinweisProps {
 }
 
 /**
- * Kurzer Bedienhinweis über der Blickpunkt-Leiste. Fängt keine Berührungen
- * ab; blendet weich aus (ohne Bewegung: sofort).
+ * Kurzer Bedienhinweis über der Blickpunkt-Leiste (über ihrer gemessenen
+ * Höhe, wie viele Zeilen sie auch hat). Fängt keine Berührungen ab; blendet
+ * weich aus (ohne Bewegung: sofort). Ohne eigenen Text nennt er die
+ * Bedienung des Geräts: Tippen, mit der Maus Klicken - allein per CSS.
  */
-export default function Hinweis({
-  sichtbar,
-  text = HINWEIS_TEXT,
-}: HinweisProps) {
+export default function Hinweis({ sichtbar, text }: HinweisProps) {
   return (
     <Paper
       elevation={3}
@@ -31,8 +34,7 @@ export default function Hinweis({
         zIndex: EBENE.hinweis,
         left: 0,
         right: 0,
-        // über der zweizeiligen Leiste (Handy hochkant)
-        bottom: 'calc(max(8px, env(safe-area-inset-bottom)) + 120px)',
+        bottom: ueberDerLeiste(16),
         mx: 'auto',
         width: 'fit-content',
         maxWidth: 'calc(100% - 24px)',
@@ -50,12 +52,26 @@ export default function Hinweis({
             ? 'opacity 300ms ease'
             : 'opacity 400ms ease, visibility 0s linear 400ms',
         },
-        [LEISTE_EINZEILIG]: {
-          bottom: 'calc(max(8px, env(safe-area-inset-bottom)) + 72px)',
-        },
       }}
     >
-      {text}
+      {text ?? (
+        <>
+          <Box
+            component="span"
+            data-testid="hinweis-touch"
+            sx={{ [MIT_MAUS]: { display: 'none' } }}
+          >
+            {HINWEIS_TEXT}
+          </Box>
+          <Box
+            component="span"
+            data-testid="hinweis-maus"
+            sx={{ display: 'none', [MIT_MAUS]: { display: 'inline' } }}
+          >
+            {HINWEIS_TEXT_MAUS}
+          </Box>
+        </>
+      )}
     </Paper>
   )
 }

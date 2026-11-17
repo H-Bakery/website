@@ -1,5 +1,5 @@
 'use client'
-import React, { useEffect, useId, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react'
 import CloseIcon from '@mui/icons-material/Close'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import ViewInArIcon from '@mui/icons-material/ViewInAr'
@@ -16,6 +16,7 @@ import {
   SEITLICH_ABFRAGE,
   TOUCH_TARGET,
   rand,
+  ueberDerLeiste,
 } from './theme'
 import type { Karte } from '../lib/karte'
 
@@ -26,6 +27,15 @@ export const NAHANSICHT_TEXT = 'In 3D ansehen'
 
 /** So weit muss man das Sheet nach unten ziehen, damit es zugeht (px). */
 export const ZIEH_SCHWELLE = 64
+
+/**
+ * Ein Wisch auf dem Text ist entschieden, sobald er sich so weit bewegt hat
+ * (px): nach unten am Anfang des Textes zieht er die Karte, sonst scrollt er.
+ */
+export const WISCH_ENTSCHEIDUNG = 6
+
+/** Hochkant steht die Karte so weit über der Leiste (px). */
+const UEBER_LEISTE = ueberDerLeiste(6)
 
 export interface ProduktSheetProps {
   /** Inhalt der Karte - ein Produkt oder ein Infopunkt; `null` = geschlossen */
@@ -58,10 +68,13 @@ const vonUnten = keyframes({
 })
 
 /**
- * Infos zum angetippten Produkt: unten als Sheet (zugeklappt höchstens 45 %
- * der Höhe, damit das Produkt sichtbar bleibt), auf dem Desktop und im
- * Querformat als Karte am rechten Rand. Ohne Angaben zu Kosten oder
- * Inhaltsstoffen (DB8).
+ * Infos zum angetippten Produkt: hochkant als Sheet direkt über der
+ * Blickpunkt-Leiste (die bedienbar bleibt; zugeklappt nehmen Karte und
+ * Leiste zusammen höchstens die halbe Höhe ein, damit das Produkt sichtbar
+ * bleibt), auf dem Desktop und im Querformat als Karte am rechten Rand, die
+ * über der Leiste endet. Zu geht sie auch mit einem Wisch nach unten - am
+ * Griff oder auf dem Text, wenn er ganz oben steht. Ohne Angaben zu Kosten
+ * oder Inhaltsstoffen (DB8).
  */
 export default function ProduktSheet({
   produkt,
@@ -102,7 +115,11 @@ function OffenesSheet({
   const titelId = useId()
   const textId = useId()
   const sheet = useRef<HTMLDivElement>(null)
+  const inhalt = useRef<HTMLDivElement>(null)
+  /** Startpunkt des laufenden Ziehens (Griff oder Text); `null` = es zieht nichts. */
   const zugStart = useRef<number | null>(null)
+  /** Ein Wisch auf dem Text, über den noch nicht entschieden ist: sein Startpunkt. */
+  const wischStart = useRef<number | null>(null)
   const [zug, setZug] = useState(0)
   /** id des Produkts, dessen langer Text offen ist - ein neues Produkt startet zugeklappt. */
   const [mehrFuer, setMehrFuer] = useState<string | null>(null)
@@ -149,10 +166,94 @@ function OffenesSheet({
   const hatLangenText =
     langerText !== '' && langerText !== produkt.kurztext.trim()
 
-  const zugEnde = (schliessen: boolean) => {
+  /** Hebt die Zeiger-Ereignisse am Fenster wieder auf, solange gezogen wird. */
+  const loesen = useRef<(() => void) | null>(null)
+  useEffect(() => () => loesen.current?.(), [])
+
+  const zugEnde = useCallback((schliessen: boolean) => {
+    loesen.current?.()
     zugStart.current = null
+    wischStart.current = null
     setZug(0)
-    if (schliessen) onClose()
+    if (schliessen) onCloseRef.current()
+  }, [])
+
+  /**
+   * Beginnt das Ziehen bei `start`. Bewegen und Loslassen liest das Fenster:
+   * So zählt auch ein Loslassen neben der Karte, und sie bleibt nie halb
+   * gezogen hängen.
+   */
+  const beginneZug = useCallback(
+    (start: number) => {
+      zugStart.current = start
+      if (loesen.current) return
+      const bewege = (event: PointerEvent) => {
+        if (zugStart.current === null) return
+        setZug(Math.max(0, event.clientY - zugStart.current))
+      }
+      const lasseLos = (event: PointerEvent) => {
+        const von = zugStart.current
+        zugEnde(von !== null && event.clientY - von > ZIEH_SCHWELLE)
+      }
+      const brichAb = () => zugEnde(false)
+      window.addEventListener('pointermove', bewege)
+      window.addEventListener('pointerup', lasseLos)
+      window.addEventListener('pointercancel', brichAb)
+      loesen.current = () => {
+        window.removeEventListener('pointermove', bewege)
+        window.removeEventListener('pointerup', lasseLos)
+        window.removeEventListener('pointercancel', brichAb)
+        loesen.current = null
+      }
+    },
+    [zugEnde]
+  )
+
+  /**
+   * Zieht dieser Wisch auf dem Text die Karte? Entschieden wird beim ersten
+   * deutlichen Schritt: nach unten, solange der Text ganz oben steht, zieht
+   * er sie - sonst scrollt er den Text wie gewohnt.
+   */
+  const ziehtVomText = useCallback(
+    (y: number): boolean => {
+      if (zugStart.current !== null) return true
+      const start = wischStart.current
+      if (start === null) return false
+      const weg = y - start
+      if (Math.abs(weg) < WISCH_ENTSCHEIDUNG) return false
+      wischStart.current = null
+      if (weg < 0 || (inhalt.current?.scrollTop ?? 0) > 0) return false
+      beginneZug(start)
+      setZug(weg)
+      return true
+    },
+    [beginneZug]
+  )
+
+  // Solange die Karte gezogen wird, scrollt der Text nicht mit. Das geht nur
+  // mit einem eigenen, nicht passiven touchmove (React meldet ihn passiv an);
+  // sonst übernähme der Browser den Wisch und bräche das Ziehen ab.
+  useEffect(() => {
+    const knoten = inhalt.current
+    if (!knoten) return undefined
+    const onTouchMove = (event: TouchEvent) => {
+      const finger = event.touches[0]
+      if (finger && ziehtVomText(finger.clientY) && event.cancelable) {
+        event.preventDefault()
+      }
+    }
+    knoten.addEventListener('touchmove', onTouchMove, { passive: false })
+    return () => knoten.removeEventListener('touchmove', onTouchMove)
+  }, [ziehtVomText])
+
+  /** Den Zeiger an das Element binden: Losgelassen wird auch daneben. */
+  const fange = (event: React.PointerEvent<HTMLElement>) => {
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId)
+    } catch {
+      // Ohne Capture (jsdom, Zeiger schon fort) liest das Fenster trotzdem
+      // das Loslassen (beginneZug).
+    }
   }
 
   return (
@@ -178,19 +279,19 @@ function OffenesSheet({
         sx={{
           position: 'fixed',
           zIndex: EBENE.sheet,
-          left: 0,
-          right: 0,
-          bottom: 0,
+          left: rand('left', 8),
+          right: rand('right', 8),
+          // Über der Leiste: Chips, „Alles hier“ und „Quellen“ bleiben frei.
+          bottom: UEBER_LEISTE,
           display: 'flex',
           flexDirection: 'column',
-          // Zugeklappt bleibt mehr als die Hälfte des Bildes frei.
-          maxHeight: mehr ? '80dvh' : '45dvh',
+          // Zugeklappt nehmen Karte und Leiste höchstens die halbe Höhe ein.
+          maxHeight: `calc(${mehr ? 80 : 50}dvh - ${UEBER_LEISTE})`,
           // Auf niedrigen Handys bliebe aufgeklappt sonst kaum Bild übrig.
           '@media (max-height: 699px)': {
-            maxHeight: mehr ? '60dvh' : '45dvh',
+            maxHeight: `calc(${mehr ? 60 : 50}dvh - ${UEBER_LEISTE})`,
           },
-          borderRadius: '16px 16px 0 0',
-          pb: 'env(safe-area-inset-bottom)',
+          borderRadius: '16px',
           outline: 'none',
           [BEWEGUNG_OK]: { animation: `${vonUnten} 200ms ease-out` },
           [SEITLICH]: {
@@ -199,9 +300,9 @@ function OffenesSheet({
             top: rand('top'),
             right: rand('right'),
             width: 'min(380px, 44vw)',
-            maxHeight: 'calc(100dvh - 24px)',
+            // Endet über der Leiste, auch aufgeklappt.
+            maxHeight: `calc(100dvh - ${rand('top')} - ${UEBER_LEISTE})`,
             borderRadius: 2,
-            pb: 0,
           },
         }}
       >
@@ -209,19 +310,12 @@ function OffenesSheet({
         <Box
           data-testid="sheet-griff"
           onPointerDown={(event) => {
+            if (event.button !== 0) return
             if ((event.target as HTMLElement).closest('button, a')) return
             if (window.matchMedia(SEITLICH_ABFRAGE).matches) return
-            zugStart.current = event.clientY
+            fange(event)
+            beginneZug(event.clientY)
           }}
-          onPointerMove={(event) => {
-            if (zugStart.current === null) return
-            setZug(Math.max(0, event.clientY - zugStart.current))
-          }}
-          onPointerUp={(event) => {
-            if (zugStart.current === null) return
-            zugEnde(event.clientY - zugStart.current > ZIEH_SCHWELLE)
-          }}
-          onPointerCancel={() => zugEnde(false)}
           sx={{
             position: 'relative',
             display: 'flex',
@@ -229,17 +323,25 @@ function OffenesSheet({
             gap: 1,
             pl: 2.5,
             pr: 1,
-            pt: 2.25,
-            pb: 0.5,
+            pt: 1.5,
             touchAction: 'none',
-            [SEITLICH]: { pt: 1.25, touchAction: 'auto' },
+            // Ziehen mit der Maus markiert keinen Text.
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
+            [SEITLICH]: {
+              pt: 1.25,
+              pb: 0.5,
+              touchAction: 'auto',
+              userSelect: 'auto',
+              WebkitUserSelect: 'auto',
+            },
           }}
         >
           <Box
             aria-hidden
             sx={{
               position: 'absolute',
-              top: 8,
+              top: 6,
               left: '50%',
               width: 40,
               height: 4,
@@ -250,7 +352,18 @@ function OffenesSheet({
               [SEITLICH]: { display: 'none' },
             }}
           />
-          <Box sx={{ flex: 1, minWidth: 0, py: 0.75 }}>
+          <Box
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              // So hoch wie der Knopf daneben: kurze Titel stehen mittig.
+              minHeight: TOUCH_TARGET,
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              [SEITLICH]: { py: 0.75 },
+            }}
+          >
             <Typography
               id={titelId}
               component="h2"
@@ -297,12 +410,33 @@ function OffenesSheet({
           </IconButton>
         </Box>
 
+        {/* Wisch nach unten auf dem Text (Touch, Stift) zieht die Karte mit. */}
         <Box
+          ref={inhalt}
+          data-testid="sheet-inhalt"
+          onPointerDown={(event) => {
+            wischStart.current = null
+            if (event.pointerType === 'mouse' || !event.isPrimary) return
+            if (window.matchMedia(SEITLICH_ABFRAGE).matches) return
+            wischStart.current = event.clientY
+          }}
+          // Ist entschieden, liest das Fenster weiter (beginneZug).
+          onPointerMove={(event) => ziehtVomText(event.clientY)}
+          onPointerUp={() => {
+            wischStart.current = null
+          }}
+          onPointerCancel={() => {
+            wischStart.current = null
+          }}
           sx={{
             px: 2.5,
-            pb: 2,
+            // Knapp: Auf kleinen Handys (360 × 640) passen so Titel, Kurztext
+            // und Knöpfe in die halbe Höhe, auch über der dreizeiligen Leiste.
+            pb: 0.5,
             overflowY: 'auto',
             overscrollBehavior: 'contain',
+            touchAction: 'pan-y',
+            [SEITLICH]: { pb: 2 },
           }}
         >
           {produkt.kurztext && (
@@ -321,7 +455,7 @@ function OffenesSheet({
               variant="outlined"
               onClick={onNahansicht}
               startIcon={<ViewInArIcon aria-hidden />}
-              sx={{ mt: 1.5, minHeight: TOUCH_TARGET }}
+              sx={{ mt: 1, mb: 0.5, minHeight: TOUCH_TARGET }}
             >
               {NAHANSICHT_TEXT}
             </Button>
@@ -333,8 +467,9 @@ function OffenesSheet({
                 flexWrap: 'wrap',
                 alignItems: 'center',
                 columnGap: 1,
-                mt: 1,
+                // Die Textknöpfe bringen ihren Abstand selbst mit (44 px hoch).
                 ml: -1,
+                [SEITLICH]: { mt: 1 },
               }}
             >
               {hatLangenText && (
