@@ -34,6 +34,13 @@ Routen `src/routes/abgleich.routes.ts` (`/api/abgleich`) · Management-App
   dieses Tages freigegeben) plus quittierte Nachträge. **Nicht freigegeben:** der geplante Wert,
   deutlich markiert („geplant – nicht freigegeben“, je Tag, Posten und oben auf der Seite). Im
   Pilot ist das vorerst der Normalfall.
+- **Grundmenge offen:** hat eine Entwurfszeile keine festgelegte Grundmenge und für den Tag keine
+  Entscheidung (`totalIsMinimum`), ist ihr Gesamt nur ein Mindestwert (CAP + Vorbestellungen),
+  kein Plan. Die Tageszeile heißt „Grundmenge offen – kein Plan“, zeigt gebacken als „≥ n“ und hat
+  kein Ungeklärt und keine Ampel - eine Lücke wie „kein Kassenbericht“, nie 0 und nie „mehr
+  verkauft“. Solche Tage zählen nicht in die Summen des Postens (`gaps.baseOpen`).
+- **Entwurf ohne Zeile:** ein Backtag, dessen Backliste keine einzige Zeile hat, ist „kein
+  Backzettel“ - nicht ein Backtag, an dem alles „verkauft, aber nicht gebacken“ wäre.
 - **CAP** (Verkaufspartner) verlässt den Laden und wird abgezogen. **Vorbestellungen** werden im
   Laden an der Kasse bezahlt und deshalb **nicht** abgezogen - **vorläufig**.
 - **Rest fehlt** (Tag nicht oder nur teilweise gezählt): nie 0. Dann steht nur „nicht verkauft
@@ -47,7 +54,12 @@ Routen `src/routes/abgleich.routes.ts` (`/api/abgleich`) · Management-App
   Stück zählen: ein Stück-Posten, dessen Produkte je ein Stück sind (Faktor 1), wird Stück gegen
   Stück verglichen (`soldBasis: 'stueck'`, **vorläufig**; in hq sind die Kassennummern heute meist
   nicht die `numeric_id` der Produkte). Sonst „nicht vergleichbar (Einheit)“ - z. B. ein Liter-Posten,
-  dessen Kassennummer kein Produkt mit Faktor hat. **Ohne Kassennummer:** „keine Kassennummer“.
+  dessen Kassennummer kein Produkt mit Faktor hat, oder ein Stück-Posten, von dessen
+  Kassennummern eine das Produkt eines **anderen** Postens ist (Stammdatenfehler, wird nie still
+  mitgezählt). Ob ein Posten vergleichbar ist, hängt nur an den Stammdaten - nicht daran, ob es im
+  Zeitraum einen Kassenbericht gab. Die Stück-gegen-Stück-Regel gilt bewusst nur hier; Rest am
+  Abend und die Grundmengen-Referenz zeigen dieselben Stückzahlen weiter als „nicht umgerechnet“,
+  bis der Inhaber die Regel bestätigt. **Ohne Kassennummer:** „keine Kassennummer“.
   Beide stehen getrennt unter „Ohne Kassennummer / nicht vergleichbar“ mit dem Hinweis, was in
   hq `config/backzettel.yaml` fehlt (`plu`, `products[].factor`).
 - **Lücken:** ein Backtag ohne Kassenbericht ist „kein Kassenbericht“, nie 0. Der Kalender
@@ -56,7 +68,15 @@ Routen `src/routes/abgleich.routes.ts` (`/api/abgleich`) · Management-App
 - **Ampel** (Schwellen **vorläufig**, Konstanten in `abgleich.core.js`): |Ungeklärt| ≤ max(1 Stück,
   5 % von gebacken − CAP) → ok, ≤ 15 % → auffällig, sonst → prüfen. „1 Stück“ ist das kleinste
   Produkt des Postens in seiner Einheit (ein 500-g-Laib = 0,5 L, ein Kuchenstück = ¼ Blech). Je
-  Tag und je Posten über den Zeitraum (Summe der Tage mit Rest).
+  Tag und je Posten über den Zeitraum: dort gilt die **schlechtere** von zwei Ampeln - Ungeklärt
+  über die Tage mit Rest, und „mehr verkauft“ über die Tage ohne Rest (nur die negativen Tage
+  summiert; übrige Ware eines Tages gleicht zu viel Verkauf an einem anderen nicht aus). Hat ein
+  Tag „prüfen“, der Zeitraum aber nicht, sagt die Zeile „An n Tagen prüfen“.
+- **Rest nur an einem Teil der Tage:** gebacken, CAP, verkauft und „nicht verkauft oder nicht
+  kassiert“ laufen über alle vergleichbaren Tage, Rest und Ungeklärt nur über die gezählten. Die
+  Grundlage von Ungeklärt steht deshalb darunter („nur 1 von 2 Tagen: gebacken − CAP − verkauft −
+  Rest“) und im CSV als eigene Spalten („Gebacken − CAP (Tage mit Rest)“, „Verkauft (Tage mit
+  Rest)“).
 - **Zu viel produziert:** Restquote (Rest ÷ (gebacken − CAP), wie Rest am Abend) über 10 %
   (**vorläufig**).
 - **Sortierung:** „prüfen“ vor „auffällig“ vor „ok“, darin der größte Unterschied zuerst.

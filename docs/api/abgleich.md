@@ -26,17 +26,25 @@ Every other role gets 403 `forbidden`. Errors via `sendError`: 400 `invalid_date
   (`status` `keine_plu` / `einheit`): per item `key`, `name`, `sizeLabel`, `unit`, `plu`,
   `converted`, `soldBasis` (`umgerechnet` via product factor / `stueck`: a Stück item whose
   products are one piece each, compared piece for piece, provisional), `tolerance`, `basis` (`freigegeben` / `geplant` / `gemischt`), `comparableDays`,
-  `restDays`, `baked`, `cap`, `shopBaked`, `sold`, `open`, `rest`, `unexplained`, `ampel`
-  (`ok` / `auffaellig` / `pruefen` / `null`), `ampelBasis` (`mit_rest` / `ohne_rest`),
-  `direction` (`fehlt` / `mehr_verkauft`), `rate`, `overproduction`, `gaps` (`noReport`,
-  `restMissing`, `restPartial`), `variants[]`, `dayRows[]`. `baked/cap/sold/open` sum the
+  `restDays`, `baked` (+ `bakedIsMinimum`), `cap`, `shopBaked`, `sold`, `open`,
+  `restShopBaked` / `restSold` (the base of `unexplained`: the days with a count), `rest`,
+  `unexplained`, `ampel` (`ok` / `auffaellig` / `pruefen` / `null`; the worse of the counted days'
+  `unexplained` and the uncounted days' negative `open`, never netted), `ampelBasis` (`mit_rest` /
+  `ohne_rest`), `signal` (the difference behind the Ampel, sort key), `signalDays { pruefen,
+auffaellig }`, `direction` (`fehlt` / `mehr_verkauft`), `rate`, `overproduction`, `gaps`
+  (`noReport`, `restMissing`, `restPartial`, `baseOpen`), `foreignPlu` (PLUs that are another
+  item's product), `variants[]`, `dayRows[]`. `status` comes from the item alone (PLUs,
+  conversion), not from whether a report exists. `baked/cap/sold/open` sum the
   comparable days (report present, units convertible; without any, `baked/cap` sum all days), `rest/unexplained` the days with a
   complete count. `key` is `itemId`, or `itemId|sizeId` when the item is compared per loaf size.
-- **`dayRows[]`:** `status` `ok` | `ohne_rest` | `kein_bericht` | `einheit` | `keine_plu`,
+- **`dayRows[]`:** `status` `ok` | `ohne_rest` | `grundmenge_offen` (a draft line with
+  `totalIsMinimum`: `baked` is only a minimum, `bakedIsMinimum: true`, no `open`/`unexplained`/Ampel)
+  | `kein_bericht` | `einheit` | `keine_plu`, `report`,
   `restStatus` `counted` | `partial` | `not_counted` | `not_on_backzettel`, per-Sorte `lines[]`.
 - **`days[]`:** `status` `ok` | `no_backzettel` | `ruhetag` | `geschlossen` | `future`, `basis`,
-  `report`, `restStatus`, `signals { pruefen, auffaellig }`, `dayKind` when the calendar says
-  something.
+  `report`, `restStatus`, `signals { pruefen, auffaellig }`, `baseOpen` (items with an open
+  Grundmenge), `dayKind` when the calendar says something. A draft bake list without a single line
+  is `no_backzettel`. `counts.baseOpen` = bake days with an open Grundmenge.
 - **Thresholds** (provisional, constants in the core): `OK_SHARE` 5 %, `NOTICE_SHARE` 15 %,
   `MIN_TOLERANCE_PIECES` 1 (smallest product factor of the item), `OVERPRODUCTION_RATE` 10 %.
 - `createApp({ abgleich: { today, reportsDir } })` pins clock and reports in tests (default

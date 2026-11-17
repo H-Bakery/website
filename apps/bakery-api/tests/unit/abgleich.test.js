@@ -602,6 +602,263 @@ describe('reconcile', () => {
     expect(s.days[0].signals.pruefen).toBe(1)
   })
 
+  it('Zeitraum-Ampel: ein Tag ohne Rest mit „mehr verkauft“ zählt neben den gezählten Tagen', () => {
+    const s = run(
+      {
+        [TUE]: {
+          backzettel: bzDay('confirmed', [{ itemId: 'plunder', total: 20 }]),
+          rows: [row('plunder', 2)],
+          report: report(TUE, [[906, 18]]),
+        },
+        [WED]: {
+          backzettel: bzDay('confirmed', [{ itemId: 'plunder', total: 20 }]),
+          rows: [],
+          report: report(WED, [[906, 40]]),
+        },
+      },
+      { to: WED }
+    )
+    const p = posten(s, 'plunder')
+    expect(p).toMatchObject({
+      unexplained: 0,
+      ampel: 'pruefen',
+      ampelBasis: 'ohne_rest',
+      direction: 'mehr_verkauft',
+      signal: -20,
+      signalDays: { pruefen: 1, auffaellig: 0 },
+    })
+    expect(s.signals).toMatchObject({ pruefen: 1, ok: 0 })
+  })
+
+  it('Zeitraum-Ampel ohne Rest: übrige Ware eines Tages gleicht „mehr verkauft“ eines anderen nicht aus', () => {
+    const s = run(
+      {
+        [TUE]: {
+          backzettel: bzDay('confirmed', [{ itemId: 'plunder', total: 30 }]),
+          rows: [],
+          report: report(TUE, [[906, 15]]),
+        },
+        [WED]: {
+          backzettel: bzDay('confirmed', [{ itemId: 'plunder', total: 20 }]),
+          rows: [],
+          report: report(WED, [[906, 30]]),
+        },
+      },
+      { to: WED }
+    )
+    expect(posten(s, 'plunder')).toMatchObject({
+      open: 5,
+      ampel: 'pruefen',
+      ampelBasis: 'ohne_rest',
+      direction: 'mehr_verkauft',
+      signal: -10,
+    })
+  })
+
+  it('Rest nur an einem Teil der Tage: Ungeklärt nennt seine Grundlage', () => {
+    const s = run(
+      {
+        [TUE]: {
+          backzettel: bzDay('confirmed', [{ itemId: 'plunder', total: 20 }]),
+          rows: [row('plunder', 2)],
+          report: report(TUE, [[906, 15]]),
+        },
+        [WED]: {
+          backzettel: bzDay('confirmed', [{ itemId: 'plunder', total: 20 }]),
+          rows: [],
+          report: report(WED, [[906, 10]]),
+        },
+      },
+      { to: WED }
+    )
+    const p = posten(s, 'plunder')
+    expect(p).toMatchObject({
+      baked: 40,
+      sold: 25,
+      open: 15,
+      restDays: 1,
+      comparableDays: 2,
+      restShopBaked: 20,
+      restSold: 15,
+      rest: 2,
+      unexplained: 3,
+    })
+    const csv = core.abgleichCsv(s)
+    expect(csv).toContain(
+      'Gebacken − CAP (Tage mit Rest);Verkauft (Tage mit Rest)'
+    )
+    expect(csv).toMatch(/Plunder;Stück;freigegeben;2;40;0;25;15;1;20;15;2;3;/)
+  })
+
+  it('Grundmenge offen: gebacken ist nur ein Mindestwert - kein Ungeklärt, keine Ampel', () => {
+    const s = run({
+      [TUE]: {
+        backzettel: bzDay('draft', [
+          {
+            itemId: 'plunder',
+            total: 2,
+            cap: 2,
+            baseUnset: true,
+            totalIsMinimum: true,
+          },
+        ]),
+        rows: [],
+        report: report(TUE, [[906, 25]]),
+      },
+    })
+    const p = posten(s, 'plunder')
+    expect(p).toMatchObject({
+      status: 'vergleichbar',
+      comparableDays: 0,
+      bakedIsMinimum: true,
+      sold: null,
+      open: null,
+      unexplained: null,
+      ampel: null,
+      direction: null,
+    })
+    expect(p.gaps.baseOpen).toEqual([TUE])
+    expect(p.dayRows[0]).toMatchObject({
+      status: 'grundmenge_offen',
+      bakedIsMinimum: true,
+      baked: 2,
+      sold: 25,
+      open: null,
+      ampel: null,
+    })
+    expect(s.signals).toMatchObject({ pruefen: 0, ohneAmpel: 1 })
+    expect(s.counts.baseOpen).toBe(1)
+    expect(s.days[0]).toMatchObject({ baseOpen: 1, signals: { pruefen: 0 } })
+    expect(core.abgleichCsv(s)).toContain('Grundmenge offen – kein Plan')
+  })
+
+  it('Grundmenge offen mit Gesamt 0: bleibt „Grundmenge offen“, nicht „verkauft, aber nicht gebacken“', () => {
+    const s = run({
+      [TUE]: {
+        backzettel: bzDay('draft', [
+          { itemId: 'plunder', total: 0, baseUnset: true },
+          { itemId: 'weck', total: 30 },
+        ]),
+        rows: [],
+        report: report(TUE, [[906, 9]]),
+      },
+    })
+    const p = posten(s, 'plunder')
+    expect(p.dayRows[0]).toMatchObject({
+      status: 'grundmenge_offen',
+      restStatus: 'not_counted',
+    })
+    expect(p).toMatchObject({ ampel: null, direction: null })
+  })
+
+  it('Grundmenge offen, aber für den Tag entschieden: normal verglichen', () => {
+    const s = run({
+      [TUE]: {
+        backzettel: bzDay('draft', [
+          { itemId: 'plunder', total: 10, baseUnset: true, correction: 10 },
+        ]),
+        rows: [row('plunder', 1)],
+        report: report(TUE, [[906, 9]]),
+      },
+    })
+    expect(posten(s, 'plunder')).toMatchObject({
+      bakedIsMinimum: false,
+      unexplained: 0,
+      ampel: 'ok',
+    })
+  })
+
+  it('Entwurf ohne eine Zeile: „kein Backzettel“, keine Alarme', () => {
+    const s = run({
+      [TUE]: {
+        backzettel: { status: 'draft', sections: [] },
+        rows: [],
+        report: report(TUE, [[906, 9]]),
+      },
+    })
+    expect(s.days[0].status).toBe('no_backzettel')
+    expect(s.counts).toMatchObject({ bakeDays: 0, noBackzettel: 1 })
+    expect(posten(s, 'plunder')).toBeUndefined()
+  })
+
+  it('nicht umrechenbar bleibt getrennt, auch ohne Kassenbericht - mit Lücke', () => {
+    const s = run(
+      {
+        [TUE]: {
+          backzettel: bzDay('confirmed', [{ itemId: 'vollkorn', total: 2 }]),
+          rows: [],
+          report: null,
+        },
+        [WED]: {
+          backzettel: bzDay('confirmed', [{ itemId: 'vollkorn', total: 2 }]),
+          rows: [],
+          report: null,
+        },
+      },
+      { to: WED }
+    )
+    expect(s.items.find((p) => p.key === 'vollkorn')).toBeUndefined()
+    const p = posten(s, 'vollkorn')
+    expect(p).toMatchObject({ status: 'einheit', soldPieces: null })
+    expect(p.gaps.noReport).toEqual([TUE, WED])
+  })
+
+  it('nicht umrechenbar, Bericht nur an einem Tag: verkauft nur dort, der andere Tag ist eine Lücke', () => {
+    const s = run(
+      {
+        [TUE]: {
+          backzettel: bzDay('confirmed', [{ itemId: 'vollkorn', total: 2 }]),
+          rows: [],
+          report: report(TUE, [[909, 3]]),
+        },
+        [WED]: {
+          backzettel: bzDay('confirmed', [{ itemId: 'vollkorn', total: 2 }]),
+          rows: [],
+          report: null,
+        },
+      },
+      { to: WED }
+    )
+    const p = posten(s, 'vollkorn')
+    expect(p).toMatchObject({ status: 'einheit', allBaked: 4, soldPieces: 3 })
+    expect(p.gaps.noReport).toEqual([WED])
+    expect(core.abgleichCsv(s)).toContain(
+      `Vollkornbrot;Liter;nicht vergleichbar (Einheit);4;0;3;${WED}`
+    )
+  })
+
+  it('Stück-Posten mit einer Kassennummer eines anderen Postens: nicht vergleichbar, nie still mitgezählt', () => {
+    const raw = fixture.config()
+    raw.items = raw.items.map((i) =>
+      i.id === 'schnecke' ? { ...i, plu: [990, 906] } : i
+    )
+    const cfg = configCore.normalizeConfig(raw)
+    const s = run(
+      {
+        [TUE]: {
+          backzettel: bzDay(
+            'confirmed',
+            [{ itemId: 'schnecke', total: 6 }],
+            cfg
+          ),
+          rows: [],
+          report: report(TUE, [
+            [990, 5],
+            [906, 8],
+          ]),
+        },
+      },
+      { config: cfg }
+    )
+    expect(posten(s, 'schnecke')).toMatchObject({
+      status: 'einheit',
+      converted: false,
+      soldBasis: null,
+      foreignPlu: [906],
+      ampel: null,
+    })
+  })
+
   it('nennt niemanden: keine Namen in der Antwort', () => {
     const s = run({
       [TUE]: {

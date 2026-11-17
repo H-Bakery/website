@@ -118,6 +118,35 @@ function dateList(dates: string[]): string {
   return dates.map((d) => formatDayShort(d)).join(', ')
 }
 
+/** Gebacken, bei offener Grundmenge nur als Mindestwert „≥ n“. */
+function bakedText(value: number, isMinimum: boolean, unit: string): string {
+  return isMinimum
+    ? `≥ ${formatQtyUnit(value, unit)}`
+    : formatQtyUnit(value, unit)
+}
+
+/** Was in der Liste „nicht vergleichbar“ fehlt - je nach Grund. */
+export function unmatchedHint(item: AbgleichItem): string {
+  if (item.status === 'keine_plu') {
+    return 'Kassennummer (plu) in hq config/backzettel.yaml eintragen.'
+  }
+  const sold =
+    item.soldPieces === null
+      ? ''
+      : `Die Kasse zählt Stück (${formatNumber(
+          item.soldPieces
+        )} St. verkauft). `
+  if (item.foreignPlu.length > 0) {
+    return `${sold}Kassennummer ${item.foreignPlu.join(
+      ', '
+    )} gehört zu einem Produkt eines anderen Postens - in hq config/backzettel.yaml prüfen.`
+  }
+  if (item.unit === 'Stück') {
+    return `${sold}Einige Produkte des Postens sind Teile (Faktor ≠ 1, z. B. Viertel) - jede Kassennummer dem passenden Produkt mit seinem Faktor zuordnen.`
+  }
+  return `${sold}Der Posten rechnet in ${item.unit} - jede Kassennummer einem Produkt des Postens mit Faktor zuordnen.`
+}
+
 /** Was die Zeile zum Posten sagt: Richtung, Lücken, Restquote. */
 function ItemNotes({ item }: { item: AbgleichItem }) {
   const notes: React.ReactNode[] = []
@@ -137,6 +166,20 @@ function ItemNotes({ item }: { item: AbgleichItem }) {
           ? ` (${item.plannedDays} ${item.plannedDays === 1 ? 'Tag' : 'Tage'})`
           : ''
       }`
+    )
+  }
+  if (item.ampel !== 'pruefen' && item.signalDays.pruefen > 0) {
+    notes.push(
+      `An ${item.signalDays.pruefen} ${
+        item.signalDays.pruefen === 1 ? 'Tag' : 'Tagen'
+      } „prüfen“ - Tage aufklappen`
+    )
+  }
+  if (item.gaps.baseOpen.length > 0) {
+    notes.push(
+      `Grundmenge offen – kein Plan, kein Vergleich: ${dateList(
+        item.gaps.baseOpen
+      )}`
     )
   }
   if (item.gaps.noReport.length > 0) {
@@ -205,10 +248,12 @@ function DayRowsTable({ item }: { item: AbgleichItem }) {
                   </Typography>
                 )}
               </TableCell>
-              <TableCell align="right">{formatQtyUnit(r.baked, u)}</TableCell>
+              <TableCell align="right">
+                {bakedText(r.baked, r.bakedIsMinimum, u)}
+              </TableCell>
               <TableCell align="right">{formatQtyUnit(r.cap, u)}</TableCell>
               <TableCell align="right">
-                {r.status === 'kein_bericht'
+                {!r.report
                   ? 'kein Bericht'
                   : r.status === 'einheit'
                   ? `${formatNumber(r.soldPieces)} St. (Kasse)`
@@ -283,7 +328,7 @@ function ItemRow({ item }: { item: AbgleichItem }) {
           <ItemNotes item={item} />
         </TableCell>
         <TableCell align="right" sx={HIDE_ON_PHONE}>
-          {formatQtyUnit(item.baked, u)}
+          {bakedText(item.baked, item.bakedIsMinimum, u)}
         </TableCell>
         <TableCell align="right" sx={HIDE_ON_PHONE}>
           {formatQtyUnit(item.cap, u)}
@@ -308,7 +353,25 @@ function ItemRow({ item }: { item: AbgleichItem }) {
         </TableCell>
         <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
           {item.unexplained !== null ? (
-            <strong>{formatSigned(item.unexplained, u)}</strong>
+            <>
+              <strong>{formatSigned(item.unexplained, u)}</strong>
+              {item.restDays < item.comparableDays && (
+                // Ungeklärt gilt nur für die gezählten Tage - die Rechnung
+                // dazu, damit die Spalten aufgehen.
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  component="div"
+                  data-testid={`ungeklaert-basis-${item.key}`}
+                  sx={{ whiteSpace: 'normal', minWidth: 120 }}
+                >
+                  nur {item.restDays} von {item.comparableDays} Tagen:{' '}
+                  {formatNumber(item.restShopBaked)} −{' '}
+                  {formatNumber(item.restSold)} verkauft −{' '}
+                  {formatNumber(item.rest)} Rest
+                </Typography>
+              )}
+            </>
           ) : (
             <Box component="span" sx={{ color: 'text.secondary' }}>
               {/* Ohne Rest nur „nicht verkauft oder nicht kassiert“. */}
@@ -359,6 +422,7 @@ function dayText(d: AbgleichDay): string {
         d.basis === 'geplant' ? 'geplant – nicht freigegeben' : 'freigegeben',
         d.report ? 'Kassenbericht da' : 'kein Kassenbericht',
         d.restStatus ? `Rest ${REST_STATUS_LABELS[d.restStatus]}` : null,
+        d.baseOpen > 0 ? `Grundmenge offen bei ${d.baseOpen} Posten` : null,
       ].filter(Boolean)
       return parts.join(' · ')
     }
@@ -544,6 +608,14 @@ export default function AbgleichClient() {
               Für die volle Rechnung den Backzettel freigeben.
             </Alert>
           )}
+          {data.counts.baseOpen > 0 && (
+            <Alert severity="warning" data-testid="abgleich-grundmenge-offen">
+              An {data.counts.baseOpen} von {data.counts.bakeDays} Backtagen ist
+              für einzelne Posten die Grundmenge offen. Dort gibt es keinen Plan
+              - gebacken steht nur als Mindestwert („≥“), ohne Ungeklärt und
+              ohne Ampel. Grundmenge im Backzettel festlegen.
+            </Alert>
+          )}
           {data.counts.bakeDays > 0 && data.counts.restCounted === 0 && (
             <Alert severity="info" data-testid="abgleich-ohne-rest">
               Im Zeitraum wurde der Rest am Abend an keinem Tag vollständig
@@ -569,7 +641,8 @@ export default function AbgleichClient() {
                   <Typography variant="body2">
                     <strong>Gebacken</strong>: freigegebener Backzettel plus
                     quittierte Nachträge. Nicht freigegeben: der geplante Wert
-                    („geplant“).
+                    („geplant“). Ist die Grundmenge offen, gibt es keinen Plan:
+                    gebacken steht als „≥ n“, ohne Vergleich.
                   </Typography>
                 </li>
                 <li>
@@ -605,6 +678,8 @@ export default function AbgleichClient() {
                   <Typography variant="body2">
                     <strong>Ungeklärt</strong> = gebacken − CAP − verkauft −
                     Rest. Plus: Ware fehlt; minus: mehr verkauft als gebacken.
+                    Ist nur an einem Teil der Tage gezählt, gilt Ungeklärt nur
+                    für diese Tage - die Rechnung steht darunter.
                   </Typography>
                 </li>
                 <li>
@@ -614,7 +689,10 @@ export default function AbgleichClient() {
                     CAP, auffällig bis{' '}
                     {Math.round(data.thresholds.noticeShare * 100)} %, sonst
                     prüfen. „ohne Rest“: schon ohne Zählung mehr verkauft als
-                    gebacken. Restquote über{' '}
+                    gebacken. Über den Zeitraum gilt die schlechtere Ampel aus
+                    den gezählten und den nicht gezählten Tagen; übrige Ware
+                    eines Tages gleicht zu viel Verkauf an einem anderen nicht
+                    aus. Restquote über{' '}
                     {Math.round(data.thresholds.overproductionRate * 100)} %: zu
                     viel produziert?
                   </Typography>
@@ -712,18 +790,27 @@ export default function AbgleichClient() {
                           </Typography>
                         </TableCell>
                         <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                          {formatQtyUnit(item.allBaked, item.unit)}
+                          {bakedText(
+                            item.allBaked,
+                            item.allBakedIsMinimum,
+                            item.unit
+                          )}
                         </TableCell>
                         <TableCell>
                           <Typography variant="body2" color="text.secondary">
-                            {item.status === 'keine_plu'
-                              ? 'Kassennummer (plu) in hq config/backzettel.yaml eintragen.'
-                              : `Die Kasse zählt Stück (${formatNumber(
-                                  item.soldPieces
-                                )} St. verkauft), der Posten rechnet in ${
-                                  item.unit
-                                } - jede Kassennummer einem Produkt des Postens mit Faktor zuordnen.`}
+                            {unmatchedHint(item)}
                           </Typography>
+                          {item.status !== 'keine_plu' &&
+                            item.gaps.noReport.length > 0 && (
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                component="div"
+                              >
+                                kein Kassenbericht:{' '}
+                                {dateList(item.gaps.noReport)}
+                              </Typography>
+                            )}
                         </TableCell>
                       </TableRow>
                     ))}

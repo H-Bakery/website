@@ -27,6 +27,11 @@
 //   - **CAP** (Verkaufspartner) verlässt den Laden und wird abgezogen.
 //     **Vorbestellungen** werden im Laden an der Kasse bezahlt und deshalb
 //     **nicht** abgezogen (vorläufig).
+//   - **Grundmenge offen** (Entwurfszeile mit `totalIsMinimum`: Grundmenge
+//     nicht festgelegt, am Tag nichts entschieden): „gebacken“ ist nur ein
+//     Mindestwert, kein Plan. Die Zeile heißt „Grundmenge offen“, zeigt
+//     gebacken als „≥ n“ und rechnet kein Ungeklärt und keine Ampel - eine
+//     Lücke wie „kein Kassenbericht“, nie 0.
 //   - **Rest fehlt** (Tag nicht oder nur teilweise gezählt): nie 0. Dann
 //     steht nur „nicht verkauft oder nicht kassiert“ = gebacken − CAP −
 //     verkauft; „Ungeklärt“ gibt es erst mit gezähltem Rest. Ist schon
@@ -47,7 +52,11 @@
 //   - **Ampel** je Zeile und je Posten über den Zeitraum:
 //     |Ungeklärt| ≤ max(1 Stück, 5 % von gebacken − CAP) → ok,
 //     ≤ 15 % → auffällig, sonst → prüfen. „1 Stück“ ist das kleinste Produkt
-//     des Postens in seiner Einheit (ein 500-g-Laib = 0,5 L).
+//     des Postens in seiner Einheit (ein 500-g-Laib = 0,5 L). Über den
+//     Zeitraum gilt die schlechtere von zwei Ampeln: Ungeklärt über die Tage
+//     mit Rest, und „mehr verkauft“ über die Tage ohne Rest (nur deren
+//     negative Werte - ein Tag mit übriger Ware gleicht keinen Tag mit zu
+//     viel Verkauf aus).
 //   - **Zu viel produziert:** Restquote (Rest ÷ (gebacken − CAP), wie bei
 //     Rest am Abend) über 10 %.
 
@@ -85,6 +94,7 @@ const AMPEL_LABELS = {
 const STATUS_LABELS = {
   ok: 'vollständig',
   ohne_rest: 'Rest nicht gezählt',
+  grundmenge_offen: 'Grundmenge offen – kein Plan',
   kein_bericht: 'kein Kassenbericht',
   einheit: 'nicht vergleichbar (Einheit)',
   keine_plu: 'keine Kassennummer',
@@ -112,7 +122,7 @@ const DAY_STATUS_LABELS = {
 }
 
 const EXPLANATION =
-  'Ungeklärt = gebacken − CAP − verkauft (Kasse) − Rest (gezählt). Gebacken = freigegebener Backzettel plus quittierte Nachträge, sonst der geplante Wert („geplant“). CAP-Ware verlässt den Laden und wird abgezogen; Vorbestellungen werden an der Kasse bezahlt und nicht abgezogen (vorläufig). Ohne gezählten Rest steht nur „nicht verkauft oder nicht kassiert“ = gebacken − CAP − verkauft. Unterschiede sind Hinweise, keine Beweise.'
+  'Ungeklärt = gebacken − CAP − verkauft (Kasse) − Rest (gezählt). Gebacken = freigegebener Backzettel plus quittierte Nachträge, sonst der geplante Wert („geplant“); ist die Grundmenge offen, gibt es keinen Plan und keinen Vergleich („Grundmenge offen“). CAP-Ware verlässt den Laden und wird abgezogen; Vorbestellungen werden an der Kasse bezahlt und nicht abgezogen (vorläufig). Ohne gezählten Rest steht nur „nicht verkauft oder nicht kassiert“ = gebacken − CAP − verkauft. Unterschiede sind Hinweise, keine Beweise.'
 
 const round2 = rest.round2
 
@@ -227,10 +237,23 @@ function countsPieces(item) {
 function comparison(item, resolve) {
   let info = refCore.itemSoldInfo(item, resolve)
   let soldBasis = info.converted ? 'umgerechnet' : null
-  if (!info.converted && info.plu.length > 0 && countsPieces(item)) {
+  // Kassennummern, die ein Produkt eines anderen Postens sind: ein Fehler
+  // in den Stammdaten - nie still als Stück dieses Postens mitzählen.
+  const foreignPlu = info.plu.filter((key) => {
+    const hit = resolve ? resolve(key) : null
+    return Boolean(hit && hit.item && hit.item.id !== item.id)
+  })
+  if (
+    !info.converted &&
+    info.plu.length > 0 &&
+    foreignPlu.length === 0 &&
+    countsPieces(item)
+  ) {
     info = {
       ...info,
-      factors: new Map(info.plu.map((key) => [key, 1])),
+      factors: new Map(
+        info.plu.map((key) => [key, info.factors.get(key) ?? 1])
+      ),
       converted: true,
     }
     soldBasis = 'stueck'
@@ -246,10 +269,10 @@ function comparison(item, resolve) {
       [...sizes.values()].every(Boolean) &&
       info.plu.every((p) => covered.has(p))
     ) {
-      return { info, soldBasis, bySize: true, sizes }
+      return { info, soldBasis, foreignPlu, bySize: true, sizes }
     }
   }
-  return { info, soldBasis, bySize: false, sizes: null }
+  return { info, soldBasis, foreignPlu, bySize: false, sizes: null }
 }
 
 function sumBy(list, pick) {
@@ -274,14 +297,18 @@ function dayRow(date, confirmed, lines, info, soldMap) {
       : 'not_counted'
   const restValue =
     restStatus === 'counted' ? sumBy(lines, (l) => l.rest) : null
+  // Grundmenge offen: gebacken ist nur ein Mindestwert - keine Rechnung.
+  const qtyOpen = lines.some((l) => l.qtyOpen)
   const tolerance = pieceTolerance(info)
   const row = {
     date,
     weekdayName: WEEKDAY_NAMES[rest.isoWeekday(date)] || null,
     basis: confirmed ? 'freigegeben' : 'geplant',
     baked,
+    bakedIsMinimum: qtyOpen,
     cap,
     shopBaked,
+    report: !!soldMap,
     sold: null,
     soldPieces: null,
     open: null,
@@ -291,9 +318,12 @@ function dayRow(date, confirmed, lines, info, soldMap) {
     ampel: null,
     ampelBasis: null,
     status: 'ok',
-    rate: restValue !== null ? rest.rate(restValue, shopBaked) : null,
+    rate:
+      restValue !== null && !qtyOpen ? rest.rate(restValue, shopBaked) : null,
     overproduction: false,
-    restExceedsShop: rest.restExceedsShop(restValue, baked, cap),
+    restExceedsShop: qtyOpen
+      ? false
+      : rest.restExceedsShop(restValue, baked, cap),
     lines: lines.map((l) => ({
       variant: l.variant || null,
       label: l.label,
@@ -307,16 +337,22 @@ function dayRow(date, confirmed, lines, info, soldMap) {
     row.status = 'keine_plu'
     return row
   }
+  // Vergleichbar oder nicht hängt nur am Posten, nicht am Bericht.
+  if (!info.converted) {
+    row.status = 'einheit'
+    row.soldPieces = soldMap ? refCore.soldOnDay(info, soldMap) : null
+    return row
+  }
+  if (qtyOpen) {
+    row.status = 'grundmenge_offen'
+    row.sold = soldMap ? refCore.soldOnDay(info, soldMap) : null
+    return row
+  }
   if (!soldMap) {
     row.status = 'kein_bericht'
     return row
   }
   const sold = refCore.soldOnDay(info, soldMap)
-  if (!info.converted) {
-    row.status = 'einheit'
-    row.soldPieces = sold
-    return row
-  }
   row.sold = sold
   row.open = round2(shopBaked - sold)
   if (restValue !== null) {
@@ -343,11 +379,15 @@ function periodRow(g, config) {
     (r) => r.status === 'ok' || r.status === 'ohne_rest'
   )
   const withRest = rows.filter((r) => r.status === 'ok')
-  const status = rows.some((r) => r.status === 'keine_plu')
-    ? 'keine_plu'
-    : rows.some((r) => r.status === 'einheit')
-    ? 'einheit'
-    : 'vergleichbar'
+  const withoutRest = rows.filter((r) => r.status === 'ohne_rest')
+  // Vergleichbar oder nicht entscheidet der Posten (Kassennummern,
+  // Umrechnung), nicht ob es im Zeitraum einen Kassenbericht gab.
+  const status =
+    !g.info || g.info.plu.length === 0
+      ? 'keine_plu'
+      : !g.info.converted
+      ? 'einheit'
+      : 'vergleichbar'
   const basisOf = (list) => {
     if (list.length === 0) return null
     const planned = list.filter((r) => r.basis === 'geplant').length
@@ -367,17 +407,43 @@ function periodRow(g, config) {
   const sold = sumBy(comparable, (r) => r.sold)
   const open = round2(shopBaked - sold)
   const restShop = sumBy(withRest, (r) => r.shopBaked)
+  const restSold = sumBy(withRest, (r) => r.sold)
   const restSum = sumBy(withRest, (r) => r.rest)
   const unexplained =
     withRest.length > 0 ? sumBy(withRest, (r) => r.unexplained) : null
-  let ampel = null
-  let ampelBasis = null
+  // Ampel über den Zeitraum: die schlechtere aus Ungeklärt (Tage mit Rest)
+  // und „mehr verkauft“ (Tage ohne Rest, nur die negativen - übrige Ware
+  // eines Tages verrechnet sich nicht mit zu viel Verkauf an einem anderen).
+  const candidates = []
   if (withRest.length > 0) {
-    ampel = classify(unexplained, restShop, tolerance)
-    ampelBasis = 'mit_rest'
-  } else if (comparable.length > 0 && open < 0) {
-    ampel = classify(open, shopBaked, tolerance)
-    ampelBasis = 'ohne_rest'
+    candidates.push({
+      ampel: classify(unexplained, restShop, tolerance),
+      basis: 'mit_rest',
+      diff: unexplained,
+    })
+  }
+  const short = withoutRest.filter((r) => r.open < 0)
+  if (short.length > 0) {
+    const shortOpen = sumBy(short, (r) => r.open)
+    candidates.push({
+      ampel: classify(
+        shortOpen,
+        sumBy(short, (r) => r.shopBaked),
+        tolerance
+      ),
+      basis: 'ohne_rest',
+      diff: shortOpen,
+    })
+  }
+  const worst = candidates.reduce(
+    (w, c) => (!w || AMPEL_RANK[c.ampel] > AMPEL_RANK[w.ampel] ? c : w),
+    null
+  )
+  const ampel = worst ? worst.ampel : null
+  const ampelBasis = worst ? worst.basis : null
+  const signalDays = {
+    pruefen: rows.filter((r) => r.ampel === 'pruefen').length,
+    auffaellig: rows.filter((r) => r.ampel === 'auffaellig').length,
   }
   const rate = withRest.length > 0 ? rest.rate(restSum, restShop) : null
   const variants = new Map()
@@ -417,18 +483,26 @@ function periodRow(g, config) {
     comparableDays: comparable.length,
     restDays: withRest.length,
     baked,
+    // ohne vergleichbaren Tag, aber mit offener Grundmenge: nur „≥ n“
+    bakedIsMinimum:
+      comparable.length === 0 && rows.some((r) => r.bakedIsMinimum),
     cap,
     shopBaked,
     sold: comparable.length > 0 ? sold : null,
     open: comparable.length > 0 ? open : null,
+    // Grundlage von Ungeklärt (wichtig, wenn nur an einem Teil der Tage
+    // gezählt wurde): gebacken − CAP und verkauft über die Tage mit Rest.
     restShopBaked: restShop,
+    restSold: withRest.length > 0 ? restSold : null,
     rest: withRest.length > 0 ? restSum : null,
     unexplained,
     ampel,
     ampelBasis,
+    signal: worst ? worst.diff : null,
+    signalDays,
     direction:
       ampel && ampel !== 'ok'
-        ? (ampelBasis === 'mit_rest' ? unexplained : open) > 0
+        ? worst.diff > 0
           ? 'fehlt'
           : 'mehr_verkauft'
         : null,
@@ -437,7 +511,10 @@ function periodRow(g, config) {
     restExceedsDates: rows.filter((r) => r.restExceedsShop).map((r) => r.date),
     gaps: {
       noReport: rows
-        .filter((r) => r.status === 'kein_bericht')
+        .filter((r) => r.status !== 'keine_plu' && !r.report)
+        .map((r) => r.date),
+      baseOpen: rows
+        .filter((r) => r.status === 'grundmenge_offen')
         .map((r) => r.date),
       restMissing: rows
         .filter(
@@ -453,17 +530,22 @@ function periodRow(g, config) {
     },
     // Für die Liste „ohne Kassennummer / nicht vergleichbar“: alle Tage.
     allBaked: sumBy(rows, (r) => r.baked),
+    allBakedIsMinimum: rows.some((r) => r.bakedIsMinimum),
     allCap: sumBy(rows, (r) => r.cap),
-    soldPieces: status === 'einheit' ? sumBy(rows, (r) => r.soldPieces) : null,
+    // nur über die Tage mit Kassenbericht (die anderen: gaps.noReport)
+    soldPieces:
+      status === 'einheit' && rows.some((r) => r.soldPieces !== null)
+        ? sumBy(rows, (r) => r.soldPieces)
+        : null,
+    // Kassennummern, die zu einem anderen Posten gehören (Stammdatenfehler)
+    foreignPlu: (g.foreignPlu || []).map(Number),
     variants: [...variants.values()],
     dayRows: rows,
   }
 }
 
 function signalMagnitude(p) {
-  if (p.ampelBasis === 'mit_rest') return Math.abs(p.unexplained || 0)
-  if (p.ampelBasis === 'ohne_rest') return Math.abs(p.open || 0)
-  return 0
+  return Math.abs(p.signal || 0)
 }
 
 /**
@@ -499,11 +581,24 @@ function reconcile(a) {
           sizeId: variant || null,
           info: (variant && c.sizes.get(variant)) || null,
           soldBasis: c.soldBasis,
+          foreignPlu: c.foreignPlu,
         }
       }
-      return { key: itemId, sizeId: null, info: c.info, soldBasis: c.soldBasis }
+      return {
+        key: itemId,
+        sizeId: null,
+        info: c.info,
+        soldBasis: c.soldBasis,
+        foreignPlu: c.foreignPlu,
+      }
     }
-    return { key: itemId, sizeId: null, info: null, soldBasis: null }
+    return {
+      key: itemId,
+      sizeId: null,
+      info: null,
+      soldBasis: null,
+      foreignPlu: [],
+    }
   }
   const order = rest.sectionOrder(config)
   const configIndex = new Map(
@@ -521,6 +616,7 @@ function reconcile(a) {
     restCounted: 0,
     restPartial: 0,
     restNotCounted: 0,
+    baseOpen: 0,
     noBackzettel: 0,
     ruhetag: 0,
     geschlossen: 0,
@@ -539,6 +635,7 @@ function reconcile(a) {
       report: false,
       restStatus: null,
       signals: { pruefen: 0, auffaellig: 0 },
+      baseOpen: 0,
     }
     days.push(day)
     if (date > a.today) {
@@ -562,8 +659,26 @@ function reconcile(a) {
       counts.noBackzettel += 1
       continue
     }
-    counts.bakeDays += 1
     const confirmed = input.backzettel.status === 'confirmed'
+    const rows = Array.isArray(input.rows) ? input.rows : []
+    const bz = rest.backzettelLines(input.backzettel, config)
+    const byLine = rest.rowsByLine(rows)
+    const keys = new Set()
+    for (const [key, l] of bz) {
+      // offene Grundmenge auch bei Gesamt 0: kein Plan, keine 0
+      if ((confirmed ? l.baked || 0 : l.planned) > 0 || l.qtyOpen) {
+        keys.add(key)
+      }
+    }
+    for (const key of byLine.keys()) keys.add(key)
+    if (!confirmed && keys.size === 0) {
+      // Entwurf ohne eine einzige Zeile: es gibt keinen Plan - kein
+      // Backtag mit „verkauft, aber nicht gebacken“-Alarmen.
+      day.status = 'no_backzettel'
+      counts.noBackzettel += 1
+      continue
+    }
+    counts.bakeDays += 1
     day.basis = confirmed ? 'freigegeben' : 'geplant'
     counts[confirmed ? 'confirmed' : 'planned'] += 1
     const report =
@@ -571,15 +686,6 @@ function reconcile(a) {
     const soldMap = report ? refCore.soldByPlu(report) : null
     day.report = !!soldMap
     if (!soldMap) counts.noReport += 1
-
-    const rows = Array.isArray(input.rows) ? input.rows : []
-    const bz = rest.backzettelLines(input.backzettel, config)
-    const byLine = rest.rowsByLine(rows)
-    const keys = new Set()
-    for (const [key, l] of bz) {
-      if ((confirmed ? l.baked || 0 : l.planned) > 0) keys.add(key)
-    }
-    for (const key of byLine.keys()) keys.add(key)
 
     const buckets = new Map()
     const bucketFor = (item, itemId, variant, meta) => {
@@ -616,6 +722,7 @@ function reconcile(a) {
         label: variant ? rest.variantLabel(config, variant, item) : null,
         baked: b ? (confirmed ? b.baked || 0 : b.planned) : 0,
         cap: b ? b.cap : 0,
+        qtyOpen: b ? Boolean(b.qtyOpen) : false,
         anyCount: stored.length > 0,
         complete: rest.lineComplete(stored, expected),
         rest: rest.lineRest(
@@ -664,6 +771,7 @@ function reconcile(a) {
       }
       if (row.ampel === 'pruefen') day.signals.pruefen += 1
       if (row.ampel === 'auffaellig') day.signals.auffaellig += 1
+      if (row.status === 'grundmenge_offen') day.baseOpen += 1
       if (!groups.has(bucket.key)) {
         groups.set(bucket.key, {
           key: bucket.key,
@@ -672,6 +780,7 @@ function reconcile(a) {
           item: bucket.item,
           info: bucket.info,
           soldBasis: bucket.soldBasis,
+          foreignPlu: bucket.foreignPlu,
           meta: bucket.meta,
           dayRows: [],
         })
@@ -688,6 +797,7 @@ function reconcile(a) {
     if (day.restStatus === 'counted') counts.restCounted += 1
     else if (day.restStatus === 'partial') counts.restPartial += 1
     else if (day.restStatus === 'not_counted') counts.restNotCounted += 1
+    if (day.baseOpen > 0) counts.baseOpen += 1
   }
 
   const all = [...groups.values()].map((g) => periodRow(g, config))
@@ -784,13 +894,16 @@ function abgleichCsv(s) {
     'Verkauft (Kasse)',
     'Nicht verkauft oder nicht kassiert',
     'Tage mit Rest',
+    'Gebacken − CAP (Tage mit Rest)',
+    'Verkauft (Tage mit Rest)',
     'Rest',
-    'Ungeklärt',
+    'Ungeklärt (Tage mit Rest)',
     'Ampel',
     'Restquote',
     'Zu viel produziert',
     'Ohne Kassenbericht',
     'Rest nicht gezählt',
+    'Grundmenge offen',
   ])
   for (const p of s.items) {
     push([
@@ -804,6 +917,8 @@ function abgleichCsv(s) {
       qty(p.sold),
       qty(p.open),
       p.restDays,
+      p.restDays > 0 ? qty(p.restShopBaked) : '',
+      qty(p.restSold),
       qty(p.rest),
       qty(p.unexplained),
       ampelCell(p.ampel, p.ampelBasis),
@@ -811,6 +926,7 @@ function abgleichCsv(s) {
       p.overproduction ? 'ja' : '',
       p.gaps.noReport.join(', '),
       [...p.gaps.restMissing, ...p.gaps.restPartial].sort().join(', '),
+      p.gaps.baseOpen.join(', '),
     ])
   }
   push([])
@@ -866,6 +982,7 @@ function abgleichCsv(s) {
     'Gebacken',
     'davon CAP',
     'Verkauft (Stück laut Kasse)',
+    'Ohne Kassenbericht',
   ])
   for (const p of s.unmatched) {
     push([
@@ -876,6 +993,7 @@ function abgleichCsv(s) {
       qty(p.allBaked),
       qty(p.allCap),
       p.soldPieces === null ? '' : qty(p.soldPieces),
+      p.status === 'keine_plu' ? '' : p.gaps.noReport.join(', '),
     ])
   }
   push([])

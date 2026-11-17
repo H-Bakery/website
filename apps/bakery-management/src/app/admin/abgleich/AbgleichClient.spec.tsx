@@ -31,8 +31,10 @@ function dayRow(overrides: Partial<AbgleichDayRow> = {}): AbgleichDayRow {
     weekdayName: 'Dienstag',
     basis: 'freigegeben',
     baked: 20,
+    bakedIsMinimum: false,
     cap: 0,
     shopBaked: 20,
+    report: true,
     sold: 12,
     soldPieces: null,
     open: 8,
@@ -71,23 +73,29 @@ function item(overrides: Partial<AbgleichItem> = {}): AbgleichItem {
     comparableDays: 1,
     restDays: 1,
     baked: 20,
+    bakedIsMinimum: false,
     cap: 0,
     shopBaked: 20,
     sold: 12,
     open: 8,
     restShopBaked: 20,
+    restSold: 12,
     rest: 2,
     unexplained: 6,
     ampel: 'pruefen',
     ampelBasis: 'mit_rest',
+    signal: 6,
+    signalDays: { pruefen: 1, auffaellig: 0 },
     direction: 'fehlt',
     rate: 0.1,
     overproduction: false,
     restExceedsDates: [],
-    gaps: { noReport: [], restMissing: [], restPartial: [] },
+    gaps: { noReport: [], restMissing: [], restPartial: [], baseOpen: [] },
     allBaked: 20,
+    allBakedIsMinimum: false,
     allCap: 0,
     soldPieces: null,
+    foreignPlu: [],
     variants: [],
     dayRows: [dayRow()],
     ...overrides,
@@ -118,6 +126,7 @@ function abgleich(overrides: Partial<Abgleich> = {}): Abgleich {
       restCounted: 1,
       restPartial: 0,
       restNotCounted: 1,
+      baseOpen: 0,
       noBackzettel: 0,
       ruhetag: 1,
       geschlossen: 0,
@@ -142,10 +151,12 @@ function abgleich(overrides: Partial<Abgleich> = {}): Abgleich {
         ampel: 'ok',
         ampelBasis: 'ohne_rest',
         direction: null,
+        signalDays: { pruefen: 0, auffaellig: 0 },
         gaps: {
           noReport: ['2026-12-02'],
           restMissing: ['2026-12-01'],
           restPartial: [],
+          baseOpen: [],
         },
         dayRows: [
           dayRow({
@@ -164,6 +175,7 @@ function abgleich(overrides: Partial<Abgleich> = {}): Abgleich {
           dayRow({
             date: '2026-12-02',
             weekdayName: 'Mittwoch',
+            report: false,
             sold: null,
             open: null,
             rest: null,
@@ -215,6 +227,7 @@ function abgleich(overrides: Partial<Abgleich> = {}): Abgleich {
         report: true,
         restStatus: 'partial',
         signals: { pruefen: 1, auffaellig: 0 },
+        baseOpen: 0,
       },
       {
         date: '2026-12-02',
@@ -225,6 +238,7 @@ function abgleich(overrides: Partial<Abgleich> = {}): Abgleich {
         report: false,
         restStatus: 'not_counted',
         signals: { pruefen: 0, auffaellig: 0 },
+        baseOpen: 0,
       },
       {
         date: '2026-12-07',
@@ -235,6 +249,7 @@ function abgleich(overrides: Partial<Abgleich> = {}): Abgleich {
         report: false,
         restStatus: null,
         signals: { pruefen: 0, auffaellig: 0 },
+        baseOpen: 0,
       },
     ],
     ...overrides,
@@ -299,6 +314,163 @@ describe('Abgleich Produktion ↔ Kasse', () => {
     expect(within(laib).getByText('nicht vergleichbar (Einheit)')).toBeTruthy()
     expect(within(laib).getByText(/3 St\. verkauft/)).toBeTruthy()
     expect(screen.queryByTestId('item-testbrot')).toBeNull()
+  })
+
+  it('Grundmenge offen: gebacken nur als „≥“, ohne Ampel, mit Hinweis', async () => {
+    const base = abgleich()
+    mocked.fetchAbgleich.mockResolvedValue({
+      ...base,
+      counts: { ...base.counts, baseOpen: 1 },
+      items: [
+        item({
+          key: 'testbreze',
+          itemId: 'testbreze',
+          name: 'Testbreze',
+          comparableDays: 0,
+          restDays: 0,
+          baked: 4,
+          bakedIsMinimum: true,
+          sold: null,
+          open: null,
+          rest: null,
+          unexplained: null,
+          ampel: null,
+          ampelBasis: null,
+          signal: null,
+          signalDays: { pruefen: 0, auffaellig: 0 },
+          direction: null,
+          gaps: {
+            noReport: [],
+            restMissing: [],
+            restPartial: [],
+            baseOpen: ['2026-12-01'],
+          },
+          dayRows: [
+            dayRow({
+              baked: 4,
+              bakedIsMinimum: true,
+              sold: 9,
+              open: null,
+              rest: null,
+              restStatus: 'not_counted',
+              unexplained: null,
+              ampel: null,
+              ampelBasis: null,
+              status: 'grundmenge_offen',
+            }),
+          ],
+        }),
+      ],
+    })
+    render(<AbgleichClient />)
+    const row = await screen.findByTestId('item-testbreze')
+    expect(within(row).getByText('≥ 4 St.')).toBeTruthy()
+    expect(
+      within(row).getByText(
+        /Grundmenge offen – kein Plan, kein Vergleich: 01\.12\./
+      )
+    ).toBeTruthy()
+    expect(
+      screen.getByTestId('abgleich-grundmenge-offen').textContent
+    ).toContain('Grundmenge offen')
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Testbreze: Tage zeigen' })
+    )
+    const day = await screen.findByTestId('day-testbreze-2026-12-01')
+    expect(within(day).getByText('Grundmenge offen – kein Plan')).toBeTruthy()
+  })
+
+  it('Rest nur an einem Teil der Tage: Ungeklärt nennt seine Grundlage', async () => {
+    const base = abgleich()
+    mocked.fetchAbgleich.mockResolvedValue({
+      ...base,
+      items: [
+        item({
+          comparableDays: 2,
+          restDays: 1,
+          baked: 40,
+          shopBaked: 40,
+          sold: 25,
+          open: 15,
+          restShopBaked: 20,
+          restSold: 15,
+          rest: 2,
+          unexplained: 3,
+        }),
+      ],
+    })
+    render(<AbgleichClient />)
+    const basis = await screen.findByTestId('ungeklaert-basis-testplunder')
+    expect(basis.textContent).toBe(
+      'nur 1 von 2 Tagen: 20 − 15 verkauft − 2 Rest'
+    )
+  })
+
+  it('Zeitraum ohne „prüfen“, aber ein Tag mit „prüfen“: sagt es', async () => {
+    const base = abgleich()
+    mocked.fetchAbgleich.mockResolvedValue({
+      ...base,
+      items: [
+        item({
+          ampel: 'ok',
+          direction: null,
+          signalDays: { pruefen: 1, auffaellig: 0 },
+        }),
+      ],
+    })
+    render(<AbgleichClient />)
+    const row = await screen.findByTestId('item-testplunder')
+    expect(
+      within(row).getByText('An 1 Tag „prüfen“ - Tage aufklappen')
+    ).toBeTruthy()
+  })
+
+  it('nicht vergleichbar: nennt Lücken und den Grund (Teil-Produkte, fremde Kassennummer)', async () => {
+    const base = abgleich()
+    mocked.fetchAbgleich.mockResolvedValue({
+      ...base,
+      unmatched: [
+        item({
+          key: 'testkranz',
+          itemId: 'testkranz',
+          name: 'Testkranz',
+          unit: 'Stück',
+          plu: [991],
+          converted: false,
+          status: 'einheit',
+          allBaked: 4,
+          soldPieces: 3,
+          gaps: {
+            noReport: ['2026-12-02'],
+            restMissing: [],
+            restPartial: [],
+            baseOpen: [],
+          },
+        }),
+        item({
+          key: 'testschnecke',
+          itemId: 'testschnecke',
+          name: 'Testschnecke',
+          unit: 'Stück',
+          plu: [990, 906],
+          converted: false,
+          status: 'einheit',
+          soldPieces: null,
+          foreignPlu: [906],
+        }),
+      ],
+    })
+    render(<AbgleichClient />)
+    const kranz = await screen.findByTestId('unmatched-testkranz')
+    expect(within(kranz).getByText(/Teile \(Faktor ≠ 1/)).toBeTruthy()
+    expect(within(kranz).getByText('kein Kassenbericht: 02.12.')).toBeTruthy()
+    expect(within(kranz).queryByText(/rechnet in Stück/)).toBeNull()
+    const schnecke = screen.getByTestId('unmatched-testschnecke')
+    expect(
+      within(schnecke).getByText(
+        /Kassennummer 906 gehört zu einem Produkt eines anderen Postens/
+      )
+    ).toBeTruthy()
   })
 
   it('sagt deutlich, wenn die Grundlage nur geplant ist und kein Rest gezählt wurde', async () => {

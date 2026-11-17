@@ -15,6 +15,7 @@ export type AbgleichBasis = 'freigegeben' | 'geplant' | 'gemischt'
 export type AbgleichRowStatus =
   | 'ok'
   | 'ohne_rest'
+  | 'grundmenge_offen'
   | 'kein_bericht'
   | 'einheit'
   | 'keine_plu'
@@ -29,8 +30,12 @@ export interface AbgleichDayRow {
   weekdayName: string | null
   basis: 'freigegeben' | 'geplant'
   baked: number
+  /** Grundmenge offen: `baked` ist nur ein Mindestwert („≥ n“). */
+  bakedIsMinimum: boolean
   cap: number
   shopBaked: number
+  /** Gab es an dem Tag einen Kassenbericht? */
+  report: boolean
   sold: number | null
   soldPieces: number | null
   open: number | null
@@ -73,23 +78,42 @@ export interface AbgleichItem {
   comparableDays: number
   restDays: number
   baked: number
+  /** Kein vergleichbarer Tag, aber Grundmenge offen: nur „≥ n“. */
+  bakedIsMinimum: boolean
   cap: number
   shopBaked: number
   sold: number | null
   open: number | null
+  /** gebacken − CAP über die Tage mit Rest (Grundlage von Ungeklärt). */
   restShopBaked: number
+  /** verkauft über die Tage mit Rest. */
+  restSold: number | null
   rest: number | null
   unexplained: number | null
   ampel: AbgleichAmpel | null
   ampelBasis: AbgleichAmpelBasis | null
+  /** Der Unterschied hinter der Ampel (Ungeklärt bzw. „mehr verkauft“). */
+  signal: number | null
+  /** Tage mit eigener Ampel „prüfen“ / „auffällig“. */
+  signalDays: { pruefen: number; auffaellig: number }
   direction: 'fehlt' | 'mehr_verkauft' | null
   rate: number | null
   overproduction: boolean
   restExceedsDates: string[]
-  gaps: { noReport: string[]; restMissing: string[]; restPartial: string[] }
+  gaps: {
+    noReport: string[]
+    restMissing: string[]
+    restPartial: string[]
+    /** Tage mit offener Grundmenge (kein Plan, kein Vergleich). */
+    baseOpen: string[]
+  }
   allBaked: number
+  allBakedIsMinimum: boolean
   allCap: number
+  /** nur über die Tage mit Kassenbericht */
   soldPieces: number | null
+  /** Kassennummern, die zu einem anderen Posten gehören. */
+  foreignPlu: number[]
   variants: {
     variant: string
     label: string | null
@@ -109,6 +133,8 @@ export interface AbgleichDay {
   report: boolean
   restStatus: 'counted' | 'partial' | 'not_counted' | null
   signals: { pruefen: number; auffaellig: number }
+  /** Posten mit offener Grundmenge an diesem Tag. */
+  baseOpen: number
 }
 
 export interface Abgleich {
@@ -134,6 +160,8 @@ export interface Abgleich {
     restCounted: number
     restPartial: number
     restNotCounted: number
+    /** Backtage, an denen für mindestens einen Posten die Grundmenge offen ist. */
+    baseOpen: number
     noBackzettel: number
     ruhetag: number
     geschlossen: number
@@ -168,6 +196,7 @@ export const BASIS_LABELS: Record<AbgleichBasis, string> = {
 export const ROW_STATUS_LABELS: Record<AbgleichRowStatus, string> = {
   ok: 'vollständig',
   ohne_rest: 'Rest nicht gezählt',
+  grundmenge_offen: 'Grundmenge offen – kein Plan',
   kein_bericht: 'kein Kassenbericht',
   einheit: 'nicht vergleichbar (Einheit)',
   keine_plu: 'keine Kassennummer',
