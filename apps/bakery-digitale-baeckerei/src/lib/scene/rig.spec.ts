@@ -10,6 +10,7 @@ import {
   WISCH_MIN_PX,
   ZOOM_ANTEIL,
   ZOOM_MS,
+  blickFuerAnker,
   blickziel,
   createRigKern,
   easeInOutCubic,
@@ -22,8 +23,10 @@ import {
   mischePose,
   rahmenFuer,
   richtung,
+  richtungImBild,
   wickeln,
   zweiFingerWisch,
+  type Bildanker,
   type Pose,
   type RigKern,
 } from './rig'
@@ -648,6 +651,157 @@ describe('RigKern: zoomTo (Doppeltipp)', () => {
     kern.zoomTo([Number.NaN, 2, 0])
     expect(kern.bewegt()).toBe(false)
     expect(pose(kern).fov).toBe(60)
+  })
+})
+
+describe('Richtung im Bild (Zoom zum Anker)', () => {
+  it('die Bildmitte ist die Blickrichtung, der Rand liegt den halben Winkel daneben', () => {
+    const mitte = richtungImBild({ yaw: 0.3, pitch: 0.1 }, 60, QUER, {
+      x: 0,
+      y: 0,
+    })
+    expect(mitte.yaw).toBeCloseTo(0.3, 12)
+    expect(mitte.pitch).toBeCloseTo(0.1, 12)
+    const blick = { yaw: 0, pitch: 0 }
+    expect(richtungImBild(blick, 60, 1, { x: 0, y: 1 }).pitch).toBeCloseTo(
+      30 * GRAD,
+      12
+    )
+    // Rechts im Bild = kleinerer yaw (yaw wächst nach links).
+    expect(richtungImBild(blick, 60, 1, { x: 1, y: 0 }).yaw).toBeCloseTo(
+      -30 * GRAD,
+      12
+    )
+    expect(richtungImBild(blick, 60, QUER, { x: -1, y: 0 }).yaw).toBeCloseTo(
+      (horizontalFov(60, QUER) / 2) * GRAD,
+      12
+    )
+  })
+
+  it('blickFuerAnker kehrt richtungImBild um, auch bei anderem Öffnungswinkel', () => {
+    const anker: Bildanker[] = [
+      { x: 0.4, y: -0.6 },
+      { x: -1, y: 1 },
+      { x: 0.9, y: 0.2 },
+    ]
+    for (const a of anker) {
+      for (const blick of [
+        { yaw: 0.3, pitch: 0.1 },
+        { yaw: -2.9, pitch: -0.4 },
+      ]) {
+        const d = richtungImBild(blick, 50, HOCH, a)
+        const gleich = blickFuerAnker(d, 50, HOCH, a)
+        expect(gleich?.yaw).toBeCloseTo(blick.yaw, 9)
+        expect(gleich?.pitch).toBeCloseTo(blick.pitch, 9)
+        const eng = blickFuerAnker(d, 25, HOCH, a)
+        if (!eng) throw new Error('keine Lösung')
+        const zurueck = richtungImBild(eng, 25, HOCH, a)
+        expect(wickeln(zurueck.yaw - d.yaw)).toBeCloseTo(0, 9)
+        expect(zurueck.pitch).toBeCloseTo(d.pitch, 9)
+      }
+    }
+  })
+
+  it('fast senkrecht in der Bildecke: keine Lösung', () => {
+    expect(
+      blickFuerAnker({ yaw: 0, pitch: 80 * GRAD }, 60, 1, { x: 1, y: -1 })
+    ).toBeNull()
+  })
+})
+
+describe('RigKern: Zoom zum Anker (Finger, Mauszeiger)', () => {
+  const unterAnker = (kern: RigKern, a: Bildanker) => {
+    const p = pose(kern)
+    return richtungImBild(p, p.fov, QUER, a)
+  }
+
+  it('was unter dem Anker liegt, bleibt dort - heran und wieder hinaus', () => {
+    const kern = kernAm(regal)
+    const a = { x: 0.5, y: 0.3 }
+    const vorher = unterAnker(kern, a)
+    kern.setzeFov(30, a)
+    expect(pose(kern).fov).toBe(30)
+    expect(kern.bewegt()).toBe(false)
+    expect(pose(kern).eye).toEqual([0, 2, 0])
+    // Gedreht hat sich der Blick zum Anker hin (rechts, oben).
+    expect(pose(kern).yaw).toBeLessThan(-5 * GRAD)
+    expect(pose(kern).pitch).toBeGreaterThan(2 * GRAD)
+    expect(unterAnker(kern, a).yaw).toBeCloseTo(vorher.yaw, 9)
+    expect(unterAnker(kern, a).pitch).toBeCloseTo(vorher.pitch, 9)
+
+    kern.zoomen(1.5, a)
+    expect(pose(kern).fov).toBeCloseTo(45, 9)
+    expect(unterAnker(kern, a).yaw).toBeCloseTo(vorher.yaw, 9)
+    expect(unterAnker(kern, a).pitch).toBeCloseTo(vorher.pitch, 9)
+  })
+
+  it('der Anker in der Bildmitte zoomt wie ohne Anker', () => {
+    const kern = kernAm(regal)
+    kern.ziehen(5 * GRAD, -3 * GRAD)
+    kern.loslassen()
+    kern.setzeFov(30, { x: 0, y: 0 })
+    expect(pose(kern).yaw).toBeCloseTo(5 * GRAD, 12)
+    expect(pose(kern).pitch).toBeCloseTo(-3 * GRAD, 12)
+    expect(pose(kern).fov).toBe(30)
+  })
+
+  it('heran: nie unter fovMin und nie über die Grenzen des neuen Winkels', () => {
+    const kern = kernAm(regal)
+    // Oben links an beiden Grenzen; dann ganz heran zur Ecke oben links.
+    kern.ziehen(20 * GRAD, 12 * GRAD)
+    kern.loslassen()
+    const a = { x: -1, y: 1 }
+    // Ohne Grenze stünde der Blick weiter links, als es bei fovMin erlaubt ist.
+    const frei = blickFuerAnker(unterAnker(kern, a), 24, QUER, a)
+    const g = grenzen(rahmenFuer(regal, QUER), 24, QUER)
+    expect(frei?.yaw ?? 0).toBeGreaterThan(g.yaw)
+
+    kern.setzeFov(1, a)
+    expect(pose(kern).fov).toBe(24)
+    expect(pose(kern).yaw).toBeCloseTo(g.yaw, 9)
+    expect(Math.abs(pose(kern).pitch)).toBeLessThanOrEqual(g.pitch + 1e-9)
+    expect(kern.bewegt()).toBe(false)
+  })
+
+  it('hinaus: nie über fovMax, nie weiter hinaus als vorher, dann zurück in die Grenzen', () => {
+    const kern = kernAm(regal)
+    kern.setzeFov(30)
+    // Ganz rechts an der Grenze des engen Bildes.
+    const g30 = grenzen(rahmenFuer(regal, QUER), 30, QUER)
+    kern.ziehen(-g30.yaw, 0)
+    kern.loslassen()
+    const vorher = pose(kern).yaw
+    expect(vorher).toBeCloseTo(-g30.yaw, 9)
+
+    // Hinaus um einen Punkt links im Bild: Der hielte seinen Platz nur, wenn
+    // der Blick noch weiter nach rechts drehte.
+    kern.setzeFov(500, { x: -0.8, y: 0 })
+    expect(pose(kern).fov).toBe(60)
+    expect(pose(kern).yaw).toBeGreaterThanOrEqual(vorher - 1e-12)
+    auslaufen(kern)
+    const g60 = grenzen(rahmenFuer(regal, QUER), 60, QUER)
+    expect(pose(kern).yaw).toBeCloseTo(-g60.yaw, 9)
+    expect(kern.bewegt()).toBe(false)
+  })
+
+  it('während einer Fahrt gilt die Bildmitte: die Drehung läuft zu ihrem Ziel', () => {
+    const kern = kernAm(regal)
+    kern.zoomTo(blickziel([0, 2, 0], 10 * GRAD, 0, 4))
+    kern.schritt(ZOOM_MS / 2)
+    kern.setzeFov(26, { x: 0.8, y: 0.5 })
+    auslaufen(kern)
+    expect(pose(kern).yaw).toBeCloseTo(10 * GRAD, 9)
+    expect(pose(kern).pitch).toBeCloseTo(0, 9)
+    expect(pose(kern).fov).toBe(26)
+  })
+
+  it('prefers-reduced-motion: zum Anker ohne Fahrt und ohne Federn', () => {
+    const kern = kernAm(regal, QUER, true)
+    const a = { x: 0.5, y: 0.3 }
+    const vorher = unterAnker(kern, a)
+    kern.setzeFov(30, a)
+    expect(kern.bewegt()).toBe(false)
+    expect(unterAnker(kern, a).yaw).toBeCloseTo(vorher.yaw, 9)
   })
 })
 

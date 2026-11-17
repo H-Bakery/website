@@ -16,8 +16,25 @@ export interface Rechteck {
   bottom: number
 }
 
-/** Abstand, den ein gewähltes Produkt zum Rand des freien Bildes hält (px). */
-export const FREI_RAND_PX = 48
+/** Abstand zu den Rändern des freien Bildes (px), je Seite. */
+export interface Raender {
+  links: number
+  oben: number
+  rechts: number
+  unten: number
+}
+
+/**
+ * Abstand, den ein gewähltes Produkt zum Rand des freien Bildes hält (px):
+ * Links und rechts liegen die runden Pfeile (8-56 px vom Rand), oben links
+ * die Titelkarte (höchstens 76 px hoch), unten genügt etwas Luft.
+ */
+export const FREI_RAND: Readonly<Raender> = {
+  links: 64,
+  oben: 80,
+  rechts: 64,
+  unten: 48,
+}
 /**
  * So nah am Rand des freien Bildes gilt ein Produkt noch als „im Bild“ (px),
  * wenn die Grenze des Umschauens es nicht weiter hereinlässt.
@@ -28,13 +45,18 @@ const UNTEN_AB = 0.9
 
 /**
  * Der Teil des Bildes, den die Karte `verdeckt` frei lässt, um `rand`
- * eingerückt: über einem Sheet am unteren Rand, sonst neben der Karte.
+ * eingerückt: über einem Sheet am unteren Rand, sonst neben der Karte. Ohne
+ * `rand` je Seite um `FREI_RAND`; eine Zahl rückt alle Seiten gleich ein.
  */
 export function freierBereich(
   bild: { breite: number; hoehe: number },
   verdeckt: Rechteck | null,
-  rand: number = FREI_RAND_PX
+  rand: number | Readonly<Raender> = FREI_RAND
 ): Rechteck {
+  const r: Raender =
+    typeof rand === 'number'
+      ? { links: rand, oben: rand, rechts: rand, unten: rand }
+      : rand
   const frei: Rechteck = {
     left: 0,
     top: 0,
@@ -54,13 +76,13 @@ export function freierBereich(
     }
   }
   // Einrücken, aber nie über die Mitte hinaus (sehr kleine Bilder).
-  const rx = Math.min(rand, Math.max(0, (frei.right - frei.left) / 2))
-  const ry = Math.min(rand, Math.max(0, (frei.bottom - frei.top) / 2))
+  const halbB = Math.max(0, (frei.right - frei.left) / 2)
+  const halbH = Math.max(0, (frei.bottom - frei.top) / 2)
   return {
-    left: frei.left + rx,
-    top: frei.top + ry,
-    right: frei.right - rx,
-    bottom: frei.bottom - ry,
+    left: frei.left + Math.min(r.links, halbB),
+    top: frei.top + Math.min(r.oben, halbH),
+    right: frei.right - Math.min(r.rechts, halbB),
+    bottom: frei.bottom - Math.min(r.unten, halbH),
   }
 }
 
