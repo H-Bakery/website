@@ -6,8 +6,10 @@ import type {
 } from './types'
 import {
   DATEN_ZEIT_MS,
+  WIEDERHOLEN_NACH_MS,
   belegungVon,
   eintraegeFuer,
+  ladeJson,
   ladeProduktdaten,
 } from './zuordnung'
 
@@ -164,14 +166,24 @@ describe('ladeProduktdaten', () => {
     )
   })
 
-  it('meldet einen Netzfehler auf Deutsch', async () => {
-    mockFetch({
-      '/data/products.snapshot.json': antwort(SNAPSHOT),
-      '/data/belegung.json': new TypeError('Failed to fetch'),
-    })
-    await expect(ladeProduktdaten('')).rejects.toThrow(
-      'Die Plätze im Regal konnten nicht geladen werden.'
-    )
+  it('meldet einen Netzfehler auf Deutsch - nach den Wiederholungen', async () => {
+    jest.useFakeTimers()
+    try {
+      const fn = mockFetch({
+        '/data/products.snapshot.json': antwort(SNAPSHOT),
+        '/data/belegung.json': new TypeError('Failed to fetch'),
+      })
+      const ergebnis = ladeProduktdaten('').catch((err: Error) => err.message)
+      await jest.advanceTimersByTimeAsync(DATEN_ZEIT_MS)
+      await expect(ergebnis).resolves.toBe(
+        'Die Plätze im Regal konnten nicht geladen werden.'
+      )
+      expect(
+        fn.mock.calls.filter((c) => String(c[0]) === '/data/belegung.json')
+      ).toHaveLength(1 + WIEDERHOLEN_NACH_MS.length)
+    } finally {
+      jest.useRealTimers()
+    }
   })
 
   it('meldet unlesbares JSON', async () => {
@@ -285,6 +297,151 @@ describe('ladeProduktdaten: eine Anfrage, die hängt, hält nichts auf', () => {
       status: 404,
     })) as unknown as typeof fetch
     await expect(ladeProduktdaten('')).rejects.toThrow(/HTTP 404/)
+    expect(jest.getTimerCount()).toBe(0)
+  })
+})
+
+describe('ladeJson: kurze Störungen werden wiederholt, innerhalb der Frist', () => {
+  const realFetch = global.fetch
+  afterEach(() => {
+    global.fetch = realFetch
+    jest.useRealTimers()
+  })
+  beforeEach(() => jest.useFakeTimers())
+
+  const ok = (body: unknown) =>
+    ({ ok: true, status: 200, json: async () => body } as Response)
+  const status = (n: number) =>
+    ({
+      ok: false,
+      status: n,
+      json: async () => {
+        throw new SyntaxError('kein JSON')
+      },
+    } as unknown as Response)
+
+  /** fetch, das der Reihe nach diese Antworten gibt (Error = wirft). */
+  const folge = (...antworten: (Response | Error | 'haengt')[]) => {
+    const fn = jest.fn(async () => {
+      const naechste = antworten.shift()
+      if (naechste === undefined) throw new Error('zu viele Anfragen')
+      if (naechste === 'haengt') return new Promise<Response>(() => undefined)
+      if (naechste instanceof Error) throw naechste
+      return naechste
+    })
+    global.fetch = fn as unknown as typeof fetch
+    return fn
+  }
+
+  /** Ergebnis als Text, ohne dass die Ablehnung unbehandelt bleibt. */
+  const lade = () =>
+    ladeJson('/data/test.json', 'Die Testdaten').then(
+      (v) => v,
+      (err: Error) => `Fehler: ${err.message}`
+    )
+
+  it('Netzfehler einmal, dann geladen', async () => {
+    const fn = folge(new TypeError('Failed to fetch'), ok({ a: 1 }))
+    const ergebnis = lade()
+    await jest.advanceTimersByTimeAsync(WIEDERHOLEN_NACH_MS[0])
+    await expect(ergebnis).resolves.toEqual({ a: 1 })
+    expect(fn).toHaveBeenCalledTimes(2)
+    expect(jest.getTimerCount()).toBe(0)
+  })
+
+  it('503 zweimal, dann geladen', async () => {
+    const fn = folge(status(503), status(503), ok({ b: 2 }))
+    const ergebnis = lade()
+    await jest.advanceTimersByTimeAsync(
+      WIEDERHOLEN_NACH_MS[0] + WIEDERHOLEN_NACH_MS[1]
+    )
+    await expect(ergebnis).resolves.toEqual({ b: 2 })
+    expect(fn).toHaveBeenCalledTimes(3)
+  })
+
+  it('höchstens zwei Wiederholungen: 5xx dreimal ist ein Fehler mit Status', async () => {
+    const fn = folge(status(500), status(502), status(503))
+    const ergebnis = lade()
+    await jest.advanceTimersByTimeAsync(DATEN_ZEIT_MS)
+    await expect(ergebnis).resolves.toBe(
+      'Fehler: Die Testdaten konnten nicht geladen werden (HTTP 503).'
+    )
+    expect(fn).toHaveBeenCalledTimes(3)
+  })
+
+  it('404 wird nicht wiederholt', async () => {
+    const fn = folge(status(404))
+    await expect(lade()).resolves.toBe(
+      'Fehler: Die Testdaten konnten nicht geladen werden (HTTP 404).'
+    )
+    expect(fn).toHaveBeenCalledTimes(1)
+    expect(jest.getTimerCount()).toBe(0)
+  })
+
+  it('nur ein Netzfehler (TypeError) wird wiederholt, kein anderer Abbruch', async () => {
+    const fn = folge(new DOMException('abgebrochen', 'AbortError'))
+    await expect(lade()).resolves.toBe(
+      'Fehler: Die Testdaten konnten nicht geladen werden.'
+    )
+    expect(fn).toHaveBeenCalledTimes(1)
+    expect(jest.getTimerCount()).toBe(0)
+  })
+
+  it('unlesbares JSON wird nicht wiederholt', async () => {
+    const kaputt = {
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new SyntaxError('kaputt')
+      },
+    } as unknown as Response
+    const fn = folge(kaputt)
+    await expect(lade()).resolves.toBe(
+      'Fehler: Die Testdaten sind nicht lesbar.'
+    )
+    expect(fn).toHaveBeenCalledTimes(1)
+  })
+
+  it('eine Anfrage, die hängt, endet nach DATEN_ZEIT_MS insgesamt - auch nach einem Netzfehler', async () => {
+    const fn = folge(new TypeError('Failed to fetch'), 'haengt')
+    const ergebnis = lade()
+    let fertig = false
+    void ergebnis.then(() => {
+      fertig = true
+    })
+    await jest.advanceTimersByTimeAsync(DATEN_ZEIT_MS - 1)
+    expect(fertig).toBe(false)
+    await jest.advanceTimersByTimeAsync(1)
+    await expect(ergebnis).resolves.toBe(
+      'Fehler: Die Testdaten konnten nicht geladen werden.'
+    )
+    expect(fn).toHaveBeenCalledTimes(2)
+    // Nach der Frist: keine Uhr, kein weiterer Versuch.
+    expect(jest.getTimerCount()).toBe(0)
+    await jest.advanceTimersByTimeAsync(DATEN_ZEIT_MS)
+    expect(fn).toHaveBeenCalledTimes(2)
+  })
+
+  it('die Frist läuft auch während einer Pause ab - danach kein neuer Versuch', async () => {
+    // Antwortet erst kurz vor der Frist mit 503: Die Pause danach reicht über
+    // die Frist hinaus.
+    let antworte: (r: Response) => void = () => undefined
+    const fn = jest.fn(
+      () =>
+        new Promise<Response>((r) => {
+          antworte = r
+        })
+    )
+    global.fetch = fn as unknown as typeof fetch
+    const ergebnis = lade()
+    await jest.advanceTimersByTimeAsync(DATEN_ZEIT_MS - 100)
+    antworte(status(503))
+    await jest.advanceTimersByTimeAsync(100)
+    await expect(ergebnis).resolves.toBe(
+      'Fehler: Die Testdaten konnten nicht geladen werden.'
+    )
+    await jest.advanceTimersByTimeAsync(DATEN_ZEIT_MS)
+    expect(fn).toHaveBeenCalledTimes(1)
     expect(jest.getTimerCount()).toBe(0)
   })
 })

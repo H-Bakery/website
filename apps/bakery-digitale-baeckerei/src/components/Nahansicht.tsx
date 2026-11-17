@@ -7,6 +7,7 @@ import Dialog from '@mui/material/Dialog'
 import LinearProgress from '@mui/material/LinearProgress'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
+import { useZurueckSchliesst } from '../lib/verlauf'
 import { ladeNahansicht } from './ladeNahansicht'
 import { TOUCH_TARGET, WENIGER_BEWEGUNG, rand } from './theme'
 
@@ -35,6 +36,9 @@ const BUEHNE_FARBE = '#efe9df'
 /** Schrift auf der hellen Bühne, in beiden Farbschemata. */
 const BUEHNE_TEXT = '#3b2b28'
 
+/** So viele Zeilen hat die Überschrift höchstens; der Rest endet mit „…“. */
+export const TITEL_ZEILEN = 2
+
 /** Platz für einen Dialog neben dem Laden: Desktop. Sonst füllt er das Bild. */
 const ALS_DIALOG = '@media (min-width: 900px) and (min-height: 501px)'
 
@@ -56,6 +60,9 @@ export interface NahansichtProps {
  * 3D-Code und das Modell werden erst hier geladen; beim Schließen wird alles
  * freigegeben. Scheitert etwas, steht hier eine Meldung - die Produktkarte
  * dahinter bleibt, wie sie war.
+ *
+ * Sie hat einen eigenen Schritt im Verlauf (`useZurueckSchliesst`): Die
+ * Zurück-Geste des Handys schließt nur sie, nicht die ganze App.
  */
 export default function Nahansicht({
   name,
@@ -64,6 +71,9 @@ export default function Nahansicht({
   onClose,
 }: NahansichtProps) {
   const titelId = useId()
+  // „Zurück“, Escape und ein Tipp daneben nehmen den eigenen Schritt im
+  // Verlauf wieder heraus; die Zurück-Geste schließt über `onClose`.
+  const schliesse = useZurueckSchliesst(true, onClose)
   const [wenigBewegung] = useState(
     () =>
       typeof window !== 'undefined' &&
@@ -73,7 +83,7 @@ export default function Nahansicht({
   return (
     <Dialog
       open
-      onClose={onClose}
+      onClose={schliesse}
       aria-labelledby={titelId}
       transitionDuration={wenigBewegung ? 0 : 200}
       data-testid="nahansicht"
@@ -110,7 +120,7 @@ export default function Nahansicht({
         }}
       >
         <Button
-          onClick={onClose}
+          onClick={schliesse}
           startIcon={<ArrowBackIcon aria-hidden />}
           sx={{
             minHeight: TOUCH_TARGET,
@@ -130,9 +140,13 @@ export default function Nahansicht({
             fontSize: '1.1rem',
             fontWeight: 700,
             lineHeight: 1.25,
+            // Lange Namen dürfen zwei Zeilen nehmen; ein sehr langes Wort
+            // bricht, statt „Zurück“ zu verdrängen.
+            display: '-webkit-box',
+            WebkitBoxOrient: 'vertical',
+            WebkitLineClamp: TITEL_ZEILEN,
             overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            overflowWrap: 'anywhere',
           }}
         >
           {name}

@@ -2,6 +2,7 @@ import React from 'react'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { NahansichtOptions } from '../lib/scene/createNahansicht'
+import { VERLAUF_MARKE } from '../lib/verlauf'
 import { ladeNahansicht } from './ladeNahansicht'
 import Nahansicht, {
   NAHANSICHT_BEDIENUNG_TOUCH,
@@ -10,6 +11,7 @@ import Nahansicht, {
   NAHANSICHT_NOCHMAL_TEXT,
   NAHANSICHT_OHNE_WEBGL_TEXT,
   NAHANSICHT_UNTERBROCHEN_TEXT,
+  TITEL_ZEILEN,
   ZURUECK_TEXT,
   nahansichtBereitAnsage,
   nahansichtLabel,
@@ -50,22 +52,28 @@ beforeEach(() => {
 
 const URL_BROT = '/produkte-3d/testbrot-500g.glb'
 
-function setup(strict = false) {
+function setup(strict = false, name = 'Testbrot') {
   const onClose = jest.fn()
   const baum = (
     <ThemeRegistry>
-      <Nahansicht
-        name="Testbrot"
-        url={URL_BROT}
-        bytes={14580}
-        onClose={onClose}
-      />
+      <Nahansicht name={name} url={URL_BROT} bytes={14580} onClose={onClose} />
     </ThemeRegistry>
   )
   const view = render(
     strict ? <React.StrictMode>{baum}</React.StrictMode> : baum
   )
   return { user: userEvent.setup(), onClose, view }
+}
+
+/** Die CSS-Regeln (emotion) der Klassen eines Elements, als Text. */
+function regelnVon(el: Element): string {
+  const regeln = Array.from(document.styleSheets).flatMap((blatt) =>
+    Array.from(blatt.cssRules).map((r) => r.cssText)
+  )
+  return Array.from(el.classList)
+    .flatMap((k) => regeln.filter((r) => r.startsWith(`.${k} `)))
+    .join('\n')
+    .replace(/\s+/g, '')
 }
 
 const buehne = () => screen.getByTestId('nahansicht-buehne')
@@ -221,6 +229,26 @@ describe('Nahansicht', () => {
     )
   })
 
+  it('die Überschrift nimmt bis zu zwei Zeilen, statt einen langen Namen abzuschneiden', () => {
+    const lang =
+      'Testbrot mit sehr langem Namen aus vielen Wörtern und einem Überlangenwortohneende'
+    setup(false, lang)
+    const titel = screen.getByRole('heading', { name: lang })
+    expect(titel).toHaveTextContent(lang)
+    expect(TITEL_ZEILEN).toBe(2)
+    // jsdom rechnet `-webkit-line-clamp` nicht aus: die Regeln selbst lesen.
+    const stil = regelnVon(titel)
+    expect(stil).toContain('display:-webkit-box;')
+    expect(stil).toContain('-webkit-box-orient:vertical;')
+    expect(stil).toContain('-webkit-line-clamp:2;')
+    expect(stil).toContain('overflow:hidden;')
+    expect(stil).toContain('overflow-wrap:anywhere;')
+    expect(stil).not.toContain('white-space:nowrap')
+    // „Zurück“ behält seine Breite.
+    const knopf = screen.getByRole('button', { name: ZURUECK_TEXT })
+    expect(regelnVon(knopf)).toContain('flex-shrink:0;')
+  })
+
   it('nennt nirgends Kosten oder Inhaltsstoff-Hinweise und speichert nichts', async () => {
     window.localStorage.clear()
     window.sessionStorage.clear()
@@ -230,5 +258,82 @@ describe('Nahansicht', () => {
     expect(document.body.textContent).not.toMatch(VERBOTEN)
     expect(window.localStorage.length).toBe(0)
     expect(window.sessionStorage.length).toBe(0)
+  })
+})
+
+describe('Nahansicht: Zurück im Verlauf', () => {
+  const marke = (): unknown =>
+    (window.history.state as Record<string, unknown> | null)?.[VERLAUF_MARKE]
+  let back: jest.SpyInstance
+  let push: jest.SpyInstance
+
+  beforeEach(async () => {
+    // Ein eigenes Zurück eines vorigen Tests ankommen lassen, dann ein
+    // frischer Eintrag ohne Marke oben.
+    await act(() => new Promise((r) => setTimeout(r, 20)))
+    window.history.pushState(null, '')
+    back = jest.spyOn(window.history, 'back')
+    push = jest.spyOn(window.history, 'pushState')
+  })
+
+  afterEach(() => {
+    back.mockRestore()
+    push.mockRestore()
+  })
+
+  it('öffnen legt genau einen Schritt mit Marke an - dieselbe Adresse', () => {
+    const adresse = window.location.href
+    const laenge = window.history.length
+    setup()
+    expect(push).toHaveBeenCalledTimes(1)
+    expect(window.history.length).toBe(laenge + 1)
+    expect(window.location.href).toBe(adresse)
+    expect(typeof marke()).toBe('string')
+  })
+
+  it('unter StrictMode bleibt es bei einem Schritt', async () => {
+    const laenge = window.history.length
+    setup(true)
+    await act(() => new Promise((r) => setTimeout(r, 20)))
+    expect(window.history.length).toBe(laenge + 1)
+    expect(typeof marke()).toBe('string')
+    expect(back).not.toHaveBeenCalled()
+  })
+
+  it('die Zurück-Geste (popstate) schließt die Nahansicht - einmal', async () => {
+    const { onClose } = setup()
+    window.history.back()
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+    await act(() => new Promise((r) => setTimeout(r, 20)))
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(back).toHaveBeenCalledTimes(1) // nur das der Geste
+  })
+
+  it('„Zurück“ nimmt den eigenen Schritt heraus: ein back(), ein onClose', async () => {
+    const { user, onClose } = setup()
+    await user.click(screen.getByRole('button', { name: ZURUECK_TEXT }))
+    expect(back).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(marke()).toBeUndefined())
+    // Das popstate dieses back() schließt nicht noch einmal.
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('Escape ebenso', async () => {
+    const { user, onClose } = setup()
+    await user.keyboard('{Escape}')
+    expect(back).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(marke()).toBeUndefined())
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('abgebaut, während ein anderer Schritt oben liegt (Raumwechsel): kein back()', async () => {
+    const { view, onClose } = setup()
+    window.history.pushState({ raum: 'testbackstube' }, '')
+    view.unmount()
+    await act(() => new Promise((r) => setTimeout(r, 20)))
+    expect(back).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
   })
 })
