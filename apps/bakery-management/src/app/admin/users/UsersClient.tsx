@@ -37,6 +37,7 @@ import {
 import { PILOT_ROLES, ROLE_LABELS, type PilotRole } from '../../../lib/roles'
 import { useOptionalSession } from '../../../lib/session'
 import { PIN_MAX_LENGTH, PIN_MIN_LENGTH } from '../../../components/auth/PinPad'
+import { describeAuthError } from '../../../components/auth/authErrors'
 import {
   ErrorState,
   LoadingState,
@@ -48,10 +49,6 @@ import {
 
 const PASSWORD_MIN_LENGTH = 8
 const PIN_PATTERN = new RegExp(`^\\d{${PIN_MIN_LENGTH},${PIN_MAX_LENGTH}}$`)
-
-function messageOf(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback
-}
 
 function formatDate(value: string | null): string {
   if (!value) return '–'
@@ -107,7 +104,9 @@ export default function UsersClient() {
     } catch (err) {
       // Eine schon geladene Liste bleibt stehen (sie ist echt, nur nicht
       // frisch); eine leere wird nie erfunden.
-      setLoadError(messageOf(err, 'Die Benutzer konnten nicht geladen werden.'))
+      setLoadError(
+        describeAuthError(err, 'Die Benutzer konnten nicht geladen werden.')
+      )
     }
   }, [])
 
@@ -134,7 +133,9 @@ export default function UsersClient() {
       setSuccess(`Station „${station.name}“ widerrufen.`)
       void reload()
     } catch (err) {
-      setError(messageOf(err, 'Die Station konnte nicht widerrufen werden.'))
+      setError(
+        describeAuthError(err, 'Die Station konnte nicht widerrufen werden.')
+      )
     }
   }
 
@@ -422,7 +423,7 @@ function useSubmit<T>(action: () => Promise<T>, onDone: (result: T) => void) {
     try {
       onDone(await action())
     } catch (err) {
-      setError(messageOf(err, 'Speichern fehlgeschlagen.'))
+      setError(describeAuthError(err, 'Speichern fehlgeschlagen.'))
     } finally {
       setBusy(false)
     }

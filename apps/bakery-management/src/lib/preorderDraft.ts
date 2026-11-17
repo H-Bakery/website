@@ -8,8 +8,11 @@
  * **einer je Benutzer** (`draftKey`): an einer gemeinsamen Station sieht ihn
  * nur, wer ihn angefangen hat, und ein Kollege überschreibt ihn nicht. Nach `DRAFT_MAX_AGE_MS` verfällt er. Mit ihm wandert
  * die `requestId` des Speicherns, damit ein Wiederholen nach verlorener
- * Antwort keine zweite Bestellung anlegt.
+ * Antwort keine zweite Bestellung anlegt, und der Ausgang des letzten
+ * Versuchs (`outcome`): nur eine sicher abgelehnte Bestellung heißt nach dem
+ * Wiederherstellen „noch nicht gespeichert“.
  */
+import type { RequestFailureKind } from './preordersApi'
 import type { PreorderChannel } from './preordersTypes'
 
 const KEY = 'bakery-management-preorder-draft'
@@ -52,6 +55,37 @@ export interface PreorderDraft extends PreorderDraftFields {
   savedAt: string
   /** Gesetzt, sobald gespeichert werden sollte (Antwort evtl. verloren). */
   requestId: string | null
+  /**
+   * Ausgang der Versuche mit dieser `requestId` (`draftOutcomeAfter`):
+   * `refused` - jeder wurde von der API abgelehnt, es gibt sicher keine
+   * Bestellung dazu; `offline`/`server` - einer blieb ohne (gültige)
+   * Antwort. Fehlt der Wert (Versuch lief noch, Entwurf von vor diesem
+   * Feld), ist der Ausgang unklar - wie bisher.
+   */
+  outcome?: RequestFailureKind | null
+}
+
+/**
+ * Ausgang nach einem gescheiterten Versuch. `before` ist der Stand davor -
+ * `refused` auch für eine frische `requestId` (zu der es noch nichts gibt),
+ * `null` für unklar. Eine Ablehnung macht einen unklaren Stand nicht sicher:
+ * der erste Versuch kann trotzdem angekommen sein (z. B. erst WLAN weg, dann
+ * die Sitzung abgelaufen). `earlierArrived`: die API meldet, dass ein früherer
+ * Versuch mit dieser Kennung angekommen ist (`request_id_changed`).
+ */
+export function draftOutcomeAfter(
+  before: RequestFailureKind | null,
+  kind: RequestFailureKind,
+  earlierArrived = false
+): RequestFailureKind | null {
+  if (kind !== 'refused') return kind
+  if (earlierArrived) return null
+  return before
+}
+
+/** Sagt der wiederhergestellte Entwurf „vielleicht schon angekommen“? */
+export function draftMayHaveArrived(draft: PreorderDraft): boolean {
+  return Boolean(draft.requestId) && draft.outcome !== 'refused'
 }
 
 function storage(): Storage | null {
@@ -116,6 +150,7 @@ export function savePreorderDraft(
   userId: string | number | null | undefined,
   fields: PreorderDraftFields,
   requestId: string | null,
+  outcome: RequestFailureKind | null = null,
   now: Date = new Date()
 ): void {
   if (noUser(userId)) return
@@ -130,6 +165,7 @@ export function savePreorderDraft(
       userId: String(id),
       savedAt: now.toISOString(),
       requestId,
+      ...(requestId && outcome ? { outcome } : {}),
     }
     storage()?.setItem(draftKey(id), JSON.stringify(draft))
     removeLegacy(id)

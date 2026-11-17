@@ -6,6 +6,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
+import { ApiError } from '@bakery/shared/data-access'
 import BakeListClient from './BakeListClient'
 import {
   fakeSession,
@@ -167,6 +168,43 @@ describe('Backliste (Z10)', () => {
     expect(await screen.findByTestId('load-error')).toHaveTextContent(
       'Die API ist gerade nicht erreichbar.'
     )
+  })
+
+  it('Laden ohne WLAN: deutscher Satz statt „Failed to fetch“', async () => {
+    mocked.fetchBakeList.mockRejectedValue(new TypeError('Failed to fetch'))
+    renderList()
+    const alert = await screen.findByTestId('load-error')
+    expect(alert).toHaveTextContent(
+      'Keine Verbindung zum Server – bitte WLAN prüfen.'
+    )
+    expect(alert).not.toHaveTextContent('Failed to fetch')
+  })
+
+  it('„Gesehen“ bei 502 vom Proxy: deutscher Text, nie „HTTP 502“', async () => {
+    mocked.acknowledgeDelta.mockRejectedValue(
+      new ApiError('HTTP 502: Bad Gateway', 502)
+    )
+    renderList()
+    const card = within(await screen.findByTestId('deltas-card'))
+    fireEvent.click(card.getByRole('button', { name: /Gesehen/ }))
+    expect(
+      await screen.findByText(
+        'Keine Verbindung zum Server – bitte WLAN prüfen.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/HTTP 502|Bad Gateway/)).toBeNull()
+  })
+
+  it('„Gesehen“: eine deutsche Meldung der API bleibt, wie sie ist', async () => {
+    mocked.acknowledgeDelta.mockRejectedValue(
+      new ApiError('Diesen Nachtrag gibt es nicht mehr.', 404, 'not_found')
+    )
+    renderList()
+    const card = within(await screen.findByTestId('deltas-card'))
+    fireEvent.click(card.getByRole('button', { name: /Gesehen/ }))
+    expect(
+      await screen.findByText('Diesen Nachtrag gibt es nicht mehr.')
+    ).toBeInTheDocument()
   })
 
   it('ungültiges Datum lädt nichts', () => {
