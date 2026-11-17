@@ -98,6 +98,12 @@ describe('ROLE_ACCESS - die eine Rollen-Tabelle', () => {
     ['backstube', '/admin/dienstplan/mitarbeiter/3', false],
     ['fahrer', '/admin/dienstplan', false],
     ['inhaber', '/admin/rest/auswertung', true],
+    // Abgleich Produktion ↔ Kasse: nur Inhaber
+    ['inhaber', '/admin/abgleich', true],
+    ['verkauf', '/admin/abgleich', false],
+    ['backstube', '/admin/abgleich', false],
+    ['backstubenleiter', '/admin/abgleich', false],
+    ['fahrer', '/admin/abgleich', false],
     ['backstube', '/admin/preorders', false],
     ['backstube', '/admin/reports', false],
     ['fahrer', '/admin/delivery/preorders/backliste', true],

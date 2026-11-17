@@ -43,6 +43,7 @@ import {
   CalendarMonth as DienstplanIcon,
   MenuBook as RecipesIcon,
   ReceiptLong as InvoicesIcon,
+  CompareArrows as AbgleichIcon,
 } from '@mui/icons-material'
 import type { Theme } from '@mui/material/styles'
 import Link from 'next/link'
@@ -142,6 +143,7 @@ const iconMap: Record<string, React.ReactElement> = {
   help: <HelpIcon />,
   pickuppoint: <PickupPointIcon />,
   restsummary: <RestSummaryIcon />,
+  abgleich: <AbgleichIcon />,
   dienstplan: <DienstplanIcon />,
   recipes: <RecipesIcon />,
   invoices: <InvoicesIcon />,

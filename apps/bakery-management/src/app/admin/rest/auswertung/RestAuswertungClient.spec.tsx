@@ -212,6 +212,16 @@ describe('Rest-Auswertung', () => {
     )
   })
 
+  it('links to the Abgleich Produktion ↔ Kasse', async () => {
+    render(<RestAuswertungClient />)
+    await screen.findByTestId('item-weck')
+    expect(
+      screen
+        .getByRole('link', { name: 'Abgleich mit Kasse' })
+        .getAttribute('href')
+    ).toBe('/admin/abgleich')
+  })
+
   it('shows the API message (e.g. 403 for non-owners)', async () => {
     mocked.fetchRestSummary.mockRejectedValueOnce(
       new Error('Keine Berechtigung für diese Aktion.')

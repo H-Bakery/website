@@ -146,6 +146,13 @@ describe('isPilotPathAllowed', () => {
     )
   })
 
+  it('gibt den Abgleich Produktion ↔ Kasse im Pilot frei (nur Inhaber)', () => {
+    expect(PILOT_ALLOWED_ROUTES).toContain('/admin/abgleich')
+    expect(isPilotPathAllowed('/admin/abgleich', true)).toBe(true)
+    expect(isPilotHiddenPath('/admin/abgleich')).toBe(false)
+    expect(hrefs(getNavigation(true))).toContain('/admin/abgleich')
+  })
+
   it('gibt die Rechnungen im Pilot frei (Inhaber, ZUGFeRD)', () => {
     for (const path of ['/admin/rechnungen', '/admin/rechnungen/12']) {
       expect(isPilotPathAllowed(path, true)).toBe(true)

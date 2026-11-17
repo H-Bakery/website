@@ -59,6 +59,10 @@ export const PILOT_ALLOWED_ROUTES: readonly string[] = [
   // dürfen Verkauf und Backstube, die Auswertung (/admin/rest/auswertung)
   // bleibt Inhaber - das regelt ROLE_ACCESS (roles.ts).
   '/admin/rest',
+  // Abgleich Produktion ↔ Kasse: nur Inhaber (ROLE_ACCESS in roles.ts,
+  // API: GET /api/abgleich `inhaber`) - ein Kontrollwerkzeug, Hinweise statt
+  // Beweise.
+  '/admin/abgleich',
   // Rezepte aus hq (Owner-Wunsch 2026-11-11, aus M5 vorgezogen): lesen
   // Inhaber, Backstubenleitung und Backstube, anlegen/ändern nur Inhaber und
   // Backstubenleitung - das regelt ROLE_ACCESS (roles.ts).
