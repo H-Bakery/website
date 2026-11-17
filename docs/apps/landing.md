@@ -22,6 +22,12 @@ route of that name.
 - **Opening hours** have one source, `src/config/openingHours.ts`, mirrored into
   `libs/shared/ui/src/lib/footer/footer-openings.tsx` and the shop's
   `libs/bakery-shop/feature-cart/src/lib/pickup.ts` - change all three together.
+  The live status (hero badge, QuickInfoBar) comes from one `getOpenStatus()` in
+  `src/utils/openingHours.ts`, computed in German time (Europe/Berlin), not the device's. Saarland
+  legal holidays come from `src/config/holidays.ts`, a mirror of `holidaysSaarland` in the API's
+  `kalender.core.js`; `holidays.spec.ts` checks that both agree for 2024-2040. Holiday hours are not
+  configured (owner question): on a holiday the status is a neutral notice („Heute Feiertag (…) —
+  Öffnungszeiten bitte telefonisch erfragen“), never „geöffnet“, and the next opening skips holidays.
 - Shared brand claims (`REVIEW_SUMMARY` etc.) live in `libs/shared/utils/src/lib/brand.ts`; the
   shop's rules for them (nothing invented, snapshot values) are in [shop.md](./shop.md).
 

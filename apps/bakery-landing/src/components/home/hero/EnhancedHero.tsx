@@ -12,13 +12,8 @@ import {
 import PhoneIcon from '@mui/icons-material/Phone'
 import WhatsAppIcon from '@mui/icons-material/WhatsApp'
 import PlaceIcon from '@mui/icons-material/Place'
-import {
-  isCurrentlyOpen,
-  getTodayHours,
-  opensLaterToday,
-  getTodayOpeningTime,
-  getNextOpening,
-} from '../../../utils/openingHours'
+import { getOpenStatus, type OpenStatus } from '../../../utils/openingHours'
+import { LEGAL } from '../../../config/legal'
 import { HEADER_SPACE } from '../../header'
 
 // Hero image with warm gradient fallback
@@ -26,34 +21,43 @@ const heroImage = '/assets/images/bakery/fresh-bread-hero.jpg'
 const warmGradient =
   'linear-gradient(135deg, #3B2B28 0%, #5A2E2A 25%, #7A4A3A 50%, #928168 75%, #E6D8C3 100%)'
 
-interface OpenStatus {
-  open: boolean
-  todayHours: string
-  opensLater: boolean
-  openingTime: string | null
-  /** true on a Ruhetag (no hours today at all), false after closing time */
-  closedAllDay: boolean
-  nextOpening: { day: string; time: string } | null
-}
+/** Non-breaking space before the dash: a wrapped badge never starts a line with it. */
+const DASH = '\u00a0— '
 
 /**
- * Badge text for the four states: open, opens later today, closed for the
- * rest of the day, Ruhetag. 'Heute geschlossen' alone reads as a Ruhetag, so
+ * Badge text per state: open, opens later today, closed for the rest of the
+ * day, Ruhetag, Feiertag. 'Heute geschlossen' alone reads as a Ruhetag, so
  * after closing time the badge says 'Jetzt geschlossen' and names the next
- * opening instead.
+ * opening instead. On a holiday it stays neutral: holiday hours are not
+ * configured, so it neither claims "geöffnet" nor "geschlossen".
  */
 function getStatusLabel(status: OpenStatus): string {
-  if (status.open) {
-    return `Jetzt geöffnet — ${status.todayHours}`
+  switch (status.kind) {
+    case 'open':
+      return `Jetzt geöffnet${DASH}${status.todayHours}`
+    case 'opens-later':
+      return `Öffnet um ${status.opens} Uhr`
+    case 'feiertag': {
+      // the name stays on one line when the badge wraps ('1. Weihnachtstag')
+      const name = status.name.replace(/ /g, '\u00a0')
+      return `Heute Feiertag (${name})${DASH}Öffnungszeiten bitte telefonisch erfragen`
+    }
   }
-  if (status.opensLater && status.openingTime) {
-    return `Öffnet um ${status.openingTime} Uhr`
-  }
-  const prefix = status.closedAllDay ? 'Heute Ruhetag' : 'Jetzt geschlossen'
-  if (!status.nextOpening) {
+  const prefix =
+    status.kind === 'ruhetag' ? 'Heute Ruhetag' : 'Jetzt geschlossen'
+  if (!status.next) {
     return prefix
   }
-  return `${prefix} — öffnet ${status.nextOpening.day} ${status.nextOpening.time} Uhr`
+  return `${prefix}${DASH}öffnet ${status.next.day} ${status.next.time} Uhr`
+}
+
+const BADGE_COLORS: Record<OpenStatus['kind'], string> = {
+  open: 'rgba(122, 155, 107, 0.9)',
+  'opens-later': 'rgba(180, 140, 60, 0.9)',
+  'closed-for-today': 'rgba(180, 60, 60, 0.85)',
+  ruhetag: 'rgba(180, 60, 60, 0.85)',
+  // neutral brand brown: no claim either way
+  feiertag: 'rgba(90, 46, 42, 0.9)',
 }
 
 const EnhancedHero: React.FC = () => {
@@ -63,15 +67,7 @@ const EnhancedHero: React.FC = () => {
   const [openStatus, setOpenStatus] = useState<OpenStatus | null>(null)
 
   useEffect(() => {
-    const openingTime = getTodayOpeningTime()
-    setOpenStatus({
-      open: isCurrentlyOpen(),
-      todayHours: getTodayHours(),
-      opensLater: opensLaterToday(),
-      openingTime,
-      closedAllDay: openingTime === null,
-      nextOpening: getNextOpening(),
-    })
+    setOpenStatus(getOpenStatus())
   }, [])
 
   return (
@@ -115,11 +111,7 @@ const EnhancedHero: React.FC = () => {
               label={getStatusLabel(openStatus)}
               sx={{
                 ...styles.statusBadge,
-                backgroundColor: openStatus.open
-                  ? 'rgba(122, 155, 107, 0.9)'
-                  : openStatus.opensLater
-                  ? 'rgba(180, 140, 60, 0.9)'
-                  : 'rgba(180, 60, 60, 0.85)',
+                backgroundColor: BADGE_COLORS[openStatus.kind],
               }}
             />
           )}
@@ -138,11 +130,11 @@ const EnhancedHero: React.FC = () => {
           <Box sx={styles.phoneRow}>
             <Typography
               component="a"
-              href="tel:068412229"
+              href={LEGAL.phoneHref}
               sx={styles.phoneNumber}
             >
               <PhoneIcon sx={{ fontSize: '1.2em', mr: 1 }} />
-              06841 2229
+              {LEGAL.phone}
             </Typography>
             <Typography
               component="a"
@@ -161,7 +153,7 @@ const EnhancedHero: React.FC = () => {
             <Button
               variant="contained"
               size="large"
-              href="tel:068412229"
+              href={LEGAL.phoneHref}
               sx={styles.primaryCta}
             >
               Jetzt bestellen
