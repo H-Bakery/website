@@ -15,6 +15,7 @@
 | [fernzugriff-fahrer.md](./fernzugriff-fahrer.md) | Remote access for the Fahrer-App (Q8) - draft for the owner, not built |
 
 **Domains** (German, rules as seen from outside the code):
+[Abgleich Produktion ↔ Kasse](./domains/abgleich.md) ·
 [Anmeldung](./domains/anmeldung.md) ·
 [Backzettel](./domains/backzettel.md) ·
 [Dienstplan & Urlaub](./domains/dienstplan.md) ·
@@ -33,6 +34,7 @@
 [hq-data](./api/hq-data.md) · [hq-products](./api/hq-products.md) ·
 [partners](./api/partners.md) · [preorders](./api/preorders.md) ·
 [deliveries](./api/deliveries.md) · [backzettel](./api/backzettel.md) · [rest](./api/rest.md) ·
+[abgleich](./api/abgleich.md) ·
 [dienstplan](./api/dienstplan.md) · [recipes](./api/recipes.md) · [invoices](./api/invoices.md)
 
 **Apps:** [landing](./apps/landing.md) · [shop](./apps/shop.md) · [delivery](./apps/delivery.md) ·

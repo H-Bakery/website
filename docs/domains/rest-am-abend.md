@@ -93,6 +93,8 @@ API-Details (Endpunkte, Fehlercodes, Tabelle `rest_counts`): [`docs/api/rest.md`
 
 ## Querverbindungen
 
+- **Abgleich Produktion ↔ Kasse:** gebacken − CAP − verkauft − Rest je Posten, mit denselben
+  Bausteinen (`abgleich.core.js`, siehe [abgleich.md](abgleich.md)); verlinkt aus der Auswertung.
 - **Grundmengen (Z4):** „Rest am Abend Ø" steht zusätzlich im Hinweis der Referenz
   (`GET /api/rest/averages`, nur Information, siehe [backzettel.md](backzettel.md)).
 - **Snapshot nach hq (Z9):** nach jeder Zählung schreibt die API (falls `HQ_SNAPSHOT_DIR` gesetzt)
