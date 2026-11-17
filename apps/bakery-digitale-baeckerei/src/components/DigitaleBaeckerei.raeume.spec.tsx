@@ -14,6 +14,7 @@ import DigitaleBaeckerei, {
   kartenAnsage,
   raumBereitText,
 } from './DigitaleBaeckerei'
+import { holeModell } from '../lib/modell/holeModell'
 import { ladeNahansicht } from './ladeNahansicht'
 import { ladeViewer } from './ladeViewer'
 import { KEINE_INFOS_TEXT } from './produktliste'
@@ -21,12 +22,19 @@ import { MEHR_LESEN_TEXT, NAHANSICHT_TEXT } from './ProduktSheet'
 import { TESTBROT, VERBOTEN } from './testdaten'
 import ThemeRegistry from './ThemeRegistry'
 
-jest.mock('./ladeViewer', () => ({ ladeViewer: jest.fn() }))
+jest.mock('./ladeViewer', () => ({
+  ladeViewer: jest.fn(),
+  hatWebGL2: jest.fn(() => true),
+}))
 jest.mock('./ladeNahansicht', () => ({ ladeNahansicht: jest.fn() }))
+// Das Modell holt die App selbst (ohne three); hier bleibt jeder Abruf offen.
+jest.mock('../lib/modell/holeModell', () => ({ holeModell: jest.fn() }))
+/** Jeder Abruf eines Modells: Adresse und erwartete Größe. */
+const abrufe: { url: string; bytes?: number }[] = []
 
 interface FakeProps {
   modelUrl: string
-  modelBytes?: number
+  modell: Promise<ArrayBuffer>
   label: string
   blickpunkt: { id: string }
   auswahl?: string | null
@@ -174,6 +182,13 @@ beforeEach(() => {
   ladeViewerMock.mockResolvedValue(
     FakeViewer as unknown as Awaited<ReturnType<typeof ladeViewer>>
   )
+  abrufe.length = 0
+  ;(holeModell as jest.MockedFunction<typeof holeModell>).mockImplementation(
+    (url, { bytes }) => {
+      abrufe.push({ url, bytes })
+      return new Promise<ArrayBuffer>(() => undefined)
+    }
+  )
   ;(ladeNahansicht as jest.Mock).mockReset()
   window.localStorage.clear()
 })
@@ -319,12 +334,14 @@ describe('Raum wechseln', () => {
   it('die erwartete Größe gibt es nur für Räume aus dem Lock', async () => {
     const { user } = setup()
     await fertig()
-    expect(szene?.modelBytes).toEqual(expect.any(Number))
+    expect(abrufe).toEqual([
+      { url: '/model/twin.glb', bytes: expect.any(Number) },
+    ])
     await user.click(wechsel() as HTMLElement)
     await waitFor(() =>
       expect(viewer()).toHaveAttribute('data-modell', '/model/werkstatt.glb')
     )
-    expect(szene?.modelBytes).toBeUndefined()
+    expect(abrufe[1]).toEqual({ url: '/model/werkstatt.glb', bytes: undefined })
   })
 
   it('Karte und Liste des alten Raums gehen zu', async () => {
@@ -404,6 +421,8 @@ describe('Link in einen Raum (?raum=<id>)', () => {
       { modelUrl: '/model/werkstatt.glb', blickpunkt: 'ofen', flug: true },
     ])
     expect(abgebaut).toEqual([])
+    // … und nicht einmal geholt.
+    expect(abrufe.map((a) => a.url)).toEqual(['/model/werkstatt.glb'])
     expect(status()).toHaveTextContent(raumBereitText('Werkstatt', 'Ofen'))
     // Beim Laden über einen Link nimmt sich die App keinen Fokus.
     expect(document.body).toHaveFocus()

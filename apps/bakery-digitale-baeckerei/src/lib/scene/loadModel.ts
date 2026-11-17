@@ -1,8 +1,9 @@
 /**
- * Lädt das Modell (GLB mit EXT_meshopt_compression, KHR_mesh_quantization,
- * KHR_materials_unlit) mit Byte-Fortschritt.
+ * Entpackt ein Modell (GLB mit EXT_meshopt_compression, KHR_mesh_quantization,
+ * KHR_materials_unlit). Das Holen mit Fortschritt steht ohne three in
+ * `src/lib/modell/holeModell.ts`.
  *
- * Herkunft: `fetchBytes`, `loadScene` und `disposeTree` aus dem Saar LiDAR
+ * Herkunft: `loadScene` und `disposeTree` aus dem Saar LiDAR
  * Explorer (github.com/Open-Kirrberg/saar-lidar-explorer, MIT, gleicher
  * Urheber), `app/src/zones/runtime/gltfZone.ts`. Ohne KTX2-Loader: der
  * Zwilling hat keine Texturen, das Licht steckt in den Vertex-Farben.
@@ -12,54 +13,16 @@
 import type { InstancedMesh, Material, Mesh, Object3D, Texture } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
+import { fetchBytes } from '../modell/holeModell'
 
-/** GET mit Fortschritt 0…1 (Content-Length, sonst die erwartete Größe). */
-export async function fetchBytes(
-  url: string,
-  signal: AbortSignal,
-  declared: number | undefined,
-  onBytes: (fraction: number) => void
-): Promise<ArrayBuffer> {
-  const res = await fetch(url, { signal })
-  if (!res.ok) throw new Error(`${res.status} ${url}`)
-  // Bei komprimierter Auslieferung zählt Content-Length die gepackten Bytes,
-  // der Reader liefert die entpackten - dann gilt die erwartete Größe.
-  const encoded = res.headers.get('content-encoding')
-  const length = encoded ? 0 : Number(res.headers.get('content-length'))
-  const total = length || declared || 0
-  if (!res.body || !total) {
-    const all = await res.arrayBuffer()
-    onBytes(1)
-    return all
-  }
-  const reader = res.body.getReader()
-  const chunks: Uint8Array[] = []
-  let got = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    chunks.push(value)
-    got += value.byteLength
-    onBytes(Math.min(1, got / total))
-  }
-  const out = new Uint8Array(got)
-  let offset = 0
-  for (const chunk of chunks) {
-    out.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  onBytes(1)
-  return out.buffer
-}
-
-export async function loadModel(
-  url: string,
-  signal: AbortSignal,
-  declaredBytes: number | undefined,
-  onBytes: (fraction: number) => void
+/**
+ * Entpackt ein schon geholtes Modell (meshopt) zu einem three-Baum. `url`:
+ * woher es kam - Basis für Dateien, auf die das GLB verweist.
+ */
+export async function parseModel(
+  buffer: ArrayBuffer,
+  url: string
 ): Promise<Object3D> {
-  const buffer = await fetchBytes(url, signal, declaredBytes, onBytes)
-  if (signal.aborted) throw new DOMException('Laden abgebrochen', 'AbortError')
   const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder)
   const gltf = await loader.parseAsync(
     buffer,
@@ -71,6 +34,18 @@ export async function loadModel(
     if (mesh.isMesh) mesh.frustumCulled = true
   })
   return root
+}
+
+/** Holt und entpackt ein Modell (Nahansicht). Der Laden holt sein Modell selbst: `holeModell`. */
+export async function loadModel(
+  url: string,
+  signal: AbortSignal,
+  declaredBytes: number | undefined,
+  onBytes: (fraction: number) => void
+): Promise<Object3D> {
+  const buffer = await fetchBytes(url, signal, declaredBytes, onBytes)
+  if (signal.aborted) throw new DOMException('Laden abgebrochen', 'AbortError')
+  return parseModel(buffer, url)
 }
 
 /** Gibt Geometrien, Materialien und Texturen eines Teilbaums frei. */
