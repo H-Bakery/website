@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import NextLink from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Alert,
   AlertTitle,
@@ -772,24 +772,29 @@ export default function AbholListeClient({
   // URL mitführen: Neuladen und „Zurück“ landen auf demselben Tag, Ort und
   // derselben Suche. Tippt nur jemand, ersetzt `replaceState` die Adresse -
   // `router.replace` fragte sonst je Tastendruck den Server nach der Seite.
+  // Schließt Next ein `router.replace` erst ab, nachdem schon getippt wurde,
+  // schreibt es seine Adresse ohne `q` - die geänderte Adresse
+  // (`useSearchParams`) lässt den Effekt die Suche wieder eintragen.
   const searchParam = query.trim()
   const urlPlaceRef = useRef('')
+  const urlSearch = useSearchParams()?.toString() ?? ''
   useEffect(() => {
     if (!isBusinessDate(date) || !place) return
     const href = abhollisteHref(date, place, searchParam)
+    const current = window.location.pathname + window.location.search
     const listKey = `${date}|${place}`
     if (urlPlaceRef.current !== listKey) {
       urlPlaceRef.current = listKey
-      router.replace(href, { scroll: false })
+      if (current !== href) router.replace(href, { scroll: false })
       return
     }
-    if (window.location.pathname + window.location.search === href) return
+    if (current === href) return
     try {
       window.history.replaceState(window.history.state, '', href)
     } catch {
       // Safari begrenzt `replaceState` je Sekunde - die Liste geht vor.
     }
-  }, [date, place, searchParam, router])
+  }, [date, place, searchParam, router, urlSearch])
 
   // Still nachladen (zweites Gerät, Fahrer), aber nicht mitten in einer Aktion.
   const quietRef = useRef(true)
