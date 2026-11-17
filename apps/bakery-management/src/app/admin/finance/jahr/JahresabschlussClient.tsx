@@ -323,6 +323,10 @@ function MonthsTable({ report }: { report: FinanceYearReport }) {
                         display: 'block',
                         whiteSpace: 'normal',
                         lineHeight: 1.3,
+                        // Mindestbreite, damit der Hinweis auf dem Handy in
+                        // der (seitlich scrollbaren) Tabelle nicht in
+                        // Einzelwörter zerfällt.
+                        minWidth: 150,
                         maxWidth: 200,
                         ml: 'auto',
                       }}
