@@ -766,6 +766,8 @@ Exit criterion: the Christmas preorders were handed over from the app and no dat
       a decision paper only (`docs/fernzugriff-fahrer.md`) and waits for Q8.
 - [x] "Rest am Abend" (#105, #112): unsold count per product at closing. This measures the waste target.
       Im Pilot freigegeben (Entscheidung 2026-11-08): Verkauf/Backstube zählen, Auswertung nur Inhaber.
+- [x] **Abgleich Produktion ↔ Kasse** `/admin/abgleich` (nur Inhaber): gebacken − CAP − verkauft − Rest
+      je Backtag und Posten, Ampel und Schwellen vorläufig (`docs/domains/abgleich.md`).
 - [~] **Rezepte** (#128) Recipes screen `/admin/rezepte` for the role `backstubenleiter`. Pulled
   forward from M5 by the owner on 2026-11-11. Rules: `docs/domains/rezepte.md`, API:
   `docs/api/recipes.md`.

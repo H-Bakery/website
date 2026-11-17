@@ -137,6 +137,14 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Gebacken, verkauft, übrig',
   },
   {
+    // Abgleich Produktion ↔ Kasse: nur Inhaber (ROLE_ACCESS; API:
+    // GET /api/abgleich `inhaber`).
+    label: 'Abgleich',
+    href: '/admin/abgleich',
+    icon: 'abgleich',
+    description: 'Produktion ↔ Kasse',
+  },
+  {
     label: 'Finanzen',
     href: '/admin/finance',
     icon: 'finance',

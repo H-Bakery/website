@@ -15,6 +15,7 @@ import {
   useTheme,
 } from '@mui/material'
 import { Download as DownloadIcon } from '@mui/icons-material'
+import Link from 'next/link'
 import {
   DAY_STATUS_LABELS,
   downloadRestCsv,
@@ -401,15 +402,26 @@ export default function RestAuswertungClient() {
       subtitle="Gebacken, verkauft und übrig - je Posten"
       back={{ href: '/admin/rest', label: 'Rest am Abend' }}
       actions={
-        <Button
-          variant="outlined"
-          startIcon={<DownloadIcon />}
-          onClick={() => void csv()}
-          disabled={!data || csvBusy}
-          sx={{ minHeight: 44 }}
-        >
-          CSV
-        </Button>
+        <>
+          {/* Abgleich Produktion ↔ Kasse: gebacken − CAP − verkauft − Rest. */}
+          <Button
+            component={Link}
+            href="/admin/abgleich"
+            variant="outlined"
+            sx={{ minHeight: 44 }}
+          >
+            Abgleich mit Kasse
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<DownloadIcon />}
+            onClick={() => void csv()}
+            disabled={!data || csvBusy}
+            sx={{ minHeight: 44 }}
+          >
+            CSV
+          </Button>
+        </>
       }
     >
       {/* Erst mit Daten: vorher stünden leere Von/Bis-Felder (tt.mm.jjjj)

@@ -96,6 +96,7 @@ describe('AdminLayout im Pilotbetrieb (NEXT_PUBLIC_PILOT_MODE=1)', () => {
     '/admin/dienstplan/mitarbeiter/3',
     '/admin/rest',
     '/admin/rest/auswertung',
+    '/admin/abgleich',
   ])('zeigt die erlaubte Seite %s', (route) => {
     renderLayout(route)
     expect(screen.getByTestId('page-content')).toBeInTheDocument()

@@ -163,7 +163,8 @@ const BACKSTUBE_ROUTES: readonly RouteRule[] = [
  * DIE Zuordnung Rolle → Routen + Startseite.
  *
  * - inhaber: alles, Start Dashboard. Nur er: u. a. Benutzer, Finanzen,
- *   Dienstplan und Rechnungen (`/admin/rechnungen`, API `/api/invoices`).
+ *   Dienstplan, Rechnungen (`/admin/rechnungen`, API `/api/invoices`) und
+ *   der Abgleich Produktion ↔ Kasse (`/admin/abgleich`, API `/api/abgleich`).
  * - verkauf: Vorbestellungen (M1, inkl. Abholliste darunter), Sammelstelle
  *   Mörsbach (heute die einzige Vorbestell-Erfassung), Produkte nur lesen
  *   (Liste und Preisliste, ohne Bearbeiten/Neu), Backschrank, Backzettel nur lesen (Z5, ohne
