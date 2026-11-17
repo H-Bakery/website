@@ -8,6 +8,7 @@ import {
   OpeningHoursDay,
   OpeningHoursWeek,
 } from '../config/openingHours'
+import { addDays, holidayName } from '../config/holidays'
 
 type DayKey = keyof OpeningHoursWeek
 
@@ -193,36 +194,6 @@ export function getCompactHoursSummary(): string {
 }
 
 /**
- * Check if bakery is currently open
- */
-export function isCurrentlyOpen(): boolean {
-  const now = new Date()
-  const days: DayKey[] = [
-    'sunday',
-    'monday',
-    'tuesday',
-    'wednesday',
-    'thursday',
-    'friday',
-    'saturday',
-  ]
-  const currentDayName = days[now.getDay()]
-  const dayHours = OPENING_HOURS[currentDayName]
-
-  if (!dayHours.isOpen || !dayHours.opens || !dayHours.closes) {
-    return false
-  }
-
-  const currentTime = now.getHours() * 100 + now.getMinutes()
-  const [openHour, openMin] = dayHours.opens.split(':').map(Number)
-  const [closeHour, closeMin] = dayHours.closes.split(':').map(Number)
-  const openTime = openHour * 100 + openMin
-  const closeTime = closeHour * 100 + closeMin
-
-  return currentTime >= openTime && currentTime <= closeTime
-}
-
-/**
  * Format a single day's hours for display
  */
 export function formatDayHours(day: OpeningHoursDay): string {
@@ -232,122 +203,185 @@ export function formatDayHours(day: OpeningHoursDay): string {
   return `${formatTime(day.opens)} - ${formatTime(day.closes)} Uhr`
 }
 
+// ---------------------------------------------------------------------------
+// Öffnungsstatus „jetzt“
+// ---------------------------------------------------------------------------
+
+/** Der Laden steht in Homburg: der Status gilt in deutscher Zeit, nie in der des Geräts. */
+export const SHOP_TIME_ZONE = 'Europe/Berlin'
+
 /**
- * Get today's formatted hours string
+ * So weit sucht `getOpenStatus` die nächste Öffnung. Feiertage und Ruhetag
+ * hintereinander sind höchstens ein paar Tage; die Grenze verhindert nur eine
+ * Endlosschleife bei einer Konfiguration ohne offenen Tag.
  */
-export function getTodayHours(): string {
-  const now = new Date()
-  const days: DayKey[] = [
-    'sunday',
-    'monday',
-    'tuesday',
-    'wednesday',
-    'thursday',
-    'friday',
-    'saturday',
-  ]
-  const currentDayName = days[now.getDay()]
-  return formatDayHours(OPENING_HOURS[currentDayName])
+const NEXT_OPENING_LOOKAHEAD_DAYS = 21
+
+/** `Date#getUTCDay()` → Schlüssel der Wochentabelle */
+const DAY_BY_INDEX: DayKey[] = [
+  'sunday',
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+]
+
+export interface NextOpening {
+  /** 'Heute', ein Wochentag ('Dienstag') oder - ab einer Woche - mit Datum ('Dienstag, 5.1.') */
+  day: string
+  /** Anzeigeformat, z. B. '5:30' */
+  time: string
+}
+
+interface OpenDayStatus {
+  /** z. B. '5:30 - 13:30 Uhr' */
+  todayHours: string
+  /** Öffnungszeit heute, Anzeigeformat */
+  opens: string
+  next: NextOpening | null
 }
 
 /**
- * Check if today is an open day but current time is before opening time.
- * Returns true if the bakery will open later today.
+ * Was der Laden gerade ist. `next` ist die nächste Öffnung nach heute (bei
+ * 'opens-later' heute selbst), Ruhetag und Feiertage übersprungen. Für
+ * Feiertage kennt die Konfiguration keine Zeiten: 'feiertag' ist nie
+ * „geöffnet“ und nennt keine Zeit für heute.
  */
-export function opensLaterToday(): boolean {
-  const now = new Date()
-  const days: DayKey[] = [
-    'sunday',
-    'monday',
-    'tuesday',
-    'wednesday',
-    'thursday',
-    'friday',
-    'saturday',
-  ]
-  const currentDayName = days[now.getDay()]
-  const dayHours = OPENING_HOURS[currentDayName]
+export type OpenStatus =
+  | ({ kind: 'open' } & OpenDayStatus)
+  | ({ kind: 'opens-later' } & OpenDayStatus)
+  | ({ kind: 'closed-for-today' } & OpenDayStatus)
+  | { kind: 'ruhetag'; next: NextOpening | null }
+  | { kind: 'feiertag'; name: string; next: NextOpening | null }
 
-  if (!dayHours.isOpen || !dayHours.opens) {
-    return false
+let shopClockFormat: Intl.DateTimeFormat | null = null
+
+/** Datum (`YYYY-MM-DD`) und Minuten seit Mitternacht in deutscher Zeit. */
+function shopClock(now: Date): { date: string; minutes: number } {
+  if (!shopClockFormat) {
+    shopClockFormat = new Intl.DateTimeFormat('en-US', {
+      timeZone: SHOP_TIME_ZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    })
   }
-
-  const currentTime = now.getHours() * 100 + now.getMinutes()
-  const [openHour, openMin] = dayHours.opens.split(':').map(Number)
-  const openTime = openHour * 100 + openMin
-
-  return currentTime < openTime
-}
-
-/**
- * Get today's opening time (formatted for display), or null if today is closed.
- */
-export function getTodayOpeningTime(): string | null {
-  const now = new Date()
-  const days: DayKey[] = [
-    'sunday',
-    'monday',
-    'tuesday',
-    'wednesday',
-    'thursday',
-    'friday',
-    'saturday',
-  ]
-  const currentDayName = days[now.getDay()]
-  const dayHours = OPENING_HOURS[currentDayName]
-
-  if (!dayHours.isOpen || !dayHours.opens) {
-    return null
+  const parts: Partial<Record<Intl.DateTimeFormatPartTypes, string>> = {}
+  for (const part of shopClockFormat.formatToParts(now)) {
+    parts[part.type] = part.value
   }
-
-  return formatTime(dayHours.opens)
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    // `% 24`: ältere Engines schreiben Mitternacht trotz h23 als '24'.
+    minutes: (Number(parts.hour) % 24) * 60 + Number(parts.minute),
+  }
 }
 
-/**
- * Get next opening day and time (time formatted for display, e.g. '5:30').
- * Checks if the bakery opens later today before looking at future days.
- */
-export function getNextOpening(): { day: string; time: string } | null {
-  const now = new Date()
-  const days: DayKey[] = [
-    'sunday',
-    'monday',
-    'tuesday',
-    'wednesday',
-    'thursday',
-    'friday',
-    'saturday',
-  ]
+function dayKeyOf(date: string): DayKey {
+  const [y, m, d] = date.split('-').map(Number)
+  return DAY_BY_INDEX[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]
+}
 
-  // Check if the bakery opens later today
-  const currentDayName = days[now.getDay()]
-  const todayHours = OPENING_HOURS[currentDayName]
+function toMinutes(time: string): number {
+  const [hour, minute] = time.split(':').map(Number)
+  return hour * 60 + minute
+}
 
-  if (todayHours.isOpen && todayHours.opens) {
-    const currentTime = now.getHours() * 100 + now.getMinutes()
-    const [openHour, openMin] = todayHours.opens.split(':').map(Number)
-    const openTime = openHour * 100 + openMin
-
-    if (currentTime < openTime) {
-      return {
-        day: 'Heute',
-        time: formatTime(todayHours.opens),
-      }
+/** Erste Öffnung nach `date`; Feiertage und geschlossene Wochentage übersprungen. */
+function nextOpeningAfter(date: string): NextOpening | null {
+  for (let i = 1; i <= NEXT_OPENING_LOOKAHEAD_DAYS; i++) {
+    const day = addDays(date, i)
+    if (holidayName(day)) continue
+    const key = dayKeyOf(day)
+    const hours = OPENING_HOURS[key]
+    if (!hours.isOpen || !hours.opens) continue
+    const [, month, dayOfMonth] = day.split('-').map(Number)
+    return {
+      // Ab einer Woche wäre der Wochentag allein mehrdeutig.
+      day:
+        i < 7
+          ? DAY_NAMES.de[key]
+          : `${DAY_NAMES.de[key]}, ${dayOfMonth}.${month}.`,
+      time: formatTime(hours.opens),
     }
   }
-
-  for (let i = 1; i <= 7; i++) {
-    const futureDate = new Date(now.getTime() + i * 24 * 60 * 60 * 1000)
-    const dayName = days[futureDate.getDay()]
-    const dayHours = OPENING_HOURS[dayName]
-
-    if (dayHours.isOpen && dayHours.opens) {
-      return {
-        day: DAY_NAMES.de[dayName],
-        time: formatTime(dayHours.opens),
-      }
-    }
-  }
-
   return null
+}
+
+/**
+ * Öffnungsstatus zum Zeitpunkt `now`, gerechnet in deutscher Zeit
+ * (Europe/Berlin): ein Gerät in einer anderen Zeitzone sieht denselben
+ * Status. Ein gesetzlicher Feiertag im Saarland (`config/holidays.ts`) geht
+ * dem Wochenplan und dem Ruhetag vor.
+ */
+export function getOpenStatus(now: Date = new Date()): OpenStatus {
+  const { date, minutes } = shopClock(now)
+  const holiday = holidayName(date)
+  if (holiday) {
+    return { kind: 'feiertag', name: holiday, next: nextOpeningAfter(date) }
+  }
+
+  const hours = OPENING_HOURS[dayKeyOf(date)]
+  if (!hours.isOpen || !hours.opens || !hours.closes) {
+    return { kind: 'ruhetag', next: nextOpeningAfter(date) }
+  }
+
+  const today = {
+    todayHours: formatDayHours(hours),
+    opens: formatTime(hours.opens),
+  }
+  if (minutes < toMinutes(hours.opens)) {
+    return {
+      kind: 'opens-later',
+      ...today,
+      next: { day: 'Heute', time: today.opens },
+    }
+  }
+  if (minutes <= toMinutes(hours.closes)) {
+    return { kind: 'open', ...today, next: nextOpeningAfter(date) }
+  }
+  return { kind: 'closed-for-today', ...today, next: nextOpeningAfter(date) }
+}
+
+/** Is the bakery open right now (German time)? Never on a holiday. */
+export function isCurrentlyOpen(now: Date = new Date()): boolean {
+  return getOpenStatus(now).kind === 'open'
+}
+
+/**
+ * Today's formatted hours: '5:30 - 13:30 Uhr', 'Geschlossen' on the Ruhetag,
+ * 'Feiertag (Name)' on a holiday (no hours are configured for holidays).
+ */
+export function getTodayHours(now: Date = new Date()): string {
+  const status = getOpenStatus(now)
+  if (status.kind === 'feiertag') return `Feiertag (${status.name})`
+  if (status.kind === 'ruhetag') return 'Geschlossen'
+  return status.todayHours
+}
+
+/** True if today is an open day (not a holiday) and opening time is still ahead. */
+export function opensLaterToday(now: Date = new Date()): boolean {
+  return getOpenStatus(now).kind === 'opens-later'
+}
+
+/** Today's opening time (formatted for display), or null on the Ruhetag or a holiday. */
+export function getTodayOpeningTime(now: Date = new Date()): string | null {
+  const status = getOpenStatus(now)
+  return status.kind === 'ruhetag' || status.kind === 'feiertag'
+    ? null
+    : status.opens
+}
+
+/**
+ * Next opening day and time (time formatted for display, e.g. '5:30'):
+ * 'Heute' before opening time, otherwise the next open day, skipping the
+ * Ruhetag and holidays.
+ */
+export function getNextOpening(now: Date = new Date()): NextOpening | null {
+  return getOpenStatus(now).next
 }

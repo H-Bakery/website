@@ -6,13 +6,11 @@ import PhoneIcon from '@mui/icons-material/Phone'
 import ShoppingBagIcon from '@mui/icons-material/ShoppingBag'
 import PlaceIcon from '@mui/icons-material/Place'
 import {
-  isCurrentlyOpen,
-  getTodayHours,
-  getNextOpening,
-  opensLaterToday,
-  getTodayOpeningTime,
+  getOpenStatus,
   getCompactHoursSummary,
+  type OpenStatus,
 } from '../../utils/openingHours'
+import { LEGAL } from '../../config/legal'
 
 interface InfoCard {
   icon: React.ReactNode
@@ -20,6 +18,47 @@ interface InfoCard {
   value: string
   subtext?: string
   href?: string
+}
+
+/**
+ * Value, subtext and icon colour of the hours card per state. On a holiday
+ * it stays neutral: holiday hours are not configured, so it neither claims
+ * "geöffnet" nor "geschlossen".
+ */
+function hoursCardContent(status: OpenStatus): {
+  value: string
+  subtext?: string
+  iconColor: string
+} {
+  switch (status.kind) {
+    case 'open':
+      return {
+        value: 'Jetzt geöffnet',
+        subtext: `Heute ${status.todayHours}`,
+        iconColor: '#7A9B6B',
+      }
+    case 'opens-later':
+      return {
+        value: `Öffnet um ${status.opens} Uhr`,
+        subtext: `Heute ${status.todayHours}`,
+        iconColor: '#B48C3C',
+      }
+    case 'feiertag':
+      return {
+        value: 'Feiertag',
+        // non-breaking space: a wrapped line never starts with the dash
+        subtext: `${status.name}\u00a0– Öffnungszeiten bitte telefonisch erfragen`,
+        iconColor: '#5A2E2A',
+      }
+    default:
+      return {
+        value: 'Geschlossen',
+        subtext: status.next
+          ? `Nächste Öffnung: ${status.next.day} ${status.next.time} Uhr`
+          : undefined,
+        iconColor: '#5A2E2A',
+      }
+  }
 }
 
 const QuickInfoBar: React.FC = () => {
@@ -31,32 +70,7 @@ const QuickInfoBar: React.FC = () => {
   })
 
   useEffect(() => {
-    const open = isCurrentlyOpen()
-    const todayHours = getTodayHours()
-    const nextOpening = getNextOpening()
-    const opensLater = opensLaterToday()
-    const openingTime = getTodayOpeningTime()
-
-    let value: string
-    let subtext: string | undefined
-    let iconColor: string
-
-    if (open) {
-      value = 'Jetzt geöffnet'
-      subtext = `Heute ${todayHours}`
-      iconColor = '#7A9B6B'
-    } else if (opensLater && openingTime) {
-      value = `Öffnet um ${openingTime} Uhr`
-      subtext = `Heute ${todayHours}`
-      iconColor = '#B48C3C'
-    } else {
-      value = 'Geschlossen'
-      subtext = nextOpening
-        ? `Nächste Öffnung: ${nextOpening.day} ${nextOpening.time} Uhr`
-        : undefined
-      iconColor = '#5A2E2A'
-    }
-
+    const { value, subtext, iconColor } = hoursCardContent(getOpenStatus())
     setHoursCard({
       icon: <AccessTimeIcon sx={{ fontSize: 32, color: iconColor }} />,
       label: 'Öffnungszeiten',
@@ -70,16 +84,16 @@ const QuickInfoBar: React.FC = () => {
     {
       icon: <PhoneIcon sx={{ fontSize: 32, color: '#5A2E2A' }} />,
       label: 'Telefon',
-      value: '06841 2229',
+      value: LEGAL.phone,
       subtext: 'Anrufen und bestellen',
-      href: 'tel:068412229',
+      href: LEGAL.phoneHref,
     },
     {
       icon: <ShoppingBagIcon sx={{ fontSize: 32, color: '#d038ba' }} />,
       label: 'Bestellen',
       value: 'Telefonisch oder vor Ort',
       subtext: 'Gerne auch vorbestellen',
-      href: 'tel:068412229',
+      href: LEGAL.phoneHref,
     },
     {
       icon: <PlaceIcon sx={{ fontSize: 32, color: '#5A2E2A' }} />,
@@ -125,7 +139,7 @@ const QuickInfoBar: React.FC = () => {
                 <Typography
                   variant="body2"
                   sx={{
-                    color: '#928168',
+                    color: 'text.secondary',
                     fontSize: { xs: '0.85rem', md: '0.9rem' },
                     fontWeight: 700,
                     textTransform: 'uppercase',
@@ -151,7 +165,7 @@ const QuickInfoBar: React.FC = () => {
                   <Typography
                     variant="body2"
                     sx={{
-                      color: '#928168',
+                      color: 'text.secondary',
                       fontSize: { xs: '0.85rem', md: '0.9rem' },
                     }}
                   >
