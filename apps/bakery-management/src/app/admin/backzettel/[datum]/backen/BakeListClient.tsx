@@ -42,6 +42,7 @@ import {
   neighbourProductionDay,
 } from '../../../../../lib/backzettelFormat'
 import { useOptionalSession } from '../../../../../lib/session'
+import { backzettelErrorText } from '../../../../../lib/backstubeErrors'
 import { hasBackstubeRights } from '../../../../../lib/roles'
 import { DeltasCard } from '../../../../../components/backzettel/DeltasCard'
 import {
@@ -50,10 +51,6 @@ import {
 } from '../../../../../components/backzettel/BakeListPrint'
 
 const MIN_TOUCH = { minHeight: 44 }
-
-function messageOf(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback
-}
 
 /** Offene Nachträge der Zeile: Rand + leichte Warnfarbe (wie der Zettel). */
 function deltaSx(line: BackzettelLine) {
@@ -193,7 +190,10 @@ export default function BakeListClient({ date }: BakeListClientProps) {
     if (bake.status === 'fulfilled') setList(bake.value)
     else
       setLoadError(
-        messageOf(bake.reason, 'Die Backliste konnte nicht geladen werden.')
+        backzettelErrorText(
+          bake.reason,
+          'Die Backliste konnte nicht geladen werden.'
+        )
       )
     setLoading(false)
   }, [date, validDate])
@@ -227,7 +227,10 @@ export default function BakeListClient({ date }: BakeListClientProps) {
       setList(await fetchBakeList(date))
     } catch (error) {
       setActionError(
-        messageOf(error, 'Der Nachtrag konnte nicht quittiert werden.')
+        backzettelErrorText(
+          error,
+          'Der Nachtrag konnte nicht quittiert werden.'
+        )
       )
     } finally {
       setAckingId(null)

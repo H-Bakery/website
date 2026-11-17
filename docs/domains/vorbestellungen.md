@@ -144,12 +144,23 @@ und `/admin/preorders/tag?date=` (Summen je Produkt **und Sorte**, Abholliste, A
 - **Tastatur:** Die Maske ist kein `<form>` - Enter springt weiter (Name → Telefon → Suche → Menge →
   Hinzufügen → Suche), **Strg/Cmd+Enter speichert**. Die Ziffernblock-Tasten haben `tabIndex -1` und
   nehmen dem Mengenfeld den Fokus nicht.
+- **Speichern mit Lücken nennt den Grund:** fehlt etwas, springt der Fokus auf das erste Feld in der
+  Reihenfolge Name → Abholtag → Produktsuche (beim offenen Ziffernblock: Sorte bzw. Menge), das Feld
+  rollt in die Mitte, und die Meldung steht in der Speicherleiste unten (`role="alert"`, statt „0
+  Artikel · 0,00 €“) - am Handy lag der Hinweis bei „Bestellung“ außer Sicht. Ist die Lücke
+  gefüllt, nennt die Leiste die nächste, danach wieder die Summe. Abholtag und Uhrzeit stehen
+  nebeneinander nur, wo die Spalte breit genug ist (sm, ab xl); die Uhrzeit heißt „Uhrzeit“ mit
+  „optional“ darunter.
 - **Entwurf übersteht das Sitzungsende** (`src/lib/preorderDraft.ts`): eine halb erfasste
   Telefonbestellung liegt in `sessionStorage`, **einer je Benutzer** (`draftKey`, an der gemeinsamen
   Station überschreibt ein Kollege ihn nicht), verfällt nach 12 h und trägt die `requestId` des
   Speicherns mit - ein Wiederholen nach verlorener Antwort legt keine zweite Bestellung an. Meldet die
   API `request_id_changed`, entscheidet die Verkäuferin: in die schon angelegte Bestellung übernehmen
-  oder neu.
+  oder neu. Der Entwurf merkt sich auch den **Ausgang** (`outcome`, aus `requestFailureKind`): hat die
+  API jeden Versuch mit dieser Kennung abgelehnt (401, 4xx → `refused`), sagt er nach dem
+  Wiederherstellen „Noch nicht gespeichert – bitte prüfen und speichern.“; blieb einer ohne Antwort
+  oder kam 5xx (auch erst WLAN weg, dann die Sitzung abgelaufen), bleibt es bei „vielleicht schon
+  angekommen“. Ein Entwurf ohne das Feld (von vor dem Update, Versuch lief noch) gilt als unklar.
 - **Preis-Snapshot:** Die Summe in der Maske ist eine Vorschau. Ändert sich Tag oder Ort, vergibt der
   Server einen neuen Code - die Oberfläche sagt das an.
 - **„Als PDF drucken“ (Bestellschein):** Die Ansicht einer Vorbestellung lädt die Bestellung als

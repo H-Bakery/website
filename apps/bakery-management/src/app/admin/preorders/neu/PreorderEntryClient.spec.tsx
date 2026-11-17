@@ -271,7 +271,7 @@ describe('PreorderEntryClient (P1)', () => {
       'aria-checked',
       'true'
     )
-    expect(screen.queryByLabelText('Uhrzeit (optional)')).toBeNull()
+    expect(screen.queryByLabelText('Uhrzeit')).toBeNull()
     expect(screen.getByText(/Übergabe 09:00-09:30 Uhr/)).toBeInTheDocument()
 
     await user.type(screen.getByLabelText(/^Name/), 'Kita Kind')
@@ -330,10 +330,72 @@ describe('PreorderEntryClient (P1)', () => {
       screen.getByRole('button', { name: 'Vorbestellung speichern' })
     )
     expect(mockCreate).not.toHaveBeenCalled()
-    expect(screen.getByText('Bitte den Namen eintragen.')).toBeInTheDocument()
+    // am Feld und (als Erstes, was fehlt) in der Speicherleiste
+    expect(screen.getAllByText('Bitte den Namen eintragen.')).toHaveLength(2)
     expect(
       screen.getByText('Bitte mindestens einen Artikel hinzufügen.')
     ).toBeInTheDocument()
+  })
+
+  describe('Speichern mit Lücken: Grund sichtbar, Fokus aufs Feld', () => {
+    const save = () =>
+      screen.getByRole('button', { name: 'Vorbestellung speichern' })
+
+    it('Name da, keine Artikel: Meldung als Alert in der Leiste, Fokus auf der Produktsuche', async () => {
+      const user = userEvent.setup()
+      await ready()
+      await user.keyboard('Erika Beispiel')
+      const search = screen.getByLabelText('Produkt suchen')
+      const scroll = jest.spyOn(search, 'scrollIntoView')
+      await user.click(save())
+      expect(mockCreate).not.toHaveBeenCalled()
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Bitte mindestens einen Artikel hinzufügen.'
+      )
+      expect(search).toHaveFocus()
+      expect(scroll).toHaveBeenCalled()
+      // statt „0 Artikel · 0,00 €“
+      expect(screen.queryByText(/0 Artikel ·/)).toBeNull()
+
+      // Artikel dazu: die Leiste zeigt wieder die Summe
+      await user.keyboard('korn{Enter}{Enter}')
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(screen.getByText(/1 Artikel · 2,50\s€/)).toBeInTheDocument()
+    })
+
+    it('Name da, Abholtag geschlossen: Meldung des Tags, Fokus auf Abholtag', async () => {
+      const user = userEvent.setup()
+      await ready()
+      await user.keyboard('Erika Beispiel')
+      const date = screen.getByLabelText('Abholtag')
+      fireEvent.change(date, { target: { value: '2026-11-16' } })
+      await user.click(save())
+      expect(mockCreate).not.toHaveBeenCalled()
+      // vor den fehlenden Artikeln - die Reihenfolge der Maske
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Montag ist Ruhetag - bitte einen anderen Tag wählen.'
+      )
+      expect(date).toHaveFocus()
+    })
+
+    it('Name leer: Fokus auf Name, wie bisher', async () => {
+      const user = userEvent.setup()
+      await ready()
+      await user.click(screen.getByLabelText('Produkt suchen'))
+      await user.click(save())
+      expect(mockCreate).not.toHaveBeenCalled()
+      expect(screen.getByLabelText(/^Name/)).toHaveFocus()
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Bitte den Namen eintragen.'
+      )
+    })
+
+    it('Uhrzeit heißt „Uhrzeit“, „optional“ steht darunter', async () => {
+      await ready()
+      const time = screen.getByLabelText('Uhrzeit')
+      expect(time).toHaveAttribute('type', 'time')
+      expect(screen.getByText('optional')).toBeInTheDocument()
+    })
   })
 
   describe('Schließtage laut Kalender (Z14)', () => {
@@ -584,6 +646,7 @@ describe('Entwurf und Wiederholen (W4-verify r4)', () => {
     )
     expect(message).toBeInTheDocument()
     expect(screen.queryByText(/Failed to fetch/)).toBeNull()
+    expect(JSON.parse(stored.get(DRAFT_7) ?? '{}').outcome).toBe('offline')
 
     await user.click(
       screen.getByRole('button', { name: 'Vorbestellung speichern' })
@@ -809,6 +872,129 @@ describe('Entwurf und Wiederholen (W4-verify r4)', () => {
     const banner = await screen.findByTestId('preorder-draft-restored')
     expect(banner).toHaveTextContent('vielleicht schon angekommen')
     expect(banner).not.toHaveTextContent('Nicht gespeicherte')
+  })
+
+  it.each([
+    ['401', new ApiError('Bitte neu anmelden.', 401, 'unauthorized')],
+    [
+      '400',
+      new ApiError('Die Telefonnummer ist ungültig.', 400, 'invalid_phone'),
+    ],
+  ])(
+    'abgelehnt (%s): nach dem Neuladen „Noch nicht gespeichert“, nicht „vielleicht“ - und dieselbe Kennung',
+    async (_status, refusal) => {
+      const user = userEvent.setup()
+      mockCreate
+        .mockRejectedValueOnce(refusal)
+        .mockResolvedValueOnce(preorder({ code: 'LA-2026-11-13-04' }))
+      const first = await readyAs(7)
+      await user.keyboard('Erika{Enter}{Enter}korn{Enter}{Enter}')
+      await user.click(
+        screen.getByRole('button', { name: 'Vorbestellung speichern' })
+      )
+      expect(await screen.findByText(refusal.message)).toBeInTheDocument()
+      expect(
+        screen.queryByText(/Ob die Bestellung schon angekommen/)
+      ).toBeNull()
+      const draft = JSON.parse(stored.get(DRAFT_7) ?? '{}')
+      expect(draft.outcome).toBe('refused')
+      expect(draft.requestId).toEqual(expect.any(String))
+      first.unmount()
+
+      await readyAs(7)
+      const banner = await screen.findByTestId('preorder-draft-restored')
+      expect(banner).toHaveTextContent(
+        'Noch nicht gespeichert – bitte prüfen und speichern.'
+      )
+      expect(banner).not.toHaveTextContent('vielleicht')
+
+      await user.click(
+        screen.getByRole('button', { name: 'Vorbestellung speichern' })
+      )
+      expect(await screen.findByTestId('preorder-saved')).toBeInTheDocument()
+      expect(mockCreate.mock.calls[1][0].requestId).toBe(draft.requestId)
+    }
+  )
+
+  it('502 vom Proxy: der Entwurf sagt weiter „vielleicht schon angekommen“', async () => {
+    const user = userEvent.setup()
+    mockCreate.mockRejectedValueOnce(new ApiError('HTTP 502: Bad Gateway', 502))
+    const first = await readyAs(7)
+    await user.keyboard('Erika{Enter}{Enter}korn{Enter}{Enter}')
+    await user.click(
+      screen.getByRole('button', { name: 'Vorbestellung speichern' })
+    )
+    await screen.findByText(/Ob die Bestellung schon angekommen ist/)
+    expect(JSON.parse(stored.get(DRAFT_7) ?? '{}').outcome).toBe('server')
+    first.unmount()
+    await readyAs(7)
+    const banner = await screen.findByTestId('preorder-draft-restored')
+    expect(banner).toHaveTextContent('vielleicht schon angekommen')
+    expect(banner).not.toHaveTextContent('Noch nicht gespeichert')
+  })
+
+  it('erst ohne Antwort, dann abgelehnt (Sitzung abgelaufen): bleibt „vielleicht“ - der erste Versuch kann angekommen sein', async () => {
+    const user = userEvent.setup()
+    mockCreate
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(
+        new ApiError('Bitte neu anmelden.', 401, 'unauthorized')
+      )
+    const first = await readyAs(7)
+    await user.keyboard('Erika{Enter}{Enter}korn{Enter}{Enter}')
+    const save = () =>
+      screen.getByRole('button', { name: 'Vorbestellung speichern' })
+    await user.click(save())
+    await screen.findByText(/Ob die Bestellung schon angekommen ist/)
+    await user.click(save())
+    await screen.findByText('Bitte neu anmelden.')
+    expect(JSON.parse(stored.get(DRAFT_7) ?? '{}').outcome).toBe('offline')
+    first.unmount()
+    await readyAs(7)
+    expect(
+      await screen.findByTestId('preorder-draft-restored')
+    ).toHaveTextContent('vielleicht schon angekommen')
+  })
+
+  it('ein Entwurf von vor dem Feld `outcome` kommt wie bisher zurück', async () => {
+    const user = userEvent.setup()
+    mockCreate.mockResolvedValueOnce(preorder({ code: 'LA-2026-11-13-04' }))
+    stored.set(
+      DRAFT_7,
+      JSON.stringify({
+        customerName: 'Erika Alt',
+        customerPhone: '',
+        channel: 'telefon',
+        pickupPointId: '',
+        pickupDate: '2026-11-13',
+        pickupTime: '',
+        paid: false,
+        note: '',
+        lines: [
+          {
+            key: 'kornbrot-500g|',
+            productId: 'kornbrot-500g',
+            name: 'Kornbrot 500g',
+            variant: '',
+            unit: 'Stück',
+            unitPrice: 2.5,
+            quantity: 1,
+          },
+        ],
+        userId: '7',
+        savedAt: NOW.toISOString(),
+        requestId: 'alte-kennung-1',
+      })
+    )
+    await readyAs(7)
+    const banner = await screen.findByTestId('preorder-draft-restored')
+    expect(banner).toHaveTextContent('vielleicht schon angekommen')
+    expect(screen.getByLabelText(/^Name/)).toHaveValue('Erika Alt')
+    await user.click(
+      screen.getByRole('button', { name: 'Vorbestellung speichern' })
+    )
+    expect(await screen.findByTestId('preorder-saved')).toBeInTheDocument()
+    expect(mockCreate.mock.calls[0][0].requestId).toBe('alte-kennung-1')
   })
 })
 

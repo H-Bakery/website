@@ -10,6 +10,7 @@ import {
   TextField,
 } from '@mui/material'
 import type { BackzettelLine } from '../../lib/backzettelApi'
+import { backzettelErrorText } from '../../lib/backstubeErrors'
 import {
   formatNumber,
   isIntegerUnit,
@@ -92,10 +93,10 @@ export function CorrectionEditor({
       if (options) await onSave(correction, saveReason, options)
       else await onSave(correction, saveReason)
     } catch (e) {
+      // Deutsche Meldungen der API (`correction_changed`, `owned_elsewhere`
+      // …) bleiben; „Failed to fetch“ oder „HTTP 502“ nicht (lib/backstubeErrors).
       setError(
-        e instanceof Error && e.message
-          ? e.message
-          : 'Die Korrektur konnte nicht gespeichert werden.'
+        backzettelErrorText(e, 'Die Korrektur konnte nicht gespeichert werden.')
       )
       setSaving(false)
     }
