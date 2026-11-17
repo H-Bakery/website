@@ -48,7 +48,9 @@ Routen `src/routes/abgleich.routes.ts` (`/api/abgleich`) · Management-App
   Zählung. Ist schon dieser Wert negativ, kann kein Rest ihn erklären - die Ampel zeigt das auch
   ohne Zählung („prüfen (ohne Rest)“).
 - **Verkauft, aber nicht gebacken:** steht ein Posten nicht auf dem Backzettel des Tages, wurde
-  aber verkauft, erscheint er mit gebacken 0 (Signal „mehr verkauft“).
+  aber verkauft, erscheint er mit gebacken 0 (Signal „mehr verkauft“). Das ist keine Zähllücke:
+  die Zeile sagt „verkauft, aber nicht auf dem Backzettel“ (`gaps.notOnBackzettel`), nicht „Rest
+  nicht gezählt“.
 - **Einheiten:** verglichen wird, wenn jede Kassennummer einem Produkt des Postens mit Faktor
   zugeordnet ist (`converted`, `soldBasis: 'umgerechnet'`) - oder wenn Posten und Kasse beide
   Stück zählen: ein Stück-Posten, dessen Produkte je ein Stück sind (Faktor 1), wird Stück gegen
@@ -56,7 +58,9 @@ Routen `src/routes/abgleich.routes.ts` (`/api/abgleich`) · Management-App
   nicht die `numeric_id` der Produkte). Sonst „nicht vergleichbar (Einheit)“ - z. B. ein Liter-Posten,
   dessen Kassennummer kein Produkt mit Faktor hat, oder ein Stück-Posten, von dessen
   Kassennummern eine das Produkt eines **anderen** Postens ist (Stammdatenfehler, wird nie still
-  mitgezählt). Ob ein Posten vergleichbar ist, hängt nur an den Stammdaten - nicht daran, ob es im
+  mitgezählt). „Fremd“ ist eine Kassennummer nur, wenn ein anderer Posten sie selbst in `plu`
+  führt oder sie die Produkt-ID eines Produkts eines anderen Postens ist - ein Treffer nur über die
+  `numeric_id` des Katalogs zählt nicht (Kassennummern und `numeric_id` treffen sich zufällig). Ob ein Posten vergleichbar ist, hängt nur an den Stammdaten - nicht daran, ob es im
   Zeitraum einen Kassenbericht gab. Die Stück-gegen-Stück-Regel gilt bewusst nur hier; Rest am
   Abend und die Grundmengen-Referenz zeigen dieselben Stückzahlen weiter als „nicht umgerechnet“,
   bis der Inhaber die Regel bestätigt. **Ohne Kassennummer:** „keine Kassennummer“.
@@ -70,8 +74,14 @@ Routen `src/routes/abgleich.routes.ts` (`/api/abgleich`) · Management-App
   Produkt des Postens in seiner Einheit (ein 500-g-Laib = 0,5 L, ein Kuchenstück = ¼ Blech). Je
   Tag und je Posten über den Zeitraum: dort gilt die **schlechtere** von zwei Ampeln - Ungeklärt
   über die Tage mit Rest, und „mehr verkauft“ über die Tage ohne Rest (nur die negativen Tage
-  summiert; übrige Ware eines Tages gleicht zu viel Verkauf an einem anderen nicht aus). Hat ein
-  Tag „prüfen“, der Zeitraum aber nicht, sagt die Zeile „An n Tagen prüfen“.
+  summiert; übrige Ware eines Tages gleicht zu viel Verkauf an einem anderen nicht aus). Diese
+  Menge steht unter der Ampel („−10 St. an einem Tag ohne Rest“, `shortWithoutRest`, im CSV „Mehr
+  verkauft (Tage ohne Rest)“), weil die Spalten davor sie verrechnet zeigen. Hat ein Tag „prüfen“,
+  der Zeitraum aber nicht, sagt die Zeile „An n Tagen prüfen“.
+- **Gebacken je Posten** zählt nur die vergleichbaren Tage (Kassenbericht da, Grundmenge
+  festgelegt), damit gebacken − CAP − verkauft aufgeht. Fehlen Tage, steht darunter „x von y
+  Tagen (alle: n)“; im CSV stehen „Gebacken (alle Tage)“ und „Gebacken (vergleichbare Tage)“
+  getrennt. Ein Mindestwert (Grundmenge offen) steht auch im CSV als „≥ n“.
 - **Rest nur an einem Teil der Tage:** gebacken, CAP, verkauft und „nicht verkauft oder nicht
   kassiert“ laufen über alle vergleichbaren Tage, Rest und Ungeklärt nur über die gezählten. Die
   Grundlage von Ungeklärt steht deshalb darunter („nur 1 von 2 Tagen: gebacken − CAP − verkauft −

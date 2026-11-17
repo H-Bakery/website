@@ -30,10 +30,13 @@ Every other role gets 403 `forbidden`. Errors via `sendError`: 400 `invalid_date
   `restShopBaked` / `restSold` (the base of `unexplained`: the days with a count), `rest`,
   `unexplained`, `ampel` (`ok` / `auffaellig` / `pruefen` / `null`; the worse of the counted days'
   `unexplained` and the uncounted days' negative `open`, never netted), `ampelBasis` (`mit_rest` /
-  `ohne_rest`), `signal` (the difference behind the Ampel, sort key), `signalDays { pruefen,
+  `ohne_rest`), `signal` (the difference behind the Ampel, sort key), `shortWithoutRest` /
+  `shortDays` (sum of the negative `open` on days without a count, `null` without such a day - shown
+  under the Ampel), `signalDays { pruefen,
 auffaellig }`, `direction` (`fehlt` / `mehr_verkauft`), `rate`, `overproduction`, `gaps`
-  (`noReport`, `restMissing`, `restPartial`, `baseOpen`), `foreignPlu` (PLUs that are another
-  item's product), `variants[]`, `dayRows[]`. `status` comes from the item alone (PLUs,
+  (`noReport`, `restMissing`, `restPartial`, `baseOpen`, `notOnBackzettel`: sold but not on that
+  day's Backzettel, not a counting gap), `foreignPlu` (PLUs another item lists in `plu` or that are
+  another item's product id; a match only via the catalog `numeric_id` does not count), `variants[]`, `dayRows[]`. `status` comes from the item alone (PLUs,
   conversion), not from whether a report exists. `baked/cap/sold/open` sum the
   comparable days (report present, units convertible; without any, `baked/cap` sum all days), `rest/unexplained` the days with a
   complete count. `key` is `itemId`, or `itemId|sizeId` when the item is compared per loaf size.

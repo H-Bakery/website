@@ -189,6 +189,13 @@ function ItemNotes({ item }: { item: AbgleichItem }) {
   if (restGaps.length > 0) {
     notes.push(`Rest nicht (ganz) gezählt: ${dateList(restGaps)}`)
   }
+  if (item.gaps.notOnBackzettel.length > 0) {
+    notes.push(
+      `verkauft, aber nicht auf dem Backzettel: ${dateList(
+        item.gaps.notOnBackzettel
+      )}`
+    )
+  }
   if (item.overproduction) {
     notes.push(`Restquote ${formatRate(item.rate)} - zu viel produziert?`)
   }
@@ -329,6 +336,19 @@ function ItemRow({ item }: { item: AbgleichItem }) {
         </TableCell>
         <TableCell align="right" sx={HIDE_ON_PHONE}>
           {bakedText(item.baked, item.bakedIsMinimum, u)}
+          {item.comparableDays > 0 && item.comparableDays < item.days && (
+            // Gebacken zählt nur die vergleichbaren Tage, damit gebacken −
+            // CAP − verkauft aufgeht - die Tage darunter summieren mehr.
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              component="div"
+              data-testid={`gebacken-basis-${item.key}`}
+            >
+              {item.comparableDays} von {item.days} Tagen (alle:{' '}
+              {bakedText(item.allBaked, item.allBakedIsMinimum, u)})
+            </Typography>
+          )}
         </TableCell>
         <TableCell align="right" sx={HIDE_ON_PHONE}>
           {formatQtyUnit(item.cap, u)}
@@ -379,7 +399,8 @@ function ItemRow({ item }: { item: AbgleichItem }) {
                 component="span"
                 sx={{ display: { xs: 'inline', sm: 'none' } }}
               >
-                {formatSigned(item.open, u)}*
+                {formatSigned(item.open, u)}
+                {item.open !== null && '*'}
               </Box>
               <Box
                 component="span"
@@ -392,6 +413,22 @@ function ItemRow({ item }: { item: AbgleichItem }) {
         </TableCell>
         <TableCell>
           <AmpelChip ampel={item.ampel} basis={item.ampelBasis} />
+          {item.shortWithoutRest !== null && (
+            // Die Zahl hinter „prüfen (ohne Rest)“: an Tagen ohne Rest mehr
+            // verkauft als gebacken - übrige Ware anderer Tage gleicht das
+            // nicht aus, deshalb steht sie nicht in den Spalten davor.
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              component="div"
+              data-testid={`mehr-verkauft-${item.key}`}
+              sx={{ minWidth: 110 }}
+            >
+              {formatSigned(item.shortWithoutRest, u)} an{' '}
+              {item.shortDays === 1 ? 'einem Tag' : `${item.shortDays} Tagen`}{' '}
+              ohne Rest
+            </Typography>
+          )}
         </TableCell>
       </TableRow>
       <TableRow>
@@ -642,7 +679,10 @@ export default function AbgleichClient() {
                     <strong>Gebacken</strong>: freigegebener Backzettel plus
                     quittierte Nachträge. Nicht freigegeben: der geplante Wert
                     („geplant“). Ist die Grundmenge offen, gibt es keinen Plan:
-                    gebacken steht als „≥ n“, ohne Vergleich.
+                    gebacken steht als „≥ n“, ohne Vergleich. In der Zeile je
+                    Posten zählen gebacken und CAP nur die vergleichbaren Tage
+                    (mit Kassenbericht und festgelegter Grundmenge), damit die
+                    Rechnung aufgeht; „x von y Tagen“ nennt dann auch alle Tage.
                   </Typography>
                 </li>
                 <li>
@@ -689,10 +729,11 @@ export default function AbgleichClient() {
                     CAP, auffällig bis{' '}
                     {Math.round(data.thresholds.noticeShare * 100)} %, sonst
                     prüfen. „ohne Rest“: schon ohne Zählung mehr verkauft als
-                    gebacken. Über den Zeitraum gilt die schlechtere Ampel aus
-                    den gezählten und den nicht gezählten Tagen; übrige Ware
-                    eines Tages gleicht zu viel Verkauf an einem anderen nicht
-                    aus. Restquote über{' '}
+                    gebacken - die Menge steht unter der Ampel („an Tagen ohne
+                    Rest“). Über den Zeitraum gilt die schlechtere Ampel aus den
+                    gezählten und den nicht gezählten Tagen; übrige Ware eines
+                    Tages gleicht zu viel Verkauf an einem anderen nicht aus.
+                    Restquote über{' '}
                     {Math.round(data.thresholds.overproductionRate * 100)} %: zu
                     viel produziert?
                   </Typography>

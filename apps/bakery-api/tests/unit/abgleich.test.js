@@ -333,6 +333,12 @@ describe('reconcile', () => {
       direction: 'mehr_verkauft',
     })
     expect(p.dayRows[0].restStatus).toBe('not_on_backzettel')
+    // keine Zähllücke: der Posten stand nicht auf dem Backzettel
+    expect(p.gaps.restMissing).toEqual([])
+    expect(p.gaps.notOnBackzettel).toEqual([TUE])
+    expect(core.abgleichCsv(s)).toMatch(
+      new RegExp(`Plunder;Stück;freigegeben;.*;;;${TUE}$`, 'm')
+    )
   })
 
   it('Sorten: teilweise gezählt ist kein Rest; Kasse über alle Sorten, mit Faktor umgerechnet', () => {
@@ -652,7 +658,13 @@ describe('reconcile', () => {
       ampelBasis: 'ohne_rest',
       direction: 'mehr_verkauft',
       signal: -10,
+      // die Zahl hinter „prüfen (ohne Rest)“ steht eigens da
+      shortWithoutRest: -10,
+      shortDays: 1,
     })
+    expect(core.abgleichCsv(s)).toMatch(
+      /Plunder;Stück;freigegeben;2;50;2;50;0;45;5;-10;0;/
+    )
   })
 
   it('Rest nur an einem Teil der Tage: Ungeklärt nennt seine Grundlage', () => {
@@ -687,7 +699,12 @@ describe('reconcile', () => {
     expect(csv).toContain(
       'Gebacken − CAP (Tage mit Rest);Verkauft (Tage mit Rest)'
     )
-    expect(csv).toMatch(/Plunder;Stück;freigegeben;2;40;0;25;15;1;20;15;2;3;/)
+    expect(csv).toMatch(
+      /Plunder;Stück;freigegeben;2;40;2;40;0;25;15;;1;20;15;2;3;/
+    )
+    expect(csv).toContain(
+      'Gebacken (alle Tage);Tage vergleichbar;Gebacken (vergleichbare Tage)'
+    )
   })
 
   it('Grundmenge offen: gebacken ist nur ein Mindestwert - kein Ungeklärt, keine Ampel', () => {
@@ -729,7 +746,15 @@ describe('reconcile', () => {
     expect(s.signals).toMatchObject({ pruefen: 0, ohneAmpel: 1 })
     expect(s.counts.baseOpen).toBe(1)
     expect(s.days[0]).toMatchObject({ baseOpen: 1, signals: { pruefen: 0 } })
-    expect(core.abgleichCsv(s)).toContain('Grundmenge offen – kein Plan')
+    const csv = core.abgleichCsv(s)
+    expect(csv).toContain('Grundmenge offen – kein Plan')
+    // gebacken nur als Mindestwert, nie als feste Zahl
+    expect(csv).toMatch(/Plunder;Stück;geplant – nicht freigegeben;1;≥ 2;0;;;/)
+    expect(csv).toMatch(
+      new RegExp(
+        `${TUE};Dienstag;Plunder;Stück;geplant – nicht freigegeben;≥ 2;2;25;`
+      )
+    )
   })
 
   it('Grundmenge offen mit Gesamt 0: bleibt „Grundmenge offen“, nicht „verkauft, aber nicht gebacken“', () => {
@@ -859,6 +884,74 @@ describe('reconcile', () => {
     })
   })
 
+  it('Kassennummer, die zufällig die numeric_id eines fremden Produkts ist: nicht fremd, Stück gegen Stück', () => {
+    // 907 ist die numeric_id von test-weck (Posten Weck ohne Kassennummer).
+    // Kassennummern und numeric_id sind nicht derselbe Nummernkreis.
+    const raw = fixture.config()
+    raw.items = raw.items.map((i) =>
+      i.id === 'schnecke' ? { ...i, plu: [990, 907] } : i
+    )
+    const cfg = configCore.normalizeConfig(raw)
+    const s = run(
+      {
+        [TUE]: {
+          backzettel: bzDay(
+            'confirmed',
+            [{ itemId: 'schnecke', total: 10 }],
+            cfg
+          ),
+          rows: [],
+          report: report(TUE, [
+            [990, 5],
+            [907, 3],
+          ]),
+        },
+      },
+      { config: cfg }
+    )
+    expect(posten(s, 'schnecke')).toMatchObject({
+      status: 'vergleichbar',
+      converted: true,
+      soldBasis: 'stueck',
+      foreignPlu: [],
+      sold: 8,
+      open: 2,
+    })
+    expect(
+      core.comparison(item('schnecke', cfg), null, {
+        pluOwners: new Map([['907', ['weck']]]),
+      }).foreignPlu
+    ).toEqual(['907'])
+  })
+
+  it('Gebacken je Posten zählt nur vergleichbare Tage; alle Tage stehen daneben', () => {
+    const s = run(
+      {
+        [TUE]: {
+          backzettel: bzDay('draft', [{ itemId: 'plunder', total: 20 }]),
+          rows: [],
+          report: report(TUE, [[906, 18]]),
+        },
+        [WED]: {
+          backzettel: bzDay('draft', [{ itemId: 'plunder', total: 20 }]),
+          rows: [],
+          report: null,
+        },
+      },
+      { to: WED }
+    )
+    const p = posten(s, 'plunder')
+    expect(p).toMatchObject({
+      days: 2,
+      comparableDays: 1,
+      baked: 20,
+      allBaked: 40,
+    })
+    expect(core.abgleichCsv(s)).toMatch(
+      /Plunder;Stück;geplant – nicht freigegeben;2;40;1;20;0;18;2;;0;/
+    )
+  })
+
   it('nennt niemanden: keine Namen in der Antwort', () => {
     const s = run({
       [TUE]: {
@@ -983,7 +1076,9 @@ describe('abgleichCsv', () => {
     expect(csv).toContain('Zeitraum;2026-12-01 bis 2026-12-01')
     expect(csv).toContain('Ungeklärt')
     // 2 Viertel = 0,5 verkauft, 1,5 nicht verkauft oder nicht kassiert
-    expect(csv).toMatch(/Kranz gefüllt;Stück;freigegeben;1;2;0;0,50;1,50;0;/)
+    expect(csv).toMatch(
+      /Kranz gefüllt;Stück;freigegeben;1;2;1;2;0;0,50;1,50;;0;/
+    )
     expect(csv).toContain('Weck;Stück;keine Kassennummer;40')
     expect(csv).toContain('Rest nicht gezählt')
   })

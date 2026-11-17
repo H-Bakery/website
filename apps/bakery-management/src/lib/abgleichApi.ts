@@ -94,6 +94,12 @@ export interface AbgleichItem {
   ampelBasis: AbgleichAmpelBasis | null
   /** Der Unterschied hinter der Ampel (Ungeklärt bzw. „mehr verkauft“). */
   signal: number | null
+  /**
+   * Mehr verkauft als gebacken an Tagen ohne gezählten Rest (Summe der
+   * negativen Werte), `null` ohne solchen Tag.
+   */
+  shortWithoutRest: number | null
+  shortDays: number
   /** Tage mit eigener Ampel „prüfen“ / „auffällig“. */
   signalDays: { pruefen: number; auffaellig: number }
   direction: 'fehlt' | 'mehr_verkauft' | null
@@ -106,6 +112,8 @@ export interface AbgleichItem {
     restPartial: string[]
     /** Tage mit offener Grundmenge (kein Plan, kein Vergleich). */
     baseOpen: string[]
+    /** verkauft, aber an dem Tag nicht auf dem Backzettel */
+    notOnBackzettel: string[]
   }
   allBaked: number
   allBakedIsMinimum: boolean

@@ -122,7 +122,7 @@ const DAY_STATUS_LABELS = {
 }
 
 const EXPLANATION =
-  'Ungeklärt = gebacken − CAP − verkauft (Kasse) − Rest (gezählt). Gebacken = freigegebener Backzettel plus quittierte Nachträge, sonst der geplante Wert („geplant“); ist die Grundmenge offen, gibt es keinen Plan und keinen Vergleich („Grundmenge offen“). CAP-Ware verlässt den Laden und wird abgezogen; Vorbestellungen werden an der Kasse bezahlt und nicht abgezogen (vorläufig). Ohne gezählten Rest steht nur „nicht verkauft oder nicht kassiert“ = gebacken − CAP − verkauft. Unterschiede sind Hinweise, keine Beweise.'
+  'Ungeklärt = gebacken − CAP − verkauft (Kasse) − Rest (gezählt). Gebacken = freigegebener Backzettel plus quittierte Nachträge, sonst der geplante Wert („geplant“); ist die Grundmenge offen, gibt es keinen Plan und keinen Vergleich („Grundmenge offen“). CAP-Ware verlässt den Laden und wird abgezogen; Vorbestellungen werden an der Kasse bezahlt und nicht abgezogen (vorläufig). Ohne gezählten Rest steht nur „nicht verkauft oder nicht kassiert“ = gebacken − CAP − verkauft. In der Summe je Posten zählen gebacken und CAP nur die vergleichbaren Tage (mit Kassenbericht und festgelegter Grundmenge), damit die Rechnung aufgeht. Unterschiede sind Hinweise, keine Beweise.'
 
 const round2 = rest.round2
 
@@ -233,14 +233,26 @@ function countsPieces(item) {
  * mit Faktor, `itemSoldInfo(...).converted`), `stueck` (Stück-Posten mit
  * Produkten zu je einem Stück - Kasse und Posten zählen dasselbe) oder
  * `null` (nicht vergleichbar).
+ *
+ * `ctx.directResolve`: Produkt-Auflöser nur über die Produkt-IDs der
+ * Stammdaten (ohne `numeric_id` des Katalogs); `ctx.pluOwners`: Kassennummer
+ * → IDs der Posten, die sie in `plu` führen.
  */
-function comparison(item, resolve) {
+function comparison(item, resolve, ctx = {}) {
   let info = refCore.itemSoldInfo(item, resolve)
   let soldBasis = info.converted ? 'umgerechnet' : null
-  // Kassennummern, die ein Produkt eines anderen Postens sind: ein Fehler
-  // in den Stammdaten - nie still als Stück dieses Postens mitzählen.
+  // Kassennummern eines anderen Postens: ein Fehler in den Stammdaten - nie
+  // still als Stück dieses Postens mitzählen. Fremd ist eine Kassennummer
+  // nur, wenn ein anderer Posten sie selbst in `plu` führt oder sie die
+  // Produkt-ID eines Produkts eines anderen Postens ist. Ein Treffer nur
+  // über die `numeric_id` des Katalogs zählt nicht: Kassennummern und
+  // `numeric_id` sind nicht derselbe Nummernkreis, sie treffen sich zufällig.
+  const owners = ctx.pluOwners || new Map()
+  const direct = ctx.directResolve || null
   const foreignPlu = info.plu.filter((key) => {
-    const hit = resolve ? resolve(key) : null
+    const listed = owners.get(key) || []
+    if (listed.some((id) => id !== item.id)) return true
+    const hit = direct ? direct(key) : null
     return Boolean(hit && hit.item && hit.item.id !== item.id)
   })
   if (
@@ -423,8 +435,8 @@ function periodRow(g, config) {
     })
   }
   const short = withoutRest.filter((r) => r.open < 0)
+  const shortOpen = short.length > 0 ? sumBy(short, (r) => r.open) : null
   if (short.length > 0) {
-    const shortOpen = sumBy(short, (r) => r.open)
     candidates.push({
       ampel: classify(
         shortOpen,
@@ -499,6 +511,10 @@ function periodRow(g, config) {
     ampel,
     ampelBasis,
     signal: worst ? worst.diff : null,
+    // Mehr verkauft als gebacken an Tagen ohne gezählten Rest (nur deren
+    // negative Werte) - die Zahl hinter „prüfen (ohne Rest)“.
+    shortWithoutRest: shortOpen,
+    shortDays: short.length,
     signalDays,
     direction:
       ampel && ampel !== 'ok'
@@ -518,11 +534,13 @@ function periodRow(g, config) {
         .map((r) => r.date),
       restMissing: rows
         .filter(
-          (r) =>
-            r.status === 'ohne_rest' &&
-            (r.restStatus === 'not_counted' ||
-              r.restStatus === 'not_on_backzettel')
+          (r) => r.status === 'ohne_rest' && r.restStatus === 'not_counted'
         )
+        .map((r) => r.date),
+      // verkauft, aber an dem Tag nicht auf dem Backzettel: kein Rest zu
+      // zählen - ein eigenes Signal, keine Zähllücke
+      notOnBackzettel: rows
+        .filter((r) => r.restStatus === 'not_on_backzettel')
         .map((r) => r.date),
       restPartial: rows
         .filter((r) => r.status === 'ohne_rest' && r.restStatus === 'partial')
@@ -567,9 +585,23 @@ function reconcile(a) {
   const config = a.config || null
   const items = rest.itemsById(config)
   const resolve = config ? refCore.soldResolver(config, a.catalog) : null
+  // ohne Katalog: nur Produkt-IDs der Stammdaten, keine `numeric_id`
+  const directResolve = config ? refCore.soldResolver(config, null) : null
+  const pluOwners = new Map()
+  for (const item of config ? config.items : []) {
+    for (const raw of Array.isArray(item.plu) ? item.plu : []) {
+      const key = String(raw).trim()
+      if (!key) continue
+      if (!pluOwners.has(key)) pluOwners.set(key, [])
+      pluOwners.get(key).push(item.id)
+    }
+  }
+  const cmpCtx = { directResolve, pluOwners }
   const cmpCache = new Map()
   const cmpFor = (item) => {
-    if (!cmpCache.has(item.id)) cmpCache.set(item.id, comparison(item, resolve))
+    if (!cmpCache.has(item.id)) {
+      cmpCache.set(item.id, comparison(item, resolve, cmpCtx))
+    }
     return cmpCache.get(item.id)
   }
   const groupOf = (item, itemId, variant) => {
@@ -866,6 +898,12 @@ function postenName(p) {
   return p.sizeLabel ? `${p.name} ${p.sizeLabel}` : p.name
 }
 
+/** Gebacken; bei offener Grundmenge nur als Mindestwert „≥ n“. */
+function bakedCell(value, isMinimum) {
+  if (value === null || value === undefined) return ''
+  return isMinimum ? `≥ ${qty(value)}` : qty(value)
+}
+
 function ampelCell(ampel, ampelBasis) {
   if (!ampel) return ''
   return ampelBasis === 'ohne_rest'
@@ -888,11 +926,14 @@ function abgleichCsv(s) {
     'Posten',
     'Einheit',
     'Grundlage',
+    'Tage im Zeitraum',
+    'Gebacken (alle Tage)',
     'Tage vergleichbar',
-    'Gebacken',
-    'davon CAP',
+    'Gebacken (vergleichbare Tage)',
+    'davon CAP (vergleichbare Tage)',
     'Verkauft (Kasse)',
     'Nicht verkauft oder nicht kassiert',
+    'Mehr verkauft (Tage ohne Rest)',
     'Tage mit Rest',
     'Gebacken − CAP (Tage mit Rest)',
     'Verkauft (Tage mit Rest)',
@@ -904,18 +945,25 @@ function abgleichCsv(s) {
     'Ohne Kassenbericht',
     'Rest nicht gezählt',
     'Grundmenge offen',
+    'Verkauft, nicht auf dem Backzettel',
   ])
   for (const p of s.items) {
+    // ohne vergleichbaren Tag gibt es kein „gebacken der vergleichbaren
+    // Tage“ - dann steht nur „Gebacken (alle Tage)“
+    const cmp = p.comparableDays > 0
     push([
       p.sectionLabel || '',
       postenName(p),
       p.unit,
       p.basis ? BASIS_LABELS[p.basis] : '',
+      p.days,
+      bakedCell(p.allBaked, p.allBakedIsMinimum),
       p.comparableDays,
-      qty(p.baked),
-      qty(p.cap),
+      cmp ? bakedCell(p.baked, p.bakedIsMinimum) : '',
+      cmp ? qty(p.cap) : '',
       qty(p.sold),
       qty(p.open),
+      qty(p.shortWithoutRest),
       p.restDays,
       p.restDays > 0 ? qty(p.restShopBaked) : '',
       qty(p.restSold),
@@ -927,6 +975,7 @@ function abgleichCsv(s) {
       p.gaps.noReport.join(', '),
       [...p.gaps.restMissing, ...p.gaps.restPartial].sort().join(', '),
       p.gaps.baseOpen.join(', '),
+      p.gaps.notOnBackzettel.join(', '),
     ])
   }
   push([])
@@ -962,7 +1011,7 @@ function abgleichCsv(s) {
       postenName(p),
       p.unit,
       BASIS_LABELS[r.basis],
-      qty(r.baked),
+      bakedCell(r.baked, r.bakedIsMinimum),
       qty(r.cap),
       qty(r.sold),
       qty(r.open),
@@ -990,7 +1039,7 @@ function abgleichCsv(s) {
       postenName(p),
       p.unit,
       STATUS_LABELS[p.status],
-      qty(p.allBaked),
+      bakedCell(p.allBaked, p.allBakedIsMinimum),
       qty(p.allCap),
       p.soldPieces === null ? '' : qty(p.soldPieces),
       p.status === 'keine_plu' ? '' : p.gaps.noReport.join(', '),
