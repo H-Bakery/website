@@ -10,6 +10,7 @@ import {
   CardContent,
   List,
   ListItem,
+  ListItemButton,
   ListItemIcon,
   ListItemText,
 } from '@mui/material'
@@ -42,6 +43,31 @@ export const metadata: Metadata = {
 }
 
 const MAP_POSITION: [number, number] = [49.301429495245586, 7.369493502873482]
+
+/**
+ * Telefon, WhatsApp und E-Mail: die ganze Zeile ist der Link - ein
+ * Tippziel von mindestens 44 px Höhe statt nur der Nummer selbst.
+ */
+const CONTACT_LINKS = [
+  {
+    label: 'Telefon',
+    value: LEGAL.phone,
+    href: LEGAL.phoneHref,
+    icon: <PhoneIcon color="primary" />,
+  },
+  {
+    label: 'Mobil / WhatsApp',
+    value: LEGAL.mobile,
+    href: LEGAL.mobileHref,
+    icon: <WhatsAppIcon color="primary" />,
+  },
+  {
+    label: 'E-Mail',
+    value: LEGAL.email,
+    href: `mailto:${LEGAL.email}`,
+    icon: <EmailIcon color="primary" />,
+  },
+]
 
 export default function ContactPage() {
   return (
@@ -115,57 +141,28 @@ export default function ContactPage() {
                       }
                     />
                   </ListItem>
-                  <ListItem>
-                    <ListItemIcon>
-                      <PhoneIcon color="primary" />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary="Telefon"
-                      secondary={
-                        <Link
-                          href={LEGAL.phoneHref}
-                          color="inherit"
-                          underline="hover"
-                        >
-                          {LEGAL.phone}
-                        </Link>
-                      }
-                    />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemIcon>
-                      <WhatsAppIcon color="primary" />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary="Mobil / WhatsApp"
-                      secondary={
-                        <Link
-                          href={LEGAL.mobileHref}
-                          color="inherit"
-                          underline="hover"
-                        >
-                          {LEGAL.mobile}
-                        </Link>
-                      }
-                    />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemIcon>
-                      <EmailIcon color="primary" />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary="E-Mail"
-                      secondary={
-                        <Link
-                          href={`mailto:${LEGAL.email}`}
-                          color="inherit"
-                          underline="hover"
-                        >
-                          {LEGAL.email}
-                        </Link>
-                      }
-                    />
-                  </ListItem>
+                  {CONTACT_LINKS.map((item) => (
+                    <ListItem key={item.label} disablePadding>
+                      <ListItemButton
+                        component="a"
+                        href={item.href}
+                        sx={{ minHeight: 44, borderRadius: 1 }}
+                      >
+                        <ListItemIcon>{item.icon}</ListItemIcon>
+                        <ListItemText
+                          primary={item.label}
+                          secondary={item.value}
+                          secondaryTypographyProps={{
+                            sx: {
+                              color: 'primary.main',
+                              fontWeight: 600,
+                              overflowWrap: 'anywhere',
+                            },
+                          }}
+                        />
+                      </ListItemButton>
+                    </ListItem>
+                  ))}
                 </List>
               </CardContent>
             </Card>
@@ -223,13 +220,13 @@ export default function ContactPage() {
           <Box
             sx={{
               width: '100%',
-              height: 400,
               borderRadius: 2,
               overflow: 'hidden',
               mb: 3,
             }}
           >
-            <MapConsent>
+            {/* Die Karte ist 400 px hoch; der Hinweis davor wächst mit. */}
+            <MapConsent height={400}>
               <MapErrorBoundary>
                 <DynamicMap
                   position={MAP_POSITION}

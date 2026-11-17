@@ -72,7 +72,7 @@ const EnhancedTestimonial: React.FC = () => {
               maxWidth: { xs: 'none', md: 600 },
               mx: 'auto',
               fontSize: { xs: '1rem', md: '1.1rem' },
-              color: '#928168',
+              color: 'text.secondary',
               px: { xs: 1, md: 0 },
             }}
           >
@@ -198,7 +198,10 @@ const EnhancedTestimonial: React.FC = () => {
                     >
                       {testimonial.name}
                     </Typography>
-                    <Typography variant="body2" sx={{ color: '#928168' }}>
+                    <Typography
+                      variant="body2"
+                      sx={{ color: 'text.secondary' }}
+                    >
                       {testimonial.role}
                     </Typography>
                     {testimonial.verified && (
@@ -250,7 +253,7 @@ const EnhancedTestimonial: React.FC = () => {
             variant="body2"
             gutterBottom
             sx={{
-              color: '#928168',
+              color: 'text.secondary',
               fontSize: { xs: '0.9rem', md: '0.95rem' },
             }}
           >

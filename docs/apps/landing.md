@@ -79,3 +79,23 @@ the export with the same checks as the data repo, but only if its `STAND.json` n
 pinned in the lock. That commit is a label there, not a content hash: the images carry no checksum,
 so whoever can write to `hq/produkte-3d` can change them - the same trust as `hq/products`. How to publish a new state:
 [digitale-baeckerei.md](./digitale-baeckerei.md#veröffentlichen-der-produktmodelle-db14).
+
+## Readability and tap targets
+
+- **Secondary text** is `text.secondary` of the light theme, `#6B5D50` - at least 4.5:1 (WCAG AA)
+  on white, cream `#FFF3E6` and soft beige `#F5EDE4`. Use the token, never a hex value; macchiato
+  `#928168` is only for decorative backgrounds (3.45:1 on cream is too weak for text). The theme
+  also carries MUI's German locale `deDE` (Pagination, Rating, Breadcrumbs labels).
+- **Footer** (`components/LocalFooter.tsx`, a server component, `<footer>` = landmark
+  `contentinfo`): dark brown with opaque text colours (`FOOTER_COLORS`), every link at least 44 px
+  high, column titles are paragraphs, not headings. The crest is the static
+  `public/assets/images/brand/wappen.svg` (cream fill baked in), loaded lazily as `<img alt="">` -
+  inline it was 55 KB of path data in every page. `icons/brand/Wappen.tsx` stays for the hero.
+  `src/theme/theme.spec.ts` computes every contrast.
+- **Map consent** (`components/home/map/MapConsent.tsx`, two-click solution for OpenStreetMap): its
+  `height` is the height of the loaded map (Leaflet needs a fixed one); before consent the notice
+  is only _at least_ that high and grows with its content, so on a phone nothing is cut off. The
+  frames around it (start page, `/contact`) set no fixed height of their own.
+- **Contact rows** on `/contact`: phone, WhatsApp and e-mail are full-row links (`LEGAL` targets).
+- e2e `apps/bakery-landing-e2e/src/lesbarkeit.spec.ts` (mobile profile) checks the consent notice
+  and the 44 px tap targets.
