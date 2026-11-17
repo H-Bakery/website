@@ -114,6 +114,29 @@ test.describe('Sortiment-Bedienung', () => {
     ).toBeFocused()
   })
 
+  test.describe('schmales Handy (360 px)', () => {
+    test.use({ viewport: { width: 360, height: 780 } })
+
+    test('die Seitennavigation passt in eine Zeile', async ({ page }) => {
+      await openSortiment(page)
+      const pagination = page.getByRole('navigation', {
+        name: 'Produkt-Seitennavigation',
+      })
+      // Schmale Variante (erst nach der Hydrierung): ohne erste/letzte Seite.
+      await expect(
+        pagination.getByRole('button', { name: 'Zur ersten Seite' })
+      ).toHaveCount(0)
+
+      const tops = await pagination
+        .locator('li')
+        .evaluateAll((items) =>
+          items.map((li) => Math.round(li.getBoundingClientRect().top))
+        )
+      expect(tops.length).toBeGreaterThan(1)
+      expect(new Set(tops).size).toBe(1)
+    })
+  })
+
   test('/products?search=… füllt das Suchfeld und filtert', async ({
     page,
   }) => {

@@ -632,6 +632,10 @@ const styles = {
     '& .MuiPaginationItem-root': {
       minWidth: 44,
       height: 44,
+      // Die schmale Variante hat immer 7 Buttons: mit MUIs 3px Außenabstand
+      // (7 × 50px) bräche sie auf 360/375px breiten Handys in zwei Zeilen
+      // um, ohne (7 × 44px) bleibt sie in einer.
+      mx: { xs: 0, sm: '3px' },
     },
   },
 }

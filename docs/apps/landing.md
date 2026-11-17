@@ -51,7 +51,8 @@ categories would match.
 - **Page change** scrolls the list heading („Alle Produkte“ / the category, count and page) into
   view below the fixed header - smooth only without `prefers-reduced-motion` - and moves the
   focus there. Pagination labels are German („Seite 2“, „Nächste Seite“ …), items at least
-  44 px; below `sm` without first/last buttons and neighbours, so it fits on one line. A visually
+  44 px; below `sm` without first/last buttons, neighbours and gaps, so it fits on one line from
+  360 px width. A visually
   hidden status line („12 Produkte gefunden“) announces changes; the grid has no `aria-live`.
 - **E2E:** `apps/bakery-landing-e2e/src/sortiment.spec.ts` (keyboard, page 2 on the phone,
   `?search=`, Back); data-driven, so it runs against the bundled fallback in CI and the fixture
