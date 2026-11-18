@@ -2,11 +2,17 @@ import React from 'react'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MachineStrip, machineHints } from './MachineStrip'
 import { OpenMasterDataNote } from './OpenMasterDataNote'
-import { BreadTable } from './BreadTable'
+import { BreadTable, breadTableMinWidth } from './BreadTable'
 import { batchText } from './HefeteigCard'
 import { batchesText } from '../../lib/backzettelFormat'
 import { RollsByBakeDay, linesByKey, v2CoveredKeys } from './RollsByBakeDay'
-import { BackzettelSectionView } from './BackzettelSectionView'
+import {
+  BASE_OPEN_NOTE,
+  BackzettelSectionView,
+  SECTION_COLS,
+  SECTION_TABLE_MIN_WIDTH,
+  tableFitSx,
+} from './BackzettelSectionView'
 import {
   SAT,
   SUN,
@@ -198,6 +204,167 @@ describe('Backzettel v2 - Bausteine', () => {
         .getAllByRole('columnheader')
         .map((h) => h.textContent)
     ).toEqual(['Brot', '500 g', '1 kg', 'Kasten', 'Teig'])
+  })
+
+  it('Umschalten nach der Breite des Inhalts: Container-Abfrage, Tabelle erst ab der Mindestbreite', () => {
+    const fit = tableFitSx(900)
+    expect(fit.container).toEqual({
+      containerType: 'inline-size',
+      containerName: 'bz-fit',
+    })
+    // Schmaler als die Tabelle braucht: Karten, sonst die Tabelle - egal wie
+    // breit das Fenster ist (Tablet quer neben der Seitenleiste).
+    expect(fit.table['@container bz-fit (width < 900px)']).toEqual({
+      display: 'none',
+    })
+    expect(fit.table['@container bz-fit (width >= 900px)']).toEqual({
+      display: 'block',
+    })
+    expect(fit.cards['@container bz-fit (width < 900px)']).toEqual({
+      display: 'block',
+    })
+    expect(fit.cards['@container bz-fit (width >= 900px)']).toEqual({
+      display: 'none',
+    })
+    // Ohne Container-Abfragen (alter Browser) die alte Regel nach dem Fenster
+    expect(fit.table.display).toEqual({ xs: 'none', md: 'block' })
+    expect(fit.cards.display).toEqual({ xs: 'block', md: 'none' })
+  })
+
+  it('BreadTable: Mindestbreite aus den Spalten, Tabelle und Karten zeigen dieselben Werte', () => {
+    const bread = day.bread
+    if (!bread) throw new Error('Fixture ohne Brot')
+    // Brot 140 + 3 Größen + „Menge“ je 136 + Teig 96 + Rahmen 2
+    expect(breadTableMinWidth(bread)).toBe(140 + 4 * 136 + 96 + 2)
+    expect(
+      breadTableMinWidth({
+        ...bread,
+        rows: bread.rows.filter((r) => !r.single),
+      })
+    ).toBe(140 + 3 * 136 + 96 + 2)
+    render(<BreadTable bread={bread} {...editProps} />)
+    expect(screen.getByTestId('bread-fit')).toHaveAttribute(
+      'data-table-min-width',
+      String(breadTableMinWidth(bread))
+    )
+    const table = within(screen.getByTestId('bread-table'))
+    const cards = within(screen.getByTestId('bread-cards'))
+    let compared = 0
+    for (const row of bread.rows) {
+      const keys = row.single
+        ? [row.single.key]
+        : Object.values(row.cells).flatMap((c) => (c ? [c.key] : []))
+      for (const key of keys) {
+        expect(cards.getByTestId(`bread-card-cell-${key}`).textContent).toBe(
+          table.getByTestId(`bread-cell-${key}`).textContent
+        )
+        compared++
+      }
+      if (row.single) {
+        expect(
+          table.getByTestId(`bread-single-${row.itemId}`)
+        ).toHaveTextContent(
+          cards.getByTestId(`bread-card-cell-${row.single.key}`).textContent ??
+            ''
+        )
+      }
+    }
+    expect(compared).toBeGreaterThan(3)
+  })
+
+  it('BreadTable: läuft die Tabelle über, gilt die gemessene Breite schon beim ersten Bild (kein Aufblitzen)', () => {
+    const bread = day.bread
+    if (!bread) throw new Error('Fixture ohne Brot')
+    // Rahmen 800 px, die Tabelle braucht 900 px (Abzeichen, Stifte). jsdom
+    // hat keinen ResizeObserver - gemessen werden muss trotzdem sofort.
+    const clientWidth = jest
+      .spyOn(HTMLElement.prototype, 'clientWidth', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        return this.dataset.testid === 'bread-fit' ||
+          this.classList.contains('MuiTableContainer-root')
+          ? 800
+          : 0
+      })
+    const scrollWidth = jest
+      .spyOn(HTMLElement.prototype, 'scrollWidth', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        return this.tagName === 'TABLE' ? 900 : 0
+      })
+    try {
+      expect(breadTableMinWidth(bread)).toBeLessThan(900)
+      render(<BreadTable bread={bread} {...editProps} />)
+      expect(screen.getByTestId('bread-fit')).toHaveAttribute(
+        'data-table-min-width',
+        '900'
+      )
+    } finally {
+      clientWidth.mockRestore()
+      scrollWidth.mockRestore()
+    }
+  })
+
+  it('Abschnitt: „offen“ als Warnschrift ohne Chip, Erklärung sichtbar, feste Spalten, Tabelle und Karten mit denselben Werten', () => {
+    const open = line({
+      itemId: 'test-zopf',
+      name: 'Testzopf',
+      section: 'hefeteig',
+      baseUnset: true,
+      base: 0,
+      preorders: 7,
+      cap: 2,
+      total: 9,
+      totalIsMinimum: true,
+    })
+    const plain = line({
+      itemId: 'test-weck',
+      preorders: 12,
+      cap: 10,
+      total: 82,
+    })
+    render(
+      <BackzettelSectionView
+        section={{ id: 'hefeteig', label: 'Hefeteig', lines: [open, plain] }}
+        config={null}
+        editable
+        editingKey={null}
+        onEdit={noop}
+        onSaveCorrection={async () => undefined}
+      />
+    )
+    // „offen“ in Tabelle und Karte, als Text (kein abgeschnittener Chip)
+    const bases = screen.getAllByTestId(`base-open-${open.key}`)
+    expect(bases).toHaveLength(2)
+    for (const b of bases) {
+      expect(b).toHaveTextContent('offen')
+      expect(b.closest('.MuiChip-root')).toBeNull()
+    }
+    // Erklärung steht da (ein `title` erreicht am Tablet niemand)
+    expect(screen.getByTestId('base-open-note-hefeteig')).toHaveTextContent(
+      BASE_OPEN_NOTE
+    )
+    // Gesamt in Tabelle und Karte gleich
+    const table = within(screen.getByTestId('table-hefeteig'))
+    const cards = within(screen.getByTestId('cards-hefeteig'))
+    for (const [l, total] of [
+      [open, '≥ 9'],
+      [plain, '82'],
+    ] as const) {
+      expect(table.getByTestId(`line-total-${l.key}`)).toHaveTextContent(total)
+      expect(cards.getByLabelText(`Gesamt ${l.name}`)).toHaveTextContent(total)
+    }
+    // Spalten in px: „Vorbestellt“ und „CAP“ laufen nicht ineinander, die
+    // Tabelle steht erst ab ihrer Mindestbreite.
+    const cols = Array.from(
+      screen.getByTestId('table-hefeteig').querySelectorAll('col')
+    ).map((c) => c.style.width)
+    expect(cols).toEqual(['', ...SECTION_COLS.map((w) => `${w}px`)])
+    expect(SECTION_COLS[2]).toBeGreaterThanOrEqual(112) // Vorbestellt
+    expect(screen.getByTestId('fit-hefeteig')).toHaveAttribute(
+      'data-table-min-width',
+      String(SECTION_TABLE_MIN_WIDTH)
+    )
+    // ohne offene Grundmenge keine Erklärung
+    expect(screen.queryByTestId('base-open-note-broetchen')).toBeNull()
   })
 
   it('RollsByBakeDay und v2CoveredKeys decken dieselben Zeilen ab', () => {

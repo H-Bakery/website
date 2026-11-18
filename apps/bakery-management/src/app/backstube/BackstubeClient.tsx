@@ -890,6 +890,9 @@ export default function BackstubeClient({
   const planPath = `/admin/backzettel/${date}`
   const mayPlan =
     !!role && isPathAllowedForRole(planPath, role, session.sessionKind)
+  // „Prüfen und freigeben“ im Entwurfs-Banner: nur wer freigeben darf
+  // (Verkauf darf die Planung lesen, aber nicht freigeben).
+  const releaseHref = mayPlan && canWork ? planPath : null
   // Wer mit Passwort aus der Verwaltung hierher kommt (Inhaber über die
   // Seitenleiste), braucht einen Weg zurück; das Tablet an der Station nicht.
   const mayAdmin =
@@ -1041,6 +1044,7 @@ export default function BackstubeClient({
         deltasPending={deltasPending}
         notice={stale}
         only={focusAnchor ?? undefined}
+        planHref={releaseHref}
       />
     )
     if (!focusAnchor) return sheet

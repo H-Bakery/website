@@ -409,11 +409,25 @@ erweitertes `GET /api/backzettel/config`.
   gewöhnliche Korrektur-Editor (Menge, Grund Pflicht). Gespeichert wird über denselben
   `PUT …/correction` wie an einer Zeile, mit `bakeDate`. Ohne das ließ sich ein Posten mit
   Grundmenge 0 am Tag gar nicht eintragen (zwei Marmorkuchen, ein Kranz unter der Woche).
-- **Bildschirm:** ab `md` eine Tabelle je Abschnitt (feste Spaltenbreiten), darunter Karten; beide
-  stehen im DOM und werden per CSS umgeschaltet (Specs greifen über `table-<abschnitt>` /
-  `line-card-<key>`). Offene Nachträge: Zeile mit Warnrand + Chip, Karte „Nachträge seit der Freigabe"
-  mit „Gesehen". `configChangedSinceConfirm` und `prepDateProvisional` stehen als Hinweise da.
-  Bedienelemente ≥ 44 px.
+- **Bildschirm:** je Abschnitt eine Tabelle oder Karten; beide stehen im DOM und werden per CSS
+  umgeschaltet (Specs greifen über `table-<abschnitt>` / `line-card-<key>`). **Entscheidend ist die
+  Breite des Inhalts, nicht des Fensters** (Befund 2026-11-17: bei 1024 px bleiben neben der festen
+  Seitenleiste ~694 px, die Brot-Tabelle braucht ~940 px - Brote rechts fielen aus dem Bild, genau
+  auf der Seite mit „Freigeben"): eine CSS-Container-Abfrage am Rahmen (`tableFitSx` in
+  `BackzettelSectionView.tsx`, Container `bz-fit`) zeigt die Tabelle erst ab ihrer Mindestbreite,
+  darunter die Karten; ohne Container-Abfragen (alter Browser) gilt die alte Regel „Tabelle ab
+  `md`". Abschnitte: feste Spalten in px (`SECTION_COLS`, „Posten" bekommt den Rest), Tabelle ab
+  `SECTION_TABLE_MIN_WIDTH` (840 px). Brot: `breadTableMinWidth` (Name 140 + je Größe bzw.
+  „Menge" 136 + Teig 96); wird die sichtbare Tabelle doch breiter (Abzeichen „Grundmenge offen",
+  „44 Stück" neben dem Stift), misst `BreadTable` nach und hebt die Grenze, bis neue Daten kommen:
+  neue Daten (Laden, Speichern) im Layout-Effekt vor dem ersten Bild - sonst blitzte die Tabelle
+  kurz auf -, danach bei jeder Größenänderung per ResizeObserver. Stand synthetisch (vier Größen + „Menge"): Brot bei 1024-1180 px als Karten,
+  ab 1280 px als Tabelle (Entwurf mit Stiften und „Grundmenge offen" erst ab 1440 px); Abschnitte
+  bei 1024/1080 px als Karten, ab 1180 px als Tabellen. Basis „offen" steht als Warnschrift (kein
+  Chip, der zu „o…" wurde), darunter die Erklärung „„offen": Grundmenge noch nicht festgelegt …" -
+  ein `title` erreicht am Tablet niemand. Offene Nachträge: Zeile mit Warnrand + Chip, Karte
+  „Nachträge seit der Freigabe" mit „Gesehen". `configChangedSinceConfirm` und
+  `prepDateProvisional` stehen als Hinweise da. Bedienelemente ≥ 44 px.
 - **Druck eines Teigtag-Zettels (Z10 S6, überarbeitet U8/Z13, `sheetVersion: 2`):**
   `components/backzettel/DoughDayPrint.tsx`, A4 hoch, schwarz auf weiß (nur Striche und
   Schriftstärke, keine Flächen). Muss **nicht** wie der alte Papierzettel aussehen (Inhaber,
@@ -517,9 +531,11 @@ Die Stationsansicht der Backstube, Startseite der Rolle `backstube` nach der PIN
 zu den Namenskacheln). Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhaber, Backstube).
 
 - **Aufbau (UI-Umbau 2026-11):** fester Kopf (`BackstubeHeader.tsx`) mit Datum, „Backstube · Name ·
-  Stand HH:MM" (nach gescheitertem Neuladen gelb mit Wolke), Neu laden, „Planung & Druck", „Zur
-  Verwaltung", Abmelden (unter 1200 px nur als Zeichen, Name per `aria-label`), Reitern Zettel /
-  Backen / Vorbereitung, Heute/Morgen und einer Fortschrittsleiste über die ganze Breite (Zettel:
+  Stand HH:MM" (nach gescheitertem Neuladen gelb mit Wolke), Neu laden, „Planung & Druck" (Drucker,
+  ab 900 px mit dem Kurznamen „Planung", ab 1200 px der volle Name; Name für Vorlesen immer
+  „Planung & Druck"; hochkant nur das Zeichen, sonst würde das Datum gekürzt), „Zur Verwaltung"
+  (unter 1200 px nur als Zeichen, Name per `aria-label`), Abmelden, Reitern Zettel / Backen /
+  Vorbereitung, Heute/Morgen und einer Fortschrittsleiste über die ganze Breite (Zettel:
   erledigt, Backen: gebacken). Darunter **ab 1080 px zwei Spalten** (`BackstubeLayout.tsx`, Tablet
   quer und Desktop): links eine mitlaufende Spalte mit eigenem Bildlauf - offene Nachträge zuerst,
   dann der **Überblick** (`BackstubeOverview.tsx`: „n von m erledigt", je Abschnitt ein Sprungknopf
@@ -574,6 +590,10 @@ zu den Namenskacheln). Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhabe
   während eines laufenden Hakens zurückkommt, wird verworfen (`mutationSeq`) - sonst spränge der Haken
   kurz zurück.
 - **Entwurf:** großes Banner „Noch nicht freigegeben", Zahlen grau, gestrichelte Zeilen, keine Haken.
+  Wer freigeben darf (`hasBackstubeRights` und Zugang zu `/admin/backzettel`: Inhaber, Backstube,
+  Backstubenleitung), hat im Banner einen 56-px-Knopf **„Prüfen und freigeben"** zur Tagesplanung
+  `/admin/backzettel/<datum>`; dort wird geprüft und freigegeben. Verkauf sieht ihn nicht (darf die
+  Planung lesen, aber nicht freigeben). Vorher führte nur das Drucker-Zeichen im Kopf dorthin.
 - **Reiter „Backen" (O5):** je Zeile eines freigegebenen Zettels ein eigener 72-px-Haken
   **gebacken** (`BackstubeBakeList.tsx`), getrennt von „erledigt" im Reiter „Zettel"; Zeilen eines
   Entwurfs-Zettels (gestrichelt) haben keinen. Darunter „Nachträge (nicht in den Zahlen oben)" je
