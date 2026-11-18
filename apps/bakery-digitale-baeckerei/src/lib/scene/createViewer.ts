@@ -62,7 +62,7 @@ import {
   zuLangsam,
   type IntroEnde,
 } from './intro'
-import { countTriangles, disposeTree, loadModel } from './loadModel'
+import { countTriangles, disposeTree, parseModel } from './loadModel'
 import {
   blendePreiskartenAus,
   createPicker,
@@ -94,9 +94,6 @@ export const EINRICHTUNG_FRIST_MS = 1500
 
 /** Horizontfarbe des Explorer-Himmels (sRGB), dort Hintergrund des Zwillings. */
 const HORIZON: Vec3 = [0.74, 0.8, 0.86]
-/** So oft wird das Laden des Modells nach einem Netzfehler wiederholt, mit dieser Pause. */
-const MODELL_NOCHMAL = 2
-const MODELL_NOCHMAL_MS = 200
 /** Wie im Explorer: nah genug für Ware direkt vor der Kamera. */
 const NEAR = 0.05
 /** Der Außenraum reicht ≈ 40 m weit; der Explorer nimmt 3000 für seine Landschaft. */
@@ -134,9 +131,14 @@ export interface ViewerReadyInfo {
 }
 
 export interface ViewerOptions {
+  /** Adresse des Modells: Basis für Dateien, auf die es verweist. */
   modelUrl: string
-  /** Erwartete Größe des Modells in Bytes (aus model.lock.json), für den Fortschritt. */
-  modelBytes?: number
+  /**
+   * Die Bytes des Modells. Geholt hat sie schon die App (`holeModell`, ohne
+   * three, mit Fortschritt) - die Szene entpackt nur. Scheitert der Abruf,
+   * meldet die Szene das als Ladefehler.
+   */
+  modell: Promise<ArrayBuffer>
   blickpunkt: Blickpunkt
   /** Zustand der Auslage, z. B. „morgens“. */
   fuellung: string
@@ -297,6 +299,32 @@ declare global {
   interface Window {
     __digitaleBaeckerei?: ViewerDebug
   }
+}
+
+/**
+ * Wartet auf `versprechen` - aber nur, bis `signal` abbricht (dann
+ * `AbortError`). Fehlen die Produktdaten, bleibt das Versprechen der
+ * Einrichtung offen, bis ein neuer Versuch sie bringt. Eine abgebaute Szene,
+ * die weiter darauf wartete, bliebe samt Modell im Speicher - je Raumwechsel
+ * eine. Darum steht diese Funktion außerhalb von `createViewer`: Am offenen
+ * Versprechen hängt dann nichts von der Szene.
+ */
+function bisAbbruch<T>(
+  versprechen: Promise<T>,
+  signal: AbortSignal
+): Promise<T> {
+  return new Promise<T>((erfuellt, abgelehnt) => {
+    const abbrechen = () =>
+      abgelehnt(new DOMException('Laden abgebrochen', 'AbortError'))
+    if (signal.aborted) {
+      abbrechen()
+      return
+    }
+    signal.addEventListener('abort', abbrechen, { once: true })
+    versprechen
+      .then(erfuellt, abgelehnt)
+      .finally(() => signal.removeEventListener('abort', abbrechen))
+  })
 }
 
 /**
@@ -729,7 +757,8 @@ export function createViewer(
   const ladeEinrichtung = async (): Promise<void> => {
     if (!options.einrichtung) return
     try {
-      einrichtung = await options.einrichtung
+      // Nur bis zum Abbau warten - das Versprechen kann offen bleiben.
+      einrichtung = await bisAbbruch(options.einrichtung, abort.signal)
     } catch {
       einrichtung = null
     }
@@ -777,32 +806,17 @@ export function createViewer(
   }
   canvas.addEventListener('webglcontextlost', onContextLost)
 
-  // Laden: 0…0,9 Download, danach Entpacken (meshopt) und erstes Bild.
-  options.onProgress(0)
-  /**
-   * Ein Netzfehler (`TypeError: Failed to fetch`) wird wiederholt, bevor er
-   * als Ladefehler gilt: Wechselt man schnell hin und her, bricht die alte
-   * Szene ihren Abruf ab - und der Browser lässt dabei auch den neuen Abruf
-   * derselben Datei scheitern, obwohl dessen eigenes Signal nicht abgebrochen
-   * ist. Ein echter Ausfall scheitert auch beim zweiten und dritten Mal; eine
-   * Antwort mit Fehlerstatus (404) wird nicht wiederholt.
-   */
-  const ladeModell = (rest: number): Promise<Object3D> =>
-    loadModel(options.modelUrl, abort.signal, options.modelBytes, (f) => {
-      if (!disposed) options.onProgress(0.9 * f)
-    }).catch((err: unknown) => {
-      const netzfehler = err instanceof TypeError
-      if (disposed || abort.signal.aborted || !netzfehler || rest <= 0) {
-        throw err
-      }
-      return new Promise<void>((weiter) =>
-        setTimeout(weiter, MODELL_NOCHMAL_MS)
-      ).then(() => ladeModell(rest - 1))
-    })
+  // Laden: Den Abruf (0…0,9) führt und meldet die App, schon bevor three
+  // da ist. Hier nur noch: Entpacken (meshopt) und erstes Bild (1).
+  const ladeModell = async (): Promise<Object3D> => {
+    const buffer = await options.modell
+    if (disposed) throw new DOMException('Laden abgebrochen', 'AbortError')
+    return parseModel(buffer, options.modelUrl)
+  }
   // Parallel dazu die Einrichtung (DB12) - sie lässt das Laden nie scheitern
   // und hält es höchstens um eine kurze Frist auf.
   const einrichtungGeladen = ladeEinrichtung()
-  ladeModell(MODELL_NOCHMAL)
+  ladeModell()
     .then(async (root) => {
       let fristUhr: ReturnType<typeof setTimeout> | undefined
       const rechtzeitig = await Promise.race([

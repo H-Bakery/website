@@ -10,8 +10,15 @@ import ThemeRegistry from './ThemeRegistry'
 
 // Einrichtung (DB12): Was bekommt die Szene, bevor sie das erste Bild zeigt?
 // three.js wird in jsdom nie geladen - ein Platzhalter merkt sich seine Props.
-jest.mock('./ladeViewer', () => ({ ladeViewer: jest.fn() }))
+jest.mock('./ladeViewer', () => ({
+  ladeViewer: jest.fn(),
+  hatWebGL2: jest.fn(() => true),
+}))
 jest.mock('./ladeNahansicht', () => ({ ladeNahansicht: jest.fn() }))
+// Das Modell holt die App selbst (ohne three) - hier bleibt der Abruf offen.
+jest.mock('../lib/modell/holeModell', () => ({
+  holeModell: jest.fn(() => new Promise(() => undefined)),
+}))
 
 const gesehen: {
   einrichtung?: Promise<SzenenEinrichtung | null>
@@ -175,9 +182,28 @@ describe('DigitaleBaeckerei: Einrichtung für die Szene (DB12)', () => {
     )
   })
 
-  it('sind die Produktdaten nicht ladbar, bleibt der Raum, wie er im Modell ist', async () => {
+  it('sind die Produktdaten nicht ladbar, bleibt das Versprechen offen (die Szene zeigt nach kurzer Frist die Ware ihres Modells) - ein neuer Versuch erfüllt es', async () => {
     antworte({ belegungFehlt: true })
-    await expect((await szene()).einrichtung).resolves.toBeNull()
+    const user = userEvent.setup()
+    const { einrichtung } = await szene()
+    let erfuellt: SzenenEinrichtung | null | undefined
+    void einrichtung?.then((daten) => {
+      erfuellt = daten
+    })
+    await user.click(screen.getByRole('button', { name: 'fertig' }))
+    await user.click(screen.getByRole('button', { name: 'Alles hier' }))
+    await screen.findByText('Die Produktinfos konnten nicht geladen werden.')
+    expect(erfuellt).toBeUndefined()
+
+    antworte()
+    await user.click(
+      screen.getByRole('button', { name: 'Noch einmal versuchen' })
+    )
+    await waitFor(() => expect(erfuellt).toBeDefined())
+    expect(erfuellt?.belegung.slots).toEqual(BELEGUNG.raeume.laden.slots)
+    // Dieselbe Szene: Sie richtet sich nachträglich ein, statt neu zu bauen.
+    expect(gesehen).toHaveLength(1)
+    expect(gesehen[0].einrichtung).toBe(einrichtung)
   })
 
   it('die Szene bekommt dasselbe Versprechen, solange der Raum derselbe bleibt', async () => {

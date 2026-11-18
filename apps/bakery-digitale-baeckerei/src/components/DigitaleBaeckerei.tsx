@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
+import Link from '@mui/material/Link'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
 import {
@@ -14,6 +15,7 @@ import {
 } from '../config/raeume'
 import { BASE_PATH, modelUrl } from '../lib/basePath'
 import type { Karte, ListenZeile } from '../lib/karte'
+import { holeModell } from '../lib/modell/holeModell'
 import type {
   Belegung,
   BelegungDatei,
@@ -58,7 +60,7 @@ import BlickpunktLeiste from './BlickpunktLeiste'
 import Hinweis from './Hinweis'
 import IntroKnopf from './IntroKnopf'
 import Ladebild from './Ladebild'
-import { ladeViewer, type ViewerKomponente } from './ladeViewer'
+import { hatWebGL2, ladeViewer, type ViewerKomponente } from './ladeViewer'
 import Nahansicht from './Nahansicht'
 import OhneWebGL, {
   OHNE_WEBGL_TEXT,
@@ -96,6 +98,13 @@ const EINRICHTEN_IMMER =
   process.env.NEXT_PUBLIC_DIGITALE_BAECKEREI_EINRICHTEN === '1'
 
 export const TITEL = 'Digitale Bäckerei'
+/** Zweite Zeile der Titelkarte: Wessen Laden das ist - und der Weg zur Website. */
+export const BAECKEREI_NAME = 'Bäckerei Heusser'
+/**
+ * Die Startseite der Landingpage. Bewusst ohne den Unterpfad der App
+ * (`/digitale-baeckerei`): ein einfacher Link, nicht `next/link`.
+ */
+export const STARTSEITE = '/'
 export const FEHLER_TEXT =
   'Der Laden konnte nicht geladen werden. Prüf deine Verbindung und versuch es noch einmal.'
 export const UNTERBROCHEN_TEXT =
@@ -110,6 +119,8 @@ export const raumBereitText = (raum: string, blickpunkt: string) =>
 export const DATEN_LADEN_TEXT = 'Die Produktinfos werden geladen …'
 export const DATEN_FEHLER_TEXT =
   'Die Produktinfos konnten nicht geladen werden.'
+/** Der Hinweis beim Start, solange die Produktinfos fehlen: kein „Tippen für Infos“. */
+export const DATEN_FEHLER_HINWEIS = 'Ziehen zum Umschauen · Infos fehlen gerade'
 /** An einem Blickpunkt ohne Produktinfos: einmal sagen, dass Tippen hier nichts öffnet. */
 export const KEINE_INFOS_HINWEIS =
   'Hier gibt es noch keine Infos zum Antippen – schau dich einfach um.'
@@ -141,6 +152,12 @@ export const kartenAnsage = (name: string) => `Infos zu ${name} geöffnet.`
 
 /** So lange steht der Hinweis an einem Blickpunkt ohne Produktinfos. */
 export const KEINE_INFOS_MS = 7000
+
+/**
+ * Anteil des Abrufs am Fortschritt: Bis das Modell da ist, steht der Balken
+ * bei höchstens 90 %; Entpacken und erstes Bild machen den Rest.
+ */
+export const MODELL_ANTEIL = 0.9
 
 type Zustand = 'laden' | 'bereit' | 'kein-webgl' | 'fehler' | 'unterbrochen'
 
@@ -201,6 +218,12 @@ export default function DigitaleBaeckerei({
   const raum = findeRaum(raumId, raeume) ?? startRaum
   const raumRef = useRef(raumId)
   raumRef.current = raumId
+  /**
+   * Erst wenn `?raum=<id>` gelesen ist, steht fest, welches Modell gebraucht
+   * wird - vorher holt die App keins (sonst ginge mit einem Link in einen
+   * anderen Raum das Modell des Ladens mit über die Leitung).
+   */
+  const [adresseGelesen, setAdresseGelesen] = useState(false)
   /** Beim Raumwechsel stand der Fokus auf einem Bedienelement, das dabei verschwindet. */
   const fokusNachWechsel = useRef(false)
 
@@ -220,14 +243,39 @@ export default function DigitaleBaeckerei({
   /** 3D-Modelle einzelner Produkte; leer = keine Nahansicht (kein Fehler). */
   const [modelle, setModelle] =
     useState<ProduktModellIndex>(LEERER_MODELL_INDEX)
+  /** Neuer Wert = Produktdaten noch einmal laden („Noch einmal versuchen“). */
+  const [datenVersuch, setDatenVersuch] = useState(0)
   /**
    * Produktdaten und Modell-Index als ein Versprechen: Die Szene wartet
-   * darauf, bevor sie das erste Bild zeigt - sie legt damit die Regal-Modelle
-   * auf die Plätze (DB12). `null` als Produktdaten: nicht ladbar.
+   * darauf (höchstens `EINRICHTUNG_FRIST_MS`), bevor sie das erste Bild zeigt
+   * - sie legt damit die Regal-Modelle auf die Plätze (DB12). Scheitern die
+   * Produktdaten, bleibt es offen, bis ein neuer Versuch sie bringt: Die
+   * Szene steht dann erst mit der Ware ihres Modells da und richtet sich
+   * nachträglich ein.
    */
   const [ladung, setLadung] = useState<Promise<
-    [Produktdaten | null, ProduktModellIndex]
+    [Produktdaten, ProduktModellIndex]
   > | null>(null)
+  /** Erfüllt `ladung` mit den ersten Produktdaten - aus welchem Versuch auch immer. */
+  const datenFuerSzene = useRef<((geladen: Produktdaten) => void) | null>(null)
+  /**
+   * Das Modell des Raums als Bytes - geholt ohne three (`holeModell`), gleich
+   * beim Start, je Raum und je Versuch. Die Szene entpackt nur noch.
+   */
+  const [modell, setModell] = useState<{
+    url: string
+    versuch: number
+    daten: Promise<ArrayBuffer>
+  } | null>(null)
+  /**
+   * WebGL 2 da? three.js braucht es. Einmal geprüft, erst im Browser (nie
+   * beim Vorab-Rendern); ohne gibt es weder three-Chunk noch Modell.
+   */
+  const webgl2 = useRef<boolean | null>(null)
+  const kann3D = useCallback(() => {
+    if (webgl2.current === null) webgl2.current = hatWebGL2()
+    return webgl2.current
+  }, [])
   /** Einrichten-Modus: an? Der Entwurf je Raum, der gewählte Platz. */
   const [einrichtenAn, setEinrichtenAn] = useState(false)
   const [entwurf, setEntwurf] = useState<Record<string, Belegung> | null>(null)
@@ -264,10 +312,14 @@ export default function DigitaleBaeckerei({
 
   // Die Szene nachladen. Scheitert das (wackliges Netz: HTML da, der
   // three-Chunk nicht), ist das ein Ladefehler mit „Noch einmal versuchen“ -
-  // keine englische Fehlerseite.
+  // keine englische Fehlerseite. Ohne WebGL 2 gar nicht: gleich die Liste.
   const hatViewer = Viewer3D !== null
   useEffect(() => {
     if (hatViewer) return undefined
+    if (!kann3D()) {
+      setZustand('kein-webgl')
+      return undefined
+    }
     let aktuell = true
     ladeViewer()
       .then((komponente) => {
@@ -279,31 +331,51 @@ export default function DigitaleBaeckerei({
     return () => {
       aktuell = false
     }
-  }, [hatViewer, versuch])
+  }, [hatViewer, versuch, kann3D])
 
-  // Snapshot aus hq und Belegung aus dem Modell - unabhängig von der Szene,
-  // auch der Ersatz ohne WebGL braucht sie.
+  // Welche Produkte ein 3D-Modell haben (Nahansicht, Regal-Modelle). Fehlt
+  // der Index oder ist er leer, gibt es beides einfach nicht. Dazu das
+  // Versprechen für die Szene; die Produktdaten erfüllen es (unten).
   useEffect(() => {
     let aktuell = true
-    const produktdaten = ladeProduktdaten(BASE_PATH).then(
-      (geladen): Produktdaten | null => geladen,
-      () => null
-    )
-    // Welche Produkte ein 3D-Modell haben (Nahansicht, Regal-Modelle). Fehlt
-    // der Index oder ist er leer, gibt es beides einfach nicht.
     const index = ladeModellIndex(BASE_PATH)
-    setLadung(Promise.all([produktdaten, index]))
-    produktdaten.then((geladen) => {
-      if (!aktuell) return
-      if (geladen) setDaten(geladen)
-      else setDatenFehler(true)
+    const produktdaten = new Promise<Produktdaten>((fertig) => {
+      datenFuerSzene.current = fertig
     })
+    setLadung(Promise.all([produktdaten, index]))
     index.then((geladen) => {
       if (aktuell) setModelle(geladen)
     })
     return () => {
       aktuell = false
     }
+  }, [])
+
+  // Snapshot aus hq und Belegung aus dem Modell - unabhängig von der Szene,
+  // auch der Ersatz ohne WebGL braucht sie. Ein neuer `datenVersuch` lädt sie
+  // noch einmal (nach einem Fehler).
+  useEffect(() => {
+    let aktuell = true
+    ladeProduktdaten(BASE_PATH).then(
+      (geladen) => {
+        if (!aktuell) return
+        setDaten(geladen)
+        setDatenFehler(false)
+        datenFuerSzene.current?.(geladen)
+      },
+      () => {
+        if (aktuell) setDatenFehler(true)
+      }
+    )
+    return () => {
+      aktuell = false
+    }
+  }, [datenVersuch])
+
+  /** Produktdaten noch einmal laden; bis dahin „werden geladen“. */
+  const ladeDatenNochmal = useCallback(() => {
+    setDatenFehler(false)
+    setDatenVersuch((n) => n + 1)
   }, [])
 
   // Infopunkte der Räume (Stationen der Backstube). Fehlt die Datei, gibt es
@@ -341,27 +413,27 @@ export default function DigitaleBaeckerei({
 
   /**
    * Die Einrichtung des Raums für die Szene (DB12): seine Belegung mit den
-   * Rahmen der Plätze und die Regal-Modelle. Ohne Produktdaten oder in einem
-   * Raum ohne Produkte: `null` - der Raum bleibt, wie er im Modell ist.
+   * Rahmen der Plätze und die Regal-Modelle. In einem Raum ohne Produkte:
+   * gleich `null` - der Raum bleibt, wie er im Modell ist. Fehlen die
+   * Produktdaten, bleibt das Versprechen offen (siehe `ladung`).
    */
   const einrichtung = useMemo(
-    () =>
-      ladung && raum
-        ? ladung.then(([geladen, index]): SzenenEinrichtung | null =>
-            geladen && raum.produkte
+    (): Promise<SzenenEinrichtung | null> | undefined =>
+      !ladung || !raum
+        ? undefined
+        : !raum.produkte
+        ? // Ein Raum ohne Produkte wartet auf nichts.
+          Promise.resolve(null)
+        : ladung.then(([geladen, index]) => ({
+            belegung: belegungVon(geladen.belegung, raum.id),
+            regal: index.regal
               ? {
-                  belegung: belegungVon(geladen.belegung, raum.id),
-                  regal: index.regal
-                    ? {
-                        url: `${BASE_PATH}/${index.regal.datei}`,
-                        modelle: index.regal.modelle,
-                      }
-                    : undefined,
-                  blickpunkte: raum.blickpunkte,
+                  url: `${BASE_PATH}/${index.regal.datei}`,
+                  modelle: index.regal.modelle,
                 }
-              : null
-          )
-        : undefined,
+              : undefined,
+            blickpunkte: raum.blickpunkte,
+          })),
     [ladung, raum]
   )
 
@@ -490,6 +562,7 @@ export default function DigitaleBaeckerei({
       if (ziel) betrete(ziel.id, 'keiner')
     }
     ausAdresse()
+    setAdresseGelesen(true)
     window.addEventListener('popstate', ausAdresse)
     return () => window.removeEventListener('popstate', ausAdresse)
   }, [raeume, betrete])
@@ -520,7 +593,50 @@ export default function DigitaleBaeckerei({
     [blickpunkte, wechsleZu]
   )
 
-  const onProgress = useCallback((f: number) => setFortschritt(f), [])
+  /**
+   * Fortschritt in ganzen Prozent und nie rückwärts - ein Render je Prozent,
+   * nicht je Datenpaket. Zurück auf 0 nur bei einem neuen Raum oder Versuch.
+   */
+  const onProgress = useCallback((anteil: number) => {
+    const prozent =
+      Math.floor(Math.min(Math.max(anteil, 0), 1) * 100 + 1e-9) / 100
+    setFortschritt((vorher) => (prozent > vorher ? prozent : vorher))
+  }, [])
+
+  // Das Modell holen - vom ersten Moment an, parallel zum three-Chunk, mit
+  // Fortschritt (0…90 %). Je Raum und je Versuch; ein neuer Raum, ein neuer
+  // Versuch und das Abbauen brechen den alten Abruf ab.
+  const raumModellUrl = raum ? modelUrl(raum.modell) : null
+  const raumModellBytes = raum ? modellBytes(raum) : undefined
+  useEffect(() => {
+    if (!raumModellUrl || !adresseGelesen || !kann3D()) return undefined
+    let aktuell = true
+    const abbruch = new AbortController()
+    const daten = holeModell(raumModellUrl, {
+      signal: abbruch.signal,
+      bytes: raumModellBytes,
+      onFortschritt: (anteil) => {
+        if (aktuell) onProgress(MODELL_ANTEIL * anteil)
+      },
+    })
+    // Scheitert der Abruf, ist das gleich ein Ladefehler - nicht erst, wenn
+    // auch three da ist. (Die Szene meldet ihn sonst noch einmal.)
+    daten.catch(() => {
+      if (aktuell) setZustand((z) => (z === 'laden' ? 'fehler' : z))
+    })
+    setModell({ url: raumModellUrl, versuch, daten })
+    return () => {
+      aktuell = false
+      abbruch.abort()
+    }
+  }, [
+    raumModellUrl,
+    raumModellBytes,
+    versuch,
+    adresseGelesen,
+    kann3D,
+    onProgress,
+  ])
   const onReady = useCallback((info?: ViewerReadyInfo) => {
     setZustand('bereit')
     setIntroId(info?.intro?.id ?? null)
@@ -628,6 +744,8 @@ export default function DigitaleBaeckerei({
     introGespielt.current.delete(raumId)
     setZustand('laden')
     setVersuch((n) => n + 1)
+    // Fehlten auch die Produktdaten: die gleich mit.
+    if (datenFehler) ladeDatenNochmal()
   }
 
   /** Der Flug zum Start, den das geladene Modell dieses Raums hergibt. */
@@ -694,9 +812,21 @@ export default function DigitaleBaeckerei({
     [raeume, raumId]
   )
 
+  // Die Liste für Screenreader ändert sich nicht mit dem Fortschritt: nicht
+  // bei jedem Prozent neu zeichnen.
+  const screenreaderListe = useMemo(
+    () => <OhneWebGL variante="screenreader" raeume={raumListe} />,
+    [raumListe]
+  )
+
   if (!raum || !blickpunkt) return null
 
   const zeigtSzene = zustand === 'laden' || bereit
+  /** Der Abruf, der zu diesem Raum und diesem Versuch gehört - kein alter. */
+  const modellDa =
+    modell && modell.url === raumModellUrl && modell.versuch === versuch
+      ? modell
+      : null
   /** Mit Produktdaten bleibt bei einem Ladefehler die Liste benutzbar. */
   const fehlerMitListe = zustand === 'fehler' && daten !== null
   const imStartRaum = raum.id === START_RAUM_ID
@@ -763,13 +893,13 @@ export default function DigitaleBaeckerei({
         backgroundColor: SCENE_BACKDROP,
       }}
     >
-      {zeigtSzene && Viewer3D && einrichtung && (
+      {zeigtSzene && Viewer3D && einrichtung && modellDa && (
         <Viewer3D
           key={versuch}
           einrichtung={einrichtung}
           belegung={(einrichten && entwurf?.[raum.id]) || undefined}
-          modelUrl={modelUrl(raum.modell)}
-          modelBytes={modellBytes(raum)}
+          modelUrl={modellDa.url}
+          modell={modellDa.daten}
           blickpunkt={blickpunkt}
           fuellung={raum.fuellung}
           label={
@@ -819,11 +949,37 @@ export default function DigitaleBaeckerei({
           top: 'max(12px, env(safe-area-inset-top))',
           left: 'max(12px, env(safe-area-inset-left))',
           px: 1.5,
-          py: 1,
+          py: 0.75,
           maxWidth: 'calc(100% - 24px)',
         }}
       >
         <Typography variant="h1">{TITEL}</Typography>
+        {/* Wessen Laden das ist - und der Weg zur Website. Die Karte endet
+            höchstens 76 px unter dem oberen Rand: Darunter hält die Szene
+            gewählte Produkte frei. Die Zeile ist darum nur 24 px hoch, ihre
+            Tippfläche trotzdem 44 px - sie reicht nach oben in die
+            Überschrift, nach unten bis an den Rand der Karte, nie darüber
+            hinaus. */}
+        <Link
+          href={STARTSEITE}
+          underline="always"
+          sx={{
+            position: 'relative',
+            display: 'block',
+            width: 'fit-content',
+            fontSize: '0.875rem',
+            fontWeight: 600,
+            lineHeight: '24px',
+            textUnderlineOffset: '3px',
+            '&::after': {
+              content: '""',
+              position: 'absolute',
+              inset: '-14px -12px -6px',
+            },
+          }}
+        >
+          {BAECKEREI_NAME}
+        </Link>
       </Paper>
 
       {fliegt && <IntroKnopf onClick={() => setIntroSchluss((n) => n + 1)} />}
@@ -843,6 +999,9 @@ export default function DigitaleBaeckerei({
                 ? EINRICHTEN_HINWEIS
                 : keineInfos
                 ? KEINE_INFOS_HINWEIS
+                : datenFehler && raum.produkte
+                ? // Ohne Produktinfos öffnet ein Tipp keine Karte.
+                  DATEN_FEHLER_HINWEIS
                 : undefined
             }
           />
@@ -907,15 +1066,20 @@ export default function DigitaleBaeckerei({
                 ? DATEN_FEHLER_TEXT
                 : DATEN_LADEN_TEXT
             }
+            leerAktion={
+              raum.produkte && !daten && datenFehler ? (
+                <Button variant="contained" onClick={ladeDatenNochmal}>
+                  {NOCHMAL_TEXT}
+                </Button>
+              ) : undefined
+            }
           />
         </>
       )}
 
       {/* Derselbe Inhalt als Text neben der laufenden 3D-Ansicht: der Weg
           für Screenreader. */}
-      {zeigtSzene && daten && (
-        <OhneWebGL variante="screenreader" raeume={raumListe} />
-      )}
+      {zeigtSzene && daten && screenreaderListe}
 
       {nahansicht && (
         <Nahansicht
@@ -951,11 +1115,20 @@ export default function DigitaleBaeckerei({
             sx={{ width: 'min(100%, 360px)', p: 2.5, textAlign: 'center' }}
           >
             <Typography component="p">{meldung}</Typography>
-            {zustand !== 'kein-webgl' && (
+            {zustand !== 'kein-webgl' ? (
               <Button variant="contained" onClick={nochmal} sx={{ mt: 2 }}>
                 {zustand === 'fehler' ? NOCHMAL_TEXT : 'Neu laden'}
               </Button>
-            )}
+            ) : datenFehler ? (
+              // Ohne 3D fehlt nur die Liste: die Produktdaten neu laden.
+              <Button
+                variant="contained"
+                onClick={ladeDatenNochmal}
+                sx={{ mt: 2 }}
+              >
+                {NOCHMAL_TEXT}
+              </Button>
+            ) : null}
           </Paper>
         ) : (
           ansage

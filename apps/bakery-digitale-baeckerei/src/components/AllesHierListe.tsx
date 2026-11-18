@@ -35,6 +35,11 @@ export interface AllesHierListeProps {
    * laden oder wenn sie nicht geladen werden konnten.
    */
   leerText?: string
+  /**
+   * Bedienelement unter dem Text der leeren Liste, z. B. „Noch einmal
+   * versuchen“, wenn die Produktdaten nicht geladen werden konnten.
+   */
+  leerAktion?: React.ReactNode
   /** ids der Produkte, deren Karte in diesem Besuch schon offen war: Haken an der Zeile. */
   entdeckt?: ReadonlySet<string>
   /** Zeile unter der Überschrift, z. B. „3 von 12 Produkten im Laden entdeckt“. */
@@ -53,6 +58,7 @@ export default function AllesHierListe({
   onSelect,
   onClose,
   leerText = LISTE_LEER_TEXT,
+  leerAktion,
   entdeckt,
   entdecktText,
 }: AllesHierListeProps) {
@@ -133,9 +139,10 @@ export default function AllesHierListe({
 
       <Box sx={{ overflowY: 'auto', overscrollBehavior: 'contain', pb: 1 }}>
         {zeilen.length === 0 ? (
-          <Typography color="text.secondary" sx={{ px: 2.5, py: 2 }}>
-            {leerText}
-          </Typography>
+          <Box sx={{ px: 2.5, py: 2 }}>
+            <Typography color="text.secondary">{leerText}</Typography>
+            {leerAktion && <Box sx={{ mt: 2 }}>{leerAktion}</Box>}
+          </Box>
         ) : (
           <List disablePadding aria-labelledby={titelId}>
             {zeilen.map(({ slot, produkt }) => (

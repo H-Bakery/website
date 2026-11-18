@@ -1,17 +1,24 @@
 import React from 'react'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { raeume, type Raum } from '../config/raeume'
+import { holeModell } from '../lib/modell/holeModell'
 import type { Belegung, ProduktSnapshot } from '../lib/produkte/types'
 import { ENTDECKT_ZEILE_TEXT, LISTE_LEER_TEXT } from './AllesHierListe'
 import DigitaleBaeckerei, {
+  BAECKEREI_NAME,
   BEREIT_TEXT,
   INTRO_ANSAGE,
   INTRO_LABEL,
+  DATEN_FEHLER_HINWEIS,
   DATEN_FEHLER_TEXT,
+  DATEN_LADEN_TEXT,
   FEHLER_TEXT,
   KEINE_INFOS_HINWEIS,
   KEINE_INFOS_MS,
   NICHT_IM_BILD_TEXT,
+  NOCHMAL_TEXT,
+  STARTSEITE,
   TITEL,
   UNTERBROCHEN_TEXT,
   blickpunktAnsage,
@@ -21,7 +28,7 @@ import { HINWEIS_TEXT } from './Hinweis'
 import { UEBERSPRINGEN_TEXT } from './IntroKnopf'
 import { INTRO_NOCHMAL_TEXT } from './Quellen'
 import { ladeNahansicht } from './ladeNahansicht'
-import { ladeViewer } from './ladeViewer'
+import { hatWebGL2, ladeViewer } from './ladeViewer'
 import { LADE_TEXT } from './Ladebild'
 import { ZURUECK_TEXT, nahansichtLabel } from './Nahansicht'
 import { OHNE_WEBGL_TEXT } from './OhneWebGL'
@@ -32,14 +39,21 @@ import ThemeRegistry from './ThemeRegistry'
 // three.js (ESM, WebGL) nie in jsdom laden: Statt der nachgeladenen Komponente
 // liefert `ladeViewer` einen Platzhalter, dessen Knöpfe die Rückmeldungen der
 // echten Szene auslösen - oder scheitert, wie ein Chunk im wackligen Netz.
+// jsdom hat kein WebGL: `hatWebGL2` sagt, was der Test braucht.
 const mounts: Record<string, unknown>[] = []
-jest.mock('./ladeViewer', () => ({ ladeViewer: jest.fn() }))
+jest.mock('./ladeViewer', () => ({
+  ladeViewer: jest.fn(),
+  hatWebGL2: jest.fn(),
+}))
+// Das Modell holt die App selbst (ohne three): Jeder Abruf wird hier notiert
+// und bleibt offen - der Test meldet Fortschritt und Ende von Hand.
+jest.mock('../lib/modell/holeModell', () => ({ holeModell: jest.fn() }))
 // Ebenso die Nahansicht: Ihr 3D-Code wird nie geladen.
 jest.mock('./ladeNahansicht', () => ({ ladeNahansicht: jest.fn() }))
 
 function FakeViewer(props: {
   modelUrl: string
-  modelBytes?: number
+  modell: Promise<ArrayBuffer>
   fuellung: string
   label: string
   blickpunkt: { id: string }
@@ -71,7 +85,7 @@ function FakeViewer(props: {
   React.useEffect(() => {
     mounts.push({
       modelUrl: props.modelUrl,
-      modelBytes: props.modelBytes,
+      modell: props.modell,
       fuellung: props.fuellung,
       blickpunkt: props.blickpunkt.id,
     })
@@ -255,11 +269,11 @@ function antworteMitDaten(modelle: unknown = MODELLE) {
   })
 }
 
-function setup(strict = false) {
+function setup(strict = false, raeumeDerApp?: readonly Raum[]) {
   const user = userEvent.setup()
   const tree = (
     <ThemeRegistry>
-      <DigitaleBaeckerei />
+      <DigitaleBaeckerei raeume={raeumeDerApp} />
     </ThemeRegistry>
   )
   render(strict ? <React.StrictMode>{tree}</React.StrictMode> : tree)
@@ -282,6 +296,14 @@ const viewer = () => screen.getByTestId('fake-viewer')
 const sheet = () => screen.queryByTestId('produkt-sheet')
 
 const ladeViewerMock = ladeViewer as jest.MockedFunction<typeof ladeViewer>
+const hatWebGL2Mock = hatWebGL2 as jest.MockedFunction<typeof hatWebGL2>
+const holeModellMock = holeModell as jest.MockedFunction<typeof holeModell>
+/** Jeder Abruf eines Modells: Adresse, Optionen und das Versprechen an die Szene. */
+const abrufe: {
+  url: string
+  optionen: Parameters<typeof holeModell>[1]
+  daten: Promise<ArrayBuffer>
+}[] = []
 const ladeNahansichtMock = ladeNahansicht as jest.MockedFunction<
   typeof ladeNahansicht
 >
@@ -297,6 +319,15 @@ beforeEach(() => {
   ladeViewerMock.mockResolvedValue(
     FakeViewer as unknown as Awaited<ReturnType<typeof ladeViewer>>
   )
+  hatWebGL2Mock.mockReset()
+  hatWebGL2Mock.mockReturnValue(true)
+  abrufe.length = 0
+  holeModellMock.mockReset()
+  holeModellMock.mockImplementation((url, optionen) => {
+    const daten = new Promise<ArrayBuffer>(() => undefined)
+    abrufe.push({ url, optionen, daten })
+    return daten
+  })
   nahansichten.length = 0
   ladeNahansichtMock.mockReset()
   ladeNahansichtMock.mockResolvedValue((container, options) => {
@@ -312,6 +343,19 @@ beforeEach(() => {
 })
 
 describe('DigitaleBaeckerei: Laden', () => {
+  it('die Titelkarte nennt die Bäckerei und führt zur Startseite der Website', async () => {
+    setup()
+    const titel = screen.getByRole('heading', { level: 1, name: TITEL })
+    const link = screen.getByRole('link', { name: BAECKEREI_NAME })
+    expect(STARTSEITE).toBe('/')
+    expect(link).toHaveAttribute('href', '/')
+    expect(link).toHaveTextContent('Bäckerei Heusser')
+    // Unter der Überschrift, nicht in ihr: Sie heißt weiter „Digitale Bäckerei“.
+    expect(titel).not.toContainElement(link)
+    expect(link.closest('header')).toBe(titel.closest('header'))
+    await screen.findByTestId('fake-viewer')
+  })
+
   it('zeigt Titel und das Ladebild bei 0 %, noch ohne Bedienelemente', async () => {
     setup()
     expect(screen.getByRole('heading', { name: TITEL })).toBeInTheDocument()
@@ -326,17 +370,164 @@ describe('DigitaleBaeckerei: Laden', () => {
     ).toBeInTheDocument()
   })
 
-  it('reicht Modell, erwartete Größe, Morgens und den Blickpunkt Theke durch', async () => {
+  it('reicht Modell, Morgens und den Blickpunkt Theke durch; das Modell holt die App mit der erwarteten Größe', async () => {
     setup()
     await screen.findByTestId('fake-viewer')
+    expect(abrufe).toHaveLength(1)
+    expect(abrufe[0].url).toBe('/model/twin.glb')
+    expect(abrufe[0].optionen.bytes).toEqual(expect.any(Number))
     expect(mounts).toEqual([
       {
         modelUrl: '/model/twin.glb',
-        modelBytes: expect.any(Number),
+        modell: abrufe[0].daten,
         fuellung: 'morgens',
         blickpunkt: 'theke',
       },
     ])
+  })
+
+  it('holt das Modell, noch bevor der 3D-Code da ist, und zeigt den Fortschritt (0…90 %) in ganzen Prozent', async () => {
+    let gibViewer: (k: unknown) => void = () => undefined
+    ladeViewerMock.mockReset()
+    ladeViewerMock.mockReturnValue(
+      new Promise((fertig) => {
+        gibViewer = fertig as (k: unknown) => void
+      })
+    )
+    setup()
+    await waitFor(() => expect(abrufe).toHaveLength(1))
+    expect(ladeViewerMock).toHaveBeenCalledTimes(1)
+    expect(screen.queryByTestId('fake-viewer')).not.toBeInTheDocument()
+    const melde = (anteil: number) =>
+      act(() => abrufe[0].optionen.onFortschritt?.(anteil))
+
+    melde(0.5)
+    expect(screen.getByTestId('lade-prozent')).toHaveTextContent('45 %')
+    melde(0.505)
+    expect(screen.getByTestId('lade-prozent')).toHaveTextContent('45 %')
+    // nie rückwärts
+    melde(0.2)
+    expect(screen.getByTestId('lade-prozent')).toHaveTextContent('45 %')
+    melde(1)
+    expect(screen.getByTestId('lade-prozent')).toHaveTextContent('90 %')
+    expect(screen.getByRole('progressbar')).toHaveAttribute(
+      'aria-valuenow',
+      '90'
+    )
+    expect(screen.queryByTestId('fake-viewer')).not.toBeInTheDocument()
+
+    // Jetzt ist three da: Die Szene bekommt genau diesen Abruf.
+    await act(async () => gibViewer(FakeViewer))
+    await screen.findByTestId('fake-viewer')
+    expect(mounts).toHaveLength(1)
+    expect(mounts[0].modell).toBe(abrufe[0].daten)
+    expect(abrufe).toHaveLength(1)
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'fertig' }))
+    expect(screen.queryByTestId('ladebild')).not.toBeInTheDocument()
+  })
+
+  it('scheitert der Abruf des Modells, ist das gleich ein Ladefehler - der nächste Versuch holt neu', async () => {
+    let scheitern: (e: unknown) => void = () => undefined
+    holeModellMock.mockImplementationOnce((url, optionen) => {
+      const daten = new Promise<ArrayBuffer>((_, ablehnen) => {
+        scheitern = ablehnen
+      })
+      abrufe.push({ url, optionen, daten })
+      return daten
+    })
+    const { user } = setup()
+    await screen.findByTestId('fake-viewer')
+    await screen.findByTestId('ohne-webgl')
+    await act(async () => scheitern(new Error('404 /model/twin.glb')))
+    expect(document.querySelector('main')).toHaveAttribute(
+      'data-zustand',
+      'fehler'
+    )
+    const ersatz = within(screen.getByTestId('ohne-webgl'))
+    expect(ersatz.getByRole('status')).toHaveTextContent(FEHLER_TEXT)
+
+    await user.click(ersatz.getByRole('button', { name: NOCHMAL_TEXT }))
+    await screen.findByTestId('fake-viewer')
+    expect(abrufe).toHaveLength(2)
+    // Ein neuer Versuch bricht den alten Abruf ab und holt neu.
+    expect(abrufe[0].optionen.signal.aborted).toBe(true)
+    expect(mounts.at(-1)?.modell).toBe(abrufe[1].daten)
+    await user.click(screen.getByRole('button', { name: 'fertig' }))
+    expect(document.querySelector('main')).toHaveAttribute(
+      'data-zustand',
+      'bereit'
+    )
+  })
+
+  it('bricht den Abruf ab, wenn die Seite abgebaut wird', async () => {
+    const { unmount } = render(
+      <ThemeRegistry>
+        <DigitaleBaeckerei />
+      </ThemeRegistry>
+    )
+    await waitFor(() => expect(abrufe).toHaveLength(1))
+    expect(abrufe[0].optionen.signal.aborted).toBe(false)
+    unmount()
+    expect(abrufe[0].optionen.signal.aborted).toBe(true)
+  })
+
+  it('ein Raumwechsel bricht den Abruf des alten Raums ab und holt das neue Modell', async () => {
+    const testraum: Raum = {
+      id: 'testraum',
+      name: 'Testraum',
+      wechsel: 'In den Testraum',
+      modell: 'testraum.glb',
+      fuellung: 'morgens',
+      produkte: false,
+      start: 'mitte',
+      blickpunkte: [
+        {
+          id: 'mitte',
+          name: 'Mitte',
+          eye: [1, 1.6, 0],
+          look: [0, 1, 0],
+          fov: 60,
+          yawDeg: 20,
+          pitchDeg: 10,
+          fovMin: 24,
+          fovMax: 60,
+          moebel: ['kiste/'],
+        },
+      ],
+    }
+    const { user } = setup(false, [raeume[0], testraum])
+    await screen.findByTestId('fake-viewer')
+    await user.click(screen.getByRole('button', { name: 'fertig' }))
+    expect(abrufe.map((a) => a.url)).toEqual(['/model/twin.glb'])
+    expect(abrufe[0].optionen.signal.aborted).toBe(false)
+
+    await user.click(screen.getByTestId('raum-wechsel'))
+    await waitFor(() => expect(abrufe).toHaveLength(2))
+    expect(abrufe[0].optionen.signal.aborted).toBe(true)
+    expect(abrufe[1].url).toBe('/model/testraum.glb')
+    expect(abrufe[1].optionen.signal.aborted).toBe(false)
+    await waitFor(() => expect(mounts).toHaveLength(2))
+    expect(mounts[1].modell).toBe(abrufe[1].daten)
+    window.history.replaceState(null, '', '/')
+  })
+
+  it('ohne WebGL 2: weder 3D-Code noch Modell, gleich die Liste', async () => {
+    hatWebGL2Mock.mockReturnValue(false)
+    setup()
+    await waitFor(() =>
+      expect(document.querySelector('main')).toHaveAttribute(
+        'data-zustand',
+        'kein-webgl'
+      )
+    )
+    const ersatz = within(await screen.findByTestId('ohne-webgl'))
+    expect(ersatz.getByText('Testbrot')).toBeInTheDocument()
+    expect(ersatz.getByRole('status')).toHaveTextContent(OHNE_WEBGL_TEXT)
+    expect(ladeViewerMock).not.toHaveBeenCalled()
+    expect(holeModellMock).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('ladebild')).not.toBeInTheDocument()
   })
 
   it('lädt Snapshot und Belegung aus data/', async () => {
@@ -719,6 +910,101 @@ describe('DigitaleBaeckerei: Liste „Alles hier“', () => {
     const liste = within(await screen.findByTestId('alles-hier-liste'))
     expect(await liste.findByText(DATEN_FEHLER_TEXT)).toBeInTheDocument()
   })
+
+  /** Wie `antworteMitDaten`, nur der Snapshot scheitert, solange `kaputt()`. */
+  function snapshotScheitert(kaputt: () => boolean) {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith('/data/products.snapshot.json') && kaputt()) {
+        return { ok: false, status: 503 }
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () =>
+          url.endsWith('/data/belegung.json')
+            ? { version: 3, raeume: { laden: BELEGUNG } }
+            : url.endsWith('/data/rauminfos.json')
+            ? RAUMINFOS
+            : url.endsWith('/data/produkte-3d.json')
+            ? MODELLE
+            : SNAPSHOT,
+      }
+    })
+  }
+  const snapshotAbrufe = () =>
+    fetchMock.mock.calls.filter((c) =>
+      String(c[0]).endsWith('/data/products.snapshot.json')
+    ).length
+
+  it('Produktdaten scheitern einmal: „Noch einmal versuchen“ in der Liste lädt sie, dann stehen die Produkte darin', async () => {
+    let kaputt = true
+    snapshotScheitert(() => kaputt)
+    const { user } = setup()
+    await screen.findByTestId('fake-viewer')
+    await user.click(screen.getByRole('button', { name: 'fertig' }))
+    // Ohne Produktinfos verspricht der Hinweis kein „Tippen für Infos“.
+    await waitFor(() =>
+      expect(screen.getByTestId('hinweis')).toHaveTextContent(
+        DATEN_FEHLER_HINWEIS
+      )
+    )
+    expect(DATEN_FEHLER_HINWEIS).not.toMatch(/Tippen/)
+
+    await user.click(screen.getByRole('button', { name: 'Alles hier' }))
+    const liste = within(await screen.findByTestId('alles-hier-liste'))
+    expect(liste.getByText(DATEN_FEHLER_TEXT)).toBeInTheDocument()
+    expect(snapshotAbrufe()).toBe(1)
+
+    kaputt = false
+    await user.click(liste.getByRole('button', { name: NOCHMAL_TEXT }))
+    expect(await liste.findByText('Testbrot')).toBeInTheDocument()
+    expect(liste.getByText('Probeweck')).toBeInTheDocument()
+    expect(liste.queryByText(DATEN_FEHLER_TEXT)).not.toBeInTheDocument()
+    expect(snapshotAbrufe()).toBe(2)
+    // Die Szene bleibt dieselbe - kein Neuaufbau.
+    expect(mounts).toHaveLength(1)
+    expect(screen.getByTestId('hinweis')).toHaveTextContent(HINWEIS_TEXT)
+
+    // Jetzt öffnet ein Tipp ins Bild die Karte.
+    await user.click(screen.getByRole('button', { name: 'Schließen' }))
+    await waitFor(() =>
+      expect(screen.queryByTestId('alles-hier-liste')).not.toBeInTheDocument()
+    )
+    await user.click(screen.getByRole('button', { name: 'tippe Testbrot' }))
+    expect(
+      within(sheet() as HTMLElement).getByRole('heading', { name: 'Testbrot' })
+    ).toBeInTheDocument()
+  })
+
+  it('solange der neue Versuch läuft, sagt die Liste „werden geladen“ - ohne Knopf', async () => {
+    let kaputt = true
+    snapshotScheitert(() => kaputt)
+    const { user } = setup()
+    await screen.findByTestId('fake-viewer')
+    await user.click(screen.getByRole('button', { name: 'fertig' }))
+    await user.click(screen.getByRole('button', { name: 'Alles hier' }))
+    const liste = within(await screen.findByTestId('alles-hier-liste'))
+    await liste.findByText(DATEN_FEHLER_TEXT)
+
+    // Der nächste Abruf hängt, bis der Test ihn freigibt.
+    kaputt = false
+    let freigeben: () => void = () => undefined
+    const haengt = new Promise<void>((weiter) => {
+      freigeben = weiter
+    })
+    const normal = fetchMock.getMockImplementation()
+    fetchMock.mockImplementation(async (url: string) => {
+      await haengt
+      return normal?.(url)
+    })
+    await user.click(liste.getByRole('button', { name: NOCHMAL_TEXT }))
+    expect(liste.getByText(DATEN_LADEN_TEXT)).toBeInTheDocument()
+    expect(
+      liste.queryByRole('button', { name: NOCHMAL_TEXT })
+    ).not.toBeInTheDocument()
+    await act(async () => freigeben())
+    expect(await liste.findByText('Testbrot')).toBeInTheDocument()
+  })
 })
 
 describe('DigitaleBaeckerei: ohne WebGL und für Screenreader', () => {
@@ -754,7 +1040,37 @@ describe('DigitaleBaeckerei: ohne WebGL und für Screenreader', () => {
       )
     )
     expect(screen.queryByTestId('ohne-webgl')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    // Der einzige Knopf: die Produktdaten noch einmal laden.
+    expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
+      NOCHMAL_TEXT,
+    ])
+
+    antworteMitDaten()
+    await user.click(screen.getByRole('button', { name: NOCHMAL_TEXT }))
+    const ersatz = within(await screen.findByTestId('ohne-webgl'))
+    expect(ersatz.getByText('Testbrot')).toBeInTheDocument()
+    expect(ersatz.getByRole('status')).toHaveTextContent(OHNE_WEBGL_TEXT)
+    expect(document.querySelector('main')).toHaveAttribute(
+      'data-zustand',
+      'kein-webgl'
+    )
+  })
+
+  it('ohne WebGL 2 und ohne Produktdaten: derselbe Knopf, ohne 3D-Code', async () => {
+    hatWebGL2Mock.mockReturnValue(false)
+    fetchMock.mockImplementation(async () => ({ ok: false, status: 503 }))
+    const { user } = setup()
+    await waitFor(() =>
+      expect(status()).toHaveTextContent(
+        `${OHNE_WEBGL_TEXT} ${DATEN_FEHLER_TEXT}`
+      )
+    )
+    antworteMitDaten()
+    await user.click(screen.getByRole('button', { name: NOCHMAL_TEXT }))
+    expect(
+      within(await screen.findByTestId('ohne-webgl')).getByText('Testbrot')
+    ).toBeInTheDocument()
+    expect(ladeViewerMock).not.toHaveBeenCalled()
   })
 
   it('neben der laufenden Szene steht dieselbe Liste unsichtbar für Screenreader', async () => {

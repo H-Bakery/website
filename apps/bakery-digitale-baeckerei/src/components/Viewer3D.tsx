@@ -1,8 +1,8 @@
 'use client'
 /**
  * Hülle um die three-Szene (src/lib/scene/createViewer.ts). Wird nur über
- * `DigitaleBaeckerei` per next/dynamic (ssr: false) nachgeladen - three ist
- * nicht im ersten Bundle. In jest wird diese Komponente gemockt.
+ * `ladeViewer` nachgeladen - three ist nicht im ersten Bundle. In jest wird
+ * diese Komponente gemockt.
  *
  * Die Szene wird nur neu gebaut, wenn sich das Modell ändert. Blickpunkt,
  * Beschriftung und Auswahl gehen an die laufende Szene.
@@ -22,7 +22,11 @@ import {
 
 export interface Viewer3DProps {
   modelUrl: string
-  modelBytes?: number
+  /**
+   * Die Bytes des Modells - die App holt sie schon, bevor diese Komponente
+   * (mit three) geladen ist (`holeModell`). Die Szene entpackt nur.
+   */
+  modell: Promise<ArrayBuffer>
   /** Der aktive Blickpunkt; ein Wechsel lässt die Kamera dorthin gleiten. */
   blickpunkt: Blickpunkt
   fuellung: string
@@ -83,7 +87,7 @@ export default function Viewer3D(props: Viewer3DProps) {
   const aktuell = useRef(props)
   aktuell.current = props
 
-  const { modelUrl, modelBytes, blickpunkt, fuellung, label, auswahl } = props
+  const { modelUrl, modell, blickpunkt, fuellung, label, auswahl } = props
   const { einrichtung, belegung } = props
   const { intros, introNochmal = 0, introSchluss = 0 } = props
 
@@ -112,7 +116,7 @@ export default function Viewer3D(props: Viewer3DProps) {
       // Eigenes Canvas je Mounten - auch unter React StrictMode sauber.
       const viewer = createViewer(container, {
         modelUrl,
-        modelBytes,
+        modell,
         blickpunkt: aktuell.current.blickpunkt,
         fuellung,
         label: aktuell.current.label,
@@ -143,7 +147,7 @@ export default function Viewer3D(props: Viewer3DProps) {
       else aktuell.current.onError(err)
       return undefined
     }
-  }, [modelUrl, modelBytes, fuellung, intros, karte, einrichtung])
+  }, [modelUrl, modell, fuellung, intros, karte, einrichtung])
 
   useEffect(() => {
     viewerRef.current?.setBlickpunkt(blickpunkt)

@@ -183,9 +183,22 @@ apps/bakery-digitale-baeckerei-e2e/   Playwright (390×844 und Desktop), nur mit
 ## Bedienung (Handy zuerst)
 
 - **Laden:** Das Modell steht als `<link rel="preload" as="fetch">` im HTML und lädt parallel zum
-  JavaScript. Scheitert das Nachladen des 3D-Codes oder des Modells, zeigt die App den Ladefehler
-  auf Deutsch mit „Noch einmal versuchen“ und - wenn die Produktdaten da sind - die Listen aller
-  Blickpunkte.
+  JavaScript. Die App holt es gleich beim Start selbst (`src/lib/modell/holeModell.ts`, ohne three,
+  derselbe Abruf wie der Link - kein zweiter Download), je Raum und Versuch; ein Raumwechsel bricht
+  den alten Abruf ab. Der Balken läuft so, sobald das JavaScript der Seite läuft (und zählt die
+  Bytes mit, die der Link bis dahin schon hatte), nicht erst, wenn der three-Chunk da ist; davor
+  steht er im HTML bei 0 %. Der Abruf füllt ihn bis 90 % (am Ende genau 90 %, auch wenn die Größe
+  aus `model.lock.json` nicht stimmt), Entpacken und erstes Bild den Rest; die Szene entpackt nur.
+  Ein Netzfehler wird zweimal wiederholt, ein Fehlerstatus (404) nicht. Scheitert das Nachladen des
+  3D-Codes oder des Modells, zeigt die App den Ladefehler auf Deutsch mit „Noch einmal versuchen“
+  und - wenn die Produktdaten da sind - die Listen aller Blickpunkte. **Ohne WebGL 2** (geprüft ohne
+  three, der Kontext der Probe wird gleich freigegeben) lädt sie weder den 3D-Code noch selbst das
+  Modell und zeigt gleich die Listen; nur der preload-Link im HTML holt es noch. **Scheitern die
+  Produktdaten**, steht „Noch einmal versuchen“ in „Alles hier“ (ohne 3D unter der Meldung), und
+  der Hinweis beim Start sagt „Infos fehlen gerade“ statt „Tippen für Infos“. Die Szene wartet
+  dann höchstens 1,5 s auf sie, steht mit der Ware ihres Modells da und richtet sich nachträglich
+  ein, sobald ein neuer Versuch die Daten bringt; eine abgebaute Szene wartet nicht weiter
+  (`bisAbbruch` in `createViewer.ts`), sonst bliebe sie je Raumwechsel samt Modell im Speicher.
 - **Start:** Ein Ladebild (eine gezeichnete Theke als SVG in den Markenfarben - kein Standbild
   des echten Modells, das gehört nicht ins Repo) mit Fortschritt, danach der Flug von der Straße
   zum Blickpunkt „Theke“ (überspringbar, siehe „Stand P3“). Ein kurzer Hinweis „Ziehen zum Umschauen · Tippen für Infos“ verschwindet nach der
