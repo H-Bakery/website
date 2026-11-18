@@ -76,8 +76,8 @@ Routen `src/routes/abgleich.routes.ts` (`/api/abgleich`) · Management-App
   über die Tage mit Rest, und „mehr verkauft“ über die Tage ohne Rest (nur die negativen Tage
   summiert; übrige Ware eines Tages gleicht zu viel Verkauf an einem anderen nicht aus). Diese
   Menge steht unter der Ampel („−10 St. an einem Tag ohne Rest“, `shortWithoutRest`, im CSV „Mehr
-  verkauft (Tage ohne Rest)“), weil die Spalten davor sie verrechnet zeigen. Hat ein Tag „prüfen“,
-  der Zeitraum aber nicht, sagt die Zeile „An n Tagen prüfen“.
+  verkauft (Tage ohne Rest)“), weil die Spalten daneben sie verrechnet zeigen. Hat ein Tag
+  „prüfen“, der Zeitraum aber nicht, sagt die Zeile „An n Tagen prüfen“.
 - **Gebacken je Posten** zählt nur die vergleichbaren Tage (Kassenbericht da, Grundmenge
   festgelegt), damit gebacken − CAP − verkauft aufgeht. Fehlen Tage, steht darunter „x von y
   Tagen (alle: n)“; im CSV stehen „Gebacken (alle Tage)“ und „Gebacken (vergleichbare Tage)“

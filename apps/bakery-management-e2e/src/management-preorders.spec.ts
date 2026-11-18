@@ -134,7 +134,8 @@ test.describe('Vorbestellungen an der Sammelstelle (echte API)', () => {
     // Mörsbach-Liste zeigt den neuen Stand
     await page.goto(`/admin/delivery/preorders?date=${date}`)
     await expect(page.getByText(paidOne.code).first()).toBeVisible()
-    // Ab `md` eine Tabelle, darunter (Pixel 5) je Bestellung eine Karte
+    // Eine Tabelle, wenn sie neben die Seitenleiste passt (`useContentWide`,
+    // Desktop), sonst (Pixel 5, Tablet quer) je Bestellung eine Karte
     // (W4-Verifikation Runde 3) - es steht immer genau eins von beiden da.
     const paidListRow = page
       .getByRole('row')

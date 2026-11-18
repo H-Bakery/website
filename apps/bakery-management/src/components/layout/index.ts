@@ -43,3 +43,4 @@ export {
   obscuredScrollDelta,
   FOCUS_CLEARANCE,
 } from './focusNotObscured'
+export { useContentWide, CONTENT_WIDE_MIN } from './useContentWide'

@@ -1,5 +1,5 @@
 import React from 'react'
-import { screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import BackingListClient, { pieceTotal } from './BackingListClient'
@@ -283,6 +283,105 @@ describe('BackingListClient', () => {
         screen.getByRole('button', { name: 'Erneut versuchen' })
       ).toBeInTheDocument()
     )
+  })
+
+  describe('Tageswechsel: nur die letzte Antwort zählt', () => {
+    const NEXT = '2026-09-19'
+    const AFTER = '2026-09-26'
+    /** Je Liefertag ein eigenes, erfundenes Produkt. */
+    const sumsOf = (date: string): PreorderSums => ({
+      ...SUMMARY,
+      date,
+      items: [
+        {
+          productId: `testbrot-${date}`,
+          variant: '',
+          name: `Testbrot ${date.slice(-2)}`,
+          unit: 'Stück',
+          quantity: Number(date.slice(-2)),
+          preorders: 1,
+        },
+      ],
+    })
+
+    function deferred<T>() {
+      let resolve!: (value: T) => void
+      let reject!: (reason: unknown) => void
+      const promise = new Promise<T>((res, rej) => {
+        resolve = res
+        reject = rej
+      })
+      return { promise, resolve, reject }
+    }
+
+    /** Zweimal einen anderen Liefertag gewählt - beide Antworten offen. */
+    async function changeTwice() {
+      const next = deferred<PreorderSums>()
+      const after = deferred<PreorderSums>()
+      mockFetchSummary.mockImplementation((date: string) =>
+        date === NEXT
+          ? next.promise
+          : date === AFTER
+          ? after.promise
+          : Promise.resolve(sumsOf(date))
+      )
+      renderWithTheme(
+        <BackingListClient initialDate={DATE} initialPickupPointId={POINT.id} />
+      )
+      expect(await screen.findByText('Testbrot 12')).toBeInTheDocument()
+      const field = screen.getByLabelText('Liefertag')
+      fireEvent.change(field, { target: { value: NEXT } })
+      fireEvent.change(field, { target: { value: AFTER } })
+      await waitFor(() =>
+        expect(mockFetchSummary).toHaveBeenLastCalledWith(AFTER, POINT.id)
+      )
+      return { next, after }
+    }
+
+    it('die ältere Antwort kommt zuletzt: es bleibt der neue Tag, Datum und Mengen passen', async () => {
+      const { next, after } = await changeTwice()
+      // bis zur Antwort nicht die Mengen des alten Tags unter dem neuen Datum
+      expect(screen.queryByText('Testbrot 12')).toBeNull()
+      expect(screen.getByRole('button', { name: 'Drucken' })).toBeDisabled()
+      await act(async () => after.resolve(sumsOf(AFTER)))
+      expect(await screen.findByText('Testbrot 26')).toBeInTheDocument()
+      await act(async () => next.resolve(sumsOf(NEXT)))
+      expect(screen.queryByText('Testbrot 19')).toBeNull()
+      expect(screen.getByText('Testbrot 26')).toBeInTheDocument()
+      expect(screen.getByLabelText('Liefertag')).toHaveValue(AFTER)
+      expect(
+        screen.getAllByText(/Samstag, 26\.09\.2026/).length
+      ).toBeGreaterThan(0)
+      expect(screen.queryByText(/19\.09\.2026/)).toBeNull()
+      expect(screen.getByRole('button', { name: 'Drucken' })).toBeEnabled()
+    })
+
+    it('scheitert die ältere Anfrage danach, steht kein Fehler da', async () => {
+      const { next, after } = await changeTwice()
+      await act(async () => after.resolve(sumsOf(AFTER)))
+      expect(await screen.findByText('Testbrot 26')).toBeInTheDocument()
+      await act(async () => next.reject(new Error('Zeitüberschreitung')))
+      expect(screen.queryByText('Zeitüberschreitung')).toBeNull()
+      expect(
+        screen.queryByRole('button', { name: 'Erneut versuchen' })
+      ).toBeNull()
+      expect(screen.getByText('Testbrot 26')).toBeInTheDocument()
+    })
+
+    it('eine veraltete Antwort beendet das Laden nicht', async () => {
+      const { next, after } = await changeTwice()
+      expect(screen.getByText('Backliste wird geladen …')).toBeInTheDocument()
+      await act(async () => next.resolve(sumsOf(NEXT)))
+      expect(screen.getByText('Backliste wird geladen …')).toBeInTheDocument()
+      // „Aktualisieren“ bleibt gesperrt, solange der neue Tag lädt
+      expect(
+        screen.getByRole('button', { name: 'Backliste aktualisieren' })
+      ).toBeDisabled()
+      expect(screen.queryByText('Testbrot 19')).toBeNull()
+      await act(async () => after.resolve(sumsOf(AFTER)))
+      expect(await screen.findByText('Testbrot 26')).toBeInTheDocument()
+      expect(screen.queryByText('Backliste wird geladen …')).toBeNull()
+    })
   })
 })
 

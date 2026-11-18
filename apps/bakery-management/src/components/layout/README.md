@@ -31,6 +31,7 @@ import { PageLayout, PageSection, KeyFigures, ResponsiveList, LoadingState,
 | `ResponsiveList`                             | Tabelle am PC, Karten unter `sm` (600 px) - die Aktionen bleiben am Handy sichtbar.                                                                                                                 |
 | `LoadingState` / `EmptyState` / `ErrorState` | Laden, „nichts da“, „geht nicht“ - überall gleich.                                                                                                                                                  |
 | `DayNavigator`                               | Tageswechsel einer Tagesseite: ‹ Datumsfeld › (+ „Heute“). Immer ganz vorne im `actions`-Slot des Kopfes.                                                                                           |
+| `useContentWide(minWidth?)`                  | `true`, wenn neben der Seitenleiste genug Platz für eine breite Tabelle ist (Standard `CONTENT_WIDE_MIN`, 920 px Inhalt) - sonst Karten. Siehe „Tabellen nach Inhaltsbreite“.                       |
 
 ## Regeln
 
@@ -93,6 +94,21 @@ Tabellen: `ResponsiveList` oder ein eigener Scroll-Container
 (`TableContainer` mit `overflowX: 'auto'`). Touch-Ziele ≥ 44 px - das Theme
 (`TOUCH_MEDIA` in `lib/muiTheme.ts`) erledigt Knöpfe und Felder; eigene
 klickbare Flächen selbst auf 44 px bringen.
+
+**Tabellen nach Inhaltsbreite.** Ob eine breite Tabelle passt, hängt an der
+Breite des Inhalts, nicht des Fensters: ab `md` (900 px) steht die
+Seitenleiste (280 px) fest daneben, quer am Tablet (1024-1200 px) bleiben nur
+700-870 px. Eine Liste, deren wichtige Spalten (Summe, Status, Aktion) sonst
+rechts außer Sicht lägen, schaltet deshalb mit `useContentWide()` statt mit
+`useMediaQuery(theme.breakpoints.up('md'))` zwischen Tabelle und Karten um
+(Vorbestellungen, Tagesübersicht, Sammelstelle). Der Hook misst `<main>` mit
+`ResizeObserver` (Drehen, Fenster ziehen); vor der ersten Messung (Server,
+erster Render) gilt das Fenster ab `lg`. Braucht eine Tabelle mehr oder
+weniger als `CONTENT_WIDE_MIN`, gibt sie ihre Breite mit
+(`useContentWide(800)`). Gedruckt wird trotzdem die Tabelle, wo eine
+Druckansicht sie braucht (`useIsPrinting()`, Tagesübersicht). Tabellen
+ohne Kartenform halten das Ergebnis vorn und blenden Nebenspalten erst ab
+der Breite ein, ab der sie passen (Abgleich: CAP erst ab `xl`).
 
 **Dunkelmodus (Standard).**
 
