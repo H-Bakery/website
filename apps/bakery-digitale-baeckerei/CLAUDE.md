@@ -2,12 +2,15 @@
 
 Der Laden in 3D mit festen Blickpunkten: eigene statische Next.js-App ohne API, nicht im Pilot.
 Stand **P1 (MVP)**: drei Blickpunkte (Theke, Brotregal, Regale) mit Kamera-Rig, Produkte antippen →
-Karte mit Daten aus hq, Liste „Alles hier“, Ladebild, Ersatz ohne WebGL, Quellen. Dazu aus **P4**
-die Nahansicht: „In 3D ansehen“ in der Karte, vorerst nur lokal (DB9); aus **P3** der Flug zum Start
+Karte mit Daten aus hq, Liste „Alles hier“, Ladebild, Ersatz ohne WebGL (mit langem Text und
+„Mehr auf der Website“), Quellen mit Impressum und Datenschutz der Landingpage. Dazu aus **P4**
+die Nahansicht: „In 3D ansehen“ in der Karte - seit DB14 live für die ausgelegten Produkte (Export
+`hq/produkte-3d/`, 114 Modelle); aus **P3** der Flug zum Start
 und „entdeckt x von y“ in der Liste; aus **P5** mehrere Räume (DB11: Raumwechsel, `?raum=<id>`,
 Infopunkte) - live gibt es weiter nur den Verkaufsraum; aus **P6** die Einrichtung (DB12:
-`einrichtung.yaml` aus hq, Regal-Modelle auf den Plätzen, Einrichten-Modus) - live ohne
-Regal-Modelle, also mit der Ware des Modells. Dev auf 4222
+`einrichtung.yaml` aus hq, Regal-Modelle auf den Plätzen, Einrichten-Modus) - live mit
+Regal-Modellen auf den Plätzen, die das Modell belegt (eine `einrichtung.yaml` gibt es in hq noch
+nicht). Dev auf 4222
 (`npm run dev:digitale-baeckerei`), Export nach `apps/bakery-digitale-baeckerei/out`
 (`npm run build:digitale-baeckerei`, webpack), ausgeliefert auf 4232
 (`npm run serve:digitale-baeckerei`). Playwright: `apps/bakery-digitale-baeckerei-e2e`
@@ -156,18 +159,19 @@ Regeln, die am meisten beißen:
   `prefers-color-scheme` (`theme.ts`) - kein `CssVarsProvider`, der schreibt `mui-mode`.
   Dark Mode nur für die Bedienelemente, Touch-Ziele ≥ 44 px.
 - **Unterpfad und Deploy:** `DIGITALE_BAECKEREI_BASE_PATH=/digitale-baeckerei` beim Build.
-  `deploy-to-github-pages.yml` baut die App mit hq (Deploy-Key nur lesend, nur `products/`) und hängt
+  `deploy-to-github-pages.yml` baut die App mit hq (Deploy-Key nur lesend, nur `products/` und den
+  Export `produkte-3d/`) und hängt
   sie unter `/digitale-baeckerei/` in den Export der Landingpage. Davor läuft der Wächter
   `scripts/pruefe-export.mjs` (`export-pruefung.js`): je Raum nur das bereinigte Modell aus dem
   Lock, Snapshot und Rauminfos im Vertrag, Belegung und Rauminfos nur für Räume aus dem Lock, kein
-  Test-Raum, kein „€“, kein Fixture, kein Einrichten-Modus, **keine 3D-Modelle einzelner Produkte**
-  (leerer `data/produkte-3d.json`, nichts in `produkte-3d/` - DB9, der Runner hat das Daten-Repo
-  nicht; mit `--mit-produkte-3d` prüft er stattdessen, dass Index, Ordner und Belegung
-  zusammenpassen) - sonst kein Deploy. Wer etwas Neues nach `public/` oder in den
+  Test-Raum, kein „€“, kein Fixture, kein Einrichten-Modus, **3D-Modelle einzelner Produkte nur
+  passend zu Index und Belegung** (der Deploy läuft seit DB14 mit `--mit-produkte-3d` und verlangt
+  dazu `produkte-3d/_regal.glb`; ohne den Schalter dürfte es gar keine geben: leerer
+  `data/produkte-3d.json`, nichts in `produkte-3d/`) - sonst kein Deploy. Wer etwas Neues nach `public/` oder in den
   Snapshot legt, muss es dort erlauben. Logs sind öffentlich: nie Inhalte aus hq ausgeben.
   Der Link von der Landingpage kommt erst nach der Abnahme durch den Inhaber.
 
 Tests: `npx nx test bakery-digitale-baeckerei`, `npx nx lint bakery-digitale-baeckerei`,
-`npx nx e2e bakery-digitale-baeckerei-e2e`. Plan, Entscheidungen DB1-DB13, „Weitere Räume
+`npx nx e2e bakery-digitale-baeckerei-e2e`. Plan, Entscheidungen DB1-DB14, „Weitere Räume
 (Backstube)“ und Phasen:
 [`docs/apps/digitale-baeckerei.md`](../../docs/apps/digitale-baeckerei.md).

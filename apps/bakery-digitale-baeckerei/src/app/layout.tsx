@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import ThemeRegistry from '../components/ThemeRegistry'
 import { START_RAUM_ID } from '../config/raeume'
 import { modelUrl } from '../lib/basePath'
+import { APP_URL } from '../lib/links'
 import { RAUM_PARAMETER, raumAusAdresse } from '../lib/raeume/adresse'
 import { VERFUEGBARE_RAEUME } from '../lib/raeume/verfuegbar'
 
@@ -29,10 +30,24 @@ const VORLADEN =
       )});if(r&&Object.prototype.hasOwnProperty.call(m,r))u=m[r]}catch(e){}var l=document.createElement('link');l.rel='preload';l.setAttribute('as','fetch');l.setAttribute('crossorigin','anonymous');l.href=u;document.head.appendChild(l)})()`
     : null
 
+const TITEL = 'Digitale Bäckerei – Bäckerei Heusser'
+const BESCHREIBUNG =
+  'Schau dich in der Bäckerei Heusser in 3D um: die Theke mit Vitrine, voll mit Backwaren.'
+
 export const metadata: Metadata = {
-  title: 'Digitale Bäckerei – Bäckerei Heusser',
-  description:
-    'Schau dich in der Bäckerei Heusser in 3D um: die Theke mit Vitrine, voll mit Backwaren.',
+  title: TITEL,
+  description: BESCHREIBUNG,
+  // Link-Vorschau in Messengern. Ohne Bild: Ein Standbild des echten Modells
+  // gehört nicht ins Repo. Die Adresse ist absolut (die Seite, wie sie live
+  // unter der Landingpage liegt) - so braucht es kein `metadataBase`.
+  openGraph: {
+    title: TITEL,
+    description: BESCHREIBUNG,
+    url: APP_URL,
+    siteName: 'Bäckerei Heusser',
+    locale: 'de_DE',
+    type: 'website',
+  },
   // Vorerst nicht im Index: öffentlich wird die Seite erst nach der Abnahme (P2).
   robots: {
     index: false,
