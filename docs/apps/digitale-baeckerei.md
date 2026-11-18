@@ -210,12 +210,25 @@ apps/bakery-digitale-baeckerei-e2e/   Playwright (390×844 und Desktop), nur mit
   (`bisAbbruch` in `createViewer.ts`), sonst bliebe sie je Raumwechsel samt Modell im Speicher.
 - **Start:** Ein Ladebild (eine gezeichnete Theke als SVG in den Markenfarben - kein Standbild
   des echten Modells, das gehört nicht ins Repo) mit Fortschritt, danach der Flug von der Straße
-  zum Blickpunkt „Theke“ (überspringbar, siehe „Stand P3“). Ein kurzer Hinweis „Ziehen zum Umschauen · Tippen für Infos“ verschwindet nach der
-  ersten Geste.
+  zum Blickpunkt „Theke“ (überspringbar, siehe „Stand P3“). Ein kurzer Hinweis „Ziehen zum
+  Umschauen · Tippen für Infos“ (mit Maus: „… · Klicken für Infos“, allein per CSS
+  `(hover: hover) and (pointer: fine)`) steht über der Leiste und verschwindet nach der ersten
+  Geste.
 - **Blickpunkt-Leiste** unten in Daumenreichweite mit den Chips _Theke_ · _Brotregal_ ·
-  _Regale_. Zusätzlich Wischen mit zwei Fingern oder Pfeile am Rand. Auf dem Desktop: Pfeiltasten.
-- **Produkt antippen:** Das Produkt wird hervorgehoben, dazu ein Bottom-Sheet (Querformat und
-  Desktop: Karte rechts oben) mit Name, Einheit und Kurztext, aufklappbar der lange Text. Die Szene
+  _Regale_, darunter „Alles hier“ und „Quellen“. Gibt es einen zweiten Raum, steht sein Wechsel
+  im Hochformat in einer eigenen dritten Zeile. Zusätzlich Wischen mit zwei Fingern oder Pfeile am
+  Rand. Auf dem Desktop: Pfeiltasten. Die Leiste misst ihre Höhe selbst (ResizeObserver) und
+  schreibt sie nach `--leiste-hoehe` an `<html>`; Karte und Hinweis stehen darüber, wie viele
+  Zeilen sie auch hat (`ueberDerLeiste()` in `theme.ts`).
+- **Produkt antippen:** Das Produkt wird hervorgehoben, dazu ein Bottom-Sheet direkt über der Leiste
+  (Querformat und Desktop: Karte rechts oben, die über der Leiste endet) mit Name, Einheit und
+  Kurztext, aufklappbar der lange Text. Die Leiste bleibt dabei bedienbar - Chips, „Alles hier“ und
+  „Quellen“ gehen ohne die Karte erst zu schließen. Zugeklappt nehmen Karte und Leiste höchstens
+  die halbe Höhe ein (auch 360 × 640 mit dreizeiliger Leiste: Titel, Kurztext und Knöpfe passen
+  ohne Scrollen); aufgeklappt bis 80 % (unter 700 px Höhe 60 %). Zu geht die Karte über „×“,
+  Escape oder einen Wisch nach unten - am Griff oben (Finger oder Maus; losgelassen auch neben
+  der Karte) oder auf dem Text, wenn er ganz oben steht (Finger, Stift); unter 64 px federt sie
+  zurück. Ist der Text gescrollt, scrollt der Wisch erst ihn. Die Szene
   bleibt dabei bedienbar: Ein Tipp auf ein anderes Produkt wechselt die Karte, ein Tipp daneben
   (auch auf neutrale Ware oder Möbel) schließt sie; neutrale Ware leuchtet dabei kurz auf. Läge
   das Produkt unter der Karte, dreht der Blick es in den freien Teil des Bildes - in den Grenzen
