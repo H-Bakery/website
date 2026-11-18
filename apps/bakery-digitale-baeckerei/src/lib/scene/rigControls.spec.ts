@@ -1,5 +1,5 @@
 import type { PerspectiveCamera } from 'three'
-import type { Blickpunkt } from '../../config/raeume'
+import type { Blickpunkt, Vec3 } from '../../config/raeume'
 import { WECHSEL_MS } from './rig'
 import { createRig, type Rig } from './rigControls'
 
@@ -77,11 +77,30 @@ interface Aufbau {
 
 let offen: Rig[] = []
 
+/** Größe des Canvas, wenn ein Test sie braucht (passend zu aspect 1,6). */
+const BREITE = 960
+const HOEHE = 600
+
 function aufbau(
-  opts: { reducedMotion?: boolean; aspect?: number } = {}
+  opts: { reducedMotion?: boolean; aspect?: number; mitRahmen?: boolean } = {}
 ): Aufbau {
   const element = document.createElement('canvas')
-  Object.defineProperty(element, 'clientHeight', { value: 600 })
+  Object.defineProperty(element, 'clientHeight', { value: HOEHE })
+  if (opts.mitRahmen) {
+    // jsdom rechnet kein Layout: Das Canvas liegt bei (20, 10) im Fenster.
+    element.getBoundingClientRect = () =>
+      ({
+        left: 20,
+        top: 10,
+        right: 20 + BREITE,
+        bottom: 10 + HOEHE,
+        width: BREITE,
+        height: HOEHE,
+        x: 20,
+        y: 10,
+        toJSON: () => ({}),
+      } as DOMRect)
+  }
   document.body.appendChild(element)
   const kamera = kameraAttrappe(opts.aspect)
   const requestRender = jest.fn()
@@ -144,20 +163,88 @@ function taste(key: string, ziel: EventTarget = document.body) {
   return e
 }
 
-function rad(element: HTMLElement, deltaY: number) {
-  const e = new WheelEvent('wheel', { deltaY, bubbles: true, cancelable: true })
+function rad(
+  element: HTMLElement,
+  deltaY: number,
+  o: { x?: number; y?: number; ctrlKey?: boolean } = {}
+) {
+  const e = new WheelEvent('wheel', {
+    deltaY,
+    bubbles: true,
+    cancelable: true,
+    clientX: o.x ?? 0,
+    clientY: o.y ?? 0,
+    ctrlKey: o.ctrlKey ?? false,
+  })
   element.dispatchEvent(e)
   return e
 }
 
-/** Lässt die Animation-Frames laufen (16 ms je Bild). */
+function fingerWeg(element: HTMLElement, cancelable = true) {
+  // jsdom: TouchEvent ohne Touch-Liste genügt - es geht nur um die Standardaktion.
+  const e = new Event('touchend', { bubbles: true, cancelable })
+  element.dispatchEvent(e)
+  return e
+}
+
+/**
+ * Wo ein Weltpunkt im Bild der Kamera-Attrappe liegt, in Fenster-Pixeln (das
+ * Canvas `mitRahmen`: 960×600 bei 20/10) - wie three projiziert.
+ */
+function imBild(
+  kamera: ReturnType<typeof kameraAttrappe>,
+  punkt: Vec3
+): { x: number; y: number } {
+  const { r, u, f } = achsen(kamera)
+  const v = [0, 1, 2].map((i) => punkt[i] - kamera.eye[i])
+  const tief = v[0] * f[0] + v[1] * f[1] + v[2] * f[2]
+  const t = Math.tan((kamera.fov * GRAD) / 2)
+  const nx =
+    (v[0] * r[0] + v[1] * r[1] + v[2] * r[2]) / (tief * t * kamera.aspect)
+  const ny = (v[0] * u[0] + v[1] * u[1] + v[2] * u[2]) / (tief * t)
+  return { x: 20 + ((nx + 1) / 2) * BREITE, y: 10 + ((1 - ny) / 2) * HOEHE }
+}
+
+/** Der Weltpunkt 4 m hinter dem Bildpunkt (x, y) in Fenster-Pixeln. */
+function hinterBildpunkt(
+  kamera: ReturnType<typeof kameraAttrappe>,
+  x: number,
+  y: number
+): Vec3 {
+  const { r, u, f } = achsen(kamera)
+  const t = Math.tan((kamera.fov * GRAD) / 2)
+  const nx = (((x - 20) / BREITE) * 2 - 1) * t * kamera.aspect
+  const ny = (1 - ((y - 10) / HOEHE) * 2) * t
+  const d = [0, 1, 2].map((i) => f[i] + r[i] * nx + u[i] * ny)
+  const l = Math.hypot(d[0], d[1], d[2])
+  const [x0, y0, z0] = kamera.eye
+  return [x0 + (d[0] / l) * 4, y0 + (d[1] / l) * 4, z0 + (d[2] / l) * 4]
+}
+
+/** Blick, Bild-rechts und Bild-oben der Attrappe (wie `camera.lookAt`). */
+function achsen(kamera: ReturnType<typeof kameraAttrappe>) {
+  const f = [0, 1, 2].map((i) => kamera.ziel[i] - kamera.eye[i])
+  const lf = Math.hypot(f[0], f[1], f[2])
+  for (let i = 0; i < 3; i += 1) f[i] /= lf
+  // rechts = Blick × oben(0, 1, 0), oben = rechts × Blick
+  const lr = Math.hypot(f[2], f[0])
+  const r = [-f[2] / lr, 0, f[0] / lr]
+  const u = [
+    r[1] * f[2] - r[2] * f[1],
+    r[2] * f[0] - r[0] * f[2],
+    r[0] * f[1] - r[1] * f[0],
+  ]
+  return { r, u, f }
+}
+
+/** Lässt die Animation-Frames laufen (16 ms je Bild, sonst `schritt`). */
 let jetzt = 0
 let frames: Map<number, FrameRequestCallback>
 let naechsteId = 1
-function laufen(ms: number) {
+function laufen(ms: number, schritt = 16) {
   const ende = jetzt + ms
   while (jetzt < ende) {
-    jetzt += 16
+    jetzt += schritt
     const faellig = Array.from(frames.entries())
     frames.clear()
     for (const [, cb] of faellig) cb(jetzt)
@@ -309,6 +396,74 @@ describe('createRig: Tipp oder Ziehen', () => {
   })
 })
 
+describe('createRig: Finger ohne Geisterklick', () => {
+  it('touchend am Canvas verliert seine Standardaktion (kein Klick danach), nach dispose nicht mehr', () => {
+    const { rig, element } = aufbau()
+    expect(fingerWeg(element).defaultPrevented).toBe(true)
+    // Nicht abbrechbar (der Browser scrollt schon): nichts zu tun.
+    expect(fingerWeg(element, false).defaultPrevented).toBe(false)
+    rig.dispose()
+    expect(fingerWeg(element).defaultPrevented).toBe(false)
+  })
+
+  it('auch gesperrt (Flug zum Start): Der Tipp, der überspringt, klickt nichts an', () => {
+    const { rig, element } = aufbau()
+    rig.sperren(true)
+    expect(fingerWeg(element).defaultPrevented).toBe(true)
+  })
+
+  it('ein Finger holt den Fokus ins Canvas, ohne zu scrollen - auch gesperrt', () => {
+    const { rig, element } = aufbau()
+    element.tabIndex = 0
+    const knopf = document.createElement('button')
+    document.body.appendChild(knopf)
+    knopf.focus()
+    const fokus = jest.spyOn(element, 'focus')
+
+    zeiger(element, 'pointerdown', 100, 200, { zeit: 0 })
+    expect(document.activeElement).toBe(element)
+    expect(fokus).toHaveBeenCalledWith({ preventScroll: true })
+    zeiger(element, 'pointerup', 100, 200, { zeit: 50 })
+
+    knopf.focus()
+    rig.sperren(true)
+    zeiger(element, 'pointerdown', 100, 200, { zeit: 1000 })
+    expect(document.activeElement).toBe(element)
+  })
+
+  it('der Fokus vom Finger zeigt keinen Fokusrahmen - erst wieder mit einer Taste', () => {
+    const { rig, element } = aufbau()
+    element.tabIndex = 0
+    zeiger(element, 'pointerdown', 100, 200, { zeit: 0 })
+    zeiger(element, 'pointerup', 100, 200, { zeit: 50 })
+    expect(document.activeElement).toBe(element)
+    expect(element.style.outline).toBe('none')
+    // Eine Taste am Canvas: wie nach einem Mausklick gehört der Rahmen dazu.
+    taste('+', element)
+    expect(element.style.outline).toBe('')
+
+    // Wieder ein Finger, dann geht der Fokus weg (z. B. in die Karte).
+    zeiger(element, 'pointerdown', 100, 200, { zeit: 1000 })
+    expect(element.style.outline).toBe('none')
+    element.blur()
+    expect(element.style.outline).toBe('')
+
+    // Nach dispose bleibt nichts am Canvas zurück.
+    zeiger(element, 'pointerdown', 100, 200, { zeit: 2000 })
+    expect(element.style.outline).toBe('none')
+    rig.dispose()
+    expect(element.style.outline).toBe('')
+  })
+
+  it('die Maus fokussiert wie gewohnt selbst (über mousedown)', () => {
+    const { element } = aufbau()
+    const fokus = jest.spyOn(element, 'focus')
+    zeiger(element, 'pointerdown', 100, 200, { pointerType: 'mouse' })
+    expect(fokus).not.toHaveBeenCalled()
+    expect(element.style.outline).toBe('')
+  })
+})
+
 describe('createRig: Grenzen und Zurückfedern', () => {
   it('über die Grenze gezogen und losgelassen: federt per Takt zurück, dann Ruhe', () => {
     const { element, kamera, requestRender } = aufbau()
@@ -369,6 +524,75 @@ describe('createRig: Zoom', () => {
     expect(kamera.fov).toBeCloseTo(60, 6)
     taste('-')
     expect(kamera.fov).toBe(60)
+  })
+
+  it('Pinch abseits der Mitte: Was zwischen den Fingern liegt, bleibt dort', () => {
+    const { element, kamera } = aufbau({ mitRahmen: true })
+    const mitte = { x: 720, y: 190 }
+    const punkt = hinterBildpunkt(kamera, mitte.x, mitte.y)
+    expect(imBild(kamera, punkt).x).toBeCloseTo(mitte.x, 6)
+    zeiger(element, 'pointerdown', 670, 190, { id: 1, zeit: 0 })
+    zeiger(element, 'pointerdown', 770, 190, { id: 2, zeit: 10 })
+    // Ein Finger nach dem anderen: Die Mitte wandert unterwegs - der Anker
+    // bleibt die Mitte vom Anfang.
+    zeiger(element, 'pointermove', 620, 190, { id: 1, zeit: 20 })
+    zeiger(element, 'pointermove', 820, 190, { id: 2, zeit: 30 })
+    expect(kamera.fov).toBeCloseTo(30, 6)
+    // Nicht an einer Grenze: Der Blick hat sich zum Punkt gedreht ...
+    expect(kamera.yaw()).toBeLessThan(-5 * GRAD)
+    expect(kamera.pitch()).toBeGreaterThan(2 * GRAD)
+    // ... und der Punkt steht, wo er stand.
+    const danach = imBild(kamera, punkt)
+    expect(Math.abs(danach.x - mitte.x)).toBeLessThan(3)
+    expect(Math.abs(danach.y - mitte.y)).toBeLessThan(3)
+    zeiger(element, 'pointerup', 820, 190, { id: 2, zeit: 40 })
+    zeiger(element, 'pointerup', 620, 190, { id: 1, zeit: 50 })
+    laufen(400)
+    expect(Math.abs(imBild(kamera, punkt).x - mitte.x)).toBeLessThan(3)
+  })
+
+  it('Mausrad und Strg+Mausrad (Trackpad) zoomen zum Zeiger', () => {
+    for (const ctrlKey of [false, true]) {
+      const { element, kamera } = aufbau({ mitRahmen: true })
+      const zeigerPos = { x: 250, y: 470 }
+      const punkt = hinterBildpunkt(kamera, zeigerPos.x, zeigerPos.y)
+      rad(element, ctrlKey ? -40 : -300, { ...zeigerPos, ctrlKey })
+      expect(kamera.fov).toBeLessThan(45)
+      expect(kamera.fov).toBeGreaterThan(24)
+      const nah = imBild(kamera, punkt)
+      expect(Math.abs(nah.x - zeigerPos.x)).toBeLessThan(3)
+      expect(Math.abs(nah.y - zeigerPos.y)).toBeLessThan(3)
+      // Und wieder hinaus, am selben Zeiger.
+      rad(element, ctrlKey ? 20 : 150, { ...zeigerPos, ctrlKey })
+      const weiter = imBild(kamera, punkt)
+      expect(Math.abs(weiter.x - zeigerPos.x)).toBeLessThan(3)
+      expect(Math.abs(weiter.y - zeigerPos.y)).toBeLessThan(3)
+      expect(kamera.eye).toEqual([0, 2, 0])
+    }
+  })
+
+  it('+ und - zoomen weiter zur Bildmitte', () => {
+    const { kamera } = aufbau({ mitRahmen: true })
+    taste('+')
+    expect(kamera.fov).toBeCloseTo(51, 6)
+    expect(kamera.yaw()).toBeCloseTo(0, 12)
+    expect(kamera.pitch()).toBeCloseTo(0, 12)
+  })
+
+  it('zwei Finger gewischt: Winkel und Blick wieder wie vorher', () => {
+    const { element, kamera, wechsel } = aufbau({ mitRahmen: true })
+    zeiger(element, 'pointerdown', 600, 300, { id: 1 })
+    zeiger(element, 'pointerdown', 700, 310, { id: 2 })
+    // Etwas gespreizt (Pinch-Anteil unter der Schwelle), dann nach links.
+    zeiger(element, 'pointermove', 505, 302, { id: 1 })
+    zeiger(element, 'pointermove', 618, 312, { id: 2 })
+    expect(kamera.fov).not.toBeCloseTo(60, 3)
+    zeiger(element, 'pointerup', 618, 312, { id: 2 })
+    zeiger(element, 'pointerup', 505, 302, { id: 1 })
+    expect(wechsel).toEqual([1])
+    expect(kamera.fov).toBeCloseTo(60, 9)
+    expect(kamera.yaw()).toBeCloseTo(0, 9)
+    expect(kamera.pitch()).toBeCloseTo(0, 9)
   })
 
   it('Pinch: Finger auseinander zoomt heran, kein Tipp, kein Wechsel', () => {
@@ -525,6 +749,30 @@ describe('createRig: Blickpunkt wechseln', () => {
     expect(kamera.fov).toBe(50)
     expect(ankunft).toEqual(['testregal', 'testkorb'])
     expect(frames.size).toBe(0)
+  })
+
+  it('auch bei 10 Bildern/s dauert die Fahrt ≈ 0,8 s, nicht länger', () => {
+    const { rig, ankunft } = aufbau()
+    rig.setBlickpunkt(korb)
+    const start = jetzt
+    let dauer = Number.NaN
+    while (jetzt - start < 3000 && Number.isNaN(dauer)) {
+      laufen(100, 100)
+      if (ankunft.includes('testkorb')) dauer = jetzt - start
+    }
+    expect(dauer).toBeGreaterThanOrEqual(WECHSEL_MS - 100)
+    expect(dauer).toBeLessThanOrEqual(WECHSEL_MS + 100)
+    expect(frames.size).toBe(0)
+  })
+
+  it('nach einer langen Pause beginnt der Takt ohne Sprung', () => {
+    const { rig, kamera } = aufbau()
+    // Lange nichts (Tab im Hintergrund), dann eine neue Fahrt.
+    jetzt += 60_000
+    rig.setBlickpunkt(korb)
+    laufen(16)
+    expect(kamera.eye[0]).toBeGreaterThan(0)
+    expect(kamera.eye[0]).toBeLessThan(0.5)
   })
 
   it('prefers-reduced-motion: Schnitt ohne Takt', () => {

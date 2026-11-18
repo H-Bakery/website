@@ -20,6 +20,7 @@ import { ansichtFuer } from '../../bakery-digitale-baeckerei/src/lib/scene/view'
 import {
   allesHierListe,
   bilder,
+  blickpunktKnopf,
   erwarteKeinePreise,
   oeffne,
   produktSheet,
@@ -186,6 +187,41 @@ test.describe('Flug zum Start', () => {
     await ruhe(page)
     await tippeAufPlatz(page, KEKSE, hasTouch)
     await expect(produktSheet(page)).toBeVisible()
+  })
+
+  test('ein Fingertipp dort, wo gleich der Chip „Regale“ steht, überspringt nur', async ({
+    page,
+    hasTouch,
+  }) => {
+    test.skip(!hasTouch, 'Finger gibt es am Handy.')
+    // Wo der Chip nach dem Flug steht: erst ohne Flug nachsehen.
+    await oeffne(page)
+    const chip = await blickpunktKnopf(page, 'Regale').boundingBox()
+    expect(chip).not.toBeNull()
+    if (!chip) return
+    const x = chip.x + chip.width / 2
+    const y = chip.y + chip.height / 2
+
+    await oeffne(page, { intro: true })
+    await expect(ueberspringen(page)).toBeVisible()
+    await page.touchscreen.tap(x, y)
+
+    // Der Tipp galt dem Flug (die Leiste gab es da noch nicht) ...
+    await expect(szene(page, 'Theke')).toBeVisible()
+    expect((await info(page)).intro.ende).toBe('uebersprungen')
+    await ruhe(page)
+    // ... und der Klick danach traf nicht den Chip, der jetzt dort steht.
+    await expect(blickpunktKnopf(page, 'Theke')).toHaveAttribute(
+      'aria-current',
+      'true'
+    )
+    await expect(blickpunktKnopf(page, 'Regale')).not.toHaveAttribute(
+      'aria-current',
+      'true'
+    )
+    await expect(allesHierListe(page)).not.toBeVisible()
+    await expect(produktSheet(page)).not.toBeVisible()
+    await erwarteAnDerTheke(page)
   })
 
   for (const taste of ['Escape', 'Enter', 'Space']) {

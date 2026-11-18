@@ -172,9 +172,18 @@ apps/bakery-digitale-baeckerei-e2e/   Playwright (390×844 und Desktop), nur mit
   türseitigen Ende der Vitrine), nach links bleibt es bei rund 20°.
 - **Kamera-Rig:** Die Position bleibt fest. Ziehen dreht innerhalb der Grenzen und federt an den
   Rändern weich zurück. Pinch/Mausrad verändert die Brennweite (FOV) statt der Position, sonst
-  fliegt man in die Regale. Doppeltipp auf ein Produkt zoomt dorthin, der nächste Doppeltipp
-  zoomt zurück zur Startweite. Ein Wechsel des Blickpunkts gleitet ≈ 0,8 s; bei
-  `prefers-reduced-motion` wird geschnitten.
+  fliegt man in die Regale - und zoomt zum Finger bzw. Mauszeiger: Was zwischen den Fingern (wo
+  der Pinch begann) oder unter dem Zeiger liegt, bleibt dort; der Blick dreht dafür mit, nie über
+  die Grenzen hinaus (`setzeFov`/`zoomen` mit Anker in `rig.ts`). `+`/`-` zoomen zur Bildmitte.
+  Doppeltipp auf ein Produkt zoomt dorthin, der nächste Doppeltipp zoomt zurück zur Startweite.
+  Ein Fingertipp ins Bild löst keinen Klick nach (`touchend` ohne Standardaktion): Sonst träfe
+  der Klick, den der Browser nachreicht, die eben aufgegangene Karte oder Leiste („Mehr lesen“,
+  Links, Chips). Den Fokus holt der Finger selbst ins Canvas (Pfeiltasten, `+`/`-`), ohne
+  Fokusrahmen - der kommt erst mit einer Taste wieder. Ein Wechsel
+  des Blickpunkts gleitet ≈ 0,8 s, auch bei wenigen Bildern je Sekunde (längster Zeitschritt
+  250 ms); bei `prefers-reduced-motion` wird geschnitten. Ein gewähltes Produkt dreht der Blick
+  neben die Pfeile am Rand (je 64 px) und unter die Titelkarte (80 px), wenn die Grenzen es
+  zulassen (`FREI_RAND` in `bildausschnitt.ts`).
 - **Leistung:** Pixel-Ratio höchstens 2, Rendern nur bei Bewegung oder Änderung (kein
   Dauer-Loop), Außenraum (`fassade/*`, `umgebung/*`) ausblenden, wo man ihn nicht sieht. Erst
   messen; wenn die Ladezeit über 4G zu lang ist, schneidet das Sync-Skript den Außenraum aus dem

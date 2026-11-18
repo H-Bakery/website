@@ -5,8 +5,13 @@
  *
  * - Ziehen dreht (das Bild folgt dem Finger), an den Grenzen mit Gummiband.
  * - Pinch, Mausrad und `+`/`-` ändern den Öffnungswinkel, nie den Standort.
+ *   Pinch und Mausrad zoomen zum Finger bzw. Zeiger (was dort liegt, bleibt
+ *   dort), `+`/`-` zur Bildmitte.
  * - Tipp und Doppeltipp werden gemeldet (Picking macht der Aufrufer); der
  *   erste Tipp kommt sofort als `onTap`, der zweite nur als `onDoubleTap`.
+ *   Ein Fingertipp löst danach keinen Klick mehr aus (`touchend` ohne
+ *   Standardaktion): Der Klick käme erst, nachdem die App auf den Tipp hin
+ *   Karte oder Leiste gezeigt hat - und träfe dann die.
  * - Zwei Finger waagerecht wischen und die Pfeiltasten melden einen Wechsel
  *   des Blickpunkts (`onWechselGeste`).
  *
@@ -21,6 +26,7 @@ import {
   istDoppeltipp,
   istTipp,
   zweiFingerWisch,
+  type Bildanker,
   type Schwenkrest,
 } from './rig'
 
@@ -72,8 +78,13 @@ const RAD_JE_PX = 0.0015
 /** Pinch auf dem Trackpad kommt als Rad mit Strg und kleinen Werten. */
 const RAD_JE_PX_PINCH = 0.01
 const TASTEN_ZOOM = 0.85
-/** Längster Zeitschritt, damit ein Hänger keinen Sprung macht. */
-const MAX_DT_MS = 64
+/**
+ * Längster Zeitschritt, damit ein Hänger keinen Sprung macht. Großzügig: Bei
+ * wenigen Bildern je Sekunde dauert eine Fahrt sonst länger als geplant (und
+ * sperrt so lange das Umschauen). Nach einer Pause beginnt der Takt ohnehin
+ * neu (`aktualisieren`).
+ */
+const MAX_DT_MS = 250
 /** Hier gehören die Pfeiltasten jemand anderem. */
 const TASTEN_FREMD =
   'input, textarea, select, [contenteditable=""], [contenteditable="true"], [role="dialog"], [role="slider"], [role="tablist"], [role="listbox"], [role="menu"]'
@@ -125,6 +136,18 @@ export function createRig(o: {
 
   const vorherTouchAction = element.style.touchAction
   element.style.touchAction = 'none'
+  const vorherOutline = element.style.outline
+  /**
+   * Der Fokus kam vom Finger (`focus()` aus dem Skript): Chrome zeigt dafür
+   * den Fokusrahmen (`:focus-visible`), über das frühere mousedown nicht. Ohne
+   * Rahmen also, bis eine Taste kommt oder der Fokus geht.
+   */
+  let ohneRahmen = false
+  const rahmenZurueck = () => {
+    if (!ohneRahmen) return
+    ohneRahmen = false
+    element.style.outline = vorherOutline
+  }
 
   const anwenden = () => {
     const pose = kern.pose()
@@ -172,6 +195,16 @@ export function createRig(o: {
   const jePixel = () =>
     (camera.fov * Math.PI) / 180 / Math.max(element.clientHeight, 1)
 
+  /** Ein Punkt im Fenster (clientX/Y) als Anker im Bild; ohne Größe keiner. */
+  const ankerBei = (x: number, y: number): Bildanker | undefined => {
+    const r = element.getBoundingClientRect()
+    if (!(r.width > 0) || !(r.height > 0)) return undefined
+    return {
+      x: ((x - r.left) / r.width) * 2 - 1,
+      y: 1 - ((y - r.top) / r.height) * 2,
+    }
+  }
+
   const zweiFinger = (): [Finger, Finger] | null => {
     if (finger.size !== 2) return null
     const [a, b] = Array.from(finger.values())
@@ -179,6 +212,15 @@ export function createRig(o: {
   }
 
   const onPointerDown = (e: PointerEvent) => {
+    // Ein Finger bringt kein Maus-Ereignis mehr mit, das den Fokus holt
+    // (`onTouchEnd`) - darum hier: Pfeiltasten und +/- gelten danach der Szene.
+    if (e.pointerType !== 'mouse') {
+      element.focus({ preventScroll: true })
+      if (element.ownerDocument.activeElement === element && !ohneRahmen) {
+        ohneRahmen = true
+        element.style.outline = 'none'
+      }
+    }
     if (gesperrt) return
     if (e.pointerType === 'mouse' && e.button !== 0) return
     meldeErsteGeste()
@@ -234,7 +276,12 @@ export function createRig(o: {
       zwei.letztesMx = (a.x + b.x) / 2
       zwei.letztesMy = (a.y + b.y) / 2
       if (zwei.abstand > 0 && zwei.letzterAbstand > 0) {
-        kern.setzeFov((zwei.fov * zwei.abstand) / zwei.letzterAbstand)
+        // Zum Punkt zwischen den Fingern, wo der Pinch begann: Was dort lag,
+        // bleibt dort - auch wenn die Finger dabei etwas wandern.
+        kern.setzeFov(
+          (zwei.fov * zwei.abstand) / zwei.letzterAbstand,
+          ankerBei(zwei.mx, zwei.my)
+        )
         aktualisieren()
       }
       return
@@ -274,8 +321,9 @@ export function createRig(o: {
             abstandEnde: z.letzterAbstand,
           })
       if (wisch) {
-        // Das war kein Pinch: den nebenbei verstellten Winkel zurücknehmen.
-        kern.setzeFov(z.fov)
+        // Das war kein Pinch: den nebenbei verstellten Winkel zurücknehmen
+        // (um denselben Punkt - so steht auch der Blick wieder wie vorher).
+        kern.setzeFov(z.fov, ankerBei(z.mx, z.my))
         aktualisieren()
         wechselGeste?.(wisch)
       } else {
@@ -326,11 +374,26 @@ export function createRig(o: {
     // Seitwärts gescrollt (Trackpad): kein Zoom - und nichts, was eine
     // laufende Fahrt anfasst.
     if (pixel === 0) return
-    kern.zoomen(Math.exp(pixel * (e.ctrlKey ? RAD_JE_PX_PINCH : RAD_JE_PX)))
+    kern.zoomen(
+      Math.exp(pixel * (e.ctrlKey ? RAD_JE_PX_PINCH : RAD_JE_PX)),
+      ankerBei(e.clientX, e.clientY)
+    )
     aktualisieren()
   }
 
+  /**
+   * Nach einem Finger auf dem Canvas kein Klick: Die App zeigt auf `pointerup`
+   * hin Karte oder Leiste, und der Klick, den der Browser danach nachreicht,
+   * landete sonst auf ihnen (oder öffnete einen Link). Auch gesperrt - der
+   * Tipp, der den Flug überspringt, soll keinen Chip der Leiste treffen.
+   */
+  const onTouchEnd = (e: TouchEvent) => {
+    if (e.cancelable) e.preventDefault()
+  }
+
   const onKeyDown = (e: KeyboardEvent) => {
+    // Mit der Tastatur am Canvas gehört der Fokusrahmen wieder dazu.
+    if (e.target === element) rahmenZurueck()
     if (gesperrt) return
     if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return
     const ziel = e.target
@@ -364,6 +427,8 @@ export function createRig(o: {
   element.addEventListener('pointerup', onPointerUp)
   element.addEventListener('pointercancel', onPointerCancel)
   element.addEventListener('wheel', onWheel, { passive: false })
+  element.addEventListener('touchend', onTouchEnd, { passive: false })
+  element.addEventListener('blur', rahmenZurueck)
   window.addEventListener('keydown', onKeyDown)
 
   return {
@@ -450,7 +515,10 @@ export function createRig(o: {
       element.removeEventListener('pointerup', onPointerUp)
       element.removeEventListener('pointercancel', onPointerCancel)
       element.removeEventListener('wheel', onWheel)
+      element.removeEventListener('touchend', onTouchEnd)
+      element.removeEventListener('blur', rahmenZurueck)
       window.removeEventListener('keydown', onKeyDown)
+      rahmenZurueck()
       for (const id of finger.keys()) {
         try {
           element.releasePointerCapture?.(id)
