@@ -13,6 +13,7 @@ import {
   changePreorderStatus,
   fetchPickupPoints,
   fetchPreorderDay,
+  listPreorders,
   type BulkStatusAnswer,
   type BulkStatusResult,
 } from '../../../../lib/preordersApi'
@@ -32,6 +33,7 @@ jest.mock('../../../../lib/preordersApi', () => ({
   changePreorderStatus: jest.fn(),
   fetchPickupPoints: jest.fn(),
   fetchPreorderDay: jest.fn(),
+  listPreorders: jest.fn(),
 }))
 
 const mockDay = fetchPreorderDay as jest.MockedFunction<typeof fetchPreorderDay>
@@ -41,6 +43,7 @@ const mockStatus = changePreorderStatus as jest.MockedFunction<
 const mockBulk = bulkPreorderStatus as jest.MockedFunction<
   typeof bulkPreorderStatus
 >
+const mockList = listPreorders as jest.MockedFunction<typeof listPreorders>
 
 function bulkAnswer(results: BulkStatusResult[]): BulkStatusAnswer {
   const counts = { ok: 0, conflict: 0, anonymized: 0, not_found: 0, refused: 0 }
@@ -117,7 +120,11 @@ function ladenDay(preorders: Preorder[] = [erika, max, paula, storno]) {
 
 function renderAs(
   role: PilotRole,
-  props: { initialDate?: string; initialPlace?: string } = {
+  props: {
+    initialDate?: string
+    initialPlace?: string
+    initialQuery?: string
+  } = {
     initialDate: DATE,
     initialPlace: 'laden',
   }
@@ -147,6 +154,7 @@ beforeEach(() => {
   jest.clearAllMocks()
   ;(fetchPickupPoints as jest.Mock).mockResolvedValue([POINT])
   mockDay.mockResolvedValue(ladenDay())
+  mockList.mockResolvedValue([])
   mockStatus.mockImplementation(async (id, change) => {
     const base = [erika, max, paula].find((p) => p.id === id) as Preorder
     return {
@@ -674,7 +682,7 @@ describe('AbholListeClient (P2)', () => {
     await user.clear(search)
     await user.type(search, 'niemand')
     expect(
-      screen.getByText('Keine Bestellung zu „niemand“.')
+      screen.getByText('Keine Bestellung zu „niemand“ auf dieser Liste.')
     ).toBeInTheDocument()
   })
 
@@ -1577,5 +1585,282 @@ describe('deaktivierte Sammelstelle (W4-verify r4)', () => {
       await screen.findByRole('button', { name: 'Erneut versuchen' })
     ).toBeInTheDocument()
     expect(screen.getAllByRole('alert')).toHaveLength(1)
+  })
+})
+
+describe('Suche über den Tag hinaus und Rückweg (Personal-Rückmeldung)', () => {
+  /** Dienstag nach dem Testtag - die Kundin kommt zu spät. */
+  const TUESDAY = '2026-11-17'
+  const late = preorder({
+    id: 21,
+    code: 'LA-2026-11-17-03',
+    pickupDate: TUESDAY,
+    customerName: 'Otto Spät',
+    status: 'bereit',
+    notCollected: true,
+    updatedAt: '2026-11-17T17:00:00.000Z',
+  })
+
+  function search() {
+    return screen.getByRole('textbox', { name: 'Name oder Code suchen' })
+  }
+
+  function tuesdayOrLaden() {
+    mockDay.mockImplementation(async (date) =>
+      date === TUESDAY
+        ? day({ date: TUESDAY, pickupPointId: 'laden', preorders: [late] })
+        : ladenDay()
+    )
+  }
+
+  afterEach(() => window.history.replaceState(null, '', '/'))
+
+  it('(a) ein Code eines anderen Tages zeigt direkt auf dessen Liste - ohne API-Suche', async () => {
+    const user = userEvent.setup()
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-01')
+    await user.type(search(), 'la-2026-11-17-03')
+
+    expect(
+      screen.getByText(
+        'Keine Bestellung zu „la-2026-11-17-03“ auf dieser Liste.'
+      )
+    ).toBeInTheDocument()
+    const hit = screen.getByTestId('abhol-elsewhere-LA-2026-11-17-03')
+    expect(hit).toHaveTextContent('Di 17.11. · Laden')
+    const link = within(hit).getByRole('link', {
+      name: 'Zur Abholliste dieses Tages: Di 17.11. · Laden',
+    })
+    expect(link).toHaveAttribute(
+      'href',
+      '/admin/preorders/abholliste?date=2026-11-17&point=laden&q=LA-2026-11-17-03'
+    )
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(mockList).not.toHaveBeenCalled()
+
+    // Folgen: die Liste wechselt Tag und Ort, die Suche zeigt die Bestellung.
+    tuesdayOrLaden()
+    await user.click(link)
+    expect(await screen.findByTestId('abhol-LA-2026-11-17-03')).toBeVisible()
+    expect(mockDay).toHaveBeenLastCalledWith(TUESDAY, 'laden')
+    expect(search()).toHaveValue('LA-2026-11-17-03')
+  })
+
+  it('(a) auch ohne führende Null steht die Bestellung nach dem Wechsel da', async () => {
+    const user = userEvent.setup()
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-01')
+    await user.type(search(), 'la-2026-11-17-3')
+
+    const hit = screen.getByTestId('abhol-elsewhere-LA-2026-11-17-3')
+    expect(hit).toHaveTextContent('Di 17.11. · Laden')
+    tuesdayOrLaden()
+    await user.click(
+      within(hit).getByRole('link', { name: /^Zur Abholliste dieses Tages/ })
+    )
+    expect(await screen.findByTestId('abhol-LA-2026-11-17-03')).toBeVisible()
+    expect(screen.queryByTestId('abhol-search-miss')).not.toBeInTheDocument()
+  })
+
+  it('(b) ein Name ohne Treffer fragt die API einmal (verzögert) und führt zum Tag des Treffers', async () => {
+    const user = userEvent.setup()
+    mockList.mockResolvedValue([
+      late,
+      // Steht auf dieser Liste - kein Treffer „anderswo“.
+      preorder({ ...erika, customerName: 'Otto Hier' }),
+    ])
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-01')
+    await user.type(search(), 'Otto')
+
+    const hits = await screen.findByTestId('abhol-remote-hits')
+    expect(mockList).toHaveBeenCalledTimes(1)
+    expect(mockList).toHaveBeenCalledWith({
+      q: 'Otto',
+      from: '2026-10-29',
+      to: '2026-12-12',
+    })
+    expect(hits).toHaveTextContent('An einem anderen Tag/Ort gefunden:')
+    expect(hits).toHaveTextContent(
+      'Di 17.11. · Laden · Otto Spät (nicht abgeholt)'
+    )
+    expect(hits).not.toHaveTextContent('Otto Hier')
+    const link = within(hits).getByRole('link', {
+      name: /^Zur Abholliste dieses Tages/,
+    })
+    expect(link).toHaveAttribute(
+      'href',
+      '/admin/preorders/abholliste?date=2026-11-17&point=laden&q=Otto'
+    )
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(mockList).toHaveBeenCalledTimes(1)
+
+    tuesdayOrLaden()
+    await user.click(link)
+    expect(await screen.findByTestId('abhol-LA-2026-11-17-03')).toBeVisible()
+    expect(search()).toHaveValue('Otto')
+  })
+
+  it('(c) bietet immer die Suche in allen Vorbestellungen an', async () => {
+    const user = userEvent.setup()
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-01')
+    await user.type(search(), 'Otto Weit')
+    expect(
+      screen.getByRole('link', { name: 'In allen Vorbestellungen suchen' })
+    ).toHaveAttribute('href', '/admin/preorders?q=Otto+Weit&range=alle')
+    expect(
+      await screen.findByText(
+        'Auch an anderen Tagen (Do 29.10. bis Sa 12.12.) nichts gefunden.'
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('ignoriert eine verspätete Antwort auf eine ältere Eingabe', async () => {
+    const user = userEvent.setup()
+    const answers: Array<(list: Preorder[]) => void> = []
+    mockList.mockImplementation(
+      () =>
+        new Promise<Preorder[]>((resolve) => {
+          answers.push(resolve)
+        })
+    )
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-01')
+    await user.type(search(), 'Ott')
+    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(1))
+    await user.type(search(), 'o')
+    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2))
+    expect(mockList.mock.calls[1][0]).toMatchObject({ q: 'Otto' })
+
+    await act(async () => answers[1]([late]))
+    expect(await screen.findByText(/Otto Spät/)).toBeInTheDocument()
+    await act(async () =>
+      answers[0]([
+        preorder({
+          ...late,
+          id: 22,
+          code: 'LA-2026-11-18-01',
+          pickupDate: '2026-11-18',
+          customerName: 'Ottilie Alt',
+        }),
+      ])
+    )
+    expect(screen.queryByText(/Ottilie Alt/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Otto Spät/)).toBeInTheDocument()
+  })
+
+  it('lehnt die API die Suche ab (403), steht keine Fehlermeldung da', async () => {
+    const user = userEvent.setup()
+    mockList.mockRejectedValue(
+      new ApiError('Keine Berechtigung.', 403, 'forbidden')
+    )
+    renderAs('fahrer', { initialDate: DATE, initialPlace: 'laden' })
+    await screen.findByTestId('abhol-LA-2026-11-12-01')
+    await user.type(search(), 'Otto')
+    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(1))
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId('abhol-remote-loading')
+      ).not.toBeInTheDocument()
+    )
+    expect(screen.queryByText(/Keine Berechtigung/)).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/nicht durchsucht werden/)
+    ).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(
+      screen.getByText('Keine Bestellung zu „Otto“ auf dieser Liste.')
+    ).toBeInTheDocument()
+
+    // Danach fragt die Seite nicht mehr nach.
+    await user.clear(search())
+    await user.type(search(), 'Paul Fern')
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(mockList).toHaveBeenCalledTimes(1)
+  })
+
+  it('ohne Verbindung sagt sie es leise, die Liste bleibt', async () => {
+    const user = userEvent.setup()
+    mockList.mockRejectedValue(new Error('Failed to fetch'))
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-01')
+    await user.type(search(), 'Otto')
+    expect(
+      await screen.findByText(
+        'Andere Tage konnten gerade nicht durchsucht werden.'
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('an einem leeren Tag sucht die Suche trotzdem weiter', async () => {
+    const user = userEvent.setup()
+    mockDay.mockResolvedValue(ladenDay([]))
+    mockList.mockResolvedValue([late])
+    renderAs('verkauf')
+    await screen.findByText('Für diesen Tag ist hier nichts vorbestellt.')
+    await user.type(search(), 'Otto')
+    expect(await screen.findByTestId('abhol-remote-hits')).toHaveTextContent(
+      'Otto Spät'
+    )
+  })
+
+  it('„Bestellung öffnen“ trägt Tag, Ort und Suche mit; die Suche steht in der Adresse', async () => {
+    const user = userEvent.setup()
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-01')
+    await user.type(search(), 'erika')
+    await waitFor(() =>
+      expect(window.location.search).toBe(
+        '?date=2026-11-12&point=laden&q=erika'
+      )
+    )
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Weitere Aktionen für Erika Beispiel',
+      })
+    )
+    expect(
+      screen.getByRole('menuitem', { name: 'Bestellung öffnen' })
+    ).toHaveAttribute(
+      'href',
+      '/admin/preorders/1?von=abholliste&date=2026-11-12&point=laden&q=erika'
+    )
+  })
+
+  it('übernimmt die Suche aus der URL (zurück aus einer Bestellung)', async () => {
+    renderAs('verkauf', {
+      initialDate: DATE,
+      initialPlace: 'laden',
+      initialQuery: 'Paula',
+    })
+    expect(await screen.findByTestId('abhol-LA-2026-11-12-03')).toBeVisible()
+    expect(search()).toHaveValue('Paula')
+    expect(
+      screen.queryByTestId('abhol-LA-2026-11-12-01')
+    ).not.toBeInTheDocument()
+  })
+
+  it('Browser-Zurück: die Suche aus der Adresse gilt, auch wenn Next alte Props zeigt', async () => {
+    // Next stellt die Seite aus seinem Cache wieder her - mit den Props vom
+    // ersten Aufruf (ohne `q`), die Adresse trägt die Suche aber noch.
+    const nav = jest.requireMock('next/navigation') as {
+      useSearchParams: () => unknown
+    }
+    const spy = jest
+      .spyOn(nav, 'useSearchParams')
+      .mockReturnValue(
+        new URLSearchParams('date=2026-11-12&point=laden&q=Paula')
+      )
+    try {
+      renderAs('verkauf', { initialDate: DATE, initialPlace: 'laden' })
+      expect(await screen.findByTestId('abhol-LA-2026-11-12-03')).toBeVisible()
+      expect(search()).toHaveValue('Paula')
+      expect(
+        screen.queryByTestId('abhol-LA-2026-11-12-01')
+      ).not.toBeInTheDocument()
+    } finally {
+      spy.mockRestore()
+    }
   })
 })

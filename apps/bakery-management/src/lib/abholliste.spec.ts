@@ -1,8 +1,19 @@
 import {
+  ABHOLLISTE_BACK_LABEL,
   CANCELLED_GROUP,
   abholActions,
   owesRest,
+  abhollisteBackFromQuery,
   abhollisteHref,
+  abhollisteParamsFromQuery,
+  codeTargets,
+  parsePreorderCode,
+  preorderHrefFromAbholliste,
+  remoteSearchRange,
+  searchHitLabel,
+  statusWord,
+  targetLabel,
+  wantsRemoteSearch,
   bulkRequestFailedMessage,
   changeAlreadyApplied,
   singleRequestFailedMessage,
@@ -108,6 +119,9 @@ describe('matchesSearch', () => {
     ['03', true],
     ['4', false],
     ['LA-2026-11-14-03', true],
+    // Ganzer Code ohne führende Null (vom Zettel abgetippt, auch klein).
+    ['la-2026-11-14-3', true],
+    ['LA-2026-11-14-4', false],
     ['11-14', true],
     ['0170000', true],
     ['000 0001', true],
@@ -358,6 +372,170 @@ describe('Tage und Orte', () => {
       '/admin/preorders/abholliste?date=2026-11-14&point=laden'
     )
     expect(abhollisteHref()).toBe('/admin/preorders/abholliste')
+  })
+})
+
+/** Query einer URL so, wie Next sie der Seite gibt (`searchParams`). */
+function queryOf(href: string): Record<string, string> {
+  return Object.fromEntries(new URL(href, 'http://box.local').searchParams)
+}
+
+describe('Suche in der URL und Rückweg aus einer Bestellung', () => {
+  it('abhollisteHref nimmt die Suche mit, die Seite liest sie wieder', () => {
+    const href = abhollisteHref('2026-11-17', 'laden', '  Erika B. ')
+    expect(href).toBe(
+      '/admin/preorders/abholliste?date=2026-11-17&point=laden&q=Erika+B.'
+    )
+    expect(abhollisteParamsFromQuery(queryOf(href))).toEqual({
+      date: '2026-11-17',
+      place: 'laden',
+      q: 'Erika B.',
+    })
+    // Leere Suche fällt weg.
+    expect(abhollisteHref('2026-11-17', 'laden', '   ')).toBe(
+      '/admin/preorders/abholliste?date=2026-11-17&point=laden'
+    )
+  })
+
+  it('verwirft ungültige Parameter einzeln', () => {
+    expect(
+      abhollisteParamsFromQuery({
+        date: '2026-02-30',
+        point: 'Kita Test!',
+        q: ['  Max ', 'Moritz'],
+      })
+    ).toEqual({ q: 'Max' })
+    expect(abhollisteParamsFromQuery({ q: 'x'.repeat(250) }).q).toHaveLength(
+      100
+    )
+  })
+
+  it('„Bestellung öffnen“ trägt die Herkunft, die Ansicht baut daraus den Rückweg', () => {
+    const href = preorderHrefFromAbholliste(7, {
+      date: '2026-11-17',
+      place: 'kita-test',
+      q: 'Erika',
+    })
+    expect(href).toBe(
+      '/admin/preorders/7?von=abholliste&date=2026-11-17&point=kita-test&q=Erika'
+    )
+    expect(abhollisteBackFromQuery(queryOf(href))).toEqual({
+      href: '/admin/preorders/abholliste?date=2026-11-17&point=kita-test&q=Erika',
+      label: ABHOLLISTE_BACK_LABEL,
+    })
+    expect(
+      preorderHrefFromAbholliste(7, { date: '2026-11-17', place: 'laden' })
+    ).toBe('/admin/preorders/7?von=abholliste&date=2026-11-17&point=laden')
+  })
+
+  it('ohne gültige Herkunft kein Rückweg zur Abholliste', () => {
+    const ok = { von: 'abholliste', date: '2026-11-17', point: 'laden' }
+    expect(abhollisteBackFromQuery(ok)?.href).toBe(
+      '/admin/preorders/abholliste?date=2026-11-17&point=laden'
+    )
+    expect(abhollisteBackFromQuery({})).toBeNull()
+    expect(abhollisteBackFromQuery({ ...ok, von: 'tag' })).toBeNull()
+    expect(abhollisteBackFromQuery({ ...ok, date: '2026-13-01' })).toBeNull()
+    expect(abhollisteBackFromQuery({ ...ok, date: undefined })).toBeNull()
+    expect(
+      abhollisteBackFromQuery({ ...ok, point: '../../admin/users' })
+    ).toBeNull()
+  })
+})
+
+describe('Suche über den Tag hinaus', () => {
+  it('liest einen Code vom Zettel, auch klein getippt', () => {
+    expect(parsePreorderCode('LA-2026-11-17-03')).toEqual({
+      prefix: 'LA',
+      date: '2026-11-17',
+      number: 3,
+    })
+    expect(parsePreorderCode('  la-2026-11-17-3 ')).toEqual({
+      prefix: 'LA',
+      date: '2026-11-17',
+      number: 3,
+    })
+    expect(parsePreorderCode('te-2026-11-21-12')?.prefix).toBe('TE')
+  })
+
+  it('ein Code mit einem Tag, den es nicht gibt, ist kein Code', () => {
+    expect(parsePreorderCode('LA-2026-02-30-01')).toBeNull()
+    expect(parsePreorderCode('LA-2026-11-17')).toBeNull()
+    expect(parsePreorderCode('Erika')).toBeNull()
+    expect(parsePreorderCode('LAX-2026-11-17-01')).toBeNull()
+  })
+
+  it('ordnet den Code seiner Liste zu, wie die API ihn vergibt', () => {
+    const other = { ...POINT, id: 'halle-oberdorf', weekday: 3 }
+    // `LA` ist der Laden.
+    expect(codeTargets('LA-2026-11-17-03', [POINT, other])).toEqual([
+      { date: '2026-11-17', place: 'laden' },
+    ])
+    // Kürzel aus dem letzten Teil der Kennung: `kita-test` → `TE`.
+    expect(codeTargets('te-2026-11-21-02', [POINT, other])).toEqual([
+      { date: '2026-11-21', place: 'kita-test' },
+    ])
+    // Unbekanntes Kürzel: keine Liste; kein Code: `null`.
+    expect(codeTargets('XY-2026-11-21-02', [POINT, other])).toEqual([])
+    expect(codeTargets('Erika', [POINT])).toBeNull()
+  })
+
+  it('teilen sich zwei Sammelstellen ein Kürzel, gewinnt die an dem Tag belieferte', () => {
+    const saturday = { ...POINT, id: 'kita-test', weekday: 6 }
+    const wednesday = { ...POINT, id: 'turnhalle-test', weekday: 3 }
+    expect(codeTargets('TE-2026-11-18-01', [saturday, wednesday])).toEqual([
+      { date: '2026-11-18', place: 'turnhalle-test' },
+    ])
+    // Liefert keine an dem Tag: beide anbieten.
+    expect(
+      codeTargets('TE-2026-11-17-01', [saturday, wednesday]).map((t) => t.place)
+    ).toEqual(['kita-test', 'turnhalle-test'])
+  })
+
+  it('sucht zwei Wochen zurück und 30 Tage voraus', () => {
+    expect(remoteSearchRange('2026-11-17')).toEqual({
+      from: '2026-11-03',
+      to: '2026-12-17',
+    })
+  })
+
+  it('fragt die API nicht nach einer laufenden Nummer oder einem Buchstaben', () => {
+    expect(wantsRemoteSearch('3')).toBe(false)
+    expect(wantsRemoteSearch('03')).toBe(false)
+    expect(wantsRemoteSearch(' e ')).toBe(false)
+    expect(wantsRemoteSearch('Er')).toBe(true)
+    expect(wantsRemoteSearch('0170')).toBe(true)
+  })
+
+  it('beschreibt einen Treffer mit Tag, Ort, Name und Status', () => {
+    const hit = preorder({
+      pickupDate: '2026-11-17',
+      customerName: 'Erika Beispiel',
+      status: 'bereit',
+      notCollected: true,
+    })
+    expect(searchHitLabel(hit, [POINT])).toBe(
+      'Di 17.11. · Laden · Erika Beispiel (nicht abgeholt)'
+    )
+    expect(
+      searchHitLabel(
+        {
+          ...hit,
+          pickupDate: '2026-11-21',
+          pickupPointId: POINT.id,
+          pickupPoint: null,
+          customerName: null,
+          code: 'TE-2026-11-21-01',
+          status: 'storniert',
+          notCollected: false,
+        },
+        [POINT]
+      )
+    ).toBe('Sa 21.11. · Kita Teststraße · TE-2026-11-21-01 (storniert)')
+    expect(statusWord({ status: 'offen', notCollected: false })).toBe('offen')
+    expect(targetLabel({ date: '2026-11-17', place: 'laden' }, [POINT])).toBe(
+      'Di 17.11. · Laden'
+    )
   })
 })
 
