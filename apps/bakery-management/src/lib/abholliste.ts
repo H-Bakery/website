@@ -157,6 +157,20 @@ export function matchesSearch(preorder: Preorder, query: string): boolean {
   }
   if (normalize(preorder.customerName ?? '').includes(q)) return true
   if (normalize(preorder.code).includes(q)) return true
+  // Ein ganzer Code ohne führende Null (`la-2026-11-17-3`): „Zur Abholliste
+  // dieses Tages“ nimmt ihn so mit - dort muss er die Bestellung finden.
+  const typed = parsePreorderCode(query)
+  if (typed) {
+    const own = parsePreorderCode(preorder.code)
+    if (
+      own &&
+      own.prefix === typed.prefix &&
+      own.date === typed.date &&
+      own.number === typed.number
+    ) {
+      return true
+    }
+  }
   const digits = q.replace(/\D/g, '')
   if (
     digits.length >= 3 &&

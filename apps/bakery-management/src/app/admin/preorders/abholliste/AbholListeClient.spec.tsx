@@ -1646,6 +1646,22 @@ describe('Suche über den Tag hinaus und Rückweg (Personal-Rückmeldung)', () =
     expect(search()).toHaveValue('LA-2026-11-17-03')
   })
 
+  it('(a) auch ohne führende Null steht die Bestellung nach dem Wechsel da', async () => {
+    const user = userEvent.setup()
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-01')
+    await user.type(search(), 'la-2026-11-17-3')
+
+    const hit = screen.getByTestId('abhol-elsewhere-LA-2026-11-17-3')
+    expect(hit).toHaveTextContent('Di 17.11. · Laden')
+    tuesdayOrLaden()
+    await user.click(
+      within(hit).getByRole('link', { name: /^Zur Abholliste dieses Tages/ })
+    )
+    expect(await screen.findByTestId('abhol-LA-2026-11-17-03')).toBeVisible()
+    expect(screen.queryByTestId('abhol-search-miss')).not.toBeInTheDocument()
+  })
+
   it('(b) ein Name ohne Treffer fragt die API einmal (verzögert) und führt zum Tag des Treffers', async () => {
     const user = userEvent.setup()
     mockList.mockResolvedValue([

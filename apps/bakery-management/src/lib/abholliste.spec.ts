@@ -119,6 +119,9 @@ describe('matchesSearch', () => {
     ['03', true],
     ['4', false],
     ['LA-2026-11-14-03', true],
+    // Ganzer Code ohne führende Null (vom Zettel abgetippt, auch klein).
+    ['la-2026-11-14-3', true],
+    ['LA-2026-11-14-4', false],
     ['11-14', true],
     ['0170000', true],
     ['000 0001', true],
