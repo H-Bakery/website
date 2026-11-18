@@ -62,7 +62,17 @@ export default function Quellen({ onIntroNochmal }: QuellenProps = {}) {
 
   return (
     <>
-      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+      {/* Wird es eng (unter 320 px oder mit großer Schrift), rutscht
+          „Impressum“ unter „Quellen“, statt „Alles hier“ daneben so
+          zusammenzudrücken, dass die Beschriftung aus dem Knopf läuft. */}
+      <Box
+        sx={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+        }}
+      >
         <Button
           color="inherit"
           size="small"
