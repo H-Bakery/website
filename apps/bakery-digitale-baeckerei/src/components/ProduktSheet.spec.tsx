@@ -226,6 +226,35 @@ describe('ProduktSheet', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
+  it('ein zweiter Finger ändert das Ziehen nicht', () => {
+    const { onClose } = setup()
+    const griff = screen.getByTestId('sheet-griff')
+    const erster = { ...FINGER, pointerId: 1 }
+    const zweiter = { ...FINGER, pointerId: 2 }
+    zeiger(griff, 'pointerdown', 500, erster)
+    zeiger(griff, 'pointermove', 530, erster)
+    expect(sheet().style.transform).toBe('translateY(30px)')
+    // Ein anderer Finger (etwa in der Szene) bewegt sich, hebt ab, bricht ab.
+    zeiger(document.body, 'pointermove', 700, zweiter)
+    zeiger(document.body, 'pointerup', 700, zweiter)
+    zeiger(document.body, 'pointercancel', 700, zweiter)
+    expect(sheet().style.transform).toBe('translateY(30px)')
+    expect(onClose).not.toHaveBeenCalled()
+    // Es zählt allein der Finger am Griff.
+    zeiger(document.body, 'pointerup', 500 + ZIEH_SCHWELLE + 1, erster)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('ein zweiter Finger entscheidet nicht über den Wisch auf dem Text', () => {
+    const { onClose } = setup()
+    scrollteSchon(0)
+    zeiger(inhalt(), 'pointerdown', 400, { ...FINGER, pointerId: 1 })
+    zeiger(inhalt(), 'pointermove', 480, { ...FINGER, pointerId: 2 })
+    expect(sheet().style.transform).toBe('')
+    zeiger(inhalt(), 'pointerup', 480, { ...FINGER, pointerId: 2 })
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
   it('der Griff markiert beim Ziehen keinen Text', () => {
     setup()
     expect(screen.getByTestId('sheet-griff')).toHaveStyle({

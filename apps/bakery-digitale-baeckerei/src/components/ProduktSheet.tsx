@@ -120,6 +120,8 @@ function OffenesSheet({
   const zugStart = useRef<number | null>(null)
   /** Ein Wisch auf dem Text, über den noch nicht entschieden ist: sein Startpunkt. */
   const wischStart = useRef<number | null>(null)
+  /** Der Zeiger (`pointerId`), der zieht oder wischt: Andere Finger ändern nichts. */
+  const zeigerId = useRef<number | null>(null)
   const [zug, setZug] = useState(0)
   /** id des Produkts, dessen langer Text offen ist - ein neues Produkt startet zugeklappt. */
   const [mehrFuer, setMehrFuer] = useState<string | null>(null)
@@ -184,18 +186,25 @@ function OffenesSheet({
    * gezogen hängen.
    */
   const beginneZug = useCallback(
-    (start: number) => {
+    (start: number, zeiger: number) => {
       zugStart.current = start
+      zeigerId.current = zeiger
       if (loesen.current) return
+      // Nur der ziehende Zeiger zählt - ein zweiter Finger (etwa in der
+      // Szene) verschiebt die Karte nicht und beendet das Ziehen nicht.
+      const vomZiehenden = (event: PointerEvent) =>
+        zugStart.current !== null && event.pointerId === zeigerId.current
       const bewege = (event: PointerEvent) => {
-        if (zugStart.current === null) return
-        setZug(Math.max(0, event.clientY - zugStart.current))
+        if (!vomZiehenden(event)) return
+        setZug(Math.max(0, event.clientY - (zugStart.current ?? 0)))
       }
       const lasseLos = (event: PointerEvent) => {
-        const von = zugStart.current
-        zugEnde(von !== null && event.clientY - von > ZIEH_SCHWELLE)
+        if (!vomZiehenden(event)) return
+        zugEnde(event.clientY - (zugStart.current ?? 0) > ZIEH_SCHWELLE)
       }
-      const brichAb = () => zugEnde(false)
+      const brichAb = (event: PointerEvent) => {
+        if (vomZiehenden(event)) zugEnde(false)
+      }
       window.addEventListener('pointermove', bewege)
       window.addEventListener('pointerup', lasseLos)
       window.addEventListener('pointercancel', brichAb)
@@ -215,15 +224,17 @@ function OffenesSheet({
    * er sie - sonst scrollt er den Text wie gewohnt.
    */
   const ziehtVomText = useCallback(
-    (y: number): boolean => {
+    (y: number, zeiger?: number): boolean => {
       if (zugStart.current !== null) return true
       const start = wischStart.current
       if (start === null) return false
+      // Ein anderer Finger entscheidet nicht über diesen Wisch.
+      if (zeiger !== undefined && zeiger !== zeigerId.current) return false
       const weg = y - start
       if (Math.abs(weg) < WISCH_ENTSCHEIDUNG) return false
       wischStart.current = null
       if (weg < 0 || (inhalt.current?.scrollTop ?? 0) > 0) return false
-      beginneZug(start)
+      beginneZug(start, zeigerId.current ?? 0)
       setZug(weg)
       return true
     },
@@ -314,7 +325,7 @@ function OffenesSheet({
             if ((event.target as HTMLElement).closest('button, a')) return
             if (window.matchMedia(SEITLICH_ABFRAGE).matches) return
             fange(event)
-            beginneZug(event.clientY)
+            beginneZug(event.clientY, event.pointerId)
           }}
           sx={{
             position: 'relative',
@@ -418,10 +429,15 @@ function OffenesSheet({
             wischStart.current = null
             if (event.pointerType === 'mouse' || !event.isPrimary) return
             if (window.matchMedia(SEITLICH_ABFRAGE).matches) return
+            // Zieht schon ein anderer Zeiger, bleibt es bei ihm.
+            if (zugStart.current !== null) return
             wischStart.current = event.clientY
+            zeigerId.current = event.pointerId
           }}
           // Ist entschieden, liest das Fenster weiter (beginneZug).
-          onPointerMove={(event) => ziehtVomText(event.clientY)}
+          onPointerMove={(event) =>
+            ziehtVomText(event.clientY, event.pointerId)
+          }
           onPointerUp={() => {
             wischStart.current = null
           }}
