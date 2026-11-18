@@ -1,3 +1,4 @@
+import { DATEN_ZEIT_MS } from '../produkte/zuordnung'
 import {
   LEERE_RAUMINFOS,
   findeFuerKnoten,
@@ -129,14 +130,65 @@ describe('ladeRauminfos', () => {
   })
 
   it('wirft nie: fehlt die Datei oder das Netz, gibt es keine Infopunkte', async () => {
-    global.fetch = jest.fn(async () =>
-      antwort(null, 404)
-    ) as unknown as typeof fetch
+    const fehlt = jest.fn(async () => antwort(null, 404))
+    global.fetch = fehlt as unknown as typeof fetch
     await expect(ladeRauminfos('')).resolves.toBe(LEERE_RAUMINFOS)
-    global.fetch = jest.fn(async () => {
-      throw new TypeError('Failed to fetch')
-    }) as unknown as typeof fetch
-    await expect(ladeRauminfos('')).resolves.toBe(LEERE_RAUMINFOS)
+    // Eine fehlende Datei ist kein Grund, es noch einmal zu versuchen.
+    expect(fehlt).toHaveBeenCalledTimes(1)
+
+    jest.useFakeTimers()
+    try {
+      global.fetch = jest.fn(async () => {
+        throw new TypeError('Failed to fetch')
+      }) as unknown as typeof fetch
+      const ohneNetz = ladeRauminfos('')
+      await jest.advanceTimersByTimeAsync(DATEN_ZEIT_MS)
+      await expect(ohneNetz).resolves.toBe(LEERE_RAUMINFOS)
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('ein kurzer Netzfehler wird wiederholt', async () => {
+    jest.useFakeTimers()
+    try {
+      let erster = true
+      const fn = jest.fn(async () => {
+        if (erster) {
+          erster = false
+          throw new TypeError('Failed to fetch')
+        }
+        return antwort(DATEI)
+      })
+      global.fetch = fn as unknown as typeof fetch
+      const ergebnis = ladeRauminfos('')
+      await jest.advanceTimersByTimeAsync(1000)
+      await expect(ergebnis).resolves.toEqual(DATEI)
+      expect(fn).toHaveBeenCalledTimes(2)
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('eine Anfrage, die hängt, ergibt nach 8 s keine Infopunkte (statt ewig zu warten)', async () => {
+    jest.useFakeTimers()
+    try {
+      global.fetch = jest.fn(
+        () => new Promise<Response>(() => undefined)
+      ) as unknown as typeof fetch
+      let ergebnis: unknown = 'offen'
+      void ladeRauminfos('').then((r) => {
+        ergebnis = r
+      })
+      await jest.advanceTimersByTimeAsync(DATEN_ZEIT_MS - 1)
+      expect(ergebnis).toBe('offen')
+      await jest.advanceTimersByTimeAsync(1)
+      expect(ergebnis).toBe(LEERE_RAUMINFOS)
+      expect(DATEN_ZEIT_MS).toBe(8000)
+      expect(jest.getTimerCount()).toBe(0)
+    } finally {
+      jest.useRealTimers()
+    }
   })
 })
 

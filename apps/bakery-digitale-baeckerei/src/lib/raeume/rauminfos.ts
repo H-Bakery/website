@@ -10,6 +10,7 @@
  * Infopunkte - das ist kein Fehler, und es wird nichts erfunden.
  */
 import type { Karte } from '../karte'
+import { ladeJson } from '../produkte/zuordnung'
 
 export interface Infopunkt {
   /** Anfang der Knoten-ID im Modell, ohne Schrägstrich am Ende (`ofen`). */
@@ -66,12 +67,17 @@ export function leseRauminfos(raw: unknown): Rauminfos {
   return { version: 1, raeume }
 }
 
-/** Lädt `${basePath}/data/rauminfos.json`. Wirft nie. */
+/**
+ * Lädt `${basePath}/data/rauminfos.json` - wie die Produktdaten mit Frist
+ * (`DATEN_ZEIT_MS`) und Wiederholung bei Netz- und Serverfehlern. Wirft nie:
+ * Fehlt die Datei, ist sie nicht lesbar oder hängt die Anfrage, gibt es keine
+ * Infopunkte (und der Laden sagt, wo es keine Infos gibt).
+ */
 export async function ladeRauminfos(basePath: string): Promise<Rauminfos> {
   try {
-    const res = await fetch(`${basePath}/data/rauminfos.json`)
-    if (!res.ok) return LEERE_RAUMINFOS
-    return leseRauminfos(await res.json())
+    return leseRauminfos(
+      await ladeJson(`${basePath}/data/rauminfos.json`, 'Die Infopunkte')
+    )
   } catch {
     return LEERE_RAUMINFOS
   }

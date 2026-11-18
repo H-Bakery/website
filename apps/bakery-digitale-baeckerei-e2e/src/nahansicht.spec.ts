@@ -13,9 +13,13 @@ import {
   PITCH_MIN,
   ZOOM_MAX,
 } from '../../bakery-digitale-baeckerei/src/lib/scene/drehteller'
+// Die Marke im Verlauf gehört zur App (dort prüft sie jest).
+// eslint-disable-next-line @nx/enforce-module-boundaries
+import { VERLAUF_MARKE } from '../../bakery-digitale-baeckerei/src/lib/verlauf'
 import {
   MIT_MODELL,
   OHNE_MODELL,
+  PFAD,
   allesHierListe,
   bilder,
   oeffne,
@@ -307,6 +311,115 @@ test.describe('Nahansicht „In 3D ansehen“', () => {
     await oeffneNahansicht(page)
     await expect(page.locator('canvas')).toHaveCount(2)
     expect((await bildVon(page))?.backgroundShare).toBeLessThan(0.97)
+  })
+
+  test('die Zurück-Geste schließt nur die Nahansicht - ohne Neuladen und ohne toten Schritt im Verlauf', async ({
+    page,
+    isMobile,
+    baseURL,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    // Eine Seite davor im Verlauf: Dorthin muss das letzte Zurück führen.
+    const vorher = `${baseURL}${PFAD}icon.svg`
+    await page.goto(vorher)
+    const protokoll = await oeffne(page)
+    await karteMitModell(page)
+    const adresse = page.url()
+    const laenge = await page.evaluate(() => window.history.length)
+    // Überleben die Merker, wurde weder die Seite neu geladen noch der Laden
+    // neu gebaut.
+    await page.evaluate(() => {
+      const w = window as unknown as { __merker?: string }
+      w.__merker = 'Seite'
+      const canvas = document.querySelector('canvas') as HTMLCanvasElement & {
+        __merker?: string
+      }
+      canvas.__merker = 'Laden'
+    })
+    const merker = () =>
+      page.evaluate(() => ({
+        seite: (window as unknown as { __merker?: string }).__merker,
+        laden: (
+          document.querySelector('canvas') as
+            | (HTMLCanvasElement & { __merker?: string })
+            | null
+        )?.__merker,
+      }))
+    const markeOben = () =>
+      page.evaluate(
+        (m) =>
+          ((window.history.state ?? {}) as Record<string, unknown>)[m] ?? null,
+        VERLAUF_MARKE
+      )
+
+    // Öffnen: genau ein Schritt mehr im Verlauf, dieselbe Adresse.
+    await oeffneNahansicht(page)
+    expect(await page.evaluate(() => window.history.length)).toBe(laenge + 1)
+    expect(page.url()).toBe(adresse)
+    expect(await markeOben()).not.toBeNull()
+    const anfragen = protokoll.anfragen.length
+
+    // Zurück (die Geste am Handy, die Taste im Browser): nur die Nahansicht zu.
+    await page.goBack()
+    await expect(nahansicht(page)).toBeHidden()
+    expect(page.url()).toBe(adresse)
+    await expect(page.locator('main[data-zustand="bereit"]')).toBeVisible()
+    await expect(page.locator('canvas')).toHaveCount(1)
+    expect(await merker()).toEqual({ seite: 'Seite', laden: 'Laden' })
+    await expect(
+      produktSheet(page).getByText(MIT_MODELL.name, { exact: true })
+    ).toBeVisible()
+    // Keine Navigation des Routers: nichts wurde neu angefragt.
+    expect(protokoll.anfragen.slice(anfragen)).toEqual([])
+
+    // Noch einmal öffnen und selbst schließen - am Handy mit „Zurück“, am
+    // Desktop mit Escape. Der eigene Schritt geht dabei wieder heraus.
+    await oeffneNahansicht(page)
+    if (isMobile) {
+      await nahansicht(page).getByRole('button', { name: 'Zurück' }).click()
+    } else {
+      await page.keyboard.press('Escape')
+    }
+    await expect(nahansicht(page)).toBeHidden()
+    await expect.poll(markeOben).toBeNull()
+    expect(page.url()).toBe(adresse)
+    expect(await merker()).toEqual({ seite: 'Seite', laden: 'Laden' })
+    await expect(
+      produktSheet(page).getByText(MIT_MODELL.name, { exact: true })
+    ).toBeVisible()
+
+    // Kein toter Schritt: Das nächste Zurück verlässt die App.
+    await page.goBack()
+    await expect(page).toHaveURL(vorher)
+
+    expect(protokoll.konsole).toEqual([])
+    expect(protokoll.ausnahmen).toEqual([])
+  })
+
+  test('nach einem Neuladen mit offener Nahansicht schließt das erste Zurück die neue', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    const protokoll = await oeffne(page)
+    await karteMitModell(page)
+    await oeffneNahansicht(page)
+    // Wie ein Tab, den das Handy verworfen und wiederhergestellt hat: Der
+    // Eintrag der Nahansicht (samt Marke) bleibt oben im Verlauf.
+    await page.reload()
+    await expect(page.locator('main[data-zustand="bereit"]')).toBeVisible({
+      timeout: 60_000,
+    })
+    await karteMitModell(page)
+    await oeffneNahansicht(page)
+    const adresse = page.url()
+
+    await page.goBack()
+    await expect(nahansicht(page)).toBeHidden()
+    expect(page.url()).toBe(adresse)
+    await expect(
+      produktSheet(page).getByText(MIT_MODELL.name, { exact: true })
+    ).toBeVisible()
+    expect(protokoll.ausnahmen).toEqual([])
   })
 
   test('mehrmals öffnen und schließen lässt keinen WebGL-Kontext zurück', async ({

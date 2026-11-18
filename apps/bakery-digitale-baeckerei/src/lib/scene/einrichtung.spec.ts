@@ -1,8 +1,14 @@
+import { readFileSync } from 'fs'
+import { join } from 'path'
+import { TextDecoder as NodeTextDecoder } from 'util'
 import { BoxGeometry, InstancedMesh, Matrix4, Mesh } from 'three'
 import type { PlatzPlan } from '../einrichtung/plan'
+import { DATEN_ZEIT_MS } from '../produkte/zuordnung'
 import {
   GELEGT,
+  REGALE_NOCHMAL_NACH_MS,
   VERBORGEN,
+  ladeRegale,
   leseImModell,
   raeumeEinrichtungAb,
   richteEin,
@@ -320,5 +326,142 @@ describe('gelegte Plätze: Zählen, Antippen, Hervorheben', () => {
     p.highlight(null)
     expect(mesh.children).toHaveLength(0)
     p.dispose()
+  })
+})
+
+describe('ladeRegale: Frist und ein zweiter Versuch', () => {
+  // Das synthetische Regal-Paket des Fixtures (erfundene Produkte).
+  const PAKET = readFileSync(
+    join(__dirname, '../../test/fixtures/regal.fixture.glb')
+  )
+  const URL_PAKET = '/produkte-3d/_regal.glb'
+  const realFetch = global.fetch
+  afterEach(() => {
+    global.fetch = realFetch
+    jest.useRealTimers()
+  })
+
+  const ok = () =>
+    ({
+      ok: true,
+      status: 200,
+      // Ein ArrayBuffer dieser Umgebung (der von fs stammt aus Node).
+      arrayBuffer: async () => {
+        const bytes = new ArrayBuffer(PAKET.length)
+        new Uint8Array(bytes).set(PAKET)
+        return bytes
+      },
+    } as unknown as Response)
+
+  it('ein Netzfehler wird einmal wiederholt - dann ist das Paket da', async () => {
+    // GLTFLoader liest den JSON-Teil mit TextDecoder; jsdom hat keinen.
+    const global_ = globalThis as { TextDecoder?: unknown }
+    const vorher = global_.TextDecoder
+    global_.TextDecoder ??= NodeTextDecoder
+    jest.useFakeTimers()
+    let erster = true
+    const fn = jest.fn(async () => {
+      if (erster) {
+        erster = false
+        throw new TypeError('Failed to fetch')
+      }
+      return ok()
+    })
+    global.fetch = fn as unknown as typeof fetch
+    try {
+      const geladen = ladeRegale(URL_PAKET, new AbortController().signal)
+      await jest.advanceTimersByTimeAsync(REGALE_NOCHMAL_NACH_MS)
+      jest.useRealTimers()
+      const regale = await geladen
+      expect(fn).toHaveBeenCalledTimes(2)
+      expect(regale.geometrien.size).toBeGreaterThan(0)
+      regale.dispose()
+    } finally {
+      global_.TextDecoder = vorher
+    }
+  })
+
+  it('zwei Netzfehler: gescheitert, kein dritter Versuch', async () => {
+    jest.useFakeTimers()
+    const fn = jest.fn(async () => {
+      throw new TypeError('Failed to fetch')
+    })
+    global.fetch = fn as unknown as typeof fetch
+    const ergebnis = ladeRegale(URL_PAKET, new AbortController().signal).catch(
+      (err: Error) => err
+    )
+    await jest.advanceTimersByTimeAsync(DATEN_ZEIT_MS)
+    await expect(ergebnis).resolves.toBeInstanceOf(TypeError)
+    expect(fn).toHaveBeenCalledTimes(2)
+    expect(jest.getTimerCount()).toBe(0)
+  })
+
+  it('eine Antwort mit Fehlerstatus wird nicht wiederholt', async () => {
+    const fn = jest.fn(async () => ({ ok: false, status: 404 } as Response))
+    global.fetch = fn as unknown as typeof fetch
+    await expect(
+      ladeRegale(URL_PAKET, new AbortController().signal)
+    ).rejects.toThrow('404')
+    expect(fn).toHaveBeenCalledTimes(1)
+  })
+
+  it('eine Anfrage, die hängt, scheitert nach der Frist - und wird dabei abgebrochen', async () => {
+    jest.useFakeTimers()
+    let signalDerAnfrage: AbortSignal | undefined
+    global.fetch = jest.fn((_url: string, init?: RequestInit) => {
+      signalDerAnfrage = init?.signal ?? undefined
+      return new Promise<Response>(() => undefined)
+    }) as unknown as typeof fetch
+    const ergebnis = ladeRegale(URL_PAKET, new AbortController().signal).then(
+      () => 'geladen',
+      (err: Error) => err.name
+    )
+    let fertig = false
+    void ergebnis.then(() => {
+      fertig = true
+    })
+    await jest.advanceTimersByTimeAsync(DATEN_ZEIT_MS - 1)
+    expect(fertig).toBe(false)
+    expect(signalDerAnfrage?.aborted).toBe(false)
+    await jest.advanceTimersByTimeAsync(1)
+    await expect(ergebnis).resolves.toBe('AbortError')
+    expect(signalDerAnfrage?.aborted).toBe(true)
+    expect(jest.getTimerCount()).toBe(0)
+  })
+
+  it('die Frist gilt für beide Versuche zusammen', async () => {
+    jest.useFakeTimers()
+    let erster = true
+    const fn = jest.fn(async () => {
+      if (erster) {
+        erster = false
+        throw new TypeError('Failed to fetch')
+      }
+      return new Promise<Response>(() => undefined)
+    })
+    global.fetch = fn as unknown as typeof fetch
+    const ergebnis = ladeRegale(URL_PAKET, new AbortController().signal).then(
+      () => 'geladen',
+      (err: Error) => err.name
+    )
+    await jest.advanceTimersByTimeAsync(REGALE_NOCHMAL_NACH_MS)
+    expect(fn).toHaveBeenCalledTimes(2)
+    await jest.advanceTimersByTimeAsync(DATEN_ZEIT_MS - REGALE_NOCHMAL_NACH_MS)
+    await expect(ergebnis).resolves.toBe('AbortError')
+  })
+
+  it('bricht der Aufrufer ab (Szene abgebaut), bricht auch die Anfrage ab', async () => {
+    let signalDerAnfrage: AbortSignal | undefined
+    global.fetch = jest.fn((_url: string, init?: RequestInit) => {
+      signalDerAnfrage = init?.signal ?? undefined
+      return new Promise<Response>(() => undefined)
+    }) as unknown as typeof fetch
+    const aufrufer = new AbortController()
+    const ergebnis = ladeRegale(URL_PAKET, aufrufer.signal).catch(
+      (err: Error) => err.name
+    )
+    aufrufer.abort()
+    await expect(ergebnis).resolves.toBe('AbortError')
+    expect(signalDerAnfrage?.aborted).toBe(true)
   })
 })

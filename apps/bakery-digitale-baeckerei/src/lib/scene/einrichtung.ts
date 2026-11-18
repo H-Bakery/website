@@ -23,6 +23,7 @@ import type { BufferGeometry, Material, Mesh, Object3D } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { TRAEGER_MATERIALIEN } from '../../../scripts/auslage'
 import type { ImModell, PlatzPlan } from '../einrichtung/plan'
+import { DATEN_ZEIT_MS } from '../produkte/zuordnung'
 import { parseProduktName } from './fills'
 import { istPreiskarte } from './preiskarten'
 import { GELEGT, VERBORGEN } from './treffer'
@@ -40,18 +41,85 @@ export interface Regale {
   dispose: () => void
 }
 
+/** Pause vor dem zweiten Versuch, wenn das Netz beim Paket kurz weg war. */
+export const REGALE_NOCHMAL_NACH_MS = 300
+
+const abgebrochen = () => new DOMException('Laden abgebrochen', 'AbortError')
+
+/** Wartet `ms` - oder bricht ab, sobald `signal` abbricht. */
+function pause(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((weiter, ablehnen) => {
+    const ende = () => {
+      clearTimeout(uhr)
+      ablehnen(abgebrochen())
+    }
+    const uhr = setTimeout(() => {
+      signal.removeEventListener('abort', ende)
+      weiter()
+    }, ms)
+    signal.addEventListener('abort', ende, { once: true })
+  })
+}
+
+/**
+ * Holt die Bytes des Pakets: höchstens `DATEN_ZEIT_MS` lang (Antwort und
+ * Inhalt zusammen), und nur so lange `signal` nicht abbricht. Ein Netzfehler
+ * wird einmal wiederholt; eine Antwort mit Fehlerstatus nicht.
+ */
+async function holePaket(
+  url: string,
+  signal: AbortSignal
+): Promise<ArrayBuffer> {
+  // Frist und Abbruch von außen in einem Signal - es bricht auch die Anfrage
+  // selbst ab, nicht nur das Warten auf sie.
+  const frist = new AbortController()
+  const weiterreichen = () => frist.abort()
+  if (signal.aborted) frist.abort()
+  else signal.addEventListener('abort', weiterreichen, { once: true })
+  const uhr = setTimeout(() => frist.abort(), DATEN_ZEIT_MS)
+  // Ein Wettlauf, falls eine Anfrage das Signal nicht beachtet.
+  let aufgeben: () => void = () => undefined
+  const aus = new Promise<never>((_, ablehnen) => {
+    aufgeben = () => ablehnen(abgebrochen())
+    if (frist.signal.aborted) aufgeben()
+    else frist.signal.addEventListener('abort', aufgeben, { once: true })
+  })
+  const einmal = async (): Promise<ArrayBuffer> => {
+    const res = await fetch(url, { signal: frist.signal })
+    if (!res.ok) throw new Error(`${res.status} ${url}`)
+    return res.arrayBuffer()
+  }
+  const holen = async (): Promise<ArrayBuffer> => {
+    try {
+      return await einmal()
+    } catch (err) {
+      // Nur ein Netzfehler (fetch wirft TypeError) lohnt einen zweiten Versuch.
+      if (frist.signal.aborted || !(err instanceof TypeError)) throw err
+      await pause(REGALE_NOCHMAL_NACH_MS, frist.signal)
+      return einmal()
+    }
+  }
+  try {
+    return await Promise.race([holen(), aus])
+  } finally {
+    clearTimeout(uhr)
+    signal.removeEventListener('abort', weiterreichen)
+    frist.signal.removeEventListener('abort', aufgeben)
+  }
+}
+
 /**
  * Lädt das Paket der Regal-Modelle (ein GLB, je Produkt ein Mesh mit dem
- * Namen der Produkt-ID; unkomprimiert, ohne Decoder lesbar).
+ * Namen der Produkt-ID; unkomprimiert, ohne Decoder lesbar). Hängt die
+ * Anfrage länger als `DATEN_ZEIT_MS`, scheitert es - der Laden behält dann
+ * die Ware seines Modells.
  */
 export async function ladeRegale(
   url: string,
   signal: AbortSignal
 ): Promise<Regale> {
-  const res = await fetch(url, { signal })
-  if (!res.ok) throw new Error(`${res.status} ${url}`)
-  const buffer = await res.arrayBuffer()
-  if (signal.aborted) throw new DOMException('Laden abgebrochen', 'AbortError')
+  const buffer = await holePaket(url, signal)
+  if (signal.aborted) throw abgebrochen()
   const gltf = await new GLTFLoader().parseAsync(buffer, '')
   const geometrien = new Map<string, BufferGeometry>()
   let material: Material | null = null

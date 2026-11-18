@@ -98,7 +98,8 @@ Landingpage auf GitHub Pages). Nicht im Pilot, nicht auf der Box.
 - **Snapshot (DB8):** Das Skript `sync-products` liest beim Build `hq/products/*.md`
   (`HQ_PRODUCTS_DIR`) und schreibt die nötigen Felder **ohne Preise** (ID, Name, Kategorie, Einheit,
   Kurztext, Text) nach `public/data/products.snapshot.json` (git-ignoriert) - nur für Produkte, die
-  im Modell auf einem Platz liegen (heute 48 von 103). Die App liest nur diesen Snapshot.
+  in einem Raum auf einem Platz liegen (wie viele das sind, nennt `sync-products` im Build-Log). Die
+  App liest nur diesen Snapshot.
 - Der Leser für `hq/products/*.md` steht einmal in der Lib `libs/shared/hq-products`
   (`@bakery/shared/hq-products`); Landingpage (`src/lib/products.ts`, `scripts/generate-sitemap.js`)
   und `sync-products` nutzen ihn.
@@ -129,7 +130,16 @@ Landingpage auf GitHub Pages). Nicht im Pilot, nicht auf der Box.
   statt Mocks zu zeigen. Die Landingpage baut dort seit DB14 ebenfalls aus hq.
 - Welches Produkt wo liegt (die Belegung), kommt weiter aus dem Explorer: `sync-model` leitet
   `public/data/belegung.json` (git-ignoriert) aus dem geprüften GLB ab. Neue Produkte erscheinen
-  im Regal erst mit einer neuen Belegung dort oder mit P4.
+  im Regal erst mit einer neuen Belegung dort oder über die Einrichtung (DB12, „Einrichtung des
+  Verkaufsraums“).
+- **Abruf in der App:** Snapshot, Belegung und Infopunkte lädt `ladeJson`
+  (`src/lib/produkte/zuordnung.ts`) - je Datei höchstens 8 s (`DATEN_ZEIT_MS`), alle Versuche
+  zusammen. Scheitert ein Abruf am Netz oder antwortet der Server mit 5xx, versucht die App es nach
+  0,3 s und noch einmal nach 0,9 s, ohne dass jemand etwas tippt; eine fehlende Datei (4xx) oder
+  unlesbares JSON nicht. Klappt es auch dann nicht, sagt die Liste „Die Produktinfos konnten nicht
+  geladen werden.“; fehlen die Infopunkte, gibt es keine (das ist kein Fehler). Das Paket der
+  Regal-Modelle (`ladeRegale`) hat dieselbe Frist und wird nach einem Netzfehler einmal wiederholt;
+  scheitert es, bleibt die Ware des Modells.
 
 ## Aufbau
 
@@ -791,13 +801,21 @@ kann (im Produkt-Sheet) und das auch die Produktseiten der Landingpage zeigen.
   einen festen Stand mit Prüfsumme. Rohfotos bleiben außerhalb aller Repos.
   Die Fotos der eigenen Ware gehören der Bäckerei und dürfen veröffentlicht werden.
 
-### Gebaut: Nahansicht in der Karte (nur lokal)
+### Gebaut: Nahansicht in der Karte (live seit DB14)
 
 - **Bedienung:** Hat das gewählte Produkt ein Modell, zeigt die Karte den Knopf „In 3D ansehen“. Er
   öffnet die Nahansicht - auf dem Handy bildfüllend, auf dem Desktop als Dialog: das Modell auf
   einem Drehteller (Ziehen dreht, nie von unten; zwei Finger, Mausrad oder +/- zoomen in Grenzen),
   eine langsame Runde beim Öffnen (nicht bei `prefers-reduced-motion`), „Zurück“ oder Escape
-  schließt nur die Nahansicht. Kein Modell → kein Knopf, kein Ersatzmodell.
+  schließt nur die Nahansicht. Kein Modell → kein Knopf, kein Ersatzmodell. Lange Namen nehmen in
+  der Kopfzeile bis zu zwei Zeilen, „Zurück“ behält seine Breite.
+- **Zurück-Geste:** Die Nahansicht legt beim Öffnen einen eigenen Schritt im Verlauf an - mit
+  derselben Adresse (`useZurueckSchliesst`, `src/lib/verlauf.ts`). Die Zurück-Geste von Android und
+  iOS (und „Zurück“ im Browser) schließt darum nur sie; Karte, Blickpunkt und Raum bleiben, die
+  Seite lädt nicht neu. Schließt man sie selbst („Zurück“, Escape, Tipp daneben), nimmt sie ihren
+  Schritt wieder heraus - das nächste Zurück verlässt die App wie vorher. Gespeichert wird dabei
+  nichts. Liste und Karte haben noch keinen eigenen Schritt. Geprüft in Chromium (Handy emuliert),
+  die Geste selbst auf einem echten Handy nicht.
 - **Licht:** eigener Renderer mit den Einstellungen der Vorschau des Daten-Repos (`RoomEnvironment`
   0,75 + ein Richtungslicht, sRGB, `NeutralToneMapping`, weicher Kontaktschatten) auf heller
   Bühne - die Modelle sind beleuchtetes PBR, der Laden bleibt unlit. Der Laden behält seinen
@@ -809,8 +827,9 @@ kann (im Produkt-Sheet) und das auch die Produktseiten der Landingpage zeigen.
   `../produkte-3d` (`PRODUKTE_3D_DIR`), prüft jede Datei gegen das Manifest und schreibt `public/produkte-3d/<id>.glb`
   und `public/data/produkte-3d.json` (beides git-ignoriert). **Gibt es das Daten-Repo nicht - CI,
   andere Rechner -, entsteht ein leerer Index, und die App bietet keine Nahansicht an.** Der Deploy
-  liest seit DB14 den Export `hq/produkte-3d/`. CI und die Playwright-Suite
-  bauen mit einem synthetischen Laib für „Testbrot“ und prüfen, dass im Export nur der liegt.
+  liest seit DB14 den Export `hq/produkte-3d/`; live zeigt die Karte den Knopf für jedes ausgelegte
+  Produkt, das dort ein Modell hat. CI und die Playwright-Suite bauen mit einem synthetischen Laib
+  für „Testbrot“ und prüfen, dass im Export nur der liegt.
 - **Ein neues Modell** kommt so hinein: im Daten-Repo verarbeiten und committen (`npm run process`,
   `check`) → in `produkte-3d.lock.json` `commit` und `manifest.sha256` (Prüfsumme von
   `manifest.json` an diesem Commit) eintragen → PR. Die ID ist die hq-ID ohne Nummer; erreichbar ist die Nahansicht nur für
