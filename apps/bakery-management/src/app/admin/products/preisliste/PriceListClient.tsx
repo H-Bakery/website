@@ -21,6 +21,7 @@ import {
   type PriceListDoc,
   type PriceListOptions,
 } from '../../../../lib/priceListApi'
+import { plural } from '../../../../lib/plural'
 import { useOptionalSession } from '../../../../lib/session'
 import { errorText } from '../../partners/errorText'
 import PriceListDialog from './PriceListDialog'
@@ -33,10 +34,6 @@ type State =
   | { phase: 'loading' }
   | { phase: 'ok'; doc: PriceListDoc }
   | { phase: 'error'; message: string }
-
-function plural(n: number, one: string, many: string): string {
-  return n === 1 ? `1 ${one}` : `${n} ${many}`
-}
 
 /**
  * Vorschau der Preisliste mit „Drucken / als PDF speichern“ und CSV. Über

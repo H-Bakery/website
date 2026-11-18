@@ -5,6 +5,7 @@
  */
 import type {
   FinanceKasse,
+  FinanceKasseMonth,
   FinanceMonthReport,
   FinanceProjectionMonth,
   FinanceStatement,
@@ -37,6 +38,24 @@ function kasse(revenue: number, days: number): FinanceKasse {
     cash: Math.round(revenue * 0.6),
     card: Math.round(revenue * 0.4),
     unpaid: 0,
+  }
+}
+
+/** Kasse eines Monats; ohne `coverage` an jedem Öffnungstag ein Bericht. */
+function kasseMonth(
+  revenue: number,
+  days: number,
+  coverage: Partial<
+    Pick<FinanceKasseMonth, 'open_days' | 'complete' | 'note'>
+  > = {}
+): FinanceKasseMonth {
+  return {
+    ...kasse(revenue, days),
+    open_days: days,
+    report_days: days,
+    complete: true,
+    note: null,
+    ...coverage,
   }
 }
 
@@ -177,7 +196,7 @@ function yearMonths(year: string): FinanceYearMonthRow[] {
         has_data: true,
         cumulative_result: 1600 * (index + 1),
         // März ohne Kassenberichte - die Spalte zeigt dann einen Strich.
-        kasse: index === 2 ? null : kasse(9500, 22),
+        kasse: index === 2 ? null : kasseMonth(9500, 22),
       }
     }
     if (index === 9) {
@@ -194,7 +213,10 @@ function yearMonths(year: string): FinanceYearMonthRow[] {
         transactions: 62,
         has_data: true,
         cumulative_result: 16000,
-        kasse: kasse(4200, 11),
+        kasse: kasseMonth(4200, 11, {
+          complete: false,
+          note: 'Monat läuft noch: bisher 11 von 11 Öffnungstagen',
+        }),
       }
     }
     return {
@@ -332,7 +354,7 @@ export function finalYearFixture(): FinanceYearReport {
       result: 1500,
       has_data: true,
       cumulative_result: 1500 * Number(row.month.slice(5)),
-      kasse: kasse(8800, 22),
+      kasse: kasseMonth(8800, 22),
     })),
     statement: { ...yearStatement(), result: 18000 },
     projection: null,
@@ -506,8 +528,8 @@ export function completeMonthFixture(): FinanceMonthReport {
       transactions: 120,
       unassigned: { amount: -400, count: 2 },
     },
-    kasse: kasse(9600, 22),
-    kasse_previous_year: kasse(9100, 21),
+    kasse: kasseMonth(9600, 22),
+    kasse_previous_year: kasseMonth(9100, 21),
     reconciliation: {
       kasse_revenue: 9600,
       kasse_cash: 5400,
@@ -628,5 +650,65 @@ export function partialMonthFixture(): FinanceMonthReport {
     ],
     previous_month: '2026-09',
     next_month: null,
+  }
+}
+
+/**
+ * Laufendes Jahr, in dem die Kasse im September nur 8 von 26 Öffnungstagen
+ * hat (Berichte erst ab dem 22.): der Abgleich läuft ohne September.
+ */
+export function kasseIncompleteYearFixture(): FinanceYearReport {
+  const base = provisionalYearFixture()
+  const months = base.months.map((row) =>
+    row.month === '2026-09'
+      ? {
+          ...row,
+          kasse: kasseMonth(3100, 8, {
+            open_days: 26,
+            complete: false,
+            note: 'Kasse unvollständig: 8 von 26 Öffnungstagen',
+          }),
+        }
+      : row
+  )
+  return {
+    ...base,
+    months,
+    reconciliation: base.reconciliation
+      ? { ...base.reconciliation, months: 7, to: '2026-08' }
+      : null,
+    notes: [
+      ...base.notes,
+      {
+        key: 'kasse_incomplete',
+        severity: 'info',
+        text: 'Nicht im Kassenabgleich: September – dort fehlen Kassenberichte an Öffnungstagen. Verglichen werden nur Monate, in denen Bank und Kasse vollständig sind.',
+      },
+    ],
+  }
+}
+
+/**
+ * Bank vollständig, Kasse nicht (8 von 26 Öffnungstagen): kein Abgleich,
+ * stattdessen der Hinweis des Servers.
+ */
+export function kasseIncompleteMonthFixture(): FinanceMonthReport {
+  const base = completeMonthFixture()
+  return {
+    ...base,
+    kasse: kasseMonth(3100, 8, {
+      open_days: 26,
+      complete: false,
+      note: 'Kasse unvollständig: 8 von 26 Öffnungstagen',
+    }),
+    reconciliation: null,
+    notes: [
+      ...base.notes,
+      {
+        key: 'kasse_incomplete',
+        severity: 'info',
+        text: 'Kasse unvollständig: 8 von 26 Öffnungstagen (Kassenberichte gibt es erst ab 22.09.2026). Kasse und Konto werden nur für Monate verglichen, in denen an jedem Öffnungstag ein Kassenbericht vorliegt – sonst entstünde eine Scheindifferenz.',
+      },
+    ],
   }
 }

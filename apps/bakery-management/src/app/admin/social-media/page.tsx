@@ -17,8 +17,12 @@ import {
   Refresh as RefreshIcon,
 } from '@mui/icons-material'
 import { HeusserLogo } from '@bakery/shared/ui'
+import { BRAND_FACTS } from '@bakery/shared/utils'
 import { PageLayout, PageSection } from '../../../components/layout'
 import { formatSocialPrice } from './socialPrice'
+
+/** Fußzeile jedes Bildes - Gründungsjahr nur aus `BRAND_FACTS` (belegt). */
+const FOOTER_TEXT = `Traditionelle Handwerkskunst seit ${BRAND_FACTS.foundedYear}`
 
 // Template types
 type TemplateType =
@@ -337,11 +341,7 @@ const createBakeryImage = (
   ctx.fillStyle = BRAND_COLORS.bgPaper
   ctx.font = `${24 * scale}px Arial, sans-serif`
   ctx.textAlign = 'center'
-  ctx.fillText(
-    'Traditionelle Handwerkskunst seit 1952',
-    width / 2,
-    height - 40 * scale
-  )
+  ctx.fillText(FOOTER_TEXT, width / 2, height - 40 * scale)
 
   // Add stylized H logo instead of bread emoji
   ctx.save()
@@ -810,7 +810,7 @@ export default function SocialMediaPage() {
                     fontSize: '2.6cqw',
                   }}
                 >
-                  Traditionelle Handwerkskunst seit 1952
+                  {FOOTER_TEXT}
                 </Typography>
               </Box>
 

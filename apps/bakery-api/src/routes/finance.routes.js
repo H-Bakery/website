@@ -10,7 +10,10 @@
  *                                       vollständige
  *
  * Jahr und Monat rechnet `src/services/finance-report.core.js`; dazu kommen
- * die Monatssummen der Kasse (`HQ_REPORTS_DIR`) für den Kassenabgleich.
+ * die Monatssummen der Kasse (`HQ_REPORTS_DIR`) für den Kassenabgleich und
+ * die Backzettel-Stammdaten mit Kalender (`options.calendarConfig`, von
+ * `hq-data.routes.ts`) für die Öffnungstage - ohne sie ist kein Kassenmonat
+ * vollständig.
  *
  * Alle nur mit Rolle `inhaber` (401 ohne Sitzung, 403 mit anderer Rolle). Die
  * Rechen- und Bereinigungslogik steht ausschließlich in
@@ -34,6 +37,7 @@ const finance = require('../services/finance.core')
 const report = require('../services/finance-report.core')
 const reportsCore = require('../services/reports.core')
 const reportsFiles = require('../services/reports-files.core')
+const { berlinToday } = require('../services/backzettel-reference.core')
 
 const SUMMARY_FILENAME = 'finance-summary.json'
 
@@ -96,7 +100,13 @@ function sendNoData(res, reason) {
 /**
  * Hängt die Routen an `app`. `auth.requireRole(...roles)` liefert die
  * Rollen-Wache (echte API: `createRoleGuards()` in `hq-data.routes.ts`);
- * `options.financeDir` und `options.log` sind für Tests.
+ * `options.financeDir`, `options.reportsDir`, `options.today` (Text oder
+ * Funktion) und `options.log` sind für Tests.
+ *
+ * `options.calendarConfig()` liefert die Backzettel-Stammdaten mit Kalender
+ * (Wochenplan + `kalender.yaml`, wie `backzettel-source.ts` sie lädt) oder
+ * `null`. Fehlt die Option oder liefert sie nichts, ist kein Kassenmonat
+ * vollständig - es gibt dann keinen Kassenabgleich, und die Antwort sagt es.
  */
 function install(app, auth, options = {}) {
   const log = options.log || console
@@ -106,6 +116,36 @@ function install(app, auth, options = {}) {
     options.reportsDir ||
     reportsFiles.resolveReportsDir(path.join(__dirname, '..', '..', '..', '..'))
   const ownerOnly = auth.requireRole('inhaber')
+  const today = () =>
+    typeof options.today === 'function'
+      ? options.today()
+      : options.today || berlinToday()
+
+  /** Stammdaten mit Kalender oder `null` - wirft nie. */
+  function calendarConfig() {
+    if (typeof options.calendarConfig !== 'function') return null
+    try {
+      return options.calendarConfig() || null
+    } catch (err) {
+      log.warn(`[finance] Kalender nicht ladbar: ${err && err.message}`)
+      return null
+    }
+  }
+
+  /** Erster und letzter Kassenbericht überhaupt (für den Hinweistext). */
+  function reportsPeriod() {
+    const dates = reportsFiles.listReportDates(reportsDir, log.warn)
+    return dates.length ? { from: dates[0], to: dates[dates.length - 1] } : null
+  }
+
+  /** Was der Core für die Abdeckung der Kasse braucht. */
+  function kasseContext() {
+    return {
+      today: today(),
+      calendarConfig: calendarConfig(),
+      reportsPeriod: reportsPeriod(),
+    }
+  }
 
   /** Monatssummen der Kasse für `months` (`JJJJ-MM`), je Monat oder fehlend. */
   function kasseFor(months) {
@@ -197,6 +237,7 @@ function install(app, auth, options = {}) {
       res,
       report.buildYearReport(loaded.summary, year, {
         kasseByMonth: kasseFor(months),
+        ...kasseContext(),
       })
     )
   }
@@ -222,6 +263,7 @@ function install(app, auth, options = {}) {
       report.buildMonthReport(loaded.summary, month, {
         kasse: kasse[month],
         kassePreviousYear: kasse[lastYear],
+        ...kasseContext(),
       })
     )
   }

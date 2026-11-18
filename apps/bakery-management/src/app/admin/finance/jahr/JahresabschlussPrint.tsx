@@ -9,6 +9,7 @@ import {
   formatMonth,
   formatReportDate,
 } from '../../../../lib/reportFormat'
+import { plural } from '../../../../lib/plural'
 import {
   cumulativePoints,
   expenseBars,
@@ -363,6 +364,11 @@ export function JahresabschlussPrint({
   const range = yearDataRange(report)
   const created = printDate()
 
+  // Welche Monate nicht im Kassenabgleich sind (Server-Text): wie am
+  // Bildschirm bei „Kasse und Konto“, nicht noch einmal in den Anmerkungen.
+  const kasseNote = report.notes.find((note) => note.key === 'kasse_incomplete')
+  const notes = report.notes.filter((note) => note.key !== 'kasse_incomplete')
+
   const meta: [string, string][] = [['Zeitraum', `Jan – Dez ${report.year}`]]
   if (range) meta.push(['Bankdaten', range])
   meta.push(['Erstellt', created])
@@ -476,30 +482,45 @@ export function JahresabschlussPrint({
         title="Kasse und Konto"
         intro={
           report.reconciliation?.from && report.reconciliation.to
-            ? `Was die Kasse eingenommen hat und was davon aufs Konto kam – ${monthName(
-                report.reconciliation.from
-              )} bis ${formatMonth(
-                report.reconciliation.to
-              )}. Kassenumsatz ${formatEuro(
+            ? `Was die Kasse eingenommen hat und was davon aufs Konto kam – ${plural(
+                report.reconciliation.months ?? 0,
+                'voller Monat',
+                'volle Monate'
+              )}, ${
+                report.reconciliation.from === report.reconciliation.to
+                  ? formatMonth(report.reconciliation.to)
+                  : `${monthName(report.reconciliation.from)} bis ${formatMonth(
+                      report.reconciliation.to
+                    )}`
+              }. Kassenumsatz ${formatEuro(
                 report.reconciliation.kasse_revenue
               )} an ${report.reconciliation.kasse_days} Öffnungstagen.`
             : 'Was die Kasse eingenommen hat und was davon aufs Konto kam.'
         }
         keep
+        data-testid="print-section-kasse"
       >
         {report.reconciliation ? (
-          <ReconciliationTable report={report} />
+          <>
+            <ReconciliationTable report={report} />
+            {kasseNote && (
+              <p className="fp-intro" data-testid="print-kasse-note">
+                {kasseNote.text}
+              </p>
+            )}
+          </>
         ) : (
-          <p className="fp-intro">
-            Für dieses Jahr gibt es noch keinen vollen Monat mit Bankdaten und
-            Kassenberichten.
+          <p className="fp-intro" data-testid="print-kasse-note">
+            {kasseNote
+              ? kasseNote.text
+              : 'Für dieses Jahr gibt es noch keinen Monat, in dem Bankdaten und Kassenberichte vollständig sind.'}
           </p>
         )}
       </PrintSection>
 
-      {report.notes.length > 0 && (
+      {notes.length > 0 && (
         <PrintSection number={next()} title="Anmerkungen" keep>
-          <PrintNotes notes={report.notes} />
+          <PrintNotes notes={notes} />
         </PrintSection>
       )}
     </PrintDocument>

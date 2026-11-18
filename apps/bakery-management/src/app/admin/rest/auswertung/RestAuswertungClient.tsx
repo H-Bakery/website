@@ -37,6 +37,7 @@ import {
   type KeyFigure,
 } from '../../../../components/layout'
 import { backzettelErrorText } from '../../../../lib/backstubeErrors'
+import { plural } from '../../../../lib/plural'
 import DateRangeFilter from '../../../../components/analytics/DateRangeFilter'
 import { weekPresets } from '../../../../components/analytics/dateRange'
 
@@ -499,11 +500,12 @@ export default function RestAuswertungClient() {
                 sx={{ mb: 1.5 }}
                 data-testid="day-counts"
               >
-                {data.counts.counted} Tage ausgewertet · {data.counts.partial}{' '}
-                teilweise gezählt · {data.counts.notCounted} ohne Zählung ·{' '}
+                {plural(data.counts.counted, 'Tag', 'Tage')} ausgewertet ·{' '}
+                {data.counts.partial} teilweise gezählt ·{' '}
+                {data.counts.notCounted} ohne Zählung ·{' '}
                 {data.counts.noBackzettel} ohne freigegebenen Backzettel
                 {data.counts.ruhetag > 0
-                  ? ` · ${data.counts.ruhetag} Ruhetage`
+                  ? ` · ${plural(data.counts.ruhetag, 'Ruhetag', 'Ruhetage')}`
                   : ''}
                 {(data.counts.geschlossen ?? 0) > 0
                   ? ` · ${data.counts.geschlossen} geschlossen`

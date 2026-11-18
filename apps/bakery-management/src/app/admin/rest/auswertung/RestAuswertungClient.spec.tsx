@@ -175,8 +175,9 @@ describe('Rest-Auswertung', () => {
       '1 Posten mit mehr Rest als gebacken - Quote enthält vermutlich Zählfehler.'
     )
     expect(screen.queryByTestId('rest-total-exceeds-Liter')).toBeNull()
+    // Einzahl bei einem Tag (früher „1 Tage ausgewertet“).
     expect(screen.getByTestId('day-counts').textContent).toContain(
-      '1 Tage ausgewertet'
+      '1 Tag ausgewertet'
     )
     const chart = screen.getByTestId('daily-chart')
     expect(chart.querySelector('[data-status="partial"]')).toBeTruthy()

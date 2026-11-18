@@ -71,8 +71,27 @@ Aus derselben bereinigten `finance-summary.json` plus den Monatssummen der Kasse
   Steuererstattung wie eine neue Ausgabe aus. Schwellen (1,5 × Ø und ≥ 300 €, „fehlt“ nur bei
   regelmäßigen Posten) im Kopf von `highlightsOf`; erst ab 6 Vergleichsmonaten.
 - **Kassenabgleich** (Kasse bar + Karte gegen Bareinzahlungen + Kartenabrechnungen) nur über
-  vollständige Monate. Bekannte Kleinigkeit: die Kasse zählt Bons „ohne Zahlung“ mit Betrag zum
-  Umsatz, der Kassenabschluss nicht.
+  Monate, in denen **Bank und Kasse** vollständig sind - Jahr (`reconciliation.months/from/to`)
+  wie Monat (`reconciliation: null`). Die Kasse ist vollständig, wenn an jedem Öffnungstag ein
+  Bericht vorliegt (`kasseCoverage` in `finance-report.core.js`, gezählt bis gestern - heute
+  nur, wenn sein Bericht schon da ist):
+
+  - Öffnungstage aus `kalender.core` `dayKind` mit den Backzettel-Stammdaten (Wochenplan +
+    `kalender.yaml`); `finance.routes.js` bekommt sie als `calendarConfig` von
+    `hq-data.routes.ts` (eigene Backzettel-Quelle, wie `app.ts` sie lädt). Ein Tag **mit** Bericht
+    zählt immer als Öffnungstag.
+  - Jahr ohne Eintrag in `kalender.yaml`: Wochenplan; ein gesetzlicher Feiertag ohne Bericht fehlt
+    nicht (ob offen war, weiß niemand) - mit Bericht zählt er. Nie ein erfundener Schließtag.
+  - Der laufende Monat ist nie vollständig. Ohne gültigen Wochenplan oder Kalender ist **kein**
+    Monat vollständig (`open_days: null`), und `notes` sagt es.
+  - Das `kasse` eines Monats trägt `open_days`, `report_days`, `complete` und `note`
+    („Kasse unvollständig: 8 von 26 Öffnungstagen“). Der Jahresabschluss zeigt `note` unter
+    „Kasse-Umsatz“, die Monatsanalyse den Hinweis `kasse_incomplete` (mit Datenbeginn oder
+    fehlenden Tagen) statt Differenz und Warnung.
+
+  Bekannte Kleinigkeit: die Kasse zählt Bons „ohne Zahlung“ mit Betrag zum Umsatz, der
+  Kassenabschluss nicht.
+
 - **Diagramme** (`FinanceCharts.tsx`, Daten nur umgeordnet in `financeCharts.ts`): Jahr im Verlauf,
   Ergebnis seit Jahresbeginn, Einnahmen nach Herkunft, Ausgaben nach Posten (Monat mit Ø-Strich),
   Verlauf der letzten 13 Monate (`trend`). Hochrechnung und aufgelaufenes Ergebnis liefert der
