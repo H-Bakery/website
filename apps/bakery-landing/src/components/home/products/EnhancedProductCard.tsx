@@ -111,11 +111,16 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
             )}
           </Box>
 
-          {/* Quick View Overlay */}
+          {/* Hover-Hinweis: die ganze Karte führt zur Produktseite. Nur
+              Dekoration - der Link heißt weiter wie das Produkt. */}
           <Fade in={isHovered}>
-            <Box sx={styles.quickViewOverlay}>
-              <Typography variant="body2" sx={styles.quickViewText}>
-                Schnellansicht
+            <Box sx={styles.hoverOverlay} aria-hidden="true">
+              <Typography
+                variant="body2"
+                component="span"
+                sx={styles.hoverLabel}
+              >
+                Ansehen
               </Typography>
             </Box>
           </Fade>
@@ -221,23 +226,27 @@ const styles = {
       transition: 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
     },
   },
-  quickViewOverlay: {
+  hoverOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    // Leichter, warmer Schleier: das Produkt bleibt erkennbar.
+    backgroundColor: 'rgba(59, 43, 40, 0.18)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
   },
-  quickViewText: {
-    color: 'white',
+  hoverLabel: {
+    bgcolor: 'primary.main',
+    color: 'primary.contrastText',
     fontWeight: 'bold',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+    px: 2,
+    py: 0.5,
+    borderRadius: 999,
+    boxShadow: 2,
   },
   content: {
     display: 'flex',

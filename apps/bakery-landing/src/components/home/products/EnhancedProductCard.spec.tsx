@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import Image from 'next/image'
 import EnhancedProductCard from './EnhancedProductCard'
@@ -149,5 +149,20 @@ describe('EnhancedProductCard – Bewertungen', () => {
     expect(screen.queryByRole('img', { name: /stars/i })).toBeNull()
     expect(document.querySelector('.MuiRating-root')).toBeNull()
     expect(screen.queryByText(/^\(\d+\)$/)).toBeNull()
+  })
+})
+
+describe('EnhancedProductCard – Hover-Hinweis', () => {
+  it('verspricht keine Schnellansicht, die es nicht gibt', () => {
+    renderWithTheme(<EnhancedProductCard {...product} />)
+    const card = screen.getByRole('link').closest('.MuiCard-root') as Element
+
+    fireEvent.mouseEnter(card)
+
+    expect(screen.queryByText(/schnellansicht/i)).toBeNull()
+    // „Ansehen“ ist Dekoration: der Link heißt weiter nach dem Produkt.
+    const hint = screen.getByText('Ansehen')
+    expect(hint.closest('[aria-hidden="true"]')).not.toBeNull()
+    expect(screen.getByRole('link')).not.toHaveAccessibleName(/ansehen/i)
   })
 })
