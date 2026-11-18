@@ -419,8 +419,9 @@ erweitertes `GET /api/backzettel/config`.
   `md`". Abschnitte: feste Spalten in px (`SECTION_COLS`, „Posten" bekommt den Rest), Tabelle ab
   `SECTION_TABLE_MIN_WIDTH` (840 px). Brot: `breadTableMinWidth` (Name 140 + je Größe bzw.
   „Menge" 136 + Teig 96); wird die sichtbare Tabelle doch breiter (Abzeichen „Grundmenge offen",
-  „44 Stück" neben dem Stift), misst `BreadTable` nach (ResizeObserver) und hebt die Grenze, bis
-  neue Daten kommen. Stand synthetisch (vier Größen + „Menge"): Brot bei 1024-1180 px als Karten,
+  „44 Stück" neben dem Stift), misst `BreadTable` nach und hebt die Grenze, bis neue Daten kommen:
+  neue Daten (Laden, Speichern) im Layout-Effekt vor dem ersten Bild - sonst blitzte die Tabelle
+  kurz auf -, danach bei jeder Größenänderung per ResizeObserver. Stand synthetisch (vier Größen + „Menge"): Brot bei 1024-1180 px als Karten,
   ab 1280 px als Tabelle (Entwurf mit Stiften und „Grundmenge offen" erst ab 1440 px); Abschnitte
   bei 1024/1080 px als Karten, ab 1180 px als Tabellen. Basis „offen" steht als Warnschrift (kein
   Chip, der zu „o…" wurde), darunter die Erklärung „„offen": Grundmenge noch nicht festgelegt …" -

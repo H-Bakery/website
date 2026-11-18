@@ -272,6 +272,37 @@ describe('Backzettel v2 - Bausteine', () => {
     expect(compared).toBeGreaterThan(3)
   })
 
+  it('BreadTable: läuft die Tabelle über, gilt die gemessene Breite schon beim ersten Bild (kein Aufblitzen)', () => {
+    const bread = day.bread
+    if (!bread) throw new Error('Fixture ohne Brot')
+    // Rahmen 800 px, die Tabelle braucht 900 px (Abzeichen, Stifte). jsdom
+    // hat keinen ResizeObserver - gemessen werden muss trotzdem sofort.
+    const clientWidth = jest
+      .spyOn(HTMLElement.prototype, 'clientWidth', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        return this.dataset.testid === 'bread-fit' ||
+          this.classList.contains('MuiTableContainer-root')
+          ? 800
+          : 0
+      })
+    const scrollWidth = jest
+      .spyOn(HTMLElement.prototype, 'scrollWidth', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        return this.tagName === 'TABLE' ? 900 : 0
+      })
+    try {
+      expect(breadTableMinWidth(bread)).toBeLessThan(900)
+      render(<BreadTable bread={bread} {...editProps} />)
+      expect(screen.getByTestId('bread-fit')).toHaveAttribute(
+        'data-table-min-width',
+        '900'
+      )
+    } finally {
+      clientWidth.mockRestore()
+      scrollWidth.mockRestore()
+    }
+  })
+
   it('Abschnitt: „offen“ als Warnschrift ohne Chip, Erklärung sichtbar, feste Spalten, Tabelle und Karten mit denselben Werten', () => {
     const open = line({
       itemId: 'test-zopf',

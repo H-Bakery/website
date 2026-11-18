@@ -260,12 +260,15 @@ export function BreadTable({
     bread: BreadView
     width: number
   } | null>(null)
-  React.useEffect(() => {
+  // Layout-Effekt: neue Daten (Laden, nach jedem Speichern) werden noch vor
+  // dem ersten Bild gemessen. Mit dem ResizeObserver allein stand die zu
+  // breite Tabelle erst ein paar Bilder lang da, dann kamen die Karten
+  // (Aufblitzen bei 1280 px im Entwurf).
+  React.useLayoutEffect(() => {
     const wrap = wrapRef.current
     const table = tableRef.current
     const box = table?.parentElement
     if (!bread || !wrap || !table || !box) return
-    if (typeof ResizeObserver === 'undefined') return
     const check = () => {
       // Karten zu sehen: die Tabelle ist ausgeblendet, nichts zu messen.
       if (box.clientWidth === 0) return
@@ -276,6 +279,8 @@ export function BreadTable({
         m && m.bread === bread && m.width >= width ? m : { bread, width }
       )
     }
+    check()
+    if (typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(check)
     observer.observe(box)
     observer.observe(table)
