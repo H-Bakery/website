@@ -91,7 +91,9 @@ deutschen API-`message`.
 
 **Handy und Touch.** Kein waagrechtes Scrollen der Seite bei 320-390 px. Breite
 Tabellen: `ResponsiveList` oder ein eigener Scroll-Container
-(`TableContainer` mit `overflowX: 'auto'`).
+(`TableContainer` mit `overflowX: 'auto'`). Touch-Ziele ≥ 44 px - das Theme
+(`TOUCH_MEDIA` in `lib/muiTheme.ts`) erledigt Knöpfe und Felder; eigene
+klickbare Flächen selbst auf 44 px bringen.
 
 **Tabellen nach Inhaltsbreite.** Ob eine breite Tabelle passt, hängt an der
 Breite des Inhalts, nicht des Fensters: ab `md` (900 px) steht die
@@ -106,9 +108,7 @@ weniger als `CONTENT_WIDE_MIN`, gibt sie ihre Breite mit
 (`useContentWide(800)`). Gedruckt wird trotzdem die Tabelle, wo eine
 Druckansicht sie braucht (`useIsPrinting()`, Tagesübersicht). Tabellen
 ohne Kartenform halten das Ergebnis vorn und blenden Nebenspalten erst ab
-der Breite ein, ab der sie passen (Abgleich: CAP erst ab `xl`). Touch-Ziele ≥ 44 px - das Theme
-(`TOUCH_MEDIA` in `lib/muiTheme.ts`) erledigt Knöpfe und Felder; eigene
-klickbare Flächen selbst auf 44 px bringen.
+der Breite ein, ab der sie passen (Abgleich: CAP erst ab `xl`).
 
 **Dunkelmodus (Standard).**
 
