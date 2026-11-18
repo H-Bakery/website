@@ -1,3 +1,4 @@
+import * as React from 'react'
 import { StrictMode, createElement as h, useState } from 'react'
 import { act, render, waitFor } from '@testing-library/react'
 import { VERLAUF_MARKE, useZurueckSchliesst } from './verlauf'
@@ -147,6 +148,45 @@ describe('useZurueckSchliesst', () => {
     expect(typeof marke()).toBe('string')
     // Unter dem Eintrag der zweiten liegt der vorige, nicht der der ersten.
     expect(window.history.length).toBe(laenge + 1)
+  })
+
+  it('nach einem Neuladen mit offener Ansicht: Das erste Zurück schließt die neue', async () => {
+    // Neu geladen (auch: ein Tab, den das Handy verworfen und wiederhergestellt
+    // hat) = das Modul frisch, der Verlauf samt alter Marke bleibt.
+    const frisch = (): typeof import('./verlauf') => {
+      let modul: typeof import('./verlauf') | undefined
+      jest.isolateModules(() => {
+        // Dieselbe React-Instanz wie der Renderer.
+        jest.doMock('react', () => React)
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        modul = require('./verlauf')
+      })
+      jest.dontMock('react')
+      if (!modul) throw new Error('verlauf nicht geladen')
+      return modul
+    }
+    const damals = frisch()
+    const heute = frisch()
+    function Alt() {
+      damals.useZurueckSchliesst(true, () => undefined)
+      return null
+    }
+    function Neu({ onClose }: { onClose: () => void }) {
+      heute.useZurueckSchliesst(true, onClose)
+      return null
+    }
+    const alt = render(h(Alt))
+    const alteMarke = marke()
+    expect(typeof alteMarke).toBe('string')
+    // Die Seite ist weg, ihr Eintrag mit Marke bleibt oben; die neue Seite
+    // öffnet die Ansicht wieder.
+    alt.unmount()
+    const onClose = jest.fn()
+    render(h(Neu, { onClose }))
+    expect(marke()).not.toBe(alteMarke)
+    window.history.back()
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+    expect(marke()).toBe(alteMarke)
   })
 
   it('speichert nichts auf dem Gerät', async () => {

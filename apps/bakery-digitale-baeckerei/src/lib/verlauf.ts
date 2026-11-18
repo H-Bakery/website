@@ -28,6 +28,15 @@ export const VERLAUF_MARKE = 'digitaleBaeckereiAnsicht'
  */
 export const ZURUECK_FRIST_MS = 1000
 
+/**
+ * Eigen je Laden der Seite: Der Verlauf überlebt ein Neuladen (oder das
+ * Wiederherstellen eines Tabs, den das Handy im Hintergrund verworfen hat) -
+ * samt einer Marke von damals. Ein Zähler allein finge wieder bei 1 an, die
+ * neue Marke gliche der alten, und das erste Zurück schlösse nichts.
+ */
+const SEITE = `${Date.now().toString(36)}${Math.random()
+  .toString(36)
+  .slice(2, 6)}`
 let zaehler = 0
 /** Ein `history.back()` von hier, dessen `popstate` noch aussteht. */
 let unterwegs: Promise<void> | null = null
@@ -95,7 +104,7 @@ export function useZurueckSchliesst(
     const anlegen = () => {
       if (!aktiv || istOben(marke.current)) return
       zaehler += 1
-      const neu = `ansicht-${zaehler}`
+      const neu = `ansicht-${SEITE}-${zaehler}`
       try {
         window.history.pushState({ ...zustand(), [VERLAUF_MARKE]: neu }, '')
         marke.current = neu

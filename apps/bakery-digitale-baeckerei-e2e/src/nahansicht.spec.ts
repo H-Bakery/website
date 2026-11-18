@@ -396,6 +396,32 @@ test.describe('Nahansicht „In 3D ansehen“', () => {
     expect(protokoll.ausnahmen).toEqual([])
   })
 
+  test('nach einem Neuladen mit offener Nahansicht schließt das erste Zurück die neue', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    const protokoll = await oeffne(page)
+    await karteMitModell(page)
+    await oeffneNahansicht(page)
+    // Wie ein Tab, den das Handy verworfen und wiederhergestellt hat: Der
+    // Eintrag der Nahansicht (samt Marke) bleibt oben im Verlauf.
+    await page.reload()
+    await expect(page.locator('main[data-zustand="bereit"]')).toBeVisible({
+      timeout: 60_000,
+    })
+    await karteMitModell(page)
+    await oeffneNahansicht(page)
+    const adresse = page.url()
+
+    await page.goBack()
+    await expect(nahansicht(page)).toBeHidden()
+    expect(page.url()).toBe(adresse)
+    await expect(
+      produktSheet(page).getByText(MIT_MODELL.name, { exact: true })
+    ).toBeVisible()
+    expect(protokoll.ausnahmen).toEqual([])
+  })
+
   test('mehrmals öffnen und schließen lässt keinen WebGL-Kontext zurück', async ({
     page,
   }) => {
