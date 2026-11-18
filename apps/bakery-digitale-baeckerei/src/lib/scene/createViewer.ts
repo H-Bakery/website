@@ -302,6 +302,32 @@ declare global {
 }
 
 /**
+ * Wartet auf `versprechen` - aber nur, bis `signal` abbricht (dann
+ * `AbortError`). Fehlen die Produktdaten, bleibt das Versprechen der
+ * Einrichtung offen, bis ein neuer Versuch sie bringt. Eine abgebaute Szene,
+ * die weiter darauf wartete, bliebe samt Modell im Speicher - je Raumwechsel
+ * eine. Darum steht diese Funktion außerhalb von `createViewer`: Am offenen
+ * Versprechen hängt dann nichts von der Szene.
+ */
+function bisAbbruch<T>(
+  versprechen: Promise<T>,
+  signal: AbortSignal
+): Promise<T> {
+  return new Promise<T>((erfuellt, abgelehnt) => {
+    const abbrechen = () =>
+      abgelehnt(new DOMException('Laden abgebrochen', 'AbortError'))
+    if (signal.aborted) {
+      abbrechen()
+      return
+    }
+    signal.addEventListener('abort', abbrechen, { once: true })
+    versprechen
+      .then(erfuellt, abgelehnt)
+      .finally(() => signal.removeEventListener('abort', abbrechen))
+  })
+}
+
+/**
  * Baut die Szene in `container`. Wirft `WebGLUnavailableError`, wenn kein
  * WebGL-Kontext entsteht. Jeder Aufruf hat ein eigenes Canvas: ein per
  * forceContextLoss freigegebenes Canvas ließe sich beim zweiten Mounten
@@ -731,7 +757,8 @@ export function createViewer(
   const ladeEinrichtung = async (): Promise<void> => {
     if (!options.einrichtung) return
     try {
-      einrichtung = await options.einrichtung
+      // Nur bis zum Abbau warten - das Versprechen kann offen bleiben.
+      einrichtung = await bisAbbruch(options.einrichtung, abort.signal)
     } catch {
       einrichtung = null
     }
