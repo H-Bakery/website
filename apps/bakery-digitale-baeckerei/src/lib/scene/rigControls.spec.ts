@@ -431,11 +431,36 @@ describe('createRig: Finger ohne Geisterklick', () => {
     expect(document.activeElement).toBe(element)
   })
 
+  it('der Fokus vom Finger zeigt keinen Fokusrahmen - erst wieder mit einer Taste', () => {
+    const { rig, element } = aufbau()
+    element.tabIndex = 0
+    zeiger(element, 'pointerdown', 100, 200, { zeit: 0 })
+    zeiger(element, 'pointerup', 100, 200, { zeit: 50 })
+    expect(document.activeElement).toBe(element)
+    expect(element.style.outline).toBe('none')
+    // Eine Taste am Canvas: wie nach einem Mausklick gehört der Rahmen dazu.
+    taste('+', element)
+    expect(element.style.outline).toBe('')
+
+    // Wieder ein Finger, dann geht der Fokus weg (z. B. in die Karte).
+    zeiger(element, 'pointerdown', 100, 200, { zeit: 1000 })
+    expect(element.style.outline).toBe('none')
+    element.blur()
+    expect(element.style.outline).toBe('')
+
+    // Nach dispose bleibt nichts am Canvas zurück.
+    zeiger(element, 'pointerdown', 100, 200, { zeit: 2000 })
+    expect(element.style.outline).toBe('none')
+    rig.dispose()
+    expect(element.style.outline).toBe('')
+  })
+
   it('die Maus fokussiert wie gewohnt selbst (über mousedown)', () => {
     const { element } = aufbau()
     const fokus = jest.spyOn(element, 'focus')
     zeiger(element, 'pointerdown', 100, 200, { pointerType: 'mouse' })
     expect(fokus).not.toHaveBeenCalled()
+    expect(element.style.outline).toBe('')
   })
 })
 

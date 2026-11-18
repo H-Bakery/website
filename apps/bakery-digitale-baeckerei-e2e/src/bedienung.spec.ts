@@ -112,14 +112,14 @@ const liegtIn = (pos: { x: number; y: number }, box: Box | null) =>
   pos.y <= box.y + box.height
 
 /** Alle Produkte mit Karte, die es im Laden gibt (über alle Blickpunkte). */
-const PRODUKTE = [
-  ...new Map(
+const PRODUKTE = Array.from(
+  new Map(
     BLICKPUNKTE.flatMap((b) => erwarteteEintraege(b.moebel)).map((e) => [
       e.slot,
       e,
     ])
-  ).values(),
-]
+  ).values()
+)
 
 /**
  * Tippt an der Theke nacheinander auf Produkte, die frei im Bild liegen -
@@ -203,12 +203,16 @@ async function tippeOhneGeisterklick(
   await page.touchscreen.tap(ziel.x, ziel.y)
   await expect(sheet).toBeVisible()
   await expect(szene(page, 'Theke')).toBeFocused()
+  // Ohne Fokusrahmen um das ganze Bild (wie früher über mousedown) ...
+  await expect(szene(page, 'Theke')).toHaveCSS('outline-style', 'none')
   await ruhe(page)
   expect(await fremdeKlicks(page)).toEqual([])
 
   const vorher = (await info(page)).fov
   await page.keyboard.press('+')
   await expect.poll(async () => (await info(page)).fov).toBeLessThan(vorher - 2)
+  // ... mit der Tastatur gehört er wieder dazu.
+  await expect(szene(page, 'Theke')).toHaveCSS('outline-style', 'solid')
   await expect(sheet).toBeVisible()
   await page.keyboard.press('ArrowLeft')
   await expect(szene(page, 'Regale')).toBeVisible()

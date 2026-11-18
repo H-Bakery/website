@@ -136,6 +136,18 @@ export function createRig(o: {
 
   const vorherTouchAction = element.style.touchAction
   element.style.touchAction = 'none'
+  const vorherOutline = element.style.outline
+  /**
+   * Der Fokus kam vom Finger (`focus()` aus dem Skript): Chrome zeigt dafür
+   * den Fokusrahmen (`:focus-visible`), über das frühere mousedown nicht. Ohne
+   * Rahmen also, bis eine Taste kommt oder der Fokus geht.
+   */
+  let ohneRahmen = false
+  const rahmenZurueck = () => {
+    if (!ohneRahmen) return
+    ohneRahmen = false
+    element.style.outline = vorherOutline
+  }
 
   const anwenden = () => {
     const pose = kern.pose()
@@ -202,7 +214,13 @@ export function createRig(o: {
   const onPointerDown = (e: PointerEvent) => {
     // Ein Finger bringt kein Maus-Ereignis mehr mit, das den Fokus holt
     // (`onTouchEnd`) - darum hier: Pfeiltasten und +/- gelten danach der Szene.
-    if (e.pointerType !== 'mouse') element.focus({ preventScroll: true })
+    if (e.pointerType !== 'mouse') {
+      element.focus({ preventScroll: true })
+      if (element.ownerDocument.activeElement === element && !ohneRahmen) {
+        ohneRahmen = true
+        element.style.outline = 'none'
+      }
+    }
     if (gesperrt) return
     if (e.pointerType === 'mouse' && e.button !== 0) return
     meldeErsteGeste()
@@ -374,6 +392,8 @@ export function createRig(o: {
   }
 
   const onKeyDown = (e: KeyboardEvent) => {
+    // Mit der Tastatur am Canvas gehört der Fokusrahmen wieder dazu.
+    if (e.target === element) rahmenZurueck()
     if (gesperrt) return
     if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return
     const ziel = e.target
@@ -408,6 +428,7 @@ export function createRig(o: {
   element.addEventListener('pointercancel', onPointerCancel)
   element.addEventListener('wheel', onWheel, { passive: false })
   element.addEventListener('touchend', onTouchEnd, { passive: false })
+  element.addEventListener('blur', rahmenZurueck)
   window.addEventListener('keydown', onKeyDown)
 
   return {
@@ -495,7 +516,9 @@ export function createRig(o: {
       element.removeEventListener('pointercancel', onPointerCancel)
       element.removeEventListener('wheel', onWheel)
       element.removeEventListener('touchend', onTouchEnd)
+      element.removeEventListener('blur', rahmenZurueck)
       window.removeEventListener('keydown', onKeyDown)
+      rahmenZurueck()
       for (const id of finger.keys()) {
         try {
           element.releasePointerCapture?.(id)

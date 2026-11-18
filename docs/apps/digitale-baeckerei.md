@@ -178,7 +178,8 @@ apps/bakery-digitale-baeckerei-e2e/   Playwright (390×844 und Desktop), nur mit
   Doppeltipp auf ein Produkt zoomt dorthin, der nächste Doppeltipp zoomt zurück zur Startweite.
   Ein Fingertipp ins Bild löst keinen Klick nach (`touchend` ohne Standardaktion): Sonst träfe
   der Klick, den der Browser nachreicht, die eben aufgegangene Karte oder Leiste („Mehr lesen“,
-  Links, Chips). Den Fokus holt der Finger selbst ins Canvas (Pfeiltasten, `+`/`-`). Ein Wechsel
+  Links, Chips). Den Fokus holt der Finger selbst ins Canvas (Pfeiltasten, `+`/`-`), ohne
+  Fokusrahmen - der kommt erst mit einer Taste wieder. Ein Wechsel
   des Blickpunkts gleitet ≈ 0,8 s, auch bei wenigen Bildern je Sekunde (längster Zeitschritt
   250 ms); bei `prefers-reduced-motion` wird geschnitten. Ein gewähltes Produkt dreht der Blick
   neben die Pfeile am Rand (je 64 px) und unter die Titelkarte (80 px), wenn die Grenzen es
