@@ -1840,4 +1840,27 @@ describe('Suche über den Tag hinaus und Rückweg (Personal-Rückmeldung)', () =
       screen.queryByTestId('abhol-LA-2026-11-12-01')
     ).not.toBeInTheDocument()
   })
+
+  it('Browser-Zurück: die Suche aus der Adresse gilt, auch wenn Next alte Props zeigt', async () => {
+    // Next stellt die Seite aus seinem Cache wieder her - mit den Props vom
+    // ersten Aufruf (ohne `q`), die Adresse trägt die Suche aber noch.
+    const nav = jest.requireMock('next/navigation') as {
+      useSearchParams: () => unknown
+    }
+    const spy = jest
+      .spyOn(nav, 'useSearchParams')
+      .mockReturnValue(
+        new URLSearchParams('date=2026-11-12&point=laden&q=Paula')
+      )
+    try {
+      renderAs('verkauf', { initialDate: DATE, initialPlace: 'laden' })
+      expect(await screen.findByTestId('abhol-LA-2026-11-12-03')).toBeVisible()
+      expect(search()).toHaveValue('Paula')
+      expect(
+        screen.queryByTestId('abhol-LA-2026-11-12-01')
+      ).not.toBeInTheDocument()
+    } finally {
+      spy.mockRestore()
+    }
+  })
 })

@@ -105,6 +105,7 @@ import {
   CANCELLED_GROUP,
   abholActions,
   abhollisteHref,
+  abhollisteParamsFromQuery,
   bulkRequestFailedMessage,
   codeTargets,
   preorderHrefFromAbholliste,
@@ -537,7 +538,16 @@ export default function AbholListeClient({
   const [printedAt, setPrintedAt] = useState('')
   const [loadedAt, setLoadedAt] = useState('')
 
-  const [query, setQuery] = useState(initialQuery ?? '')
+  // Die Adresse geht vor: mit Browser-Zurück zeigt Next die Seite aus seinem
+  // Cache, mit den Props von damals (ohne `q`) - in der Adresse steht die
+  // Suche aber noch. Ohne das hier löschte der Effekt unten sie dort.
+  const searchParams = useSearchParams()
+  const [query, setQuery] = useState(
+    () =>
+      abhollisteParamsFromQuery({ q: searchParams?.get('q') ?? undefined }).q ??
+      initialQuery ??
+      ''
+  )
   const [sort, setSort] = useState<AbholSort | null>(null)
   const [hideDone, setHideDone] = useState(false)
 
@@ -777,7 +787,7 @@ export default function AbholListeClient({
   // (`useSearchParams`) lässt den Effekt die Suche wieder eintragen.
   const searchParam = query.trim()
   const urlPlaceRef = useRef('')
-  const urlSearch = useSearchParams()?.toString() ?? ''
+  const urlSearch = searchParams?.toString() ?? ''
   useEffect(() => {
     if (!isBusinessDate(date) || !place) return
     const href = abhollisteHref(date, place, searchParam)

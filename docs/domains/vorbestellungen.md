@@ -193,8 +193,9 @@ React in `src/lib/abholliste.ts`.
   Grundbuchstaben). Stornierte stehen immer zuletzt, durchgestrichen, und fehlen im Druck.
 - **Suche** im Client: ein- bis zweistellige Zahl = laufende Nummer am Ende des Codes (sonst träfe „4"
   jedes Datum), sonst Name oder Code (ein ganzer Code auch ohne führende Null, `la-2026-11-17-3`), ab
-  drei Ziffern auch die Telefonnummer. Sie steht als `q` in der
-  Adresse (Tippen ersetzt sie per `replaceState`, ohne Serveranfrage; Tag/Ort per `router.replace`).
+  drei Ziffern auch die Telefonnummer. Sie steht als `q` in der Adresse (Tippen ersetzt sie per
+  `replaceState`, ohne Serveranfrage; Tag/Ort per `router.replace`). Beim Öffnen gilt das `q` der
+  Adresse vor den Props der Seite - Browser-Zurück zeigt die Seite aus Nexts Cache ohne `q`.
 - **Nichts auf dieser Liste** (Kundin kommt einen Tag zu spät, Code vom Zettel eines anderen Tages):
   (a) ein ganzer Code (`LA-2026-11-17-03`, auch klein getippt) zeigt ohne Anfrage auf seinen Tag und
   Ort - `LA` = Laden, sonst die Sammelstelle mit dem Kürzel aus `codePrefixFor` der API (bei gleichem
