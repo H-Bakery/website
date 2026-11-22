@@ -29,6 +29,7 @@ import {
   Login as LoginIcon,
   Summarize as YearReportIcon,
   CalendarMonth as MonthReportIcon,
+  ReceiptLong as TransactionsIcon,
 } from '@mui/icons-material'
 import {
   Bar,
@@ -666,6 +667,14 @@ export default function FinanceClient() {
             startIcon={<MonthReportIcon />}
           >
             Monatsanalyse
+          </Button>
+          <Button
+            component={Link}
+            href="/admin/finance/buchungen"
+            variant="outlined"
+            startIcon={<TransactionsIcon />}
+          >
+            Buchungen
           </Button>
         </>
       }
