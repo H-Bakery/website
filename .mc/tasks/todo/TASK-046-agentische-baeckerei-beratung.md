@@ -43,6 +43,58 @@ Was fehlt, ist die Stufe darüber: **jemand, der regelmäßig quer über alle Da
 findet, sie an den Jahreszielen misst (`hq/projects/PROJ-002-bakery-2026/goals/`) und dem Inhaber
 wenige, prüfbare Vorschläge macht** - wie eine Unternehmensberatung, nur wöchentlich und günstig.
 
+## Vorstudie 22.11.2026: Erst die Daten, dann die Agenten
+
+Vor der Umsetzung lief eine Tiefenrecherche: Datenbestand, Branchen-Benchmarks, KPI-Katalog,
+Produktbewertung, Hebel mit Evidenz. Der vollständige Bericht enthält Angaben aus dem privaten
+Datenbestand und liegt deshalb **nur in hq** (`hq/projects/PROJ-002-bakery-2026/specs/kennzahlen-vorstudie.md`),
+nicht hier. Ergebnisse ohne echte Zahlen:
+
+- **Die Kasse trägt sofort.** Mit Bon-Daten samt Uhrzeit sind Umsatz je Stunde und Wochentag, Bonzahl,
+  Bon-Durchschnitt, Artikel je Bon und das Tagesziel belastbar.
+- **Kosten und Produkte sind noch nicht auswertbar.**
+  - Ein großer und wachsender Teil des Umsatzes läuft über die Sammeltasten („…, sonstige“).
+  - Der Kassenbericht-Konverter mischt 7 % und 0 % USt; Netto-Umsätze sind nur aus den Rohdaten korrekt.
+  - Es fehlen echte Einkaufspreise und bestätigte Rezepte, also gibt es keinen Deckungsbeitrag je Produkt.
+  - Die Bankdaten sind eine Zahlungssicht ohne Miete und ohne BWA.
+  - Die App-Daten (Rest, Dienstplan, Vorbestellungen) gibt es erst seit dem Pilotstart.
+- **Benchmarks:**
+  - Belastbar für kleine Betriebe ist im Kern die BMF-Richtsatzsammlung (Rohgewinn/Wareneinsatz je
+    Größenklasse).
+  - Personalkosten- und Retourenquoten schwanken stark mit der Definition. Für Bon-Durchschnitt, Miete
+    und Abschreibung gibt es keinen belastbaren Vergleichswert.
+  - Eigene Vorjahreswerte stehen deshalb vor Branchenwerten.
+- **Gute Produkte** erkennt man am Deckungsbeitrag nach Retoure (je Stück und je Backstubenminute),
+  dazu an der Nachfragestabilität (XYZ) und der Rolle im Warenkorb, nicht am Umsatz. Etwas Rest ist
+  wirtschaftlich richtig (Newsvendor).
+- **Hebel:** Prognosesoftware senkt Retouren laut der einzigen unabhängigen Messung (Thünen) nur um
+  etwa 1 Prozentpunkt. Mehr versprechen die Auslage in der letzten Ladenstunde, eigene Preistests
+  und die Besetzung entlang der Stundenkurve.
+  - Jede Empfehlung wird als Experiment geführt: Halbsortiment oder ABAB-Wochen, 6–8 Wochen.
+- **Rolle des Agenten:** Er protokolliert, er ist kein Orakel. Ein Skript rechnet das Faktenblatt, der
+  Agent formuliert. Mengenvorschläge sind nur begrenzt verstellbar (etwa ±10 %).
+
+**Konsequenz für die Phasen:** Vor Phase 0 kommen Datenreparatur und eine Seite ohne Agent:
+
+1. USt-Zuordnung im Konverter korrigieren und Korrekturpaare saldieren.
+2. Eine PLU ↔ Produkt ↔ Gruppe-Tabelle anlegen.
+3. Eigene PLUs für die häufigsten Sammelartikel.
+4. Den Steuerberater nach monatlicher BWA/SuSa und einem namenlosen Lohnjournal je Bereich fragen.
+5. Backzettel-Freigabe und Rest-Zählung zur täglichen Routine machen.
+6. Danach eine Seite **„Kennzahlen & Handlungsempfehlungen“** in der Verwaltung:
+   - ganz oben der Datenstand;
+   - 6 Kacheln mit Trend und Zielband;
+   - die Treiber;
+   - höchstens 3 Empfehlungen mit Evidenzlabel und Testplan;
+   - ein Experiment-Log.
+
+**Startbedingung für das Agenten-Team** (Vorschlag, kein Literaturwert):
+
+- Sammelanteil in den A-Gruppen unter 10 %;
+- vollständig erfasste Produktionstage ≥ 90 % über 6 Wochen;
+- mindestens 3 Monate BWA;
+- ein abgeschlossenes Experiment.
+
 ## Ziel / Nicht-Ziel
 
 **Ziel:** Ein kleines Team von KI-Agenten („Beratung“), das
