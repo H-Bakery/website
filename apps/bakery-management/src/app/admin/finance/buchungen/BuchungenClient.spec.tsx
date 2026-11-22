@@ -238,6 +238,36 @@ describe('BuchungenClient', () => {
     }
   })
 
+  it('„Filter zurücksetzen“ holt die alten Filter nicht über die Suche zurück', async () => {
+    jest.useFakeTimers()
+    try {
+      respond(listFixture())
+      renderWithTheme(
+        <BuchungenClient
+          query={{
+            monat: '2026-02',
+            kategorie: 'wareneinsatz',
+            suche: 'zucker',
+          }}
+        />
+      )
+      await screen.findByRole('button', { name: 'Filter zurücksetzen' })
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Filter zurücksetzen' })
+      )
+      act(() => {
+        jest.advanceTimersByTime(1000)
+      })
+      expect(mockRouter.replace).toHaveBeenCalledTimes(1)
+      expect(mockRouter.replace).toHaveBeenCalledWith(
+        '/admin/finance/buchungen?monat=2026-02',
+        { scroll: false }
+      )
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
   it('ungültiger Monat: kein Aufruf, Hinweis', async () => {
     renderWithTheme(<BuchungenClient query={{ monat: '2026-13' }} />)
     expect(

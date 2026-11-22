@@ -271,6 +271,8 @@ export default function BuchungenClient({
   const [state, setState] = useState<PageState>({ phase: 'loading' })
   const [search, setSearch] = useState(query.suche ?? '')
   const requestRef = useRef(0)
+  /** Nur getippte Suche schreibt verzögert in die Adresse (nicht „zurücksetzen“). */
+  const typedRef = useRef(false)
   const valid = query.monat === undefined || MONTH_RE.test(query.monat)
 
   const load = useCallback(async () => {
@@ -323,8 +325,9 @@ export default function BuchungenClient({
   // Suche erst nach einer kurzen Pause in die Adresse schreiben.
   useEffect(() => {
     const current = query.suche ?? ''
-    if (search.trim() === current) return
+    if (!typedRef.current || search.trim() === current) return
     const timer = setTimeout(() => {
+      typedRef.current = false
       navigate({ ...query, suche: search.trim() || undefined })
     }, SEARCH_DELAY_MS)
     return () => clearTimeout(timer)
@@ -436,7 +439,10 @@ export default function BuchungenClient({
             label="Suche"
             placeholder="Name, Zweck oder Betrag"
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              typedRef.current = true
+              setSearch(event.target.value)
+            }}
             inputProps={{ maxLength: 100, 'data-testid': 'buchungen-suche' }}
             InputProps={{
               startAdornment: (
@@ -489,6 +495,7 @@ export default function BuchungenClient({
             <Button
               size="small"
               onClick={() => {
+                typedRef.current = false
                 setSearch('')
                 navigate({ monat: query.monat })
               }}
