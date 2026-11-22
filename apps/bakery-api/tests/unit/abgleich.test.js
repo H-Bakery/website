@@ -16,6 +16,7 @@ const restCore = require('../../src/services/rest-am-abend.core')
 const configCore = require('../../src/services/backzettel-config.core')
 const kalender = require('../../src/services/kalender.core')
 const files = require('../../src/services/reports-files.core')
+const { aggregateDay } = require('../../src/services/reports.core')
 const fixture = require('../fixtures/backzettel.synthetic')
 const grundmengen = require('../fixtures/backzettel-grundmengen.synthetic')
 
@@ -1219,6 +1220,130 @@ describe('Euro-Abgleich', () => {
       ...options,
     })
   const section = (day, id) => day.abschnitte.find((s) => s.section === id)
+
+  const breadDay = (transactions, price) =>
+    reconcile({
+      to: SAT,
+      catalog: [...euroCatalog, { id: 'test-brot', price }],
+      days: {
+        [SAT]: {
+          backzettel: bzDay(
+            'confirmed',
+            [{ itemId: 'test-brot', total: 2 }],
+            euroConfig
+          ),
+          report: aggregateDay(SAT, [{ transactions }], {
+            includeProductGroups: true,
+          }),
+        },
+      },
+    }).euro.days[0]
+  const breadSale = {
+    product_id: 611,
+    product: 'Testbrot',
+    quantity: 2,
+    total: 6,
+  }
+
+  it('zählt eine eindeutig gruppierte Kassenposition ohne Posten zum Abschnitts-Ist', () => {
+    const day = breadDay(
+      [
+        {
+          total: 16,
+          items: [
+            breadSale,
+            {
+              product_id: 612,
+              product: 'Testfladen',
+              group_name: 'Brot',
+              quantity: 2,
+              total: 8,
+            },
+            {
+              product_id: 613,
+              product: 'Diverse',
+              group_name: 'Getränke',
+              quantity: 1,
+              total: 2,
+            },
+          ],
+        },
+      ],
+      3.5
+    )
+    expect(section(day, 'brot')).toMatchObject({
+      sollEur: 14,
+      istEur: 14,
+      differenzEur: 0,
+      sammelEur: 0,
+    })
+    expect(day.items[0].istEur).toBe(6)
+    expect(day.handelswareEur).toBe(2)
+    expect(day.nichtZuordenbar).toMatchObject([
+      { plu: '612', section: 'brot', sammel: false, istEur: 8 },
+    ])
+  })
+
+  it('lässt die Differenz bei mehrdeutiger Kassengruppe oder unklarer Handelsware offen', () => {
+    const day = breadDay(
+      [
+        {
+          total: 14,
+          items: [
+            breadSale,
+            {
+              product_id: 612,
+              product: 'Testartikel',
+              group_name: 'Brot und Brötchen',
+              quantity: 2,
+              total: 8,
+            },
+          ],
+        },
+      ],
+      3.5
+    )
+    expect(section(day, 'brot')).toMatchObject({
+      sollEur: 14,
+      istEur: null,
+      differenzEur: null,
+    })
+    expect(day.nichtZuordenbar[0].section).toBeNull()
+  })
+
+  it('lässt das Ist eines Umsatzbons ohne Positionen offen und behält einen vollständigen Nullumsatz', () => {
+    const missing = breadDay([{ total: 14, items: [] }], 3.5)
+    expect(missing.kasseEur).toBe(14)
+    expect(section(missing, 'brot')).toMatchObject({
+      sollEur: 14,
+      istEur: null,
+      differenzEur: null,
+    })
+    expect(missing.items[0].istEur).toBeNull()
+
+    const complete = breadDay([{ total: 0, items: [] }], 3.5)
+    expect(section(complete, 'brot')).toMatchObject({
+      sollEur: 14,
+      istEur: 0,
+      differenzEur: -14,
+    })
+    expect(complete.items[0].istEur).toBe(0)
+  })
+
+  it.each([null, undefined, '', 'ungültig', true])(
+    'lässt den Ersatzpreis bei einer unvollständigen PLU-Menge (%s) offen',
+    (quantity) => {
+      const day = breadDay([
+        { total: 12, items: [breadSale, { ...breadSale, quantity }] },
+      ])
+      expect(section(day, 'brot')).toMatchObject({
+        sollEur: null,
+        istEur: 12,
+        differenzEur: null,
+        preisOffen: ['test-brot'],
+      })
+    }
+  )
 
   it('stimmt für Samstag und Sonntag mit der Handrechnung überein', () => {
     const { euro } = reconcile()

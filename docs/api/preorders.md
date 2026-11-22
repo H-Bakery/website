@@ -92,6 +92,10 @@ updatedAt, deadline, afterDeadline }`.
   Ein anderer Datentyp ergibt 400 `invalid_external_payment`. `paid` und `paidAmount` werden
   unabhängig davon erfasst. Der [Euro-Abgleich](abgleich.md#euro-abgleich-task-043) liest den
   Zahlungsweg. Die Mörsbach-Aliasantwort behält ihren Vertrag.
+- Verkauf und Inhaber können `externalPayment` auch bei `POST /:id/status` mitschicken.
+  Die Abholliste setzt es bei einer ausdrücklich erfassten Kassenzahlung zusammen mit
+  `paid: true` auf `false`. Die Rücknahme einer Übergabe übernimmt den vorherigen Zahlungsweg
+  aus dem Audit-Eintrag, wenn er seit der Übergabe gleich geblieben ist.
 - **Retried create (`requestId`)** (migration `20261116000000-preorders-request-id.js`, unique,
   nullable): the entry form sends one id (8-64 of `[A-Za-z0-9_-]`, else 400 `invalid_request_id`)
   per order it is saving and keeps it across retries. A save whose answer was lost (Wi-Fi drop)
@@ -103,7 +107,7 @@ updatedAt, deadline, afterDeadline }`.
 - **Bulk status.** `POST /bulk-status` changes many preorders in **one** serialised write
   transaction (Abholliste: „alle bereit", Tagesabschluss „nicht abgeholt"). Body: `ids` (1-200
   positive integers or canonical digit strings like `"7"`, duplicates merged; else 400
-  `invalid_ids`), the same change fields as `/:id/status` (at least one, else 400
+  `invalid_ids`), `status`, `notCollected` or `paid` (at least one, else 400
   `invalid_status`; values that are wrong for every preorder - unknown `status`, non-boolean
   `paid`/`notCollected`, `notCollected` with a status other than `bereit` - are one top-level 400
   `invalid_status` / `invalid_paid` / `invalid_not_collected`, not `refused` per id), optional

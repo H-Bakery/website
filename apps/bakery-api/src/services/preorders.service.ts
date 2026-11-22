@@ -1434,6 +1434,12 @@ export class PreordersService {
         changes['paid'] = before.paid
         paidAfter = before.paid
         paidAmount = before.paid ? before.paidAmount : null
+        if (
+          changes['externalPayment'] === undefined &&
+          before.externalPayment !== undefined
+        ) {
+          changes['externalPayment'] = before.externalPayment
+        }
       }
     }
     const handover =
@@ -1458,6 +1464,9 @@ export class PreordersService {
         ...(changes['paid'] !== undefined
           ? { paid: changes['paid'] as boolean }
           : {}),
+        ...(changes['externalPayment'] !== undefined
+          ? { externalPayment: changes['externalPayment'] as boolean }
+          : {}),
         paidAmount,
         updatedBy: req?.user?.id ?? null,
       },
@@ -1478,8 +1487,16 @@ export class PreordersService {
         ...(handover
           ? {
               payment: {
-                before: { paid: current.paid, paidAmount: current.paidAmount },
-                after: { paid: record.paid, paidAmount: record.paidAmount },
+                before: {
+                  paid: current.paid,
+                  paidAmount: current.paidAmount,
+                  externalPayment: current.externalPayment,
+                },
+                after: {
+                  paid: record.paid,
+                  paidAmount: record.paidAmount,
+                  externalPayment: record.externalPayment,
+                },
               },
             }
           : {}),
@@ -1503,7 +1520,11 @@ export class PreordersService {
   private async paymentBeforeHandover(
     current: PreorderRecord,
     transaction: Transaction
-  ): Promise<{ paid: boolean; paidAmount: number | null } | null> {
+  ): Promise<{
+    paid: boolean
+    paidAmount: number | null
+    externalPayment?: boolean
+  } | null> {
     const rows = await AuditLog.findAll({
       where: { entity: 'preorder', entityId: String(current.id) },
       order: [['id', 'DESC']],
@@ -1516,8 +1537,16 @@ export class PreordersService {
       ) as Record<string, unknown> | null
       const payment = data?.['payment'] as
         | {
-            before?: { paid?: unknown; paidAmount?: unknown }
-            after?: { paid?: unknown; paidAmount?: unknown }
+            before?: {
+              paid?: unknown
+              paidAmount?: unknown
+              externalPayment?: unknown
+            }
+            after?: {
+              paid?: unknown
+              paidAmount?: unknown
+              externalPayment?: unknown
+            }
           }
         | undefined
       if (!payment || !payment.before || !payment.after) continue
@@ -1539,6 +1568,11 @@ export class PreordersService {
       return {
         paid,
         paidAmount: paid ? amount(payment.before.paidAmount) : null,
+        externalPayment:
+          payment.after.externalPayment === current.externalPayment &&
+          typeof payment.before.externalPayment === 'boolean'
+            ? payment.before.externalPayment
+            : undefined,
       }
     }
     return null

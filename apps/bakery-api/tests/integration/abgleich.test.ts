@@ -248,6 +248,34 @@ describe('GET /api/abgleich', () => {
     expect(confirmed.body.data.euro.days[0].basis).toBe('freigegeben')
     expect(item(confirmed)).toMatchObject({ sollEur: before - 3, istEur: null })
 
+    const driver = await as('fahrer').post(`${order}/status`).send({
+      status: 'abgeholt',
+      paid: true,
+      externalPayment: false,
+    })
+    expect(driver.status).toBe(403)
+
+    const handover = await as('verkauf').post(`${order}/status`).send({
+      status: 'abgeholt',
+      paid: true,
+      externalPayment: false,
+    })
+    expect(handover.body.data).toMatchObject({
+      status: 'abgeholt',
+      paid: true,
+      externalPayment: false,
+    })
+    expect(item(await read()).sollEur).toBe(before)
+    const undone = await as('verkauf')
+      .post(`${order}/status`)
+      .send({ status: 'offen' })
+    expect(undone.body.data).toMatchObject({
+      status: 'offen',
+      paid: false,
+      externalPayment: true,
+    })
+    expect(item(await read()).sollEur).toBe(before - 3)
+
     const invalidSection = await as('inhaber').get(
       '/api/abgleich?folgetag=unbekannt'
     )

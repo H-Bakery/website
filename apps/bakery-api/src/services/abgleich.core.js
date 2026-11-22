@@ -676,9 +676,13 @@ function euroRegister(config, cmpFor, groupOf) {
   const items = new Map()
   const hundreds = new Map()
   const purchasedByName = new Map()
+  const purchasedSections = new Set()
   for (const item of config?.items || []) {
     if (!rest.isCountable(item)) continue
-    if (item.purchased) purchasedByName.set(fold(item.name), item.section)
+    if (item.purchased) {
+      purchasedByName.set(fold(item.name), item.section)
+      purchasedSections.add(item.section)
+    }
     const comparison = cmpFor(item)
     const variants = comparison.bySize ? [...comparison.sizes.keys()] : ['']
     for (const variant of variants) {
@@ -705,7 +709,7 @@ function euroRegister(config, cmpFor, groupOf) {
       }
     }
   }
-  return { targets, items, hundreds, purchasedByName }
+  return { targets, items, hundreds, purchasedByName, purchasedSections }
 }
 
 const addCents = (a, b) => (a === null || b === null ? null : a + b)
@@ -716,6 +720,7 @@ function euroSales(report, register, sections) {
   const byPlu = new Map()
   const blockedPlu = new Set()
   const unmatched = []
+  const uncertainSections = new Set()
   let sammel = 0
   let trade = 0
   const totalsFor = (section) => {
@@ -728,36 +733,39 @@ function euroSales(report, register, sections) {
       })
     return perSection.get(section)
   }
-  const sectionFromText = (value) => {
-    const found = sections.filter((id) => SECTION_TERMS[id]?.test(value))
-    return found.length === 1 ? found[0] : null
-  }
+  const sectionsFromText = (value) =>
+    sections.filter((id) => SECTION_TERMS[id]?.test(value))
   for (const p of report?.products || []) {
     const plu = String(p.productId ?? '').trim()
     const targets = register.targets.get(plu) || []
     const name = fold(p.productName)
     const group = fold(p.groupName)
     const collective = COLLECTIVE_TERMS.test(name)
-    const sameSection = new Set(targets.map((t) => t.section))
-    const hundred = register.hundreds.get(pluHundred(plu))
-    const section =
-      !collective && sameSection.size === 1
-        ? [...sameSection][0]
-        : sectionFromText(group) ||
-          (collective && sectionFromText(name)) ||
-          (sameSection.size === 1 && [...sameSection][0]) ||
-          (collective && hundred?.size === 1 && [...hundred][0]) ||
-          null
+    const groupSections = sectionsFromText(group)
+    const targetSections = new Set(targets.map((t) => t.section))
+    const candidates = new Set([...targetSections, ...groupSections])
+    if (collective && candidates.size === 0) {
+      const fromName = sectionsFromText(name)
+      for (const id of fromName.length
+        ? fromName
+        : register.hundreds.get(pluHundred(plu)) || []) {
+        candidates.add(id)
+      }
+    }
+    const candidate = candidates.size === 1 ? [...candidates][0] : null
     const amount =
       p.revenueMissing || !Number.isFinite(p.revenue) ? null : cent(p.revenue)
-    const isTrade =
-      (targets.length > 0 && targets.every((t) => t.purchased)) ||
-      (targets.length === 0 &&
-        (register.purchasedByName.has(name) ||
-          TRADE_TERMS.test(`${group} ${name}`)))
+    const tradeMarker = TRADE_TERMS.test(`${group} ${name}`)
+    const namedTradeSection = register.purchasedByName.get(name)
+    const isTrade = targets.length
+      ? targets.every((t) => t.purchased)
+      : Boolean(
+          namedTradeSection || (tradeMarker && groupSections.length === 0)
+        )
     if (isTrade) {
       trade = addCents(trade, amount)
-      const tradeSection = section || register.purchasedByName.get(name)
+      const tradeSection =
+        targetSections.size === 1 ? [...targetSections][0] : namedTradeSection
       if (tradeSection) {
         const totals = totalsFor(tradeSection)
         totals.trade = addCents(totals.trade, amount)
@@ -765,20 +773,27 @@ function euroSales(report, register, sections) {
       continue
     }
     const assigned = !collective && targets.length === 1 && !targets[0].conflict
-    const belongsToSection =
-      collective ||
-      assigned ||
-      (sameSection.size === 1 &&
-        targets.length > 1 &&
-        targets.every((t) => !t.purchased))
-    const ownSection = belongsToSection ? section : null
+    const ownGroup = targets.length
+      ? (collective || targets.length > 1) &&
+        targetSections.size === 1 &&
+        targets.every((t) => !t.purchased)
+      : candidate && !tradeMarker && !register.purchasedSections.has(candidate)
+    const ownSection = assigned
+      ? targets[0].section
+      : ownGroup
+      ? candidate
+      : null
     if (assigned) {
       const key = targets[0].key
       perItem.set(
         key,
         addCents(perItem.has(key) ? perItem.get(key) : 0, amount)
       )
-      byPlu.set(plu, { quantity: p.quantity, amount })
+      byPlu.set(plu, {
+        quantity: p.quantity,
+        quantityMissing: p.quantityMissing,
+        amount,
+      })
     } else {
       blockedPlu.add(plu)
       unmatched.push({
@@ -795,9 +810,22 @@ function euroSales(report, register, sections) {
       totals.ist = addCents(totals.ist, amount)
       totals.hasOwnSales = true
       if (collective) totals.sammel = addCents(totals.sammel, amount)
+    } else if (amount !== 0) {
+      for (const id of candidates.size ? candidates : sections)
+        uncertainSections.add(id)
     }
   }
-  return { perItem, perSection, byPlu, blockedPlu, unmatched, sammel, trade }
+  return {
+    perItem,
+    perSection,
+    byPlu,
+    blockedPlu,
+    unmatched,
+    sammel,
+    trade,
+    uncertainSections,
+    positionsMissing: report?.positionsMissing === true,
+  }
 }
 
 function assignablePlu(register, sales, key) {
@@ -820,7 +848,11 @@ function euroUnitPrice(bucket, variant, catalog, sales, register) {
   ].filter((key) => assignablePlu(register, sales, key))
   const reportPrice = (key) => {
     const sale = sales.byPlu.get(key)
-    return sale && sale.quantity > 0 && sale.amount > 0
+    return !sales.positionsMissing &&
+      sale &&
+      !sale.quantityMissing &&
+      sale.quantity > 0 &&
+      sale.amount > 0
       ? sale.amount / sale.quantity
       : null
   }
@@ -851,6 +883,8 @@ function euroUnitPrice(bucket, variant, catalog, sales, register) {
 
 function euroDay(date, day, buckets, report, catalog, register, sectionIds) {
   const sales = euroSales(report, register, sectionIds)
+  const { positionsMissing } = sales
+  const cashComplete = report && !positionsMissing
   const sections = new Map()
   const sectionFor = (id) => {
     if (!sections.has(id)) {
@@ -859,9 +893,10 @@ function euroDay(date, day, buckets, report, catalog, register, sectionIds) {
         section: id,
         sectionLabel: SECTION_LABELS[id] || id || 'Abschnitt offen',
         soll: day.basis ? 0 : null,
-        ist: report ? (cash ? cash.ist : 0) : null,
-        sammelEur: report ? euro(cash ? cash.sammel : 0) : null,
-        handelswareEur: report ? euro(cash ? cash.trade : 0) : null,
+        ist: cashComplete ? (cash ? cash.ist : 0) : null,
+        zuordnungOffen: sales.uncertainSections.has(id),
+        sammelEur: cashComplete ? euro(cash ? cash.sammel : 0) : null,
+        handelswareEur: cashComplete ? euro(cash ? cash.trade : 0) : null,
         preisOffen: [],
         grundmengeOffen: false,
         rest: 0,
@@ -909,14 +944,19 @@ function euroDay(date, day, buckets, report, catalog, register, sectionIds) {
       section: b.meta.section,
       sollEur: euro(soll),
       istEur:
-        report && assignable
+        cashComplete && assignable
           ? euro(sales.perItem.has(b.key) ? sales.perItem.get(b.key) : 0)
           : null,
       preisOffen,
     })
   }
   for (const section of sections.values()) {
-    if (section.hasLines && !section.hasOwnCashLink) section.ist = null
+    if (
+      section.zuordnungOffen ||
+      (section.hasLines && !section.hasOwnCashLink)
+    ) {
+      section.ist = null
+    }
   }
   // Ein Storno- oder Rabattpaar kann Erlös mit Nettomenge null haben.
   const shown = new Set(items.map((item) => item.key))
@@ -927,7 +967,7 @@ function euroDay(date, day, buckets, report, catalog, register, sectionIds) {
       key,
       ...target,
       sollEur: day.basis ? 0 : null,
-      istEur: euro(amount),
+      istEur: cashComplete ? euro(amount) : null,
       preisOffen: false,
     })
   }
@@ -935,11 +975,12 @@ function euroDay(date, day, buckets, report, catalog, register, sectionIds) {
     date,
     basis: day.basis,
     report: Boolean(report),
+    positionsMissing,
     sections,
     items,
     nichtZuordenbar: sales.unmatched,
-    sammel: report ? sales.sammel : null,
-    handelswareEur: report ? euro(sales.trade) : null,
+    sammel: cashComplete ? sales.sammel : null,
+    handelswareEur: cashComplete ? euro(sales.trade) : null,
     kasse:
       report && Number.isFinite(report.revenue) ? cent(report.revenue) : null,
   }
@@ -1004,6 +1045,7 @@ function euroResult(daily, from, to, euroSections, folgetag, order) {
             handelswareEur,
             preisOffen,
             grundmengeOffen,
+            zuordnungOffen,
             section,
             sectionLabel,
             restCounted,
@@ -1018,6 +1060,7 @@ function euroResult(daily, from, to, euroSections, folgetag, order) {
             handelswareEur,
             preisOffen,
             grundmengeOffen,
+            zuordnungOffen,
             restCounted: hasLines && restCounted,
             folgetagEur: euro(carry),
             differenzEur:

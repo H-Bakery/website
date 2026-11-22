@@ -75,6 +75,11 @@ Verwaltung `apps/bakery-management/src/lib/preordersApi.ts`, `preordersTypes.ts`
   Er setzt den vorgesehenen Zahlungsweg außerhalb der Kasse und kann unabhängig von „Bezahlt“
   erfasst werden. Bei bestehenden Bestellungen ist der Schalter aus, bis der Verkauf oder Inhaber
   den Zahlungsweg erfasst. Er wirkt auf den [Euro-Abgleich](abgleich.md#euro-abgleich).
+- In der Abholliste zeigt der Übergabedialog den vorgesehenen Zahlungsweg und den offenen
+  Betrag. Verkauf und Inhaber können eine tatsächlich an der Ladenkasse erhaltene
+  Zahlung ausdrücklich erfassen. Die API setzt den Zahlungsweg im selben Schritt
+  auf Kasse. Eine anschließende Rücknahme der Übergabe stellt den vorherigen Zahlungsweg
+  wieder her, sofern er seither gleich geblieben ist.
 - **Backzettel-Nachträge** schreibt der Schreibweg der Vorbestellung (Anlegen, Ändern, Status, Storno,
   Sammelaktion) in derselben Transaktion, nicht das Lesen des Backzettels - siehe
   [`backzettel.md`](backzettel.md).

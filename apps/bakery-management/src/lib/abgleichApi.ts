@@ -166,6 +166,7 @@ export interface AbgleichEuroSection {
   handelswareEur: number | null
   preisOffen: string[]
   grundmengeOffen: boolean
+  zuordnungOffen?: boolean
   restCounted: boolean
 }
 
@@ -177,6 +178,7 @@ export interface AbgleichEuro {
     date: string
     basis: AbgleichDay['basis']
     report: boolean
+    positionsMissing?: boolean
     kasseEur: number | null
     sammelEur: number | null
     handelswareEur: number | null

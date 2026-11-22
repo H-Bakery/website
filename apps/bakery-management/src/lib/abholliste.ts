@@ -756,6 +756,12 @@ export function changeAlreadyApplied(
   if (change.paid !== undefined && Boolean(preorder.paid) !== change.paid) {
     return false
   }
+  if (
+    change.externalPayment !== undefined &&
+    Boolean(preorder.externalPayment) !== change.externalPayment
+  ) {
+    return false
+  }
   // `paid: true` auf einer bezahlten Bestellung heißt „Rest kassiert“ bzw.
   // „erstattet“ - erledigt erst, wenn kein Betrag mehr offen ist.
   if (change.paid === true && (preorder.paymentBalance ?? 0) !== 0) {
@@ -790,6 +796,8 @@ export function handoverStillMatches(
     n === null || n === undefined ? null : Math.round(n * 100)
   if (cents(before.total) !== cents(fresh.total)) return false
   if (Boolean(before.paid) !== Boolean(fresh.paid)) return false
+  if (Boolean(before.externalPayment) !== Boolean(fresh.externalPayment))
+    return false
   if (cents(before.paidAmount) !== cents(fresh.paidAmount)) return false
   if (cents(before.paymentBalance) !== cents(fresh.paymentBalance)) {
     return false

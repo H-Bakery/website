@@ -50,6 +50,9 @@ Pfad: `HQ_REPORTS_DIR`, sonst `<website>/../hq/data/reports`.
   `group_name` auslassen. Der [Euro-Abgleich](abgleich.md#euro-abgleich) nutzt das Feld, falls
   es vorhanden ist, und kann Sammelnummern auch über den Namen oder eindeutige
   Kassennummern-Hunderter zuordnen.
+- Für den Euro-Abgleich kennzeichnet die Aggregation fehlende Positionsdaten im Bericht
+  und ungültige oder fehlende Mengen je Kassennummer. Der Umsatz eines Bons ohne Positionen
+  bleibt als Bonumsatz sichtbar. Ersatzpreise setzen vollständige Mengen voraus.
 
 ## Endpunkte
 

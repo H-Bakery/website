@@ -302,6 +302,37 @@ describe('AbholListeClient (P2)', () => {
     )
   })
 
+  it('zeigt die offene Rechnung bei der Übergabe und erfasst die abweichende Kassenzahlung', async () => {
+    const user = userEvent.setup()
+    mockDay.mockResolvedValue(ladenDay([{ ...max, externalPayment: true }]))
+    renderAs('verkauf')
+    await user.click(
+      await screen.findByRole('button', { name: 'Max Muster übergeben' })
+    )
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByTestId('handover-payment')).toHaveTextContent(
+      'Überweisung oder Rechnung'
+    )
+    expect(
+      within(dialog).getByTestId('handover-payment')
+    ).not.toHaveTextContent(/kassieren/)
+    expect(
+      within(dialog).getByRole('button', {
+        name: 'Mit offener Zahlung übergeben',
+      })
+    ).toBeVisible()
+    await user.click(
+      within(dialog).getByRole('button', {
+        name: 'An der Kasse bezahlt und übergeben',
+      })
+    )
+    expect(mockStatus).toHaveBeenCalledWith(
+      max.id,
+      { status: 'abgeholt', paid: true, externalPayment: false },
+      max.updatedAt
+    )
+  })
+
   it('übergibt auch ohne Zahlung (Rechnung) und markiert bezahlt einzeln', async () => {
     const user = userEvent.setup()
     renderAs('verkauf')

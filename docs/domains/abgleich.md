@@ -114,6 +114,8 @@ Samstagsteig. Geplante Mengen und fehlende Backzettel oder Kassenberichte sind j
   Stornos). Bei mehreren möglichen Produkten der Zeile muss der Preis je Backzettel-Einheit
   übereinstimmen. Sonst bleibt der Posten „Preis offen“ und Soll und Differenz des Abschnitts
   bleiben offen. Dasselbe gilt für Soll und Differenz bei offener Grundmenge.
+- Ein Ersatzpreis setzt vollständige Positionsdaten und gültige Mengen aller Buchungen zu
+  dieser Kassennummer voraus. Bei fehlenden Mengen bleibt der Positionsumsatz auswertbar.
 - **Ist** stammt aus den Kassenpositionen einschließlich Stornos. Sammelnummern („Sonstige“,
   „Diverse“, „Sammelnummer“) zählen beim Abschnitt über die Kassengruppe, den Abschnitt im Namen
   oder die eindeutig zugeordneten Hunderter der Kassennummern. In den Posten bleiben sie „nicht
@@ -121,6 +123,11 @@ Samstagsteig. Geplante Mengen und fehlende Backzettel oder Kassenberichte sind j
   Kassenumsatz der vorhandenen Berichte. Eine Kassennummer ohne eindeutigen Abschnitt bleibt in
   den Details offen. Ist für einen Produktionsabschnitt keine Kassenzuordnung bekannt, bleiben
   Ist und Differenz offen.
+- Eine eindeutige Kassengruppe der Eigenproduktion zählt zum Abschnitts-Ist, auch ohne
+  Postenzuordnung und Sammelbezeichnung. Kann eine Position mehreren Abschnitten oder der
+  Handelsware angehören, bleiben Ist und Differenz der infrage kommenden Abschnitte offen.
+  Fehlen Positionsdaten zu einem Umsatzbon, bleiben die Ist-Werte des Tages offen. Der Bonumsatz
+  bleibt sichtbar.
 - **Handelsware** erscheint separat. Erkannt werden Zukauf-Posten (`purchased: true` in den
   Backzettel-Stammdaten) und erkennbare Handelswarengruppen im Bericht, etwa Getränke oder
   Zeitungen. Ihre Beträge bleiben außerhalb von Soll, Ist der Produktion und Differenz.

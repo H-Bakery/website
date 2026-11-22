@@ -964,6 +964,25 @@ function normalizeStatusChange(existing, body, options) {
   if (source.paid !== undefined && typeof source.paid !== 'boolean') {
     return fail('invalid_paid', '„Bezahlt" muss ja oder nein sein.')
   }
+  if (
+    source.externalPayment !== undefined &&
+    typeof source.externalPayment !== 'boolean'
+  ) {
+    return fail(
+      'invalid_external_payment',
+      '„Zahlung per Überweisung oder Rechnung“ muss ja oder nein sein.'
+    )
+  }
+  if (
+    source.externalPayment !== undefined &&
+    Array.isArray(opts.allowedTargets)
+  ) {
+    return fail(
+      'forbidden',
+      'Den Zahlungsweg kann nur der Verkauf ändern.',
+      403
+    )
+  }
   // „Nicht abgeholt" erst ab dem Abholtag (W4): vorher kann die Kundschaft
   // noch kommen, und ein vorschnelles Markieren sieht in der Liste aus wie
   // ein Tagesabschluss. Nur wenn der Aufrufer `notCollectedFrom` (heute,
@@ -1025,6 +1044,8 @@ function normalizeStatusChange(existing, body, options) {
 
   const changes = statusFields(base, status, notCollected, opts.now)
   if (source.paid !== undefined) changes.paid = source.paid
+  if (source.externalPayment !== undefined)
+    changes.externalPayment = source.externalPayment
   return { changes }
 }
 
@@ -1315,15 +1336,6 @@ function normalizeOrderInput(body, existing, options) {
     return fail('invalid_paid', '„Bezahlt" muss ja oder nein sein.')
   }
   const paid = source.paid === undefined ? !!base.paid : source.paid
-  if (
-    source.externalPayment !== undefined &&
-    typeof source.externalPayment !== 'boolean'
-  ) {
-    return fail(
-      'invalid_external_payment',
-      '„Zahlung per Überweisung oder Rechnung“ muss ja oder nein sein.'
-    )
-  }
   const externalPayment = pick('externalPayment') === true
 
   // --- Status
@@ -1332,6 +1344,7 @@ function normalizeOrderInput(body, existing, options) {
     {
       status: source.status === undefined ? undefined : source.status,
       notCollected: source.notCollected,
+      externalPayment: source.externalPayment,
     },
     // `notCollectedFrom` (heute): „nicht abgeholt“ auch beim Anlegen und
     // Bearbeiten erst ab dem Abholtag - wie bei `POST /:id/status`.

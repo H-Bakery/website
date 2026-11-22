@@ -125,6 +125,11 @@ export default function AbgleichEuroView({
           ].join(' · ')}
           disablePadding
         >
+          {day.positionsMissing && (
+            <Alert severity="warning">
+              Kassenpositionen fehlen. Die Ist-Werte bleiben offen.
+            </Alert>
+          )}
           <TableContainer sx={{ overflowX: 'auto' }}>
             <Table size="small" aria-label="Euro-Abgleich je Abschnitt">
               <TableHead>
@@ -160,6 +165,11 @@ export default function AbgleichEuroView({
                     </TableCell>
                     <TableCell align="right">
                       {formatCurrency(s.istEur)}
+                      {s.zuordnungOffen && (
+                        <Typography variant="caption" component="div">
+                          Kassenzuordnung offen
+                        </Typography>
+                      )}
                       {s.sammelEur !== null && s.sammelEur !== 0 && (
                         <Typography variant="caption" component="div">
                           Davon Sammelnummern: {formatCurrency(s.sammelEur)}

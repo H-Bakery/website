@@ -74,11 +74,15 @@ ergeben 400 `invalid_next_day_sections` mit deutscher Meldung.
   `handelswareEur`, `abschnitte[]`, `items[]` und `nichtZuordenbar[]`. Die Handelsware ist
   separat vom Ist der Eigenproduktion. Tage ohne Backzettel können Kassenumsätze ausweisen;
   ihr Soll bleibt offen.
+- `positionsMissing` kennzeichnet fehlende Kassenpositionen. Der Bonumsatz bleibt verfügbar.
+  Ist, Differenz und Summen der Kassenpositionen bleiben für diesen Tag offen.
 - `abschnitte[]` liefert `section`, `sectionLabel`, `sollEur`, `istEur`, `differenzEur`,
   `sammelEur`, `handelswareEur`, `preisOffen[]` (Postenschlüssel), `grundmengeOffen`, `restCounted` und
   `folgetagEur` (Übertrag mit Vorzeichen). `istEur` ist der Kassenbetrag des Tages.
   `differenzEur` ist Ist plus Übertrag minus Soll. Die API liest hierfür bei Bedarf
   auch den angrenzenden Kalendertag vor und nach dem ausgewählten Zeitraum.
+  `zuordnungOffen` markiert Abschnitte, deren Ist und Differenz wegen nicht eindeutig
+  zuordenbarer Kassenpositionen offen sind.
 - `items[]` liefert `key`, `name`, `sizeLabel`, `section`, `sollEur`, `istEur` und
   `preisOffen`. `nichtZuordenbar[]` liefert `plu`, `name`, `section` (soweit zuordenbar),
   `sammel` und `istEur`. Geldbeträge sind Euro-Zahlen. Bei fehlenden Daten ist der Wert

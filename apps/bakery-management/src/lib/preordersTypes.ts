@@ -185,6 +185,7 @@ export interface PreorderStatusChange {
   status?: PreorderStatus
   notCollected?: boolean
   paid?: boolean
+  externalPayment?: boolean
 }
 
 export interface PreorderListFilters {
