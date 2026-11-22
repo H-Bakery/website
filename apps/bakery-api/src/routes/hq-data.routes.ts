@@ -10,7 +10,8 @@
  *   src/routes/finance.routes.js   install(app, auth, { financeDir, reportsDir,
  *                                  today, calendarConfig })
  *     GET /api/finance/summary, /api/finance/months?from=&to=,
- *         /api/finance/year[/:year], /api/finance/month[/:month]
+ *         /api/finance/year[/:year], /api/finance/month[/:month],
+ *         /api/finance/transactions[/:id]
  *     (`calendarConfig`: Backzettel master data + kalender.yaml, for the
  *     opening days the Kassenabgleich checks a month against)
  *   src/routes/targets.routes.js   install(app, auth, { financeDir, reportsDir })

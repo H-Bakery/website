@@ -2,17 +2,18 @@
 
 ## Current
 
-| Doc                                              | What                                                                   |
-| ------------------------------------------------ | ---------------------------------------------------------------------- |
-| [roadmap.md](./roadmap.md)                       | Pilot plan, decisions D1…, task list, open questions - the one plan    |
-| [architecture.md](./architecture.md)             | Apps, backend, hq, how the pieces talk                                 |
-| [development.md](./development.md)               | Install, run, test, build, CI, task tracking                           |
-| [known-issues.md](./known-issues.md)             | Known failures and traps that are not regressions                      |
-| [runbook.md](./runbook.md)                       | Operating the Bäckerei-Box (deploy, backup, failures)                  |
-| [onboarding.md](./onboarding.md)                 | Staff onboarding and go-live checklist                                 |
-| [testing/e2e.md](./testing/e2e.md)               | Playwright suites and the synthetic catalogue                          |
-| [brand-identity.md](./brand-identity.md)         | Brand and website guide                                                |
-| [fernzugriff-fahrer.md](./fernzugriff-fahrer.md) | Remote access for the Fahrer-App (Q8) - draft for the owner, not built |
+| Doc                                              | What                                                                                                            |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| [roadmap.md](./roadmap.md)                       | Pilot plan, decisions D1…, task list, open questions - the one plan                                             |
+| [architecture.md](./architecture.md)             | Apps, backend, hq, how the pieces talk                                                                          |
+| [development.md](./development.md)               | Install, run, test, build, CI, task tracking                                                                    |
+| [known-issues.md](./known-issues.md)             | Known failures and traps that are not regressions                                                               |
+| [runbook.md](./runbook.md)                       | Operating the Bäckerei-Box (deploy, backup, failures)                                                           |
+| [onboarding.md](./onboarding.md)                 | Staff onboarding and go-live checklist                                                                          |
+| [testing/e2e.md](./testing/e2e.md)               | Playwright suites and the synthetic catalogue                                                                   |
+| [brand-identity.md](./brand-identity.md)         | Brand and website guide                                                                                         |
+| [fernzugriff-fahrer.md](./fernzugriff-fahrer.md) | Remote access for the Fahrer-App (Q8) - draft for the owner, not built                                          |
+| [finanzen-buchungen.md](./finanzen-buchungen.md) | Bank bookings: list + detail built; plan for categorising in the app, CSV upload, linking invoices and receipts |
 
 **Domains** (German, rules as seen from outside the code):
 [Abgleich Produktion ↔ Kasse](./domains/abgleich.md) ·

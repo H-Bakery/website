@@ -17,6 +17,9 @@ import type {
   FinanceMonthsResponse,
   FinanceResult,
   FinanceSummaryResponse,
+  FinanceTransactionDetail,
+  FinanceTransactionFilters,
+  FinanceTransactionsList,
   FinanceYearReport,
 } from './financeTypes'
 
@@ -88,6 +91,36 @@ export async function fetchMonthReport(
   const res = (await apiClient.get<FinanceMonthReport>(
     path
   )) as FinanceEnvelope<FinanceMonthReport>
+  return toResult(res)
+}
+
+/**
+ * Einzelbuchungen eines Monats (`JJJJ-MM`, ohne Monat der jüngste) mit
+ * Filtern. Gefiltert und summiert wird nur auf dem Server.
+ */
+export async function fetchFinanceTransactions(
+  params: { month?: string } & Partial<FinanceTransactionFilters> = {}
+): Promise<FinanceResult<FinanceTransactionsList>> {
+  const query: Record<string, string> = {}
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== '') {
+      query[key] = String(value)
+    }
+  }
+  const res = (await apiClient.get<FinanceTransactionsList>(
+    '/api/finance/transactions',
+    query
+  )) as FinanceEnvelope<FinanceTransactionsList>
+  return toResult(res)
+}
+
+/** Eine Buchung mit weiteren Buchungen derselben Gegenseite. 404 als `ApiError`. */
+export async function fetchFinanceTransaction(
+  id: string
+): Promise<FinanceResult<FinanceTransactionDetail>> {
+  const res = (await apiClient.get<FinanceTransactionDetail>(
+    `/api/finance/transactions/${encodeURIComponent(id)}`
+  )) as FinanceEnvelope<FinanceTransactionDetail>
   return toResult(res)
 }
 

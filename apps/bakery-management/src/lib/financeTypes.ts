@@ -421,3 +421,84 @@ export interface FinanceMonthReport {
   /** Monate mit Bankdaten, jüngster zuerst. */
   months: string[]
 }
+
+// ---------------------------------------------------------------------------
+// Einzelbuchungen (`GET /api/finance/transactions[/:id]`)
+// ---------------------------------------------------------------------------
+
+export type FinanceKind = 'einnahme' | 'ausgabe' | 'neutral' | 'offen'
+
+/** Eine Buchung, wie der Server sie bereinigt (IBAN maskiert, ohne Referenzen). */
+export interface FinanceTransaction {
+  id: string
+  booking_date: string
+  value_date: string | null
+  amount: number
+  currency: string
+  status: 'gebucht' | 'vorgemerkt'
+  booking_text: string | null
+  counterparty: string | null
+  /** „DE•• •••• 1234“ oder `null` */
+  counterparty_iban: string | null
+  purpose: string | null
+  /** Lastschrift mit Mandat */
+  direct_debit: boolean
+  category: string
+  category_label: string
+  kind: FinanceKind
+  subcategory: string | null
+  subcategory_label: string | null
+  flow: string | null
+  note: string | null
+}
+
+export interface FinanceTransactionTotals {
+  count: number
+  income: number
+  /** negativ */
+  expense: number
+  net: number
+}
+
+export interface FinanceTransactionFilters {
+  category: string | null
+  kind: FinanceKind | null
+  direction: 'in' | 'out' | null
+  q: string | null
+}
+
+export interface FinanceTransactionsList {
+  month: string
+  /** `false`: für diesen Monat gibt es keine Bankdaten. */
+  available: boolean
+  /** neueste zuerst */
+  months: string[]
+  previous_month: string | null
+  next_month: string | null
+  filters: FinanceTransactionFilters
+  month_totals: FinanceTransactionTotals
+  totals: FinanceTransactionTotals
+  categories: Array<{
+    category: string
+    label: string
+    kind: FinanceKind
+    count: number
+  }>
+  /** Zeilen, die der Server verworfen hat (ohne ID, Datum oder Betrag). */
+  skipped: number
+  transactions: FinanceTransaction[]
+}
+
+export interface FinanceTransactionDetail {
+  transaction: FinanceTransaction
+  month: string
+  related_count: number
+  related_totals: FinanceTransactionTotals
+  related: Array<{
+    id: string
+    booking_date: string
+    amount: number
+    purpose: string | null
+    category_label: string
+  }>
+}

@@ -8,6 +8,10 @@
  *                                       das jüngste mit Bankdaten
  *   GET /api/finance/month[/:month]     Monatsanalyse, ohne Monat der jüngste
  *                                       vollständige
+ *   GET /api/finance/transactions?month=&category=&kind=&direction=&q=
+ *                                       Einzelbuchungen eines Monats (bereinigt,
+ *                                       `finance-transactions.core.js`)
+ *   GET /api/finance/transactions/:id   eine Buchung + weitere derselben Gegenseite
  *
  * Jahr und Monat rechnet `src/services/finance-report.core.js`; dazu kommen
  * die Monatssummen der Kasse (`HQ_REPORTS_DIR`) für den Kassenabgleich und
@@ -34,12 +38,14 @@
 const fs = require('fs')
 const path = require('path')
 const finance = require('../services/finance.core')
+const transactions = require('../services/finance-transactions.core')
 const report = require('../services/finance-report.core')
 const reportsCore = require('../services/reports.core')
 const reportsFiles = require('../services/reports-files.core')
 const { berlinToday } = require('../services/backzettel-reference.core')
 
 const SUMMARY_FILENAME = 'finance-summary.json'
+const TRANSACTIONS_DIRNAME = 'transactions'
 
 /** Verzeichnis der Finanzdaten, relativ zu `apps/bakery-api/`. */
 function defaultFinanceDir() {
@@ -269,6 +275,131 @@ function install(app, auth, options = {}) {
   }
   app.get('/api/finance/month', ownerOnly, monthHandler)
   app.get('/api/finance/month/:month', ownerOnly, monthHandler)
+
+  // -------------------------------------------------------------------------
+  // Einzelbuchungen (Buchungsliste, Detailseite)
+  // -------------------------------------------------------------------------
+
+  const transactionsDir = path.join(financeDir, TRANSACTIONS_DIRNAME)
+
+  /** Monate mit Datei in `transactions/`, aufsteigend - wirft nie. */
+  function transactionMonths() {
+    try {
+      return transactions.monthsFromFileNames(fs.readdirSync(transactionsDir))
+    } catch {
+      return []
+    }
+  }
+
+  /** Rohzeilen eines Monats oder `null` (fehlt/ungültig) - wirft nie. */
+  function readMonth(month) {
+    const file = path.join(transactionsDir, `${month}.json`)
+    let text
+    try {
+      text = fs.readFileSync(file, 'utf-8')
+    } catch {
+      return null
+    }
+    const parsed = transactions.parseMonthFile(text)
+    if (parsed.status !== 'ok' || parsed.month !== month) {
+      log.warn(
+        `[finance] Buchungen ${month} verworfen: ${
+          parsed.reason || 'Monat passt nicht zum Dateinamen'
+        }`
+      )
+      return null
+    }
+    return parsed.transactions
+  }
+
+  /** Einzelbuchungen nie im Browser- oder Proxy-Cache ablegen. */
+  function noStore(res) {
+    res.set('Cache-Control', 'no-store')
+  }
+
+  app.get('/api/finance/transactions', ownerOnly, (req, res) => {
+    noStore(res)
+    const month = req.query.month
+    if (
+      month !== undefined &&
+      month !== '' &&
+      !transactions.isValidMonth(month)
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: 'validation',
+        message: 'Monat bitte im Format JJJJ-MM angeben.',
+      })
+    }
+    const { filters, errors } = transactions.parseFilters(req.query)
+    if (errors.length) {
+      return res.status(400).json({
+        success: false,
+        error: 'validation',
+        message: `Ungültiger Filter: ${errors.join(', ')}.`,
+      })
+    }
+    const months = transactionMonths()
+    if (months.length === 0) {
+      return sendNoData(
+        res,
+        'Keine Einzelbuchungen gefunden (hq/data/finance/transactions fehlt).'
+      )
+    }
+    const wanted = month || months[months.length - 1]
+    const loaded = loadSummary(financeDir, log)
+    const labels = transactions.labelsFrom(
+      loaded.status === 'ok' ? loaded.summary : null
+    )
+    res.json({
+      success: true,
+      status: 'ok',
+      data: transactions.buildListResponse({
+        month: wanted,
+        months,
+        rawTransactions: months.includes(wanted) ? readMonth(wanted) : null,
+        labels,
+        filters,
+      }),
+    })
+  })
+
+  app.get('/api/finance/transactions/:id', ownerOnly, (req, res) => {
+    noStore(res)
+    const { id } = req.params
+    if (!transactions.isValidId(id)) {
+      return res.status(400).json({
+        success: false,
+        error: 'validation',
+        message: 'Ungültige Buchungs-ID.',
+      })
+    }
+    const months = transactionMonths()
+    if (months.length === 0) {
+      return sendNoData(
+        res,
+        'Keine Einzelbuchungen gefunden (hq/data/finance/transactions fehlt).'
+      )
+    }
+    const allRaw = []
+    for (const m of months) allRaw.push(...(readMonth(m) || []))
+    const loaded = loadSummary(financeDir, log)
+    const detail = transactions.buildDetailResponse({
+      id,
+      allRaw,
+      labels: transactions.labelsFrom(
+        loaded.status === 'ok' ? loaded.summary : null
+      ),
+    })
+    if (!detail) {
+      return res.status(404).json({
+        success: false,
+        error: 'not_found',
+        message: 'Diese Buchung gibt es nicht (mehr).',
+      })
+    }
+    res.json({ success: true, status: 'ok', data: detail })
+  })
 
   log.log(`[finance] Endpunkte aktiv, Datenquelle: ${financeDir}`)
   return app
