@@ -50,7 +50,7 @@ function parseBackzettelYaml(text) {
 /**
  * Liest die Frontmatter aller `*.md` eines hq-Produktverzeichnisses
  * (Dateien mit `_` am Anfang, etwa `_template.md`, zaehlen nicht).
- * @returns {Array<{id:string, numeric_id?:number, name?:string, available?:boolean, file:string}>}
+ * @returns {Array<{id:string, numeric_id?:number, name?:string, price?:number, available?:boolean, file:string}>}
  */
 function readProductCatalog(dir) {
   const out = []
@@ -70,6 +70,7 @@ function readProductCatalog(dir) {
       id: fm.id,
       numeric_id: fm.numeric_id,
       name: fm.name,
+      price: fm.price,
       available: fm.available,
       file,
     })

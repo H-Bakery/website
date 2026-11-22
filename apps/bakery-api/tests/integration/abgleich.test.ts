@@ -25,6 +25,7 @@ jest.setTimeout(30000)
 const TODAY = '2026-12-08'
 const TUE = '2026-12-01'
 const WED = '2026-12-02'
+const THU = '2026-12-03'
 const MON = '2026-12-07'
 const PINNED_NOW = new Date('2026-12-08T09:00:00Z')
 
@@ -42,6 +43,7 @@ const as = (role: keyof typeof tokens) => ({
   get: (p: string) => request(api.app).get(p).set(bearer(tokens[role])),
   put: (p: string) => request(api.app).put(p).set(bearer(tokens[role])),
   post: (p: string) => request(api.app).post(p).set(bearer(tokens[role])),
+  patch: (p: string) => request(api.app).patch(p).set(bearer(tokens[role])),
 })
 
 function writeHq(dir: string): void {
@@ -81,21 +83,24 @@ beforeAll(async () => {
   reportsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'abgleich-reports-'))
   fs.mkdirSync(path.join(reportsDir, 'converted'))
   // Tuesday: 9 Plunder (PLU 906) sold, one storno pair that nets out.
+  const converted = grundmengen.convertedReport(TUE, [
+    { items: [[906, 9]] },
+    { items: [[906, 1]] },
+    { items: [[906, -1]], type: 'storno' },
+    { items: [[701, 3]] },
+  ])
+  const collective = converted.transactions[3].items[0]
+  Object.assign(collective, { product: 'Diverse', group_name: 'Brötchen' })
   fs.writeFileSync(
     path.join(reportsDir, 'converted', `${TUE}_90000001.json`),
-    JSON.stringify(
-      grundmengen.convertedReport(TUE, [
-        { items: [[906, 9]] },
-        { items: [[906, 1]] },
-        { items: [[906, -1]] },
-      ])
-    )
+    JSON.stringify(converted)
   )
   api = await createTestApp({
     app: {
       backzettel: { hqDir, cacheMs: 0, now: () => PINNED_NOW },
       hq: { reportsDir, today: TODAY },
       hqProducts: { productsDir: path.join(hqDir, 'products'), writeDir: null },
+      preorders: { now: () => PINNED_NOW },
     },
   })
   tokens.inhaber = await sessionFor(api.app, 'test.inhaber', 'inhaber')
@@ -188,6 +193,65 @@ describe('GET /api/abgleich', () => {
     // Weck has no PLU: listed apart.
     expect(posten(data, 'weck')).toMatchObject({ status: 'keine_plu' })
     expect(data.items.some((p: any) => p.key === 'weck')).toBe(false)
+    expect(data.euro.days[0].abschnitte).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          section: 'broetchen',
+          istEur: 3,
+          sammelEur: 3,
+        }),
+        expect.objectContaining({ section: 'kaffeestueckchen', istEur: 9 }),
+      ])
+    )
+  })
+
+  it('zieht eine gekennzeichnete Vorbestellung im Entwurf und nach der Freigabe ab', async () => {
+    const created = await as('verkauf')
+      .post('/api/preorders')
+      .send({
+        channel: 'laden',
+        customerName: 'Testbestellung Euro',
+        pickupDate: THU,
+        items: [{ productId: 'test-plunder', quantity: 2 }],
+      })
+    expect(created.status).toBe(201)
+    expect(created.body.data.externalPayment).toBe(false)
+    const order = `/api/preorders/${created.body.data.id}`
+    const read = () =>
+      as('inhaber').get(`/api/abgleich?from=${THU}&to=${THU}&folgetag=`)
+    const item = (res: request.Response) =>
+      res.body.data.euro.days[0].items.find(
+        (p: { key: string }) => p.key === 'plunder'
+      )
+    const before = item(await read()).sollEur
+    expect(before).toBeGreaterThan(3)
+    const invalid = await as('verkauf')
+      .patch(order)
+      .send({ externalPayment: 'ja' })
+    expect(invalid.body.error).toBe('invalid_external_payment')
+    const updated = await as('verkauf')
+      .patch(order)
+      .send({ externalPayment: true })
+    expect(updated.body.data).toMatchObject({
+      externalPayment: true,
+      paid: false,
+    })
+    expect(item(await read())).toMatchObject({
+      sollEur: before - 3,
+      istEur: null,
+    })
+
+    expect(
+      (await as('inhaber').post(`/api/backzettel/${THU}/confirm`)).status
+    ).toBe(200)
+    const confirmed = await read()
+    expect(confirmed.body.data.euro.days[0].basis).toBe('freigegeben')
+    expect(item(confirmed)).toMatchObject({ sollEur: before - 3, istEur: null })
+
+    const invalidSection = await as('inhaber').get(
+      '/api/abgleich?folgetag=unbekannt'
+    )
+    expect(invalidSection.body.error).toBe('invalid_next_day_sections')
   })
 
   it('with a confirmed sheet and a rest count it gives Ungeklärt', async () => {

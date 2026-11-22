@@ -1820,14 +1820,25 @@ export function createBackzettelService(
    */
   async function getBakeLines(
     date: string,
-    { light = true, pool }: { light?: boolean; pool?: BackzettelDay[] } = {}
+    {
+      light = true,
+      pool,
+      includePreorderSources = false,
+    }: {
+      light?: boolean
+      pool?: BackzettelDay[]
+      includePreorderSources?: boolean
+    } = {}
   ) {
     assertDate(date)
     const loaded = source.load()
     if (!loaded.ok) return null
     const weekday = core.isoWeekday(date)
     if (!kalender.isBakeDay(loaded.config, date)) return null
-    const { sources } = await bakeSources(loaded, date, { light, pool })
+    const { sources, confirmed } = await bakeSources(loaded, date, {
+      light,
+      pool,
+    })
     const withLines = sources.filter((s) => s.lines.length > 0)
     const allConfirmed =
       sources.length > 0 &&
@@ -1877,6 +1888,22 @@ export function createBackzettelService(
       sections: list.sections,
       deltas,
       deltaTotals,
+      ...(includePreorderSources
+        ? {
+            preorderSources: sources.map((src) => ({
+              doughDate: src.doughDate,
+              plan: src.view.plan,
+              status: src.status,
+              snapshot: confirmed.find((d) => d.date === src.doughDate)
+                ?.preorderSnapshot,
+              deltas: (src.view.deltas || []).filter(
+                (d: { bakeDate?: string }) =>
+                  (d.bakeDate || src.doughDate) === date
+              ),
+              lineKeys: src.lines.map((l) => `${l.itemId}|${l.variant || ''}`),
+            })),
+          }
+        : {}),
     }
   }
 

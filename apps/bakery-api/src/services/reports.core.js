@@ -242,7 +242,7 @@ function share(part, whole) {
  * kommt `{ status: 'no-data' }` zurück - der Unterschied zwischen „kein
  * Bericht" und „Umsatz 0" muss bis in die Oberfläche erhalten bleiben.
  */
-function aggregateDay(date, closings) {
+function aggregateDay(date, closings, { includeProductGroups = false } = {}) {
   const list = Array.isArray(closings) ? closings.filter(Boolean) : []
   if (!isValidDate(date) || list.length === 0) {
     return {
@@ -328,6 +328,19 @@ function aggregateDay(date, closings) {
           productName: item.product || '',
           quantity: 0,
           revenue: 0,
+        }
+        if (includeProductGroups) {
+          const group =
+            typeof item.group_name === 'string' && item.group_name.trim()
+          if (group && p.groupName === undefined) p.groupName = group
+          else if (group && p.groupName !== group) p.groupName = null
+          if (
+            item.total == null ||
+            item.total === '' ||
+            !Number.isFinite(Number(item.total))
+          ) {
+            p.revenueMissing = true
+          }
         }
         const qty = Number(item.quantity)
         p.quantity += Number.isFinite(qty) ? qty : 0

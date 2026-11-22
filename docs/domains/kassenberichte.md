@@ -46,7 +46,10 @@ Pfad: `HQ_REPORTS_DIR`, sonst `<website>/../hq/data/reports`.
 - **Das Archiv zeigt den neuesten Tag zuerst** (`newestFirst` in `ReportsArchiveClient.tsx`). Loader
   und `/api/reports/daily` liefern weiter aufsteigend - Diagramme und der Vertrag lesen so; umgedreht
   wird nur die Anzeige.
-- Kategorie-Aufschlüsselungen sind leer, weil `convert_reports.js` in `hq` `group_name` verwirft.
+- Die Berichtsansichten haben keine Kategorie-Aufschlüsselung. Ältere Exporte können
+  `group_name` auslassen. Der [Euro-Abgleich](abgleich.md#euro-abgleich) nutzt das Feld, falls
+  es vorhanden ist, und kann Sammelnummern auch über den Namen oder eindeutige
+  Kassennummern-Hunderter zuordnen.
 
 ## Endpunkte
 

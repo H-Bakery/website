@@ -145,6 +145,53 @@ export interface AbgleichDay {
   baseOpen: number
 }
 
+export interface AbgleichEuroItem {
+  key: string
+  name: string
+  sizeLabel: string | null
+  section: string | null
+  sollEur: number | null
+  istEur: number | null
+  preisOffen: boolean
+}
+
+export interface AbgleichEuroSection {
+  section: string | null
+  sectionLabel: string
+  sollEur: number | null
+  istEur: number | null
+  differenzEur: number | null
+  folgetagEur: number
+  sammelEur: number | null
+  handelswareEur: number | null
+  preisOffen: string[]
+  grundmengeOffen: boolean
+  restCounted: boolean
+}
+
+export interface AbgleichEuro {
+  abschnitte: { id: string; label: string; folgetag: boolean }[]
+  sammelEur: number | null
+  sammelAnteil: number | null
+  days: {
+    date: string
+    basis: AbgleichDay['basis']
+    report: boolean
+    kasseEur: number | null
+    sammelEur: number | null
+    handelswareEur: number | null
+    abschnitte: AbgleichEuroSection[]
+    items: AbgleichEuroItem[]
+    nichtZuordenbar: {
+      plu: string | null
+      name: string | null
+      section: string | null
+      sammel: boolean
+      istEur: number | null
+    }[]
+  }[]
+}
+
 export interface Abgleich {
   from: string
   to: string
@@ -184,6 +231,13 @@ export interface Abgleich {
   items: AbgleichItem[]
   unmatched: AbgleichItem[]
   days: AbgleichDay[]
+  euro?: AbgleichEuro
+}
+
+export interface AbgleichRange {
+  from?: string
+  to?: string
+  folgetag?: string[]
 }
 
 /** Längster Zeitraum - wie `MAX_RANGE_DAYS` in `abgleich.core.js`. */
@@ -224,13 +278,11 @@ function unwrap<T>(res: { data?: T } | undefined): T {
   return res.data
 }
 
-export async function fetchAbgleich(range: {
-  from?: string
-  to?: string
-}): Promise<Abgleich> {
+export async function fetchAbgleich(range: AbgleichRange): Promise<Abgleich> {
   const params: Record<string, string> = {}
   if (range.from) params.from = range.from
   if (range.to) params.to = range.to
+  if (range.folgetag) params.folgetag = range.folgetag.join(',')
   return unwrap(await apiClient.get<Abgleich>(BASE, params))
 }
 

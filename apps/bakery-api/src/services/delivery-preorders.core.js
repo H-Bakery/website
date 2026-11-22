@@ -1315,6 +1315,16 @@ function normalizeOrderInput(body, existing, options) {
     return fail('invalid_paid', '„Bezahlt" muss ja oder nein sein.')
   }
   const paid = source.paid === undefined ? !!base.paid : source.paid
+  if (
+    source.externalPayment !== undefined &&
+    typeof source.externalPayment !== 'boolean'
+  ) {
+    return fail(
+      'invalid_external_payment',
+      '„Zahlung per Überweisung oder Rechnung“ muss ja oder nein sein.'
+    )
+  }
+  const externalPayment = pick('externalPayment') === true
 
   // --- Status
   const statusResult = normalizeStatusChange(
@@ -1563,6 +1573,7 @@ function normalizeOrderInput(body, existing, options) {
       pickupTime,
       pickupPointId: pickupPoint ? pickupPoint.id : null,
       paid,
+      externalPayment,
       note,
       ...statusResult.changes,
       items,

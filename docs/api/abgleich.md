@@ -57,3 +57,33 @@ Tests: `tests/unit/abgleich.test.js` (confirmed vs planned, rest missing/partial
 not, no PLU, sizes, Sorten, closing day, missing report, CAP, thresholds, CSV),
 `tests/integration/abgleich.test.ts` (roles incl. 403, range errors, planned → confirmed with a
 rest count, CSV).
+
+## Euro-Abgleich (TASK-043)
+
+`GET /api/abgleich?from=&to=&folgetag=` ergänzt die JSON-Antwort um `data.euro`. Optional
+akzeptiert `folgetag` die Abschnitts-IDs aus den Backzettel-Stammdaten als kommagetrennte Liste.
+Ohne Parameter gilt die Vorgabe `brot,kuchen` für vorhandene Abschnitte. Ein leerer Wert
+schaltet die Verrechnung für alle Abschnitte aus. Ungültige oder mehrfach übergebene Parameter
+ergeben 400 `invalid_next_day_sections` mit deutscher Meldung.
+
+- `euro.abschnitte[]` enthält `id`, `label` und die wirksame Auswahl `folgetag`. `sammelEur`
+  ist die Summe erkannter Sammelpositionen über die vorhandenen Berichte im Zeitraum.
+  `sammelAnteil` ist der Anteil am Kassenumsatz als Verhältniswert. Ohne auswertbaren
+  Kassenumsatz bleibt der Anteil `null`.
+- `euro.days[]` enthält je Backtag `date`, `basis`, `report`, `kasseEur`, `sammelEur`,
+  `handelswareEur`, `abschnitte[]`, `items[]` und `nichtZuordenbar[]`. Die Handelsware ist
+  separat vom Ist der Eigenproduktion. Tage ohne Backzettel können Kassenumsätze ausweisen;
+  ihr Soll bleibt offen.
+- `abschnitte[]` liefert `section`, `sectionLabel`, `sollEur`, `istEur`, `differenzEur`,
+  `sammelEur`, `handelswareEur`, `preisOffen[]` (Postenschlüssel), `grundmengeOffen`, `restCounted` und
+  `folgetagEur` (Übertrag mit Vorzeichen). `istEur` ist der Kassenbetrag des Tages.
+  `differenzEur` ist Ist plus Übertrag minus Soll. Die API liest hierfür bei Bedarf
+  auch den angrenzenden Kalendertag vor und nach dem ausgewählten Zeitraum.
+- `items[]` liefert `key`, `name`, `sizeLabel`, `section`, `sollEur`, `istEur` und
+  `preisOffen`. `nichtZuordenbar[]` liefert `plu`, `name`, `section` (soweit zuordenbar),
+  `sammel` und `istEur`. Geldbeträge sind Euro-Zahlen. Bei fehlenden Daten ist der Wert
+  `null`. `0` ist ein berechneter oder berichteter Wert.
+- Die Stückfelder und der Stück-CSV-Vertrag bleiben verfügbar. Die Euro-Berechnung steht in
+  `abgleich.core.js`. Der Dienst liest für die Berechnung Preise aus dem hq-Katalog,
+  Kassenpositionen samt optionaler Kassengruppe sowie Vorbestellpositionen zur Zahlungsart.
+  Die Abgleich-Antwort enthält keine Kundenangaben oder Bestellkennungen.

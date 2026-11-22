@@ -94,6 +94,7 @@ export interface PreorderRecord {
   pickupPointId: string | null
   status: string
   paid: boolean
+  externalPayment: boolean
   /** Amount recorded as paid; `null` with `paid` = paid in full (legacy). */
   paidAmount: number | null
   note: string | null
@@ -141,6 +142,7 @@ interface ComparableInput {
   pickupTime: string | null
   pickupPointId: string | null
   paid: boolean
+  externalPayment?: boolean
   note: string | null
   items: Array<{ productId: string; variant?: string | null; quantity: number }>
 }
@@ -168,6 +170,7 @@ export function sameOrderInput(
     (input.pickupTime ?? null) === (record.pickupTime ?? null) &&
     (input.pickupPointId ?? null) === (record.pickupPointId ?? null) &&
     Boolean(input.paid) === Boolean(record.paid) &&
+    Boolean(input.externalPayment) === Boolean(record.externalPayment) &&
     (input.note ?? null) === (record.note ?? null) &&
     itemKeys(input.items) === itemKeys(record.items)
   )
@@ -246,6 +249,7 @@ export function toRecord(row: Preorder): PreorderRecord {
     pickupPointId: p.pickupPointId ?? null,
     status: p.status,
     paid: !!p.paid,
+    externalPayment: !!p.externalPayment,
     paidAmount:
       p.paid && p.paidAmount != null && p.paidAmount !== ''
         ? Number(p.paidAmount)
@@ -290,6 +294,7 @@ export function toDto(
     notCollected: !!record.notCollectedAt,
     notCollectedAt: iso(record.notCollectedAt),
     paid: record.paid,
+    externalPayment: record.externalPayment,
     // W4 verification round 2: what was paid, and what is still owed (> 0)
     // or must be refunded (< 0) - after an edit or a cancellation.
     paidAmount: record.paid ? record.paidAmount ?? record.total : null,
@@ -336,6 +341,7 @@ function changedFields(
     'status',
     'paid',
     'paidAmount',
+    'externalPayment',
     'note',
     'notCollectedAt',
   ]
@@ -1194,6 +1200,7 @@ export class PreordersService {
           status: input.status,
           paid: input.paid,
           paidAmount: input.paid ? core.itemsTotal(input.items) : null,
+          externalPayment: input.externalPayment,
           note: input.note,
           pickedUpAt: input.pickedUpAt ? new Date(input.pickedUpAt) : null,
           notCollectedAt: input.notCollectedAt
@@ -1297,6 +1304,7 @@ export class PreordersService {
           status: next.status,
           paid: next.paid,
           paidAmount,
+          externalPayment: next.externalPayment,
           note: next.note,
           pickedUpAt: next.pickedUpAt ? new Date(next.pickedUpAt) : null,
           notCollectedAt: next.notCollectedAt

@@ -4,8 +4,7 @@
  * `{ success: false, error, message }` (German). Rules and formulas:
  * `services/abgleich.core.js`.
  *
- *   GET /?from=&to=      per item and bake day: baked, CAP, sold, rest,
- *                        unexplained, Ampel (default the last 7 bake days)
+ *   GET /?from=&to=&folgetag=  Stück je Posten und Euro je Backtag/Abschnitt
  *   GET /csv?from=&to=   the same as CSV (csvCell, BOM)
  */
 import { NextFunction, Request, Response, Router } from 'express'

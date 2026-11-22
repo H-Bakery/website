@@ -1083,3 +1083,268 @@ describe('abgleichCsv', () => {
     expect(csv).toContain('Rest nicht gezählt')
   })
 })
+
+describe('Euro-Abgleich', () => {
+  const SAT = '2026-12-05'
+  const SUN = '2026-12-06'
+  const euroConfig = configCore.normalizeConfig(
+    fixture.config({
+      sections: ['brot', 'broetchen', 'laugen', 'kuchen', 'hefeteig'],
+      items: [
+        {
+          id: 'test-wecken',
+          section: 'broetchen',
+          plu: [711],
+          products: [{ id: 'test-wecken' }],
+        },
+        {
+          id: 'test-kuchen',
+          section: 'kuchen',
+          plu: [811],
+          products: [{ id: 'test-kuchen' }],
+        },
+        {
+          id: 'test-brot',
+          section: 'brot',
+          unit: 'Liter',
+          plu: [611],
+          products: [{ id: 'test-brot', factor: 0.5 }],
+        },
+        {
+          id: 'test-brezel',
+          section: 'laugen',
+          plu: [511],
+          products: [{ id: 'test-brezel' }],
+          purchased: true,
+        },
+        { id: 'test-ohne-preis', section: 'hefeteig' },
+      ],
+    })
+  )
+  const euroCatalog = [
+    { id: 'test-wecken', price: 1.25 },
+    { id: 'test-kuchen', price: 4.4 },
+    { id: 'test-brezel', price: 2.1 },
+  ]
+  const sale = (productId, productName, quantity, revenue, groupName) => ({
+    productId,
+    productName,
+    quantity,
+    revenue,
+    groupName,
+  })
+  const weekend = {
+    [SAT]: {
+      backzettel: {
+        ...bzDay(
+          'confirmed',
+          [
+            { itemId: 'test-wecken', total: 20, cap: 4 },
+            { itemId: 'test-kuchen', total: 10 },
+            { itemId: 'test-brot', total: 3 },
+            { itemId: 'test-brezel', total: 7 },
+            { itemId: 'test-ohne-preis', total: 4 },
+            { itemId: 'test-wecken', total: 200, bakeDate: SUN },
+          ],
+          euroConfig
+        ),
+        date: SAT,
+        preorderSources: [
+          {
+            doughDate: SAT,
+            status: 'confirmed',
+            snapshot: [
+              {
+                preorderId: 14,
+                productId: 'test-wecken',
+                qty: 2,
+                pickupDate: SAT,
+              },
+            ],
+            deltas: [
+              {
+                preorderId: 14,
+                itemId: 'test-wecken',
+                qty: 1,
+                acknowledgedAt: null,
+              },
+            ],
+          },
+        ],
+      },
+      externalPreorders: [
+        { preorderId: 14, productId: 'test-wecken', qty: 3, pickupDate: SAT },
+      ],
+      rows: [row('test-kuchen', 4, {}, euroConfig, euroCatalog)],
+      report: {
+        status: 'ok',
+        revenue: 57.3,
+        products: [
+          sale(711, 'Testwecken', 10, 12.5),
+          sale(799, 'Diverse', 3, 4),
+          sale(811, 'Testkuchen', 5, 22),
+          sale(999, 'Sonstige', 1, 4.4, 'Kuchen'),
+          sale(611, 'Testbrot', 2, 6),
+          sale(511, 'Testbrezel', 4, 8.4),
+        ],
+      },
+    },
+    [SUN]: {
+      backzettel: bzDay(
+        'draft',
+        [
+          { itemId: 'test-wecken', total: 4 },
+          { itemId: 'test-kuchen', total: 5 },
+        ],
+        euroConfig
+      ),
+      report: {
+        status: 'ok',
+        revenue: 42.7,
+        products: [
+          sale(711, 'Testwecken', 6, 7.5),
+          sale(811, 'Testkuchen', 8, 35.2),
+        ],
+      },
+    },
+  }
+  const reconcile = (options = {}) =>
+    core.reconcile({
+      from: SAT,
+      to: SUN,
+      today: TODAY,
+      config: euroConfig,
+      catalog: euroCatalog,
+      days: weekend,
+      ...options,
+    })
+  const section = (day, id) => day.abschnitte.find((s) => s.section === id)
+
+  it('stimmt für Samstag und Sonntag mit der Handrechnung überein', () => {
+    const { euro } = reconcile()
+    const [sat, sun] = euro.days
+    expect(euro).toMatchObject({
+      sammelEur: 8.4,
+      sammelAnteil: 0.084,
+      abschnitte: [
+        { id: 'brot', folgetag: true },
+        { id: 'broetchen', folgetag: false },
+        { id: 'laugen', folgetag: false },
+        { id: 'kuchen', folgetag: true },
+        { id: 'hefeteig', folgetag: false },
+      ],
+    })
+    // (20 gebacken − 4 CAP − 2 Überweisung) × 1,25 = 17,50.
+    // 12,50 einzeln + 4,00 Sammelnummer = 16,50 → −1,00.
+    expect(section(sat, 'broetchen')).toMatchObject({
+      sollEur: 17.5,
+      istEur: 16.5,
+      differenzEur: -1,
+      sammelEur: 4,
+      folgetagEur: 0,
+    })
+    expect(sat.items.find((p) => p.key === 'test-wecken')).toMatchObject({
+      sollEur: 17.5,
+      istEur: 12.5,
+    })
+    expect(sat.nichtZuordenbar).toEqual([
+      expect.objectContaining({
+        plu: '799',
+        section: 'broetchen',
+        sammel: true,
+        istEur: 4,
+      }),
+      expect.objectContaining({
+        plu: '999',
+        section: 'kuchen',
+        sammel: true,
+        istEur: 4.4,
+      }),
+    ])
+    // 6 € / 2 Laibe zu je 0,5 l = 6 € pro Liter, 3 l × 6 € = 18 €.
+    expect(section(sat, 'brot')).toMatchObject({
+      sollEur: 18,
+      istEur: 6,
+      differenzEur: -12,
+    })
+    expect(section(sat, 'hefeteig')).toMatchObject({
+      sollEur: null,
+      differenzEur: null,
+      preisOffen: ['test-ohne-preis'],
+    })
+    expect(sat.handelswareEur).toBe(8.4)
+    expect(section(sat, 'laugen')).toMatchObject({
+      sollEur: 0,
+      istEur: 0,
+      handelswareEur: 8.4,
+      differenzEur: 0,
+    })
+    // Kuchen: Sa 44,00 Soll und 26,40 Ist, So 22,00 Soll und 35,20 Ist.
+    // Vom So gehen 13,20 Überschuss auf Sa, übrig bleiben 4,40 Lücke.
+    expect(section(sat, 'kuchen')).toMatchObject({
+      sollEur: 44,
+      istEur: 26.4,
+      folgetagEur: 13.2,
+      differenzEur: -4.4,
+      restCounted: true,
+    })
+    expect(section(sun, 'kuchen')).toMatchObject({
+      sollEur: 22,
+      istEur: 35.2,
+      folgetagEur: -13.2,
+      differenzEur: 0,
+    })
+    expect(section(sun, 'broetchen')).toMatchObject({
+      sollEur: 5,
+      istEur: 7.5,
+      differenzEur: 2.5,
+    })
+    expect(sun.basis).toBe('geplant')
+  })
+
+  it('berücksichtigt den Folgetag am Zeitraumrand und kann ihn abschalten', () => {
+    const onlySat = reconcile({ to: SAT })
+    expect(onlySat.days).toHaveLength(1)
+    expect(section(onlySat.euro.days[0], 'kuchen').folgetagEur).toBe(13.2)
+    const { euro } = reconcile({ folgetag: [] })
+    expect(section(euro.days[0], 'kuchen').differenzEur).toBe(-17.6)
+    expect(section(euro.days[1], 'kuchen').differenzEur).toBe(13.2)
+  })
+
+  it('verrechnet höchstens den Wert des vollständig gezählten Rests', () => {
+    const sat = {
+      ...weekend[SAT],
+      rows: [row('test-kuchen', 1, {}, euroConfig, euroCatalog)],
+    }
+    const { euro } = reconcile({ days: { ...weekend, [SAT]: sat } })
+    expect(section(euro.days[0], 'kuchen').folgetagEur).toBe(4.4)
+    expect(section(euro.days[1], 'kuchen').differenzEur).toBe(8.8)
+  })
+
+  it('hält offene Grundmenge und fehlenden Bericht als Lücken fest', () => {
+    const sun = {
+      backzettel: bzDay(
+        'draft',
+        [
+          { itemId: 'test-wecken', total: 4 },
+          { itemId: 'test-kuchen', total: 5, totalIsMinimum: true },
+        ],
+        euroConfig
+      ),
+    }
+    const { euro } = reconcile({ days: { ...weekend, [SUN]: sun } })
+    expect(section(euro.days[1], 'kuchen')).toMatchObject({
+      sollEur: null,
+      istEur: null,
+      differenzEur: null,
+      preisOffen: [],
+      folgetagEur: 0,
+    })
+    expect(section(euro.days[1], 'broetchen')).toMatchObject({
+      sollEur: 5,
+      istEur: null,
+      differenzEur: null,
+    })
+    expect(section(euro.days[0], 'kuchen').folgetagEur).toBe(0)
+  })
+})

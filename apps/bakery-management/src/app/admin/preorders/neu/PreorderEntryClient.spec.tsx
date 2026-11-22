@@ -123,6 +123,25 @@ async function ready() {
 }
 
 describe('PreorderEntryClient (P1)', () => {
+  it('speichert den Zahlungsweg Überweisung oder Rechnung unabhängig vom Bezahlstand', async () => {
+    const user = userEvent.setup()
+    mockCreate.mockResolvedValue(
+      preorder({ externalPayment: true, paid: false })
+    )
+    await ready()
+    await user.keyboard('Testbestellung{Enter}{Enter}korn{Enter}{Enter}')
+    await user.click(
+      screen.getByLabelText('Zahlung per Überweisung oder Rechnung')
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Vorbestellung speichern' })
+    )
+    expect(await screen.findByTestId('preorder-saved')).toBeInTheDocument()
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ externalPayment: true, paid: false })
+    )
+  })
+
   it('Chip-Gruppen sind je ein Tab-Halt, Pfeiltasten wählen (UI-Runde 2)', async () => {
     const user = userEvent.setup()
     await ready()

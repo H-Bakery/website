@@ -13,6 +13,8 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material'
 import {
@@ -36,6 +38,7 @@ import {
   type AbgleichDay,
   type AbgleichDayRow,
   type AbgleichItem,
+  type AbgleichRange,
 } from '../../../lib/abgleichApi'
 import {
   addDaysIso,
@@ -55,6 +58,7 @@ import {
 import { backzettelErrorText } from '../../../lib/backstubeErrors'
 import DateRangeFilter from '../../../components/analytics/DateRangeFilter'
 import type { RangePreset } from '../../../components/analytics/dateRange'
+import AbgleichEuroView from './AbgleichEuroView'
 
 const ALERT_TOUCH = {
   '& .MuiAlert-action .MuiButtonBase-root': { minHeight: 44, minWidth: 44 },
@@ -534,15 +538,16 @@ function dayText(d: AbgleichDay): string {
 }
 
 export default function AbgleichClient() {
+  const [mode, setMode] = useState<'stueck' | 'euro'>('stueck')
   const [data, setData] = useState<Abgleich | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [csvError, setCsvError] = useState<string | null>(null)
   const [csvBusy, setCsvBusy] = useState(false)
-  const lastRange = useRef<{ from?: string; to?: string }>({})
+  const lastRange = useRef<AbgleichRange>({})
   const requestId = useRef(0)
 
-  const load = useCallback(async (range: { from?: string; to?: string }) => {
+  const load = useCallback(async (range: AbgleichRange) => {
     const id = ++requestId.current
     lastRange.current = range
     setLoading(true)
@@ -633,28 +638,48 @@ export default function AbgleichClient() {
       subtitle="Gebacken, verkauft, übrig - was bleibt ungeklärt?"
       back={{ href: '/admin/rest/auswertung', label: 'Rest-Auswertung' }}
       actions={
-        <Button
-          variant="outlined"
-          startIcon={<DownloadIcon />}
-          onClick={() => void csv()}
-          disabled={!data || csvBusy}
-          sx={{ minHeight: 44 }}
-        >
-          CSV
-        </Button>
+        mode === 'stueck' && (
+          <Button
+            variant="outlined"
+            startIcon={<DownloadIcon />}
+            onClick={() => void csv()}
+            disabled={!data || csvBusy}
+            sx={{ minHeight: 44 }}
+          >
+            CSV
+          </Button>
+        )
       }
     >
       {data && (
         <DateRangeFilter
           from={data.from}
           to={data.to}
-          onApply={(from, to) => void load({ from, to })}
+          onApply={(from, to) => void load({ ...lastRange.current, from, to })}
           presets={presetsFor(data.today)}
           busy={loading}
           max={data.today}
           maxDays={ABGLEICH_MAX_RANGE_DAYS}
         />
       )}
+
+      <ToggleButtonGroup
+        exclusive
+        value={mode}
+        onChange={(_, value: 'stueck' | 'euro' | null) => {
+          if (value) setMode(value)
+        }}
+        aria-label="Ansicht"
+        size="small"
+        sx={{ alignSelf: 'flex-start' }}
+      >
+        <ToggleButton value="stueck" sx={{ minHeight: 44 }}>
+          Stück
+        </ToggleButton>
+        <ToggleButton value="euro" sx={{ minHeight: 44 }}>
+          Euro
+        </ToggleButton>
+      </ToggleButtonGroup>
 
       {loading && !data && !error && (
         <LoadingState label="Abgleich wird geladen …" />
@@ -685,7 +710,15 @@ export default function AbgleichClient() {
         </Alert>
       )}
 
-      {data && (
+      {data && mode === 'euro' && (
+        <AbgleichEuroView
+          euro={data.euro}
+          configAvailable={data.configStatus === 'ok'}
+          busy={loading}
+          onChange={(folgetag) => void load({ ...lastRange.current, folgetag })}
+        />
+      )}
+      {data && mode === 'stueck' && (
         <>
           <Alert severity="info" data-testid="abgleich-hinweis">
             <strong>Hinweise, keine Beweise.</strong> Ein Unterschied kann viele
@@ -755,8 +788,7 @@ export default function AbgleichClient() {
                 <li>
                   <Typography variant="body2">
                     <strong>CAP</strong>: geht an den Verkaufspartner, wird
-                    abgezogen. Vorbestellungen werden an der Kasse bezahlt und
-                    nicht abgezogen (vorläufig).
+                    abgezogen. Vorbestellungen zählen in der Stückansicht mit.
                   </Typography>
                 </li>
                 <li>

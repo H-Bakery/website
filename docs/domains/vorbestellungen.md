@@ -71,6 +71,10 @@ Verwaltung `apps/bakery-management/src/lib/preordersApi.ts`, `preordersTypes.ts`
   `paymentBalance` (> 0 noch kassieren, < 0 erstatten; storniert + bezahlt = −bezahlt).
   `/day`-Summary: `unpaidTotal` enthält Nachzahlungen (`topUpTotal`), dazu `refundCount`/`refundTotal`
   - auch über stornierte. `NULL` bei `paid` heißt „voll bezahlt" (Altbestand, Importe).
+- **Zahlung per Überweisung oder Rechnung** ist ein eigener Schalter beim Erfassen und Bearbeiten.
+  Er setzt den vorgesehenen Zahlungsweg außerhalb der Kasse und kann unabhängig von „Bezahlt“
+  erfasst werden. Bei bestehenden Bestellungen ist der Schalter aus, bis der Verkauf oder Inhaber
+  den Zahlungsweg erfasst. Er wirkt auf den [Euro-Abgleich](abgleich.md#euro-abgleich).
 - **Backzettel-Nachträge** schreibt der Schreibweg der Vorbestellung (Anlegen, Ändern, Status, Storno,
   Sammelaktion) in derselben Transaktion, nicht das Lesen des Backzettels - siehe
   [`backzettel.md`](backzettel.md).
