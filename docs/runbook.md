@@ -299,6 +299,23 @@ UStG); liegengebliebene Entwürfe verlieren im nächtlichen Lauf Name und Anschr
   gesicherter Datenbank und `INVOICES_ALLOW_DROP=1` wird trotzdem gelöscht. Ein Rollback des
   Releases (§4.1) braucht das nicht: ältere Releases lassen die Tabellen einfach unbenutzt.
 
+**Spracheingabe für Rest am Abend (TASK-048).** Erst nach HTTPS (§3.7),
+Anbieterfreigabe mit AVV und Information des Teams aktivieren. In
+`bakery.env` `VOICE_ENABLED=1`, `VOICE_STT_PROVIDER=mistral` und
+`MISTRAL_API_KEY` setzen. Für OpenAI stattdessen `openai` und
+`OPENAI_API_KEY` setzen. `VOICE_STT_MODEL` ist optional. Mit
+`ANTHROPIC_API_KEY` und `VOICE_LLM_MODEL` (Vorgabe `claude-haiku-5-5`)
+kann die API Parser-Lücken an Claude schicken. Externe Schlüssel bleiben in
+der API-Umgebung. Nach Änderungen reicht ein Neustart der API.
+
+`VOICE_MONTHLY_BUDGET_EUR` (Vorgabe 10), `VOICE_RATE_PER_MINUTE` (10) und
+`VOICE_RATE_PER_DAY` (150) begrenzen die Nutzung. Bei 80 % steht einmal
+pro Monat eine Warnung im Journal der API, und die Zählseite zeigt einen
+Hinweis. Einstellungen zur Preisschätzung stehen in
+[`docs/api/sprache.md`](api/sprache.md). Beide Caddy-Varianten erlauben den
+Mikrofonzugriff nur für dieselbe Origin. Auf LAN-HTTP fehlt weiterhin der
+sichere Browserkontext für die Aufnahme.
+
 ### 3.7 Zertifikat (DNS-01, Q2)
 
 **LAN-HTTP bis Q2 (Entscheidung 2026-11-08).** Bis das Zertifikat da ist, läuft Caddy mit

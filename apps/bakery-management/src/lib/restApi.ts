@@ -267,11 +267,13 @@ export async function fetchRestDay(date?: string): Promise<RestDay> {
 
 export async function saveRestDay(
   date: string,
-  items: RestSaveEntry[]
+  items: RestSaveEntry[],
+  source?: 'sprache'
 ): Promise<RestDay> {
   return unwrap(
     await apiClient.put<RestDay>(`${BASE}/${encodeURIComponent(date)}`, {
       items,
+      ...(source ? { source } : {}),
     })
   )
 }
@@ -329,6 +331,7 @@ export function rowKey(
 export interface RestDraftEntry {
   qty: number | null
   base: number | null
+  source?: 'sprache'
 }
 
 /** Entwurf: Zählzeile (`rowKey`) → Eingabe samt Grundlage. */
@@ -353,13 +356,18 @@ export function setDraftEntry(
   draft: RestDraft,
   key: string,
   serverQty: number | null,
-  qty: number | null
+  qty: number | null,
+  source?: 'sprache'
 ): RestDraft {
   const next = { ...draft }
   if (qty === serverQty) {
     delete next[key]
   } else {
-    next[key] = { qty, base: key in draft ? draft[key].base : serverQty }
+    next[key] = {
+      qty,
+      base: key in draft ? draft[key].base : serverQty,
+      ...(source ? { source } : {}),
+    }
   }
   return next
 }
@@ -456,7 +464,7 @@ export function rebaseDraft(
   for (const line of day.lines) {
     for (const row of line.rows) {
       const key = rowKey(line, row)
-      if (key in out) out[key] = { qty: out[key].qty, base: row.qty }
+      if (key in out) out[key] = { ...out[key], base: row.qty }
     }
   }
   return out
@@ -589,8 +597,13 @@ export function loadDraft(userId: number | string, date: string): RestDraft {
     const out: RestDraft = {}
     for (const [key, value] of Object.entries(parsed)) {
       if (!value || typeof value !== 'object') continue
-      const { qty, base } = value as { qty?: unknown; base?: unknown }
-      if (isQty(qty) && isQty(base)) out[key] = { qty, base }
+      const { qty, base, source } = value as {
+        qty?: unknown
+        base?: unknown
+        source?: unknown
+      }
+      if (isQty(qty) && isQty(base))
+        out[key] = { qty, base, ...(source === 'sprache' ? { source } : {}) }
     }
     return out
   } catch {

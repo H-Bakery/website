@@ -50,6 +50,9 @@ baseWeekday, openUntil }` is part of the day view and of `summary.days[]` (there
   `rest_changed`, `current` lists the stored values with `countedBy`, nothing is written. A save
   of unchanged values writes and audits nothing. One `audit_log` row per save (`rest_count` on
   `rest_day`/date, `data.changes [{ itemId, variant, productId, from, to, correction? }]`).
+  Optional setzt `source: "sprache"` im PUT-Body `data.source` desselben
+  Audit-Eintrags. Andere Werte werden ignoriert. Die Herkunft gilt für den
+  Speichervorgang. Siehe [Spracheingabe](sprache.md).
 - **Window:** writes only today − 7 … today (Berlin, `COUNT_DAYS_BACK`), never on a weekday not
   in `config.days` (409 `ruhetag`) or a closing day of the calendar (409 `geschlossen`), never without valid master data (409 `no_config`). Reads are
   not limited. `createApp({ hq: { today } })` / `rest: { today, now }` pin the clock in tests.

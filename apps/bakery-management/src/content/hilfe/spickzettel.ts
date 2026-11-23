@@ -44,6 +44,16 @@ const KEINE_VERBINDUNG: HilfeBlock = {
   ],
 }
 
+export const SPRACHE_TIPPS: HilfeBlock = {
+  title: 'Rest am Abend mit Sprache erfassen',
+  steps: [
+    'Auf einem Gerät mit HTTPS „Sprechen“ antippen. Nah am Mikrofon sprechen, zuerst den Produktnamen, dann die Zahl.',
+    'Zahlen als Gesamtmenge nennen. Bei ähnlichen Produkten die Sorte oder Größe dazusagen.',
+    'Den Vorschlag prüfen und übernehmen. Erst „Speichern“ schreibt die Zählung.',
+    'Spracheingabe ist freiwillig. Tippen geht jederzeit. Sprich nur Produktnamen und Mengen.',
+  ],
+}
+
 export const SPICKZETTEL: Record<PilotRole, Spickzettel> = {
   verkauf: {
     role: 'verkauf',

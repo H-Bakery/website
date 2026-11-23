@@ -34,7 +34,7 @@
 **Real API internals** (English): [overview](./api/overview.md) · [auth](./api/auth.md) ·
 [hq-data](./api/hq-data.md) · [hq-products](./api/hq-products.md) ·
 [partners](./api/partners.md) · [preorders](./api/preorders.md) ·
-[deliveries](./api/deliveries.md) · [backzettel](./api/backzettel.md) · [rest](./api/rest.md) ·
+[deliveries](./api/deliveries.md) · [backzettel](./api/backzettel.md) · [rest](./api/rest.md) · [Spracheingabe](./api/sprache.md) ·
 [abgleich](./api/abgleich.md) ·
 [dienstplan](./api/dienstplan.md) · [recipes](./api/recipes.md) · [invoices](./api/invoices.md)
 

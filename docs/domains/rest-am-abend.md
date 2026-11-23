@@ -91,6 +91,21 @@ API-Details (Endpunkte, Fehlercodes, Tabelle `rest_counts`): [`docs/api/rest.md`
   „Inzwischen gespeichert: X von Y · deine Eingabe: Z", und der Knopf heißt „Meine Zahlen
   speichern". An einem Tag, der nicht mehr speicherbar ist, bietet die Leiste nur „Verwerfen".
 
+## Freiwillige Spracheingabe
+
+Verkauf und Inhaber können auf einem Gerät mit HTTPS an einem zählbaren Tag
+„Sprechen“ wählen. Kurze Sätze mit Produkt, gegebenenfalls Sorte und Zahl
+funktionieren am besten. „Posten … nichts übrig“ schlägt für jede Zählzeile
+des eindeutigen Postens null vor. Bei „dazu“, „plus“ oder „mehr“ bittet die
+App um Prüfung der absoluten Menge. Unklare Produkte und Mengen lassen sich
+vor der Übernahme zuordnen und ändern.
+
+„Übernehmen“ ändert den Benutzerentwurf für den angezeigten Tag. „Rückgängig“
+stellt die vorherigen Entwurfswerte der übernommenen Zeilen wieder her.
+Gespeichert wird mit „Speichern“. Bei einer inzwischen geänderten Zählung
+gilt der bestehende Konfliktablauf. Unter „Hilfe“ stehen Tipps. Aktivierung,
+Budget und Datenweitergabe sind im [API-Vertrag](../api/sprache.md) beschrieben.
+
 ## Querverbindungen
 
 - **Abgleich Produktion ↔ Kasse:** gebacken − CAP − verkauft − Rest je Posten, mit denselben

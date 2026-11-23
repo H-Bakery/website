@@ -18,20 +18,11 @@
 import { NextFunction, Request, Response, Router } from 'express'
 
 import { requireRole } from '../auth/middleware'
-import { BackzettelSource } from '../services/backzettel-source'
-import {
-  BackzettelError,
-  BackzettelService,
-} from '../services/backzettel.service'
-import {
-  createRestService,
-  RestOptions,
-} from '../services/rest-am-abend.service'
+import { BackzettelError } from '../services/backzettel.service'
+import { createRestService } from '../services/rest-am-abend.service'
 import { sendError } from '../utils/http-error'
 
 const BOM = String.fromCharCode(0xfeff)
-
-export type RestRouterOptions = RestOptions
 
 function handle(
   fn: (req: Request, res: Response) => Promise<unknown>
@@ -53,11 +44,8 @@ function handle(
 }
 
 export function createRestRouter(
-  source: BackzettelSource,
-  backzettel: BackzettelService,
-  options: RestRouterOptions = {}
+  service: ReturnType<typeof createRestService>
 ): Router {
-  const service = createRestService(source, backzettel, options)
   const router = Router()
   const readers = requireRole('verkauf', 'backstube')
   const counters = requireRole('verkauf')

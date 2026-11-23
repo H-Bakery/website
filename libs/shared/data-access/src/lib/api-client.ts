@@ -217,12 +217,13 @@ export class ApiClient {
     // Add timeout using AbortController
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), this.timeout)
+    const abort = () => controller.abort()
+    if (options.signal?.aborted) abort()
+    else options.signal?.addEventListener('abort', abort, { once: true })
     config.signal = controller.signal
 
     try {
       const response = await fetch(url, config)
-      clearTimeout(timeoutId)
-
       let data: any
       const contentType = response.headers.get('content-type')
 
@@ -255,8 +256,6 @@ export class ApiClient {
         message: 'Request successful',
       }
     } catch (error) {
-      clearTimeout(timeoutId)
-
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
           throw new Error('Request timeout')
@@ -265,6 +264,9 @@ export class ApiClient {
       }
 
       throw new Error('Unknown error occurred')
+    } finally {
+      clearTimeout(timeoutId)
+      options.signal?.removeEventListener('abort', abort)
     }
   }
 
@@ -381,6 +383,20 @@ export class ApiClient {
       },
       options
     )
+  }
+
+  /** Binärdaten mit derselben Sitzung und Fehlerbehandlung wie JSON senden. */
+  async postRaw<T>(
+    endpoint: string,
+    body: Blob,
+    signal: AbortSignal
+  ): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, {
+      method: 'POST',
+      body,
+      signal,
+      headers: { 'Content-Type': body.type },
+    })
   }
 
   /**
