@@ -2,7 +2,7 @@
 id: TASK-043
 title: Abgleich in Euro - Soll-Umsatz aus der Produktion gegen die Kasse
 slug: abgleich-soll-umsatz-euro
-status: todo
+status: done
 priority: 2
 owner: ''
 projects: []
@@ -17,7 +17,7 @@ sprint: ''
 depends_on: []
 due_date: ''
 created: 2026-11-22
-updated: 2026-11-22
+updated: 2026-11-23
 ---
 
 # Abgleich in Euro - Soll-Umsatz aus der Produktion gegen die Kasse
