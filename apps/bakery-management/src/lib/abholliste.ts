@@ -762,6 +762,7 @@ export function changeAlreadyApplied(
   ) {
     return false
   }
+  if (change.cashTopUp && !preorder.mixedPayment) return false
   // `paid: true` auf einer bezahlten Bestellung heißt „Rest kassiert“ bzw.
   // „erstattet“ - erledigt erst, wenn kein Betrag mehr offen ist.
   if (change.paid === true && (preorder.paymentBalance ?? 0) !== 0) {

@@ -108,6 +108,8 @@ Samstagsteig. Geplante Mengen und fehlende Backzettel oder Kassenberichte sind j
   markierte Bestellungen bleiben ohne Abzug. Bei einem freigegebenen Zettel zählen für den Abzug
   die enthaltenen Vorbestellmengen samt quittierter Nachträge, höchstens die aktuell bestellte
   Menge. Bei einem reinen Entwurf gilt der aktuelle Plan.
+- Nach einer externen Teilzahlung mit Kassennachzahlung bleiben Soll und Differenz des
+  betroffenen Abschnitts offen. Das Kassen-Ist bleibt sichtbar.
 - **Der Preis** ist der Ladenpreis aus `hq/products/*.md`, mit dem Produktfaktor in die
   Backzettel-Einheit umgerechnet. Fehlt er, gilt der positive Netto-Durchschnitt einer eindeutig zuordenbaren
   Kassennummer aus dem Bericht des Backtags (Positionsumsatz geteilt durch Stückzahl nach
@@ -119,7 +121,8 @@ Samstagsteig. Geplante Mengen und fehlende Backzettel oder Kassenberichte sind j
 - **Ist** stammt aus den Kassenpositionen einschließlich Stornos. Sammelnummern („Sonstige“,
   „Diverse“, „Sammelnummer“) zählen beim Abschnitt über die Kassengruppe, den Abschnitt im Namen
   oder die eindeutig zugeordneten Hunderter der Kassennummern. In den Posten bleiben sie „nicht
-  zuordenbar“. Die Kennzahl oben teilt den Nettoumsatz aller erkannten Sammelnummern durch den
+  zuordenbar“. Separat zugeordneter Zukauf im selben Abschnitt steht der Zuordnung einer
+  Sammelnummer nicht im Weg. Die Kennzahl oben teilt den Nettoumsatz aller erkannten Sammelnummern durch den
   Kassenumsatz der vorhandenen Berichte. Eine Kassennummer ohne eindeutigen Abschnitt bleibt in
   den Details offen. Ist für einen Produktionsabschnitt keine Kassenzuordnung bekannt, bleiben
   Ist und Differenz offen.

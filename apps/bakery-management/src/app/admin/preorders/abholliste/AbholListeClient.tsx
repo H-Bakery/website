@@ -292,6 +292,19 @@ function describeChange(change: PreorderStatusChange): string {
   return 'Die Änderung'
 }
 
+function cashPaymentMissing(preorder: Preorder, change: PreorderStatusChange) {
+  return (
+    (change.externalPayment === false && preorder.externalPayment) ||
+    (change.cashTopUp && !preorder.mixedPayment)
+  )
+}
+
+function cashPaymentChange(preorder: Preorder): PreorderStatusChange {
+  return owesRest(preorder) && (preorder.paidAmount ?? 0) > 0
+    ? { paid: true, cashTopUp: true }
+    : { paid: true, externalPayment: false }
+}
+
 /**
  * Eine Übergabe scheiterte am Versionsabgleich, weil die Bestellung
  * inzwischen storniert oder ihr Betrag geändert wurde (W4-Verifikation
@@ -370,7 +383,7 @@ export function lostActionText(
 ): string {
   const back = 'Die Verbindung ist wieder da -'
   if (change.status === 'abgeholt' && fresh.status === 'abgeholt') {
-    if (change.externalPayment === false && fresh.externalPayment) {
+    if (cashPaymentMissing(fresh, change)) {
       return `${code}: ${back} wurde inzwischen schon übergeben. Die Kassenzahlung ist nicht erfasst. Bitte den Zahlungsweg prüfen.`
     }
     if (change.paid === true && !fresh.paid) {
@@ -900,8 +913,7 @@ export default function AbholListeClient({
     if (
       fresh?.status === 'abgeholt' &&
       change?.status === 'abgeholt' &&
-      change.externalPayment === false &&
-      fresh.externalPayment
+      cashPaymentMissing(fresh, change)
     ) {
       const text = `${preorder.code}: Wurde inzwischen schon übergeben. Die Kassenzahlung ist nicht erfasst. Bitte den Zahlungsweg prüfen.`
       keepFailure(preorder.code, text)
@@ -1107,7 +1119,10 @@ export default function AbholListeClient({
 
   const handOver = (
     preorder: Preorder,
-    paidChange: Pick<PreorderStatusChange, 'paid' | 'externalPayment'> = {}
+    paidChange: Pick<
+      PreorderStatusChange,
+      'paid' | 'externalPayment' | 'cashTopUp'
+    > = {}
   ) => {
     setHandover(null)
     const change: PreorderStatusChange = { status: 'abgeholt', ...paidChange }
@@ -1193,7 +1208,7 @@ export default function AbholListeClient({
     const name = preorder.customerName ?? preorder.code
     act(
       preorder,
-      { paid: true, ...(atRegister ? { externalPayment: false } : {}) },
+      atRegister ? cashPaymentChange(preorder) : { paid: true },
       owesRest(preorder) && (!preorder.externalPayment || atRegister)
         ? `${name}: Rest kassiert.`
         : `${name}: bezahlt.`,
@@ -2763,9 +2778,7 @@ export default function AbholListeClient({
           {handover && externalAmountOpen && canWrite && (
             <Button
               variant="outlined"
-              onClick={() =>
-                handOver(handover, { paid: true, externalPayment: false })
-              }
+              onClick={() => handOver(handover, cashPaymentChange(handover))}
               sx={TOUCH}
             >
               {handoverPayment?.kind === 'rest'
@@ -2857,7 +2870,9 @@ export default function AbholListeClient({
               onClick={() => recordConfirmedPayment(true)}
               sx={TOUCH}
             >
-              An der Kasse bezahlt
+              {owesRest(payConfirm)
+                ? 'Rest an der Kasse bezahlt'
+                : 'An der Kasse bezahlt'}
             </Button>
           )}
           {payConfirm && (

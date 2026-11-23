@@ -15,6 +15,7 @@ import {
   Model,
   NonAttribute,
   Sequelize,
+  literal,
 } from 'sequelize'
 import type { PreorderItem } from './PreorderItem'
 
@@ -34,6 +35,18 @@ export const PREORDER_STATUSES = [
   'storniert',
 ] as const
 export type PreorderStatus = (typeof PREORDER_STATUSES)[number]
+
+/** Der jüngste Eintrag zur Mischzahlung im bestehenden Audit. */
+export const mixedPaymentAttribute: [ReturnType<typeof literal>, string] = [
+  literal(`(
+    SELECT json_extract(data, '$.mixedPayment')
+    FROM audit_log
+    WHERE entity = 'preorder' AND entity_id = CAST(Preorder.id AS TEXT)
+      AND json_extract(data, '$.mixedPayment') IS NOT NULL
+    ORDER BY id DESC LIMIT 1
+  )`),
+  'mixedPayment',
+]
 
 export class Preorder extends Model<
   InferAttributes<Preorder>,
@@ -71,6 +84,7 @@ export class Preorder extends Model<
   declare updatedAt: CreationOptional<Date>
 
   declare items?: NonAttribute<PreorderItem[]>
+  declare mixedPayment?: NonAttribute<number | null>
 
   static initModel(sequelize: Sequelize): typeof Preorder {
     Preorder.init(

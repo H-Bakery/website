@@ -150,6 +150,11 @@ export default function AbgleichEuroView({
                           Grundmenge offen
                         </Typography>
                       )}
+                      {s.mischzahlungOffen && (
+                        <Typography variant="caption" component="div">
+                          Soll offen wegen Mischzahlung
+                        </Typography>
+                      )}
                       {s.preisOffen.length > 0 && (
                         <Typography variant="caption" component="div">
                           Preis offen:{' '}

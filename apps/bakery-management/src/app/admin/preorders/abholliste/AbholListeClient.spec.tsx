@@ -333,6 +333,41 @@ describe('AbholListeClient (P2)', () => {
     )
   })
 
+  it.each([
+    [
+      'Max Muster übergeben',
+      'Rest an der Kasse bezahlt und übergeben',
+      { status: 'abgeholt' },
+    ],
+    ['Max Muster: als bezahlt markieren', 'Rest an der Kasse bezahlt', {}],
+  ])(
+    'erfasst die Kassennachzahlung getrennt bei „%s“',
+    async (action, confirm, status) => {
+      const user = userEvent.setup()
+      mockDay.mockResolvedValue(
+        ladenDay([
+          {
+            ...max,
+            externalPayment: true,
+            paid: true,
+            paidAmount: 10,
+            total: 15,
+            paymentBalance: 5,
+          },
+        ])
+      )
+      renderAs('verkauf')
+      await user.click(await screen.findByRole('button', { name: action }))
+      const dialog = await screen.findByRole('dialog')
+      await user.click(within(dialog).getByRole('button', { name: confirm }))
+      expect(mockStatus).toHaveBeenCalledWith(
+        max.id,
+        { ...status, paid: true, cashTopUp: true },
+        max.updatedAt
+      )
+    }
+  )
+
   it('übergibt auch ohne Zahlung (Rechnung) und markiert bezahlt einzeln', async () => {
     const user = userEvent.setup()
     renderAs('verkauf')

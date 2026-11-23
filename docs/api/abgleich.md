@@ -83,6 +83,8 @@ ergeben 400 `invalid_next_day_sections` mit deutscher Meldung.
   auch den angrenzenden Kalendertag vor und nach dem ausgewählten Zeitraum.
   `zuordnungOffen` markiert Abschnitte, deren Ist und Differenz wegen nicht eindeutig
   zuordenbarer Kassenpositionen offen sind.
+  `mischzahlungOffen` markiert Abschnitte mit offenem Soll und offener Differenz nach einer
+  externen Teilzahlung mit Kassennachzahlung.
 - `items[]` liefert `key`, `name`, `sizeLabel`, `section`, `sollEur`, `istEur` und
   `preisOffen`. `nichtZuordenbar[]` liefert `plu`, `name`, `section` (soweit zuordenbar),
   `sammel` und `istEur`. Geldbeträge sind Euro-Zahlen. Bei fehlenden Daten ist der Wert

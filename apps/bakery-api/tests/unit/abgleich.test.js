@@ -1221,16 +1221,17 @@ describe('Euro-Abgleich', () => {
     })
   const section = (day, id) => day.abschnitte.find((s) => s.section === id)
 
-  const breadDay = (transactions, price) =>
+  const breadDay = (transactions, price, config = euroConfig) =>
     reconcile({
       to: SAT,
+      config,
       catalog: [...euroCatalog, { id: 'test-brot', price }],
       days: {
         [SAT]: {
           backzettel: bzDay(
             'confirmed',
             [{ itemId: 'test-brot', total: 2 }],
-            euroConfig
+            config
           ),
           report: aggregateDay(SAT, [{ transactions }], {
             includeProductGroups: true,
@@ -1310,6 +1311,47 @@ describe('Euro-Abgleich', () => {
     })
     expect(day.nichtZuordenbar[0].section).toBeNull()
   })
+
+  it.each([['Brot'], [undefined]])(
+    'zählt Sammelumsatz bei separat zugeordnetem Zukauf im selben Abschnitt (%s)',
+    (groupName) => {
+      const mixedConfig = {
+        ...euroConfig,
+        items: euroConfig.items.map((item) =>
+          item.id === 'test-brezel'
+            ? { ...item, section: 'brot', plu: [613] }
+            : item
+        ),
+      }
+      const day = breadDay(
+        [
+          {
+            total: 16,
+            items: [
+              breadSale,
+              {
+                product_id: 612,
+                product: 'Diverse',
+                group_name: groupName,
+                quantity: 2,
+                total: 8,
+              },
+              { product_id: 613, product: 'Testzukauf', quantity: 1, total: 2 },
+            ],
+          },
+        ],
+        3.5,
+        mixedConfig
+      )
+      expect(section(day, 'brot')).toMatchObject({
+        sollEur: 14,
+        istEur: 14,
+        sammelEur: 8,
+        handelswareEur: 2,
+        differenzEur: 0,
+      })
+    }
+  )
 
   it('lässt das Ist eines Umsatzbons ohne Positionen offen und behält einen vollständigen Nullumsatz', () => {
     const missing = breadDay([{ total: 14, items: [] }], 3.5)

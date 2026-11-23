@@ -95,6 +95,7 @@ export interface Preorder {
   notCollectedAt: string | null
   paid: boolean
   externalPayment?: boolean
+  mixedPayment?: boolean
   /** Bezahlter Betrag (bei `paid`); ältere Server: fehlt. */
   paidAmount?: number | null
   /**
@@ -186,6 +187,7 @@ export interface PreorderStatusChange {
   notCollected?: boolean
   paid?: boolean
   externalPayment?: boolean
+  cashTopUp?: true
 }
 
 export interface PreorderListFilters {

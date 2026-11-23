@@ -601,10 +601,22 @@ function externalPreorderQty(config, catalog, date, backzettel, snapshot) {
   const quantities = new Map()
   if (!snapshot?.length || !config) return quantities
   const current = toCorePreorderItems(snapshot, date)
+  const mixedOrders = new Set(
+    snapshot.filter((p) => p.mixedPayment).map((p) => p.preorderId)
+  )
   const lineKey = (p) => `${p.itemId}|${p.variant || ''}`
   const orderKey = (p) => `${p.preorderId}#${lineKey(p)}`
-  const add = (key, qty) =>
-    quantities.set(key, round2((quantities.get(key) || 0) + qty))
+  const add = (entry, qty) => {
+    if (qty <= 0) return
+    const key = lineKey(entry)
+    const previous = quantities.get(key)
+    quantities.set(
+      key,
+      previous === null || mixedOrders.has(entry.preorderId)
+        ? null
+        : round2((previous ?? 0) + qty)
+    )
+  }
 
   for (const source of backzettel.preorderSources || []) {
     const sum = (after) =>
@@ -618,7 +630,7 @@ function externalPreorderQty(config, catalog, date, backzettel, snapshot) {
     const orders = sum(current)
     if (source.status !== 'confirmed') {
       const keys = new Set(source.lineKeys)
-      for (const p of orders) if (keys.has(lineKey(p))) add(lineKey(p), p.after)
+      for (const p of orders) if (keys.has(lineKey(p))) add(p, p.after)
       continue
     }
 
@@ -636,10 +648,7 @@ function externalPreorderQty(config, catalog, date, backzettel, snapshot) {
       }
     }
     for (const p of orders) {
-      add(
-        lineKey(p),
-        Math.min(p.after, Math.max(0, included.get(orderKey(p)) || 0))
-      )
+      add(p, Math.min(p.after, Math.max(0, included.get(orderKey(p)) || 0)))
     }
   }
   return quantities
@@ -777,7 +786,9 @@ function euroSales(report, register, sections) {
       ? (collective || targets.length > 1) &&
         targetSections.size === 1 &&
         targets.every((t) => !t.purchased)
-      : candidate && !tradeMarker && !register.purchasedSections.has(candidate)
+      : candidate &&
+        !tradeMarker &&
+        (collective || !register.purchasedSections.has(candidate))
     const ownSection = assigned
       ? targets[0].section
       : ownGroup
@@ -899,6 +910,7 @@ function euroDay(date, day, buckets, report, catalog, register, sectionIds) {
         handelswareEur: cashComplete ? euro(cash ? cash.trade : 0) : null,
         preisOffen: [],
         grundmengeOffen: false,
+        mischzahlungOffen: false,
         rest: 0,
         restCounted: true,
         hasLines: false,
@@ -918,6 +930,11 @@ function euroDay(date, day, buckets, report, catalog, register, sectionIds) {
     for (const line of b.lines) {
       section.hasLines = true
       if (line.qtyOpen) section.grundmengeOffen = true
+      if (line.externalQty === null) {
+        section.mischzahlungOffen = true
+        soll = null
+        continue
+      }
       const shop = round2(line.baked - line.cap - line.externalQty)
       const price =
         shop !== 0 || line.rest > 0
@@ -1045,6 +1062,7 @@ function euroResult(daily, from, to, euroSections, folgetag, order) {
             handelswareEur,
             preisOffen,
             grundmengeOffen,
+            mischzahlungOffen,
             zuordnungOffen,
             section,
             sectionLabel,
@@ -1060,6 +1078,7 @@ function euroResult(daily, from, to, euroSections, folgetag, order) {
             handelswareEur,
             preisOffen,
             grundmengeOffen,
+            mischzahlungOffen,
             zuordnungOffen,
             restCounted: hasLines && restCounted,
             folgetagEur: euro(carry),
@@ -1286,7 +1305,7 @@ function reconcile(a) {
         label: variant ? rest.variantLabel(config, variant, item) : null,
         baked: b ? (confirmed ? b.baked || 0 : b.planned) : 0,
         cap: b ? b.cap : 0,
-        externalQty: external.get(key) || 0,
+        externalQty: external.has(key) ? external.get(key) : 0,
         qtyOpen: b ? Boolean(b.qtyOpen) : false,
         anyCount: stored.length > 0,
         complete: rest.lineComplete(stored, expected),

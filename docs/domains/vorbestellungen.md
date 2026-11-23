@@ -77,8 +77,11 @@ Verwaltung `apps/bakery-management/src/lib/preordersApi.ts`, `preordersTypes.ts`
   den Zahlungsweg erfasst. Er wirkt auf den [Euro-Abgleich](abgleich.md#euro-abgleich).
 - In der Abholliste zeigt der Übergabedialog den vorgesehenen Zahlungsweg und den offenen
   Betrag. Verkauf und Inhaber können eine tatsächlich an der Ladenkasse erhaltene
-  Zahlung ausdrücklich erfassen. Die API setzt den Zahlungsweg im selben Schritt
-  auf Kasse. Eine anschließende Rücknahme der Übergabe stellt den vorherigen Zahlungsweg
+  Zahlung ausdrücklich erfassen. Bei vollständiger Kassenzahlung setzt die API den
+  Zahlungsweg auf Kasse. War ein Teil schon extern bezahlt, bleibt der Zahlungsweg
+  erhalten und die Kassennachzahlung markiert die Bestellung im Audit als Mischzahlung.
+  Der Euro-Abgleich weist das Soll im betroffenen Abschnitt als offen aus.
+  Eine anschließende Rücknahme der Übergabe stellt den vorherigen Zahlungsstand
   wieder her, sofern er seither gleich geblieben ist.
 - **Backzettel-Nachträge** schreibt der Schreibweg der Vorbestellung (Anlegen, Ändern, Status, Storno,
   Sammelaktion) in derselben Transaktion, nicht das Lesen des Backzettels - siehe

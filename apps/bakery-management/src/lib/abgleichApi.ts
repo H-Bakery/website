@@ -166,6 +166,7 @@ export interface AbgleichEuroSection {
   handelswareEur: number | null
   preisOffen: string[]
   grundmengeOffen: boolean
+  mischzahlungOffen?: boolean
   zuordnungOffen?: boolean
   restCounted: boolean
 }

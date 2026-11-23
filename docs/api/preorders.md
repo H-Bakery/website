@@ -93,9 +93,12 @@ updatedAt, deadline, afterDeadline }`.
   unabhängig davon erfasst. Der [Euro-Abgleich](abgleich.md#euro-abgleich-task-043) liest den
   Zahlungsweg. Die Mörsbach-Aliasantwort behält ihren Vertrag.
 - Verkauf und Inhaber können `externalPayment` auch bei `POST /:id/status` mitschicken.
-  Die Abholliste setzt es bei einer ausdrücklich erfassten Kassenzahlung zusammen mit
-  `paid: true` auf `false`. Die Rücknahme einer Übergabe übernimmt den vorherigen Zahlungsweg
-  aus dem Audit-Eintrag, wenn er seit der Übergabe gleich geblieben ist.
+  Bei vollständiger Kassenzahlung setzt die Abholliste es zusammen mit `paid: true` auf
+  `false`. Bei einer Kassennachzahlung nach externer Teilzahlung sendet sie
+  `cashTopUp: true` mit `paid: true`. Der Zahlungsweg bleibt erhalten und die Mischzahlung
+  wird im Audit gespeichert. Die Vorbestellantwort liefert dann `mixedPayment: true`.
+  Eine Rücknahme der Übergabe übernimmt den vorherigen Zahlungsstand aus dem Audit-Eintrag,
+  sofern die Zahlung seit der Übergabe gleich geblieben ist.
 - **Retried create (`requestId`)** (migration `20261116000000-preorders-request-id.js`, unique,
   nullable): the entry form sends one id (8-64 of `[A-Za-z0-9_-]`, else 400 `invalid_request_id`)
   per order it is saving and keeps it across retries. A save whose answer was lost (Wi-Fi drop)
