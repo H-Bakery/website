@@ -92,6 +92,22 @@ function numberWord(value) {
   }
   const word = normalize(value)
   if (Object.hasOwn(numbers, word)) return numbers[word]
+  const magnitude = /^(.*?)(tausend|hundert)(.*)$/.exec(word)
+  if (magnitude) {
+    const scale = numbers[magnitude[2]]
+    const count = magnitude[1] ? numberWord(magnitude[1]) : 1
+    const remainder = magnitude[3].replace(/^und(?=.)/, '')
+    const tail = remainder ? numberWord(remainder) : 0
+    if (
+      Number.isInteger(count) &&
+      count > 0 &&
+      count < scale &&
+      tail >= 0 &&
+      tail < scale
+    ) {
+      return count * scale + tail
+    }
+  }
   const compound = /^(.+)und(.+)$/.exec(word)
   if (!compound) return undefined
   const one = numbers[compound[1]]
@@ -403,7 +419,105 @@ function speechText(text) {
   return text.normalize('NFC').toLowerCase().trim().replace(/\s+/g, ' ')
 }
 
-function modelEvidence(heard, { surface, fragments }, row, model) {
+// Zahlenteile aus dem gesamten Bruchstück lesen. Ein Zitat kann mitten in
+// einer Dezimalzahl oder zwischen Hundertern und Tausendern beginnen.
+function quantityExpressions(tokens) {
+  const amounts = []
+  for (let start = 0; start < tokens.length; ) {
+    const signed = /^[-−]/.test(tokens[start])
+    let expression = tokens[start].replace(/^[-−]/, '')
+    let qty = numberWord(expression)
+    let end = start + 1
+    if (qty === undefined) {
+      start = end
+      continue
+    }
+
+    const groupedDigits = /^[-−]?\d{1,3}$/.test(expression)
+    while (/^\d{3}$/.test(tokens[end] ?? '') && groupedDigits) {
+      expression += tokens[end++]
+      qty = numberWord(expression)
+    }
+    while (
+      end < tokens.length &&
+      (!/^\d+$/.test(tokens[end]) || /(?:tausend|hundert)/.test(expression))
+    ) {
+      const last =
+        tokens[end] === 'und' && /(?:tausend|hundert)/.test(expression)
+          ? Math.min(end + 1, tokens.length - 1)
+          : end
+      const combined = expression + tokens.slice(end, last + 1).join('')
+      const joined = numberWord(combined)
+      if (joined === undefined) break
+      expression = combined
+      end = last + 1
+      qty = joined
+    }
+
+    if (signed) qty = -Math.abs(qty)
+    let decimalNotation = /[,.]/.test(expression)
+    if (tokens[end] === 'komma') {
+      decimalNotation = true
+      end++
+      let digits = ''
+      while (end < tokens.length) {
+        const token = tokens[end]
+        const digit = numberWord(token)
+        if (/^\d+$/.test(token)) digits += token
+        else if (Number.isInteger(digit) && digit >= 0 && digit <= 9)
+          digits += digit
+        else break
+        end++
+      }
+      qty =
+        digits && Number.isInteger(qty)
+          ? Number(
+              `${
+                qty < 0 || signed || /^minus\b/.test(expression) ? '-' : ''
+              }${Math.abs(qty)}.${digits}`
+            )
+          : undefined
+    }
+    amounts.push({ start, end, qty, decimalNotation })
+    start = end
+  }
+  return amounts
+}
+
+// Längere belegte Produktnamen haben Vorrang vor ihren Teilnamen.
+// Unabhängige Treffer im selben Zitat bleiben mehrdeutig.
+function modelNameMatches(tokens, rows, maxWords) {
+  const keys = new Set()
+  let coveredUntil = 0
+  for (let start = 0; start < tokens.length; start++) {
+    for (
+      let end = Math.min(tokens.length, start + maxWords);
+      end > Math.max(start, coveredUntil);
+      end--
+    ) {
+      const words = tokens.slice(start, end)
+      if (
+        words.every(
+          (word) => numberWord(word) !== undefined || units.has(normalize(word))
+        )
+      )
+        continue
+      const matches = findRows(words.join(' '), rows)
+      if (!matches.length) continue
+      for (const row of matches) keys.add(row.key)
+      coveredUntil = end
+      break
+    }
+  }
+  return keys
+}
+
+function modelEvidence(
+  heard,
+  { surface, fragments, rows, maxNameWords },
+  row,
+  model
+) {
   const excerpt = speechText(heard)
   const tokens = excerpt.match(TOKENS) ?? []
   const matches = []
@@ -420,32 +534,36 @@ function modelEvidence(heard, { surface, fragments }, row, model) {
       start + tokens.length <= fragment.tokens.length;
       start++
     ) {
-      if (!tokens.every((token, i) => token === fragment.tokens[start + i]))
-        continue
-      matches.push({ fragment, start })
+      if (tokens.every((token, i) => token === fragment.tokens[start + i]))
+        matches.push({ fragment, start, end: start + tokens.length })
     }
   }
   if (!matches.length)
     return { reason: 'Der gehörte Ausschnitt kommt im Transkript nicht vor.' }
 
   const reasons = []
+  const names = modelNameMatches(tokens, rows, maxNameWords)
+  const nameVerified = names.size === 1 && names.has(row?.key)
+  if (!names.size) reasons.push('Von der KI zugeordnet – bitte prüfen')
+  else if (!nameVerified) reasons.push(`Zuordnung prüfen: gehört „${heard}“`)
   if (matches.some(({ fragment }) => fragment.relative)) reasons.push('dazu?')
-  const amounts = tokens.flatMap((token, index) => {
-    const qty = numberWord(token)
-    return qty === undefined
-      ? []
-      : [{ qty, index, decimalNotation: /[,.]/.test(token) }]
-  })
+
   const heardUnits = new Set()
-  let ambiguous = amounts.length !== 1
-  let decimalNotation = amounts.some((amount) => amount.decimalNotation)
-  for (const { index } of amounts) {
-    // Nachbarwörter zählen auch, wenn Claude sie aus einem Zitat weglässt.
-    for (const { fragment, start } of matches) {
-      const position = start + index
-      const before = fragment.tokens[position - 1]
-      const after = fragment.tokens[position + 1]
-      if (before === 'komma' || after === 'komma') decimalNotation = true
+  let ambiguous = false
+  let partial = false
+  let differs = false
+  let decimalNotation = false
+  for (const { fragment, start, end } of matches) {
+    const amounts = fragment.amounts.filter(
+      (amount) => amount.start < end && amount.end > start
+    )
+    if (amounts.length !== 1 || amounts[0].qty === undefined) ambiguous = true
+    for (const amount of amounts) {
+      const before = fragment.tokens[amount.start - 1]
+      const after = fragment.tokens[amount.end]
+      if (amount.start < start || amount.end > end) partial = true
+      if (amount.qty !== undefined && amount.qty !== model.menge) differs = true
+      if (amount.decimalNotation) decimalNotation = true
       if (['oder', 'bis'].includes(before) || ['oder', 'bis'].includes(after))
         ambiguous = true
       for (const adjacent of [before, after]) {
@@ -454,13 +572,15 @@ function modelEvidence(heard, { surface, fragments }, row, model) {
       }
     }
   }
-  if (ambiguous) {
+  if (partial)
+    reasons.push('Das Zitat enthält nur einen Teil der gesprochenen Menge.')
+  if (ambiguous)
     reasons.push('Die gesprochene Menge ist nicht eindeutig erkennbar.')
-  } else if (amounts[0].qty !== model.menge) {
+  else if (differs)
     reasons.push(
       'Die vorgeschlagene Menge weicht von der gesprochenen Menge ab.'
     )
-  }
+
   if (!heardUnits.size) {
     for (const { fragment } of matches) {
       for (const token of fragment.tokens) {
@@ -483,7 +603,7 @@ function modelEvidence(heard, { surface, fragments }, row, model) {
     unit,
     decimalNotation,
     reason: reasons.join(' · ') || undefined,
-    grounded: true,
+    nameVerified,
   }
 }
 
@@ -492,13 +612,29 @@ function mergeModelProposal(parsed, result, transcript, validation) {
   const fragments = transcript.split(FRAGMENT_SEPARATOR).map(speechText)
   const context = {
     surface: speechText(transcript),
-    fragments: fragments.map((text, index) => ({
-      text,
-      tokens: text.match(TOKENS) ?? [],
-      relative:
-        isRelative(text) ||
-        /^(dazu|plus|mehr)$/.test(fragments[index + 1] ?? ''),
-    })),
+    rows: validation.rows,
+    maxNameWords: validation.rows.reduce(
+      (max, row) =>
+        Math.max(
+          max,
+          ...[row.label, row.itemName, ...row.aliases].map(
+            (name) =>
+              normalize(`${name} ${row.variant ?? ''}`).split(' ').length + 1
+          )
+        ),
+      1
+    ),
+    fragments: fragments.map((text, index) => {
+      const tokens = text.match(TOKENS) ?? []
+      return {
+        text,
+        tokens,
+        amounts: quantityExpressions(tokens),
+        relative:
+          isRelative(text) ||
+          /^(dazu|plus|mehr)$/.test(fragments[index + 1] ?? ''),
+      }
+    }),
   }
   const modelRows = result.zeilen
     .filter((row) => row && typeof row === 'object')
@@ -531,7 +667,7 @@ function mergeModelProposal(parsed, result, transcript, validation) {
   )
   const resolved = new Set(
     modelRows
-      .filter(({ grounded, key }) => grounded && known.has(key))
+      .filter(({ nameVerified }) => nameVerified)
       .map(({ heard }) =>
         speechText(heard)
           .replace(/^[,.;!?]+|[,.;!?]+$/g, '')
@@ -549,6 +685,28 @@ function mergeModelProposal(parsed, result, transcript, validation) {
     if (!unmatched.has(key)) unmatched.set(key, { heard })
   }
   return { proposal, unmatched: [...unmatched.values()] }
+}
+
+function reserveSttCost({
+  clipSeconds,
+  sttRate,
+  promptBytes,
+  maxOutputTokens,
+  tokenRate,
+}) {
+  const seconds = Math.max(3, Math.ceil(clipSeconds * 1.5))
+  const durationCost = estimatedCostMicroEur({ seconds, sttRate })
+  if (!tokenRate) return durationCost
+
+  // Ein Audiotoken je 20 ms, ein Token je UTF-8-Byte und Platz für
+  // die Einbettung des Prompts. Für die Ausgabe das Modellmaximum ansetzen.
+  const input = seconds * 50 + promptBytes + 64
+  const tokenCost = estimatedCostMicroEur({
+    input,
+    output: maxOutputTokens,
+    tokenRate,
+  })
+  return Math.max(durationCost, tokenCost)
 }
 
 function settledSttCost(
@@ -600,6 +758,7 @@ module.exports = {
   validateProposal,
   mergeModelProposal,
   budgetThreshold,
+  reserveSttCost,
   settledSttCost,
   estimatedCostMicroEur,
 }

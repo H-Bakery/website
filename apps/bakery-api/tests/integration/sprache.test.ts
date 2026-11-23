@@ -150,14 +150,25 @@ it('löst Aliase ohne Haiku und speichert nur abrechenbare Metadaten', async () 
     path.join(hq, 'config', 'sprache.yaml'),
     'test-weck:\n  - Testsemmel\n'
   )
-  provider.mockResolvedValueOnce(response({ text: 'Testsemmel zwei' }))
+  provider.mockResolvedValueOnce(
+    response({
+      text: 'Testsemmel zwei',
+      model: 'voxtral-mini-2602',
+      usage: {
+        prompt_audio_seconds: 1,
+        prompt_tokens: 19,
+        completion_tokens: 4,
+        total_tokens: 23,
+      },
+    })
+  )
   const result = await post().expect(200)
   expect(result.headers['cache-control']).toBe('no-store')
   expect(result.body.data).toMatchObject({
     transcript: 'Testsemmel zwei',
     unmatched: [],
     proposal: [{ key: KEY, menge: 2, unsicher: false }],
-    usage: { llmUsed: false },
+    usage: { llmUsed: false, input: 19, output: 4 },
   })
   expect(provider).toHaveBeenCalledTimes(1)
   const [url, opts] = provider.mock.calls[0]
@@ -174,6 +185,8 @@ it('löst Aliase ohne Haiku und speichert nur abrechenbare Metadaten', async () 
     stt_provider: 'mistral',
     llm_used: 0,
     cost_micro_eur: 50,
+    input_tokens: 19,
+    output_tokens: 4,
     outcome: 'ok',
   })
   expect(
@@ -303,19 +316,57 @@ it.each(['end_turn', 'refusal'])(
   }
 )
 
-it('blockiert parallele Anfragen über dem Monatsbudget und warnt einmal', async () => {
-  env.VOICE_MONTHLY_BUDGET_EUR = '0.0001'
-  const results = await Promise.all([post(), post('inhaber'), post()])
-  expect(results.map(({ status }) => status).sort()).toEqual([200, 200, 429])
-  expect(results.find(({ status }) => status === 429).body).toMatchObject({
-    error: 'voice_budget_exhausted',
+it('lässt bei zwei parallelen Aufnahmen nur eine STT-Reservierung zu', async () => {
+  env.VOICE_MONTHLY_BUDGET_EUR = '0.00015'
+  let started: () => void
+  let finish: (response: Response) => void
+  const ready = new Promise<void>((resolve) => {
+    started = resolve
   })
-  expect(provider).toHaveBeenCalledTimes(2)
+  const reply = new Promise<Response>((resolve) => {
+    finish = resolve
+  })
+  provider.mockImplementationOnce(() => {
+    started()
+    return reply
+  })
+
+  const first = post()
+    .expect(200)
+    .then((result) => result)
+  await Promise.race([ready, first])
+  try {
+    expect((await post('inhaber').expect(429)).body.error).toBe(
+      'voice_budget_exhausted'
+    )
+    expect(provider).toHaveBeenCalledTimes(1)
+    expect(await usage()).toEqual([
+      expect.objectContaining({
+        outcome: 'pending',
+        cost_micro_eur: 150,
+      }),
+    ])
+  } finally {
+    finish(response({ text: 'Weck zwei', usage: { prompt_audio_seconds: 3 } }))
+    await first
+  }
   expect(warn).toHaveBeenCalledTimes(1)
   expect((await getStatus()).body.data.budget).toMatchObject({
     remainingEuro: 0,
-    spentEuro: 0.0001,
+    spentEuro: 0.00015,
   })
+})
+
+it('gibt nicht benötigte STT-Reserve nach der Antwort für weitere Aufnahmen frei', async () => {
+  env.VOICE_MONTHLY_BUDGET_EUR = '0.0002'
+  await post().expect(200)
+  expect((await getStatus()).body.data.budget).toMatchObject({
+    remainingEuro: 0.00015,
+    spentEuro: 0.00005,
+  })
+  await post('inhaber').expect(200)
+  expect(provider).toHaveBeenCalledTimes(2)
+  expect((await getStatus()).body.data.budget.spentEuro).toBe(0.0001)
 })
 
 it.each(['VOICE_RATE_PER_MINUTE', 'VOICE_RATE_PER_DAY'])(
@@ -429,7 +480,7 @@ it.each([
 ] as const)(
   'sperrt Claude bei zu kleinem Budget und meldet den passenden Parser-Ausgang (%s)',
   async (text, status) => {
-    env.VOICE_MONTHLY_BUDGET_EUR = '0.00005'
+    env.VOICE_MONTHLY_BUDGET_EUR = '0.00015'
     provider.mockResolvedValueOnce(response({ text }))
     const res = await post().expect(status)
     if (status === 200) {
@@ -456,7 +507,7 @@ it.each([
   }
 )
 
-it('rechnet gemeldete Mistral-Dauer vor der Claude-Reservierung an und sperrt weitere Aufnahmen', async () => {
+it('weist eine Aufnahme mit 150 Mikro-Euro Reserve bei 100 Mikro-Euro Budget vor STT ab', async () => {
   env.VOICE_MONTHLY_BUDGET_EUR = '0.0001'
   provider.mockResolvedValueOnce(
     response({
@@ -464,19 +515,20 @@ it('rechnet gemeldete Mistral-Dauer vor der Claude-Reservierung an und sperrt we
       usage: { prompt_audio_seconds: 3 },
     })
   )
-  const data = (await post().expect(200)).body.data
-  expect(data).toMatchObject({
-    hint: partialHint,
-    proposal: [{ key: KEY, menge: 2 }],
-    usage: { llmUsed: false, costEuro: 0.00015 },
-  })
-  expect((await getStatus()).body.data.budget).toMatchObject({
-    spentEuro: 0.00015,
-    remainingEuro: 0,
+  expect((await post().expect(429)).body.error).toBe('voice_budget_exhausted')
+  expect(provider).not.toHaveBeenCalled()
+  expect(await usage()).toEqual([])
+})
+
+it('prüft bei einem Tokentarif vorab auch das maximale Ausgabevolumen', async () => {
+  Object.assign(env, {
+    VOICE_STT_PROVIDER: 'openai',
+    OPENAI_API_KEY: 'test-alternativ',
+    VOICE_STT_MODEL: 'gpt-4o-mini-transcribe',
+    VOICE_MONTHLY_BUDGET_EUR: '0.010',
   })
   expect((await post().expect(429)).body.error).toBe('voice_budget_exhausted')
-  expect(provider).toHaveBeenCalledTimes(1)
-  expect(warn).toHaveBeenCalledTimes(1)
+  expect(provider).not.toHaveBeenCalled()
 })
 
 it.each([

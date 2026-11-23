@@ -25,7 +25,10 @@ Die Antworten tragen `Cache-Control: no-store`.
   `costEuro`, `llmUsed` und Tokenzählern (`input`, `output`, `read`, `write`).
   Eine Menge `null` im Vorschlag erfordert eine manuelle Eingabe. Modellvorschläge
   werden am wörtlichen Transkriptausschnitt auf Menge, Kommaschreibweise bei
-  Stück, relative Angaben und Einheit geprüft.
+  Stück, relative Angaben und Einheit geprüft. Der Name muss mit denselben
+  Namensregeln wie im Parser eindeutig zur Zeile passen. Bei abweichender oder
+  unklarer Zuordnung bleiben der markierte Vorschlag und das offene Bruchstück
+  sichtbar. Die Mengenprüfung bezieht den vollständigen Zahlenausdruck ein.
 - Wenn Claude ausfällt, ablehnt, kein gültiges Werkzeugergebnis liefert oder
   das Budget für diesen Schritt fehlt, bleiben vorhandene Parser-Vorschläge
   samt offenen Bruchstücken erhalten. `hint` enthält den Hinweis für das
@@ -61,9 +64,18 @@ Parser bei Lücken das Modell aus `VOICE_LLM_MODEL` fragen (Vorgabe
 `VOICE_MONTHLY_BUDGET_EUR` beträgt standardmäßig 10. `VOICE_RATE_PER_MINUTE`
 und `VOICE_RATE_PER_DAY` gelten je Benutzer in gleitenden Fenstern von
 60 Sekunden bzw. 24 Stunden (Vorgaben 10 und 150). Die API reserviert Kosten
-vor jedem Anbieteraufruf in SQLite. Sie setzt für STT mindestens die Clipdauer
-an und übernimmt eine höhere gemeldete Dauer aus `usage.prompt_audio_seconds`
-(Mistral) oder `usage.seconds` bei `usage.type: "duration"` (OpenAI). Für
+vor jedem Anbieteraufruf in SQLite. Für STT beträgt die Reserve das
+1,5-Fache der Clipdauer, auf volle Sekunden aufgerundet und mit mindestens
+drei Sekunden angesetzt. Für Tokentarife reserviert die API den höheren
+Betrag aus Dauer- und Tokenschätzung. Die Tokenschätzung nutzt 50 Audiotokens
+je reservierter Sekunde, ein Token je
+UTF-8-Byte des Prompts, 64 Tokens für die Einbettung und dem Ausgabemaximum
+(2.000 für die bekannten 4o-Modelle, bei anderen manuell bepreisten Modellen
+pauschal 16.384 als Reserve). Nach der Antwort gibt die API den
+unverbrauchten Anteil frei. Abgerechnet wird mindestens die tatsächliche
+Clipdauer, bei höherer gemeldeter Dauer `usage.prompt_audio_seconds`
+(Mistral) oder `usage.seconds` mit `usage.type: "duration"` (OpenAI).
+Mistral-Tokenzahlen stammen aus `prompt_tokens` und `completion_tokens`. Für
 OpenAI-Modelle mit Token-Abrechnung erfasst sie Eingabe- und Ausgabe-Tokens
 als Metadaten und berechnet bei bekannten Tarifen den höheren Betrag aus
 Token- und Dauerschätzung. Hinterlegt sind die veröffentlichten Tarife für
@@ -74,7 +86,7 @@ Tokenpreise setzen. Fehlt ein vollständiger Tarif, gilt die Dauerschätzung.
 Bei einem gescheiterten Claude-Aufruf bleibt
 mindestens dessen Reservierung verbucht. Die API warnt einmal je Monat
 im Log, sobald mindestens 80 % verbraucht sind.
-[OpenAI-Verbrauchsdaten](https://developers.openai.com/api/reference/resources/audio/subresources/transcriptions/methods/create/) · [Mini-Tokentarif](https://developers.openai.com/api/docs/models/gpt-4o-mini-transcribe) · [4o-Tokentarif](https://developers.openai.com/api/docs/models/gpt-4o-transcribe)
+[Mistral-Verbrauchsdaten](https://docs.mistral.ai/studio/audio/speech-to-text/transcribe-files) · [OpenAI-Verbrauchsdaten](https://developers.openai.com/api/reference/resources/audio/subresources/transcriptions/methods/create/) · [Mini-Tokentarif](https://developers.openai.com/api/docs/models/gpt-4o-mini-transcribe) · [4o-Tokentarif](https://developers.openai.com/api/docs/models/gpt-4o-transcribe)
 
 `VOICE_STT_USD_PER_MINUTE` überschreibt 0,003 USD/min für Mistral oder
 0,006 USD/min für OpenAI. Der OpenAI-Ansatz enthält einen Puffer gegenüber

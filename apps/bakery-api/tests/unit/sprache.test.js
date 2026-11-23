@@ -4,6 +4,7 @@ const {
   validateProposal,
   candidatesForDay,
   mergeModelProposal,
+  reserveSttCost,
 } = require('../../src/services/sprache.core')
 
 function countRow(key, label, extra = {}) {
@@ -26,6 +27,11 @@ const rows = [
   countRow('weck||weck', 'Weck', { aliases: ['Semmelchen'] }),
   countRow('brezel||brezel', 'Laugenbrezel'),
   countRow('kuchen||kuchen', 'Käsekuchen', { itemUnit: 'Blech', factor: 0.25 }),
+  countRow('saft||', 'Testsaft', {
+    unit: 'Liter',
+    itemUnit: 'Liter',
+    integer: false,
+  }),
   countRow('teig||', 'Testteig', {
     unit: 'kg',
     itemUnit: 'kg',
@@ -230,15 +236,22 @@ it('prüft die Eingabeeinheit nach der Umrechnung und markiert Stück mit Komma'
   })
 })
 
-function modelSuggestion(transcript, gehoert, menge, einheit = null) {
+function modelSuggestion(
+  transcript,
+  gehoert,
+  menge,
+  einheit = null,
+  key = rows[1].key,
+  table = rows
+) {
   return mergeModelProposal(
     { proposal: [], unmatched: [{ heard: transcript }] },
     {
-      zeilen: [{ key: rows[1].key, gehoert, menge, einheit, unsicher: false }],
+      zeilen: [{ key, gehoert, menge, einheit, unsicher: false }],
       nicht_zugeordnet: [],
     },
     transcript,
-    { rows, editable: true, role: 'verkauf' }
+    { rows: table, editable: true, role: 'verkauf' }
   )
 }
 
@@ -329,4 +342,133 @@ it('lässt das offene Bruchstück stehen, wenn das Modell dessen Dezimalzeichen 
   expect(
     modelSuggestion(heard, 'Vom Weck noch 1 0 Stück', 1).unmatched
   ).toEqual([{ heard }])
+})
+
+it.each([
+  [
+    'Vom Fantasiegebäck noch zwei Stück',
+    rows[1].key,
+    /Von der KI zugeordnet – bitte prüfen/,
+  ],
+  [
+    'Vom Weck liegen zwei Stück bereit',
+    rows[0].key,
+    /Zuordnung prüfen: gehört „Vom Weck/,
+  ],
+  [
+    'Vom Bauernbrot und Weck liegen zwei Stück bereit',
+    rows[1].key,
+    /Zuordnung prüfen/,
+  ],
+])(
+  'belässt eine unbelegte Modellzuordnung sichtbar (%s)',
+  (heard, key, reason) => {
+    const result = modelSuggestion(heard, heard, 2, 'Stück', key)
+    expect(result.proposal).toEqual([
+      expect.objectContaining({
+        key,
+        heard,
+        menge: 2,
+        unsicher: true,
+        reason: expect.stringMatching(reason),
+      }),
+    ])
+    expect(result.unmatched).toEqual([{ heard }])
+  }
+)
+
+it('markiert einen Namen mit zwei passenden Zählzeilen als mehrdeutig', () => {
+  const heard = 'Vom Weck liegen zwei Stück bereit'
+  const table = [...rows, countRow('weck|klein|', 'Weck', { variant: 'Klein' })]
+  const result = modelSuggestion(heard, heard, 2, 'Stück', rows[1].key, table)
+  expect(result.proposal[0]).toMatchObject({
+    unsicher: true,
+    reason: expect.stringContaining('Zuordnung prüfen'),
+  })
+  expect(result.unmatched).toEqual([{ heard }])
+})
+
+it.each([
+  ['Vom Semmelchen liegen zwei Stück bereit', rows[1].key],
+  ['Vom Bauernprott liegen zwei Stück bereit', rows[0].key],
+  ['Von Laugen-Brezeln liegen zwei Stück bereit', rows[2].key],
+])(
+  'verwendet bei Modellzitaten dieselbe Namensprüfung wie beim Parser (%s)',
+  (heard, key) => {
+    const result = modelSuggestion(heard, heard, 2, 'Stück', key)
+    expect(result.proposal[0]).toMatchObject({ unsicher: false, reason: null })
+    expect(result.unmatched).toEqual([])
+  }
+)
+
+const juice = rows.find(({ key }) => key === 'saft||')
+const dough = rows.find(({ key }) => key === 'teig||')
+
+it.each([
+  [juice, 'zwei Komma fünf', 2.5],
+  [dough, '2,5', 2.5],
+  [dough, 'anderthalb', 1.5],
+  [juice, 'zwei tausend', 2000],
+  [juice, 'zwei tausend fünf hundert', 2500],
+  [juice, 'tausend und fünf', 1005],
+  [juice, '2 000', 2000],
+])('prüft die vollständige Mengenangabe %s %s', (row, expression, qty) => {
+  const heard = `Vom ${row.label} sind noch ${expression} ${row.unit} übrig`
+  expect(
+    modelSuggestion(heard, heard, qty, row.unit, row.key).proposal[0]
+  ).toMatchObject({
+    menge: qty,
+    unsicher: false,
+    reason: null,
+  })
+})
+
+it.each([
+  [
+    'Vom Testsaft sind noch zwei Komma fünf Liter übrig',
+    'fünf Liter',
+    5,
+    /nur einen Teil.*weicht/,
+  ],
+  [
+    'Vom Testsaft sind noch zwei Komma fünf Liter übrig',
+    'fünf Liter',
+    2.5,
+    /nur einen Teil/,
+  ],
+  [
+    'Vom Testsaft sind noch zwei tausend Liter übrig',
+    'tausend Liter',
+    1000,
+    /nur einen Teil.*weicht/,
+  ],
+  [
+    'Vom Testsaft sind noch zwei tausend Liter übrig',
+    'Vom Testsaft sind noch zwei tausend Liter übrig',
+    2,
+    /weicht/,
+  ],
+])(
+  'markiert abweichende und abgeschnittene Mengenbelege (%s, %s)',
+  (heard, excerpt, qty, reason) => {
+    const result = modelSuggestion(heard, excerpt, qty, 'Liter', juice.key)
+    expect(result.proposal[0]).toMatchObject({
+      unsicher: true,
+      reason: expect.stringMatching(reason),
+    })
+  }
+)
+
+it('reserviert Dauerpuffer, Prompt, Audio und maximale Ausgabe vorab', () => {
+  expect(reserveSttCost({ clipSeconds: 1, sttRate: 0.003 })).toBe(150)
+  expect(reserveSttCost({ clipSeconds: 3.1, sttRate: 0.003 })).toBe(250)
+  expect(
+    reserveSttCost({
+      clipSeconds: 1,
+      sttRate: 0.006,
+      promptBytes: 128,
+      maxOutputTokens: 2000,
+      tokenRate: { input: 1, output: 1 },
+    })
+  ).toBe(2342)
 })

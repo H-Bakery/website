@@ -20,7 +20,11 @@ const STT = {
       body.set('language', 'de')
       for (const name of names) body.append('context_bias', name)
     },
-    duration: (usage?: Record<string, unknown>) => usage?.prompt_audio_seconds,
+    usage: (usage?: Record<string, unknown>) => ({
+      seconds: usage?.prompt_audio_seconds,
+      input: tokenCount(usage?.prompt_tokens),
+      output: tokenCount(usage?.completion_tokens),
+    }),
   },
   openai: {
     endpoint: 'https://api.openai.com/v1/audio/transcriptions',
@@ -33,8 +37,11 @@ const STT = {
       )
       body.set('prompt', `Produktnamen: ${names.join(', ')}`)
     },
-    duration: (usage?: Record<string, unknown>) =>
-      usage?.type === 'duration' ? usage.seconds : undefined,
+    usage: (usage?: Record<string, unknown>) => ({
+      seconds: usage?.type === 'duration' ? usage.seconds : undefined,
+      input: usage?.type === 'tokens' ? tokenCount(usage.input_tokens) : 0,
+      output: usage?.type === 'tokens' ? tokenCount(usage.output_tokens) : 0,
+    }),
   },
 }
 
@@ -495,11 +502,26 @@ export function createSpracheService(
     }
     if (signal.aborted)
       throw new BackzettelError(503, 'voice_unavailable', NO_INTERNET)
-    const sttReservation: number = core.settledSttCost(
-      duration / 1000,
-      undefined,
-      cfg.sttRate
-    )
+    const body = new FormData()
+    body.set('model', cfg.sttModel)
+    const names = [
+      ...new Set([
+        ...rows.map(({ label }) => label),
+        ...rows.map(({ itemName }) => itemName),
+        ...rows.flatMap(({ aliases }) => aliases),
+      ]),
+    ].slice(0, 100)
+    cfg.stt.input(body, names, cfg.sttModel)
+    const prompt = body.get('prompt')
+    const sttReservation: number = core.reserveSttCost({
+      clipSeconds: duration / 1000,
+      sttRate: cfg.sttRate,
+      promptBytes: typeof prompt === 'string' ? Buffer.byteLength(prompt) : 0,
+      // Die bekannten 4o-Transkriptionsmodelle haben 2.000 Ausgabetokens.
+      // Bei einem manuell bepreisten Modell rechnen wir mit mehr Reserve.
+      maxOutputTokens: OPENAI_TOKEN_RATES.has(cfg.sttModel) ? 2_000 : 16_384,
+      tokenRate: cfg.sttTokenRate,
+    })
     const { id, month } = await reserve(
       cfg,
       screen,
@@ -514,21 +536,11 @@ export function createSpracheService(
     let tokens = { ...emptyUsage }
 
     try {
-      const body = new FormData()
       body.set(
         'file',
         new Blob([new Uint8Array(audio)], { type: 'audio/wav' }),
         'aufnahme.wav'
       )
-      body.set('model', cfg.sttModel)
-      const names = [
-        ...new Set([
-          ...rows.map(({ label }) => label),
-          ...rows.map(({ itemName }) => itemName),
-          ...rows.flatMap(({ aliases }) => aliases),
-        ]),
-      ].slice(0, 100)
-      cfg.stt.input(body, names, cfg.sttModel)
       const speech = await providerJson(
         cfg.stt.endpoint,
         {
@@ -538,20 +550,18 @@ export function createSpracheService(
         },
         signal
       )
-      if (cfg.provider === 'mistral' || speech.usage?.type === 'tokens') {
-        tokens.input = tokenCount(speech.usage?.input_tokens)
-        tokens.output = tokenCount(speech.usage?.output_tokens)
-      }
+      const consumed = cfg.stt.usage(speech.usage)
+      tokens.input = consumed.input
+      tokens.output = consumed.output
       const sttCost: number = core.settledSttCost(
         duration / 1000,
-        cfg.stt.duration(speech.usage),
+        consumed.seconds,
         cfg.sttRate,
         tokens,
         speech.usage?.type === 'tokens' ? cfg.sttTokenRate : undefined
       )
-      if (sttCost > cost) {
-        // Andere Aufnahmen und die Claude-Reservierung sehen den gemeldeten
-        // Verbrauch schon während der weiteren Verarbeitung.
+      if (sttCost !== cost) {
+        // Die Abrechnung gibt auch vor Claude bereits freie Reserve zurück.
         cost = sttCost
         await getSequelize().query(
           'UPDATE voice_usage SET cost_micro_eur = :cost WHERE id = :id',
