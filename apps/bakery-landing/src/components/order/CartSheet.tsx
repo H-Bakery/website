@@ -180,9 +180,16 @@ export function CartSheet({
       transitionDuration={reduceMotion ? 0 : undefined}
       TransitionProps={{
         onExited: () => {
-          if (!focusMainAfterClose.current) return
+          const toMain = focusMainAfterClose.current
           focusMainAfterClose.current = false
-          document.getElementById('inhalt')?.focus()
+          // Nach dem Schließen: Gibt es den Auslöser nicht mehr (z. B. die
+          // Korbleiste nach dem letzten Artikel), landet der Fokus sonst im Nichts.
+          window.setTimeout(() => {
+            const active = document.activeElement
+            if (toMain || !active || active === document.body) {
+              document.getElementById('inhalt')?.focus()
+            }
+          }, 0)
         },
       }}
       sx={{
