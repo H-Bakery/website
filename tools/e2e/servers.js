@@ -241,6 +241,10 @@ function landingApp(baseURL) {
     command: built
       ? `node tools/e2e/serve-static.js ${outDir} --port ${port}`
       : `npx nx serve bakery-landing --port=${port}`,
+    env: {
+      HQ_PRODUCTS_DIR: FIXTURE_PRODUCTS_DIR,
+      NEXT_PUBLIC_WHATSAPP_NUMBER: '15550100000',
+    },
     url: baseURL,
     reuseExistingServer: reuseExistingServer(),
     cwd: ROOT,

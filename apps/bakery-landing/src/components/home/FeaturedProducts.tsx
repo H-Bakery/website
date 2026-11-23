@@ -1,4 +1,5 @@
 'use client'
+import { AddToCartButton } from '../order/AddToCartButton'
 import React, { useRef, useState, useEffect, useCallback } from 'react'
 import { Box, Container, Typography, IconButton, Button } from '@mui/material'
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew'
@@ -187,8 +188,6 @@ const FeaturedProducts: React.FC<FeaturedProductsProps> = ({ products }) => {
             {products.map((product) => (
               <Box
                 key={product.id}
-                component={NextLink}
-                href={`/products/${product.id}`}
                 sx={{
                   flex: {
                     xs: '0 0 75%',
@@ -209,65 +208,80 @@ const FeaturedProducts: React.FC<FeaturedProductsProps> = ({ products }) => {
                   },
                 }}
               >
-                {/* Product Image */}
                 <Box
+                  component={NextLink}
+                  href={`/products/${product.id}`}
                   sx={{
-                    aspectRatio: '4 / 3',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: '#FFF3E6',
-                    p: 3,
+                    display: 'block',
+                    textDecoration: 'none',
+                    color: 'inherit',
                   }}
                 >
-                  {product.renderedImage ? (
-                    // Aus dem 3D-Modell gerendert; das Bild bringt seinen Rand
-                    // mit und füllt darum den Rahmen (dessen Innenabstand
-                    // bleibt).
-                    <RenderedImage
-                      image={product.renderedImage}
-                      alt={product.name}
-                      sizes="(max-width: 600px) 45vw, 230px"
-                      style={{ minWidth: 0, minHeight: 0 }}
-                    />
-                  ) : (
-                    <Box
-                      component="img"
-                      src={product.image || product.imageUrl || ''}
-                      alt={product.name}
+                  {/* Product Image */}
+                  <Box
+                    sx={{
+                      aspectRatio: '4 / 3',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: '#FFF3E6',
+                      p: 3,
+                    }}
+                  >
+                    {product.renderedImage ? (
+                      // Aus dem 3D-Modell gerendert; das Bild bringt seinen Rand
+                      // mit und füllt darum den Rahmen (dessen Innenabstand
+                      // bleibt).
+                      <RenderedImage
+                        image={product.renderedImage}
+                        alt={product.name}
+                        sizes="(max-width: 600px) 45vw, 230px"
+                        style={{ minWidth: 0, minHeight: 0 }}
+                      />
+                    ) : (
+                      <Box
+                        component="img"
+                        src={product.image || product.imageUrl || ''}
+                        alt={product.name}
+                        sx={{
+                          maxWidth: '70%',
+                          maxHeight: '70%',
+                          objectFit: 'contain',
+                        }}
+                      />
+                    )}
+                  </Box>
+                  {/* Product Info */}
+                  <Box sx={{ p: { xs: 2, md: 2.5 }, textAlign: 'center' }}>
+                    <Typography
+                      variant="h6"
                       sx={{
-                        maxWidth: '70%',
-                        maxHeight: '70%',
-                        objectFit: 'contain',
+                        fontFamily: '"Cinzel", serif',
+                        fontWeight: 700,
+                        color: '#3B2B28',
+                        fontSize: { xs: '1.05rem', md: '1.15rem' },
+                        mb: 0.5,
                       }}
-                    />
-                  )}
+                    >
+                      {product.name}
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        color: 'text.secondary',
+                        fontSize: { xs: '0.9rem', md: '0.95rem' },
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {product.description || product.category}
+                    </Typography>
+                  </Box>
                 </Box>
-                {/* Product Info */}
-                <Box sx={{ p: { xs: 2, md: 2.5 }, textAlign: 'center' }}>
-                  <Typography
-                    variant="h6"
-                    sx={{
-                      fontFamily: '"Cinzel", serif',
-                      fontWeight: 700,
-                      color: '#3B2B28',
-                      fontSize: { xs: '1.05rem', md: '1.15rem' },
-                      mb: 0.5,
-                    }}
-                  >
-                    {product.name}
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      color: 'text.secondary',
-                      fontSize: { xs: '0.9rem', md: '0.95rem' },
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    {product.description || product.category}
-                  </Typography>
-                </Box>
+                {product.available !== false && product.orderId && (
+                  <Box sx={{ px: 2, pb: 2 }}>
+                    <AddToCartButton id={product.orderId} />
+                  </Box>
+                )}
               </Box>
             ))}
           </Box>

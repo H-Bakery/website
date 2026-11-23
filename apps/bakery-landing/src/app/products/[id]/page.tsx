@@ -1,3 +1,4 @@
+import { AddToCartButton } from '../../../components/order/AddToCartButton'
 import { notFound } from 'next/navigation'
 import {
   Alert,
@@ -381,6 +382,12 @@ export default async function ProductPage({ params }: ProductPageProps) {
                       / {product.unit}
                     </Typography>
                   )}
+                </Box>
+              )}
+
+              {listed && product.orderId && (
+                <Box sx={{ mb: 3 }}>
+                  <AddToCartButton id={product.orderId} />
                 </Box>
               )}
 
@@ -835,6 +842,11 @@ export default async function ProductPage({ params }: ProductPageProps) {
                         </Typography>
                       </CardContent>
                     </CardActionArea>
+                    {relatedProduct.orderId && (
+                      <Box sx={{ px: 1, pb: 1 }}>
+                        <AddToCartButton id={relatedProduct.orderId} />
+                      </Box>
+                    )}
                   </Card>
                 </Grid>
               ))}

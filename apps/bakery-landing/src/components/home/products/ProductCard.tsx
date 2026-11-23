@@ -8,23 +8,15 @@ import {
   CardContent,
   CardActionArea,
   CardMedia,
-  Button,
   CardActions,
 } from '@mui/material'
-import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart'
 import Image from 'next/image'
 
-import { formatCurrency } from '../../../utils/format'
-// import { CartContext } from '../../../context/CartContext' // Not needed for static export
+import { formatPrice } from '../../../utils/formatPrice'
 import { Product } from '../../../types/product'
+import { AddToCartButton } from '../../order/AddToCartButton'
 
-interface Props extends Product {}
-
-const ProductCard: React.FC<Props> = (props) => {
-  // Static export - no cart functionality needed
-  const addToCartHandler = () => {
-    console.log('Navigate to shop for full cart functionality')
-  }
+const ProductCard: React.FC<Product> = (props) => {
   const router = useRouter()
 
   const handleCardClick = () => {
@@ -39,18 +31,13 @@ const ProductCard: React.FC<Props> = (props) => {
     }
   }
 
-  const handleAddToCart = (event: React.MouseEvent) => {
-    event.stopPropagation()
-    addToCartHandler()
-  }
-
   return (
     <Card elevation={2} sx={styles.card}>
       <CardActionArea
         onClick={handleCardClick}
         onKeyDown={handleKeyPress}
         tabIndex={0}
-        aria-label={`Produkt anzeigen: ${props.name}, Preis: ${formatCurrency(
+        aria-label={`Produkt anzeigen: ${props.name}, Preis: ${formatPrice(
           props.price
         )}`}
       >
@@ -100,26 +87,19 @@ const ProductCard: React.FC<Props> = (props) => {
               variant="button"
               fontWeight="bold"
               fontSize="16px"
-              aria-label={`Preis: ${formatCurrency(props.price)}`}
+              aria-label={`Preis: ${formatPrice(props.price)}`}
             >
-              {formatCurrency(props.price)}
+              {formatPrice(props.price)}
             </Typography>
           </Box>
         </CardContent>
       </CardActionArea>
 
-      <CardActions sx={styles.actions}>
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<AddShoppingCartIcon />}
-          onClick={handleAddToCart}
-          fullWidth
-          size="small"
-        >
-          In den Warenkorb
-        </Button>
-      </CardActions>
+      {props.available !== false && props.orderId && (
+        <CardActions sx={styles.actions}>
+          <AddToCartButton id={props.orderId} />
+        </CardActions>
+      )}
     </Card>
   )
 }

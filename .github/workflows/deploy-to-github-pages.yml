@@ -106,6 +106,7 @@ jobs:
         env:
           NX_DAEMON: 'false'
           NX_STANDALONE_BUILD: '1'
+          NEXT_PUBLIC_WHATSAPP_NUMBER: ${{ vars.NEXT_PUBLIC_WHATSAPP_NUMBER }}
           HQ_PRODUCTS_DIR: ${{ github.workspace }}/hq/products
           PRODUKTE_3D_DIR: ${{ github.workspace }}/hq/produkte-3d
         run: NODE_ENV=production npx nx build-static-standalone bakery-landing

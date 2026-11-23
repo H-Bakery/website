@@ -11,6 +11,7 @@ import {
 } from '@mui/material'
 import PhoneIcon from '@mui/icons-material/Phone'
 import WhatsAppIcon from '@mui/icons-material/WhatsApp'
+import { createWhatsAppLink } from '../../../config/contact'
 import PlaceIcon from '@mui/icons-material/Place'
 import { getOpenStatus, type OpenStatus } from '../../../utils/openingHours'
 import { LEGAL } from '../../../config/legal'
@@ -138,13 +139,13 @@ const EnhancedHero: React.FC = () => {
             </Typography>
             <Typography
               component="a"
-              href="https://wa.me/491706133279"
+              href={createWhatsAppLink(null)}
               target="_blank"
               rel="noopener noreferrer"
               sx={styles.phoneNumber}
             >
               <WhatsAppIcon sx={{ fontSize: '1.2em', mr: 1 }} />
-              0170 6133279
+              WhatsApp
             </Typography>
           </Box>
 

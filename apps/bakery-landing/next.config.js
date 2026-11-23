@@ -1,7 +1,6 @@
-// @ts-nocheck
-
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { composePlugins, withNx } = require('@nx/next')
+const { loadPickupCalendar } = require('../../tools/landing/pickup-calendar')
 const withBundleAnalyzer = require('@next/bundle-analyzer')({
   enabled: process.env.ANALYZE === 'true',
 })
@@ -11,6 +10,7 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
  **/
 const nextConfig = {
   output: 'export',
+  env: { LANDING_PICKUP_CALENDAR: JSON.stringify(loadPickupCalendar()) },
   // trailingSlash: true, // Temporarily disabled due to build issues
   images: {
     unoptimized: true,

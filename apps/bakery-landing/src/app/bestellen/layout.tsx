@@ -6,7 +6,7 @@ import { getCompactHoursSummary } from '../../utils/openingHours'
 export const metadata: Metadata = {
   alternates: { canonical: '/bestellen' },
   title: 'Bestellen - Bäckerei Heusser',
-  description: `Bestellen Sie Brot, Brötchen, Kuchen und Torten bei der Bäckerei Heusser in Homburg-Kirrberg – telefonisch unter 06841 2229 oder per WhatsApp unter 0170 6133279, während unserer Öffnungszeiten: ${getCompactHoursSummary()}.`,
+  description: `Bestellen Sie Brot, Brötchen, Kuchen und Torten bei der Bäckerei Heusser in Homburg-Kirrberg – per WhatsApp mit dem Warenkorb oder telefonisch während unserer Öffnungszeiten: ${getCompactHoursSummary()}.`,
 }
 
 export default function BestellenLayout({

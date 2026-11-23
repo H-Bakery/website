@@ -1,41 +1,32 @@
 import { screen } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import BestellenPage from './page'
-import { LEGAL } from '../../config/legal'
+import { createPhoneLink } from '../../config/contact'
 import { getCompactHoursSummary } from '../../utils/openingHours'
 
 describe('Bestellen Page', () => {
-  it('renders a valid tel: link without whitespace', () => {
+  it('verlinkt Sortiment und Telefon und zeigt den Einstieg in den Korb', () => {
     renderWithTheme(<BestellenPage />)
-
     const phoneLink = screen.getByRole('link', { name: /Jetzt anrufen/ })
-    expect(phoneLink).toHaveAttribute('href', LEGAL.phoneHref)
+    expect(phoneLink).toHaveAttribute('href', createPhoneLink())
     expect(phoneLink.getAttribute('href')).not.toMatch(/\s/)
-    expect(screen.getByText(LEGAL.phone)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Zum Sortiment' })).toHaveAttribute(
+      'href',
+      '/products'
+    )
+    expect(screen.getByRole('button', { name: 'Korb öffnen' })).toHaveAttribute(
+      'aria-haspopup',
+      'dialog'
+    )
+    expect(
+      screen.getByText(/Wir bestätigen Ihre Vorbestellung/)
+    ).toBeInTheDocument()
   })
 
-  it('renders WhatsApp link and list outside of a paragraph', () => {
+  it('nennt die telefonischen Kontaktzeiten aus der Konfiguration', () => {
     renderWithTheme(<BestellenPage />)
-
-    const waLink = screen.getByRole('link', { name: /WhatsApp öffnen/ })
-    expect(waLink.getAttribute('href')).toMatch(
-      /^https:\/\/wa\.me\/491706133279/
+    expect(screen.getByText(/Telefonisch erreichen Sie uns/)).toHaveTextContent(
+      getCompactHoursSummary()
     )
-    expect(screen.getByText(LEGAL.mobile)).toBeInTheDocument()
-
-    const list = screen.getByRole('list')
-    expect(list.closest('p')).toBeNull()
-  })
-
-  it('nennt als Bestellzeiten die Öffnungszeiten aus der Konfiguration', () => {
-    renderWithTheme(<BestellenPage />)
-
-    const note = screen.getByText(/Bestellungen nehmen wir/)
-    expect(note).toHaveTextContent(
-      `während unserer Öffnungszeiten entgegen: ${getCompactHoursSummary()}.`
-    )
-    // Die alte Hardcodierung versprach Bestellannahme an Tagen und zu Zeiten,
-    // an denen die Bäckerei laut Footer geschlossen ist.
-    expect(note).not.toHaveTextContent(/täglich|14:00/)
   })
 })

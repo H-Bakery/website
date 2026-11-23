@@ -915,7 +915,8 @@ describe('DigitaleBaeckerei: Liste „Alles hier“', () => {
   function snapshotScheitert(kaputt: () => boolean) {
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith('/data/products.snapshot.json') && kaputt()) {
-        return { ok: false, status: 503 }
+        // 404 statt 5xx: 5xx wiederholt ladeJson (WIEDERHOLEN_NACH_MS).
+        return { ok: false, status: 404 }
       }
       return {
         ok: true,
@@ -1058,7 +1059,7 @@ describe('DigitaleBaeckerei: ohne WebGL und für Screenreader', () => {
 
   it('ohne WebGL 2 und ohne Produktdaten: derselbe Knopf, ohne 3D-Code', async () => {
     hatWebGL2Mock.mockReturnValue(false)
-    fetchMock.mockImplementation(async () => ({ ok: false, status: 503 }))
+    fetchMock.mockImplementation(async () => ({ ok: false, status: 404 }))
     const { user } = setup()
     await waitFor(() =>
       expect(status()).toHaveTextContent(

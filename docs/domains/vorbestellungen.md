@@ -12,6 +12,35 @@ Verwaltung `apps/bakery-management/src/lib/preordersApi.ts`, `preordersTypes.ts`
 `src/components/preorders/`. Endpunkte, Rollen und Antwortform:
 [`docs/api/preorders.md`](../api/preorders.md).
 
+## Kanal WhatsApp
+
+Die Website bereitet aus dem Warenkorb eine Nachricht vor. Die Kundschaft sendet sie in
+WhatsApp und erhält dort die Bestätigung der Bäckerei. Das Team erfasst die Anfrage wie bisher
+in der Verwaltung mit dem Kanal „WhatsApp“. `W-…` ist die Referenz für Rückfragen im Chat.
+
+```text
+Hallo, ich möchte vorbestellen:
+
+2× Beispielbrot 1 kg
+3× Beispielweck
+1× Beispieltorte (ganz) – Aufschrift „Alles Gute“
+
+Abholung: Samstag, 28.11.2026, 09:30 Uhr
+Abholort: Laden
+Name: Erika Beispielfrau
+Anmerkung: bitte geschnitten
+
+Summe ca. 24,80 € (bezahlt wird bei Abholung)
+Bestell-Nr. W-7K3F
+```
+
+Die Positionen folgen den Sortimentsabschnitten und verwenden die hq-Produktnamen.
+Artikelnotizen stehen hinter der jeweiligen Position. Die allgemeine Anmerkung erscheint
+bei Bedarf. Die Summe ist eine Schätzung. Die Bestellnummer besteht aus `W-` und vier
+zufälligen Zeichen und dient der Zuordnung im Chat. Die Übernahme des Nachrichtentexts in
+die Verwaltung ist als eigener Schritt vorgesehen.
+[Warenkorb auf der Landing-Page](../apps/landing.md#warenkorb-und-whatsapp-vorbestellung)
+
 ## Regeln (API)
 
 - **Die Regeln stehen genau einmal** in `delivery-preorders.core.js` (bis B12 benutzte auch der

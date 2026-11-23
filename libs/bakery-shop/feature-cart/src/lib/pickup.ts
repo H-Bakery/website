@@ -2,10 +2,7 @@
  * @fileoverview Abholtermine (pickup dates and time slots) for the shop checkout.
  * @module @bakery/shop/feature-cart/pickup
  *
- * The opening hours below mirror `apps/bakery-landing/src/config/openingHours.ts`.
- * That file stays the single source of truth — a `libs/bakery-shop/*` lib may not
- * import from an app (Nx module boundaries), so the values are duplicated here.
- * If the bakery's hours change, change them there and mirror the change here.
+ * Wochenraster für die Abholung im Shop und auf der Landing-Page.
  *
  * Bäckerei Heusser: **Montag ist Ruhetag.**
  *
@@ -21,7 +18,7 @@ export interface OpeningWindow {
 }
 
 /** Indexed by `Date#getDay()`: 0 = Sonntag … 6 = Samstag. `null` = geschlossen. */
-const WEEKDAY_HOURS: ReadonlyArray<OpeningWindow | null> = [
+export const WEEKDAY_HOURS: ReadonlyArray<OpeningWindow | null> = [
   { opens: '08:00', closes: '11:00' }, // 0 Sonntag
   null, //                                1 Montag — Ruhetag
   { opens: '05:30', closes: '13:30' }, // 2 Dienstag
