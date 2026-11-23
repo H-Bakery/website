@@ -15,18 +15,34 @@ const STT = {
   mistral: {
     endpoint: 'https://api.eu.mistral.ai/v1/audio/transcriptions',
     model: 'voxtral-mini-2602',
-    context: (body: FormData, names: string[]) => {
+    rate: 0.003,
+    input: (body: FormData, names: string[]) => {
+      body.set('language', 'de')
       for (const name of names) body.append('context_bias', name)
     },
+    duration: (usage?: Record<string, unknown>) => usage?.prompt_audio_seconds,
   },
   openai: {
     endpoint: 'https://api.openai.com/v1/audio/transcriptions',
-    model: 'gpt-4o-mini-transcribe',
-    context: (body: FormData, names: string[]) => {
+    model: 'gpt-transcribe',
+    rate: 0.006,
+    input: (body: FormData, names: string[], model: string) => {
+      body.set(
+        /^gpt-transcribe(?:-|$)/.test(model) ? 'languages[]' : 'language',
+        'de'
+      )
       body.set('prompt', `Produktnamen: ${names.join(', ')}`)
     },
+    duration: (usage?: Record<string, unknown>) =>
+      usage?.type === 'duration' ? usage.seconds : undefined,
   },
 }
+
+// OpenAI-Modellseiten dokumentieren diese Tarife pro Million Tokens.
+const OPENAI_TOKEN_RATES = new Map([
+  ['gpt-4o-mini-transcribe', { input: 1.25, output: 5 }],
+  ['gpt-4o-transcribe', { input: 2.5, output: 10 }],
+])
 
 export interface VoiceOptions {
   env?: NodeJS.ProcessEnv
@@ -74,19 +90,36 @@ function config(env: NodeJS.ProcessEnv) {
   const sttKey = (
     provider === 'mistral' ? env.MISTRAL_API_KEY : env.OPENAI_API_KEY
   )?.trim()
+  const sttModel = env.VOICE_STT_MODEL?.trim() || stt?.model
+  const listedRate = OPENAI_TOKEN_RATES.get(sttModel)
+  const sttTokenInput = positive(
+    env.VOICE_STT_USD_PER_M_INPUT,
+    listedRate?.input ?? 0
+  )
+  const sttTokenOutput = positive(
+    env.VOICE_STT_USD_PER_M_OUTPUT,
+    listedRate?.output ?? 0
+  )
   return {
     enabled: env.VOICE_ENABLED === '1' && !!stt && !!sttKey,
     provider,
     stt,
     sttKey,
-    sttModel: env.VOICE_STT_MODEL?.trim() || stt?.model,
+    sttModel,
+    sttTokenRate:
+      provider === 'openai' && sttTokenInput > 0 && sttTokenOutput > 0
+        ? { input: sttTokenInput, output: sttTokenOutput }
+        : undefined,
     llmKey: env.ANTHROPIC_API_KEY?.trim(),
     llmModel: env.VOICE_LLM_MODEL?.trim() || 'claude-haiku-5-5',
     budget: Math.min(
       Number.MAX_SAFE_INTEGER,
       Math.round(positive(env.VOICE_MONTHLY_BUDGET_EUR, 10, true) * 1_000_000)
     ),
-    sttRate: positive(env.VOICE_STT_USD_PER_MINUTE, 0.003),
+    sttRate: positive(
+      env.VOICE_STT_USD_PER_MINUTE,
+      stt?.rate ?? STT.mistral.rate
+    ),
     llmRate: {
       input: positive(env.VOICE_LLM_USD_PER_M_INPUT, 0.1),
       output: positive(env.VOICE_LLM_USD_PER_M_OUTPUT, 0.5),
@@ -100,6 +133,8 @@ type VoiceConfig = ReturnType<typeof config>
 const MAX_SECONDS = 30
 const MAX_OUTPUT = 2048
 const NOT_UNDERSTOOD = 'Nicht verstanden – bitte nochmal oder tippen.'
+const PARTIAL_HINT =
+  'Freie Sätze konnten nicht ausgewertet werden – bitte prüfen oder tippen.'
 const NO_INTERNET = 'Spracheingabe braucht Internet – bitte tippen.'
 
 function budgetError() {
@@ -251,20 +286,43 @@ interface ProviderResult {
   text?: string
   stop_reason?: string
   usage?: Record<string, unknown>
-  content?: {
-    type: string
-    name?: string
-    input?: {
-      zeilen?: {
-        key: string
-        menge: number | null
-        einheit: string | null
-        unsicher: boolean
-        gehoert: string
-      }[]
-      nicht_zugeordnet?: string[]
-    }
-  }[]
+  content?: { type: string; name?: string; input?: unknown }[]
+}
+
+function parseToolResult(reply: ProviderResult) {
+  const calls = Array.isArray(reply.content)
+    ? reply.content.filter((block) => block?.type === 'tool_use')
+    : []
+  const input = calls[0]?.input as
+    | {
+        zeilen?: Record<string, unknown>[]
+        nicht_zugeordnet?: unknown[]
+      }
+    | undefined
+  if (
+    reply.stop_reason !== 'tool_use' ||
+    calls.length !== 1 ||
+    calls[0].name !== 'rest_set_counts' ||
+    !Array.isArray(input?.zeilen) ||
+    !Array.isArray(input.nicht_zugeordnet) ||
+    input.zeilen.length + input.nicht_zugeordnet.length === 0 ||
+    input.nicht_zugeordnet.some(
+      (part) => typeof part !== 'string' || !part.trim()
+    ) ||
+    input.zeilen.some(
+      (row) =>
+        !row ||
+        typeof row.key !== 'string' ||
+        !row.key ||
+        (row.menge !== null && !Number.isFinite(row.menge)) ||
+        (row.einheit !== null && typeof row.einheit !== 'string') ||
+        typeof row.unsicher !== 'boolean' ||
+        typeof row.gehoert !== 'string'
+    )
+  ) {
+    throw new BackzettelError(422, 'voice_not_understood', NOT_UNDERSTOOD)
+  }
+  return input
 }
 
 export function createSpracheService(
@@ -287,8 +345,13 @@ export function createSpracheService(
         redirect: 'error',
         signal: AbortSignal.any([signal, AbortSignal.timeout(12_000)]),
       })
-      if (res.ok) return await res.json()
-      await res.body?.cancel()
+      if (res.ok) {
+        const reply = await res.json()
+        if (reply && typeof reply === 'object' && !Array.isArray(reply))
+          return reply
+      } else {
+        await res.body?.cancel()
+      }
     } catch {
       // Anbieterfehler können Anfrageinhalte enthalten. Nur den festen Fehler weitergeben.
     }
@@ -432,19 +495,20 @@ export function createSpracheService(
     }
     if (signal.aborted)
       throw new BackzettelError(503, 'voice_unavailable', NO_INTERNET)
-    const sttCost: number = core.estimatedCostMicroEur({
-      seconds: duration / 1000,
-      sttRate: cfg.sttRate,
-    })
+    const sttReservation: number = core.settledSttCost(
+      duration / 1000,
+      undefined,
+      cfg.sttRate
+    )
     const { id, month } = await reserve(
       cfg,
       screen,
       user.id,
       duration,
-      sttCost,
+      sttReservation,
       started
     )
-    let cost = sttCost
+    let cost = sttReservation
     let llmUsed = false
     let outcome = 'provider_error'
     let tokens = { ...emptyUsage }
@@ -457,7 +521,6 @@ export function createSpracheService(
         'aufnahme.wav'
       )
       body.set('model', cfg.sttModel)
-      body.set('language', 'de')
       const names = [
         ...new Set([
           ...rows.map(({ label }) => label),
@@ -465,7 +528,7 @@ export function createSpracheService(
           ...rows.flatMap(({ aliases }) => aliases),
         ]),
       ].slice(0, 100)
-      cfg.stt.context(body, names)
+      cfg.stt.input(body, names, cfg.sttModel)
       const speech = await providerJson(
         cfg.stt.endpoint,
         {
@@ -475,8 +538,26 @@ export function createSpracheService(
         },
         signal
       )
-      tokens.input = tokenCount(speech.usage?.input_tokens)
-      tokens.output = tokenCount(speech.usage?.output_tokens)
+      if (cfg.provider === 'mistral' || speech.usage?.type === 'tokens') {
+        tokens.input = tokenCount(speech.usage?.input_tokens)
+        tokens.output = tokenCount(speech.usage?.output_tokens)
+      }
+      const sttCost: number = core.settledSttCost(
+        duration / 1000,
+        cfg.stt.duration(speech.usage),
+        cfg.sttRate,
+        tokens,
+        speech.usage?.type === 'tokens' ? cfg.sttTokenRate : undefined
+      )
+      if (sttCost > cost) {
+        // Andere Aufnahmen und die Claude-Reservierung sehen den gemeldeten
+        // Verbrauch schon während der weiteren Verarbeitung.
+        cost = sttCost
+        await getSequelize().query(
+          'UPDATE voice_usage SET cost_micro_eur = :cost WHERE id = :id',
+          { replacements: { id, cost }, type: QueryTypes.UPDATE }
+        )
+      }
       const transcript =
         typeof speech.text === 'string' ? speech.text.trim() : ''
       if (!transcript || transcript.length > 6000) {
@@ -494,6 +575,7 @@ export function createSpracheService(
         validation
       )
       let unmatched: Unmatched[] = parsed.unmatched
+      let hint: string | undefined
       if (
         cfg.llmKey &&
         !signal.aborted &&
@@ -506,71 +588,84 @@ export function createSpracheService(
         const reservation: number = core.estimatedCostMicroEur({
           write: Buffer.byteLength(prompt) + 2048,
           output: MAX_OUTPUT,
-          llmRate: cfg.llmRate,
+          tokenRate: cfg.llmRate,
         })
-        await reserveLlm(id, month, reservation, cfg.budget)
-        llmUsed = true
-        cost += reservation
-        const reply = await providerJson(
-          'https://api.anthropic.com/v1/messages',
-          {
-            method: 'POST',
-            headers: {
-              'content-type': 'application/json',
-              'x-api-key': cfg.llmKey,
-              'anthropic-version': '2023-06-01',
+        let billed: number | undefined
+        try {
+          await reserveLlm(id, month, reservation, cfg.budget)
+          llmUsed = true
+          cost += reservation
+          const reply = await providerJson(
+            'https://api.anthropic.com/v1/messages',
+            {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+                'x-api-key': cfg.llmKey,
+                'anthropic-version': '2023-06-01',
+              },
+              body: prompt,
             },
-            body: prompt,
-          },
-          signal
-        )
-        const llm = {
-          input: tokenCount(reply.usage?.input_tokens),
-          output: tokenCount(reply.usage?.output_tokens),
-          read: tokenCount(reply.usage?.cache_read_input_tokens),
-          write: tokenCount(reply.usage?.cache_creation_input_tokens),
+            signal
+          )
+          const llm = {
+            input: tokenCount(reply.usage?.input_tokens),
+            output: tokenCount(reply.usage?.output_tokens),
+            read: tokenCount(reply.usage?.cache_read_input_tokens),
+            write: tokenCount(reply.usage?.cache_creation_input_tokens),
+          }
+          tokens = {
+            ...llm,
+            input: tokens.input + llm.input,
+            output: tokens.output + llm.output,
+          }
+          if (Object.values(llm).some(Boolean)) {
+            billed = core.estimatedCostMicroEur({
+              ...llm,
+              tokenRate: cfg.llmRate,
+            })
+          }
+          const result = parseToolResult(reply)
+          const merged = core.mergeModelProposal(
+            parsed,
+            result,
+            transcript,
+            validation
+          )
+          proposal = merged.proposal
+          unmatched = merged.unmatched
+          if (billed !== undefined) cost = sttCost + billed
+        } catch (error) {
+          if (!(error instanceof BackzettelError)) throw error
+          if (llmUsed && billed !== undefined)
+            cost = sttCost + Math.max(reservation, billed)
+          outcome = llmUsed ? 'llm_failed' : 'llm_budget_exhausted'
+          if (!proposal.length) {
+            throw new BackzettelError(
+              422,
+              'voice_not_understood',
+              NOT_UNDERSTOOD
+            )
+          }
+          hint = PARTIAL_HINT
         }
-        if (reply.usage)
-          cost =
-            sttCost +
-            core.estimatedCostMicroEur({ ...llm, llmRate: cfg.llmRate })
-        tokens = {
-          ...llm,
-          input: tokens.input + llm.input,
-          output: tokens.output + llm.output,
-        }
-        const calls = reply.content?.filter(
-          ({ type, name }) => type === 'tool_use' && name === 'rest_set_counts'
-        )
-        const result = calls?.length === 1 ? calls[0].input : null
-        if (
-          reply.stop_reason === 'refusal' ||
-          !Array.isArray(result?.zeilen) ||
-          !Array.isArray(result.nicht_zugeordnet)
-        ) {
-          throw new BackzettelError(422, 'voice_not_understood', NOT_UNDERSTOOD)
-        }
-        const merged = core.mergeModelProposal(
-          parsed,
-          result,
-          transcript,
-          validation
-        )
-        proposal = merged.proposal
-        unmatched = merged.unmatched
       }
-      outcome =
-        unmatched.length || proposal.some((row) => row.unsicher)
-          ? 'review'
-          : 'ok'
+      if (!hint) {
+        outcome =
+          unmatched.length || proposal.some((row) => row.unsicher)
+            ? 'review'
+            : 'ok'
+      }
       return {
         transcript,
         proposal,
         unmatched,
+        ...(hint ? { hint } : {}),
         usage: { ...tokens, costEuro: cost / 1_000_000, llmUsed },
       }
     } catch (error) {
-      if (error instanceof BackzettelError) outcome = error.code
+      if (outcome === 'provider_error' && error instanceof BackzettelError)
+        outcome = error.code
       throw error
     } finally {
       await finish(id, month, cfg.budget, outcome, cost, tokens)

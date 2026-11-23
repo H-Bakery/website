@@ -299,22 +299,29 @@ UStG); liegengebliebene Entwürfe verlieren im nächtlichen Lauf Name und Anschr
   gesicherter Datenbank und `INVOICES_ALLOW_DROP=1` wird trotzdem gelöscht. Ein Rollback des
   Releases (§4.1) braucht das nicht: ältere Releases lassen die Tabellen einfach unbenutzt.
 
-**Spracheingabe für Rest am Abend (TASK-048).** Erst nach HTTPS (§3.7),
-Anbieterfreigabe mit AVV und Information des Teams aktivieren. In
-`bakery.env` `VOICE_ENABLED=1`, `VOICE_STT_PROVIDER=mistral` und
-`MISTRAL_API_KEY` setzen. Für OpenAI stattdessen `openai` und
-`OPENAI_API_KEY` setzen. `VOICE_STT_MODEL` ist optional. Mit
-`ANTHROPIC_API_KEY` und `VOICE_LLM_MODEL` (Vorgabe `claude-haiku-5-5`)
-kann die API Parser-Lücken an Claude schicken. Externe Schlüssel bleiben in
-der API-Umgebung. Nach Änderungen reicht ein Neustart der API.
+**Spracheingabe für Rest am Abend (TASK-048).** Vor der Pilotfreigabe:
 
-`VOICE_MONTHLY_BUDGET_EUR` (Vorgabe 10), `VOICE_RATE_PER_MINUTE` (10) und
-`VOICE_RATE_PER_DAY` (150) begrenzen die Nutzung. Bei 80 % steht einmal
-pro Monat eine Warnung im Journal der API, und die Zählseite zeigt einen
-Hinweis. Einstellungen zur Preisschätzung stehen in
-[`docs/api/sprache.md`](api/sprache.md). Beide Caddy-Varianten erlauben den
-Mikrofonzugriff nur für dieselbe Origin. Auf LAN-HTTP fehlt weiterhin der
-sichere Browserkontext für die Aufnahme.
+- [ ] HTTPS gemäß §3.7 einrichten. Beide Caddy-Profile erlauben den Mikrofonzugriff für dieselbe Origin. Die Aufnahme braucht einen sicheren Browserkontext mit HTTPS.
+- [ ] Mitarbeitende schriftlich gemäß Art. 13 DSGVO über die Verarbeitung informieren. Die Nutzung ist freiwillig. Tippen bleibt gleichwertig. [Art. 13 DSGVO](https://eur-lex.europa.eu/eli/reg/2016/679/oj/deu)
+- [ ] AVV/DPA für die genutzten Anbieter in hq ablegen.
+- [ ] Bei Claude einen eigenen Workspace „Verwaltung“ und einen eigenen API-Schlüssel getrennt von den Agenten anlegen. Für den Workspace eine monatliche Ausgabengrenze in der Console setzen. [Claude-Workspace-Limits](https://platform.claude.com/docs/en/manage-claude/workspaces)
+- [ ] Beim genutzten STT-Anbieter eine harte Ausgabengrenze in der Console setzen. Bei Mistral den Workspace begrenzen. Bei OpenAI im Projekt das harte Limit aktivieren. [Mistral-Ausgabengrenzen](https://docs.mistral.ai/admin/billing-usage/usage-limits) · [OpenAI-Ausgabengrenzen](https://developers.openai.com/api/docs/guides/spend-limits)
+- [ ] Den STT-Vergleich aus Phase 0 durchführen und das Pilotmodell festlegen. Die Mistral-Vorgabe `voxtral-mini-2602` ist als veraltet markiert. Den Nachfolger `voxtral-mini-transcribe-3-0` mit deutschen Aufnahmen am EU-Endpunkt mittesten. Für OpenAI ist `gpt-transcribe` die Vorgabe. [Mistral-Modellstatus](https://docs.mistral.ai/models/voxtral-mini-transcribe-26-02) · [OpenAI-Transkriptionsdoku](https://developers.openai.com/api/docs/guides/speech-to-text)
+
+Zur Freigabe in `bakery.env` `VOICE_ENABLED=1`, `VOICE_STT_PROVIDER=mistral`
+und `MISTRAL_API_KEY` setzen. Für OpenAI `openai` und `OPENAI_API_KEY` setzen.
+`VOICE_STT_MODEL` überschreibt die Vorgabe. Mit `ANTHROPIC_API_KEY` und
+`VOICE_LLM_MODEL` (Vorgabe `claude-haiku-5-5`) kann die API Parser-Lücken an
+Claude schicken. Die Schlüssel bleiben in der API-Umgebung. Nach Änderungen
+reicht ein Neustart der API.
+
+`VOICE_MONTHLY_BUDGET_EUR` (Vorgabe 10) steuert das Budget auf Basis lokaler
+Kostenschätzungen. `VOICE_STT_USD_PER_MINUTE` überschreibt den Schätzwert
+(0,003 USD/min für Mistral, 0,006 USD/min für OpenAI). Die harte Ausgabengrenze
+gilt in der jeweiligen Anbieter-Console. `VOICE_RATE_PER_MINUTE` (10) und
+`VOICE_RATE_PER_DAY` (150) begrenzen die Nutzung je Benutzer. Bei 80 % steht
+einmal pro Monat eine Warnung im API-Journal und die Zählseite zeigt einen
+Hinweis. [Spracheingabe und Kostenschätzung](api/sprache.md)
 
 ### 3.7 Zertifikat (DNS-01, Q2)
 

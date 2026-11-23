@@ -817,6 +817,150 @@ describe('Spracheingabe für Rest am Abend', () => {
     await screen.findByText('1 Zählung gespeichert.')
   })
 
+  it('sperrt Rückgängig beim PUT und bewahrt den vorherigen Entwurf samt Grundlage nach 409', async () => {
+    let rejectSave: (error: ApiError) => void = () => undefined
+    mocked.saveRestDay.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectSave = reject
+        })
+    )
+    renderAs('verkauf')
+    await screen.findByTestId('rest-line-weck|')
+    fireEvent.click(screen.getByRole('button', { name: 'Weck: mehr' }))
+    const dialog = await speak()
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Übernehmen (1)' })
+    )
+    const undo = await screen.findByRole('button', { name: 'Rückgängig' })
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
+    expect(undo).toBeDisabled()
+
+    mocked.fetchRestDay.mockResolvedValueOnce(
+      makeDay({
+        lines: [line({ rows: [row({ qty: 6, revision: 1 })] })],
+      })
+    )
+    const error = new ApiError(
+      'Weck wurde inzwischen anders gezählt.',
+      409,
+      'rest_changed'
+    )
+    error.details = {
+      current: [
+        { itemId: 'weck', variant: null, productId: 'test-weck', qty: 6 },
+      ],
+    }
+    rejectSave(error)
+    await waitFor(() => expect(undo).toBeEnabled())
+    fireEvent.click(undo)
+    expect(
+      screen.getByRole('button', { name: 'Weck: Menge eingeben' })
+    ).toHaveTextContent('1')
+    expect(mocked.saveRestDay).toHaveBeenCalledTimes(1)
+
+    // Ein Wiederholungs-PUT muss die vor dem Sprechen bekannte Grundlage
+    // verwenden, damit die fremde 6 nicht still überschrieben wird.
+    mocked.saveRestDay.mockRejectedValueOnce(error)
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Meine Zahlen speichern' })
+    )
+    expect(mocked.saveRestDay).toHaveBeenLastCalledWith('2026-12-01', [
+      { itemId: 'weck', productId: 'test-weck', qty: 1, expected: null },
+    ])
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Meine Zahlen speichern' })
+      ).toBeEnabled()
+    )
+  })
+
+  it('lässt Rückgängig nach einem Netzwerkfehler verfügbar', async () => {
+    mocked.saveRestDay.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    renderAs('verkauf')
+    const dialog = await speak()
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Übernehmen (1)' })
+    )
+    const undo = await screen.findByRole('button', { name: 'Rückgängig' })
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
+    await waitFor(() => expect(undo).toBeEnabled())
+    fireEvent.click(undo)
+    expect(
+      screen.queryByRole('button', { name: 'Speichern' })
+    ).not.toBeInTheDocument()
+  })
+
+  it('zeigt bei einer gescheiterten Wiederholung den Fehler im Blatt und behält den Vorschlag', async () => {
+    voiceApi.understandVoice
+      .mockResolvedValueOnce(result)
+      .mockRejectedValueOnce(new ApiError('Test', 503, 'voice_unavailable'))
+    renderAs('verkauf')
+    const dialog = await speak()
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Nochmal sprechen' })
+    )
+    const warning = await within(dialog).findByText(
+      'Spracheingabe braucht Internet – bitte tippen.'
+    )
+    expect(warning.closest('[aria-live="polite"]')).toBeTruthy()
+    expect(within(dialog).getByText('Gehört: „Weck drei“')).toBeTruthy()
+    expect(
+      within(dialog).getByRole('button', { name: 'Übernehmen (1)' })
+    ).toBeEnabled()
+    const retry = within(dialog).getByRole('button', {
+      name: 'Nochmal sprechen',
+    })
+    expect(retry).toBeEnabled()
+    fireEvent.click(retry)
+    expect(
+      await within(dialog).findByText('Gehört: „Weck drei“ · „Weck drei“')
+    ).toBeTruthy()
+    expect(
+      within(dialog).queryByText(
+        'Spracheingabe braucht Internet – bitte tippen.'
+      )
+    ).toBeNull()
+  })
+
+  it('sperrt nach voice_unavailable den Mikrofonknopf und zeigt eine Wiederholung an', async () => {
+    voiceApi.understandVoice.mockRejectedValueOnce(
+      new ApiError('Test', 503, 'voice_unavailable')
+    )
+    renderAs('verkauf')
+    fireEvent.click(await screen.findByRole('button', { name: 'Sprechen' }))
+    const notice = await screen.findByRole('dialog', {
+      name: 'Freiwillige Spracheingabe',
+    })
+    fireEvent.click(
+      within(notice).getByRole('button', { name: 'Aufnahme starten' })
+    )
+    expect(
+      await screen.findByText('Spracheingabe braucht Internet – bitte tippen.')
+    ).toBeVisible()
+    expect(
+      await screen.findByRole('button', { name: 'Sprechen' })
+    ).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Erneut sprechen' }))
+    expect(
+      await screen.findByRole('dialog', { name: 'Sprachvorschlag prüfen' })
+    ).toBeVisible()
+  })
+
+  it('zeigt den API-Hinweis zum Parser-Teilvorschlag im Bestätigungsblatt', async () => {
+    const hint =
+      'Freie Sätze konnten nicht ausgewertet werden – bitte prüfen oder tippen.'
+    voiceApi.understandVoice.mockResolvedValueOnce({ ...result, hint })
+    renderAs('verkauf')
+    const dialog = await speak()
+    expect(
+      within(dialog).getByText(hint).closest('[aria-live="polite"]')
+    ).toBeTruthy()
+    expect(
+      within(dialog).getByRole('button', { name: 'Übernehmen (1)' })
+    ).toBeEnabled()
+  })
+
   it('hängt weitere Aufnahmen an und verlangt bei Duplikaten eine Auswahl', async () => {
     renderAs('verkauf')
     const dialog = await speak()

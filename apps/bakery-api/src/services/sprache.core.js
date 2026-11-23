@@ -60,6 +60,7 @@ const units = new Map([
   ['blech', 'Blech'],
   ['bleche', 'Blech'],
   ['liter', 'Liter'],
+  ['litern', 'Liter'],
   ['l', 'Liter'],
   ['kg', 'kg'],
   ['kilo', 'kg'],
@@ -323,12 +324,18 @@ function parseWithoutPunctuation(heard, rows) {
   return start === heard.length ? values : []
 }
 
+const FRAGMENT_SEPARATOR = /[;!?\n\r]+|(?<!\d)[,.]|[,.](?!\d)/
+
+function spokenUnit(unit) {
+  return typeof unit === 'string'
+    ? units.get(normalize(unit)) ?? unit
+    : undefined
+}
+
 function parseCountUtterance(transcript, rows) {
   const proposal = []
   const unmatched = []
-  for (const fragment of transcript.split(
-    /[;!?\n\r]+|(?<!\d)[,.]|[,.](?!\d)/
-  )) {
+  for (const fragment of transcript.split(FRAGMENT_SEPARATOR)) {
     const heard = fragment.trim()
     if (!heard) continue
     const parsed = parseFragment(heard, rows)
@@ -362,10 +369,7 @@ function validateProposal(proposal, { rows, editable, role, screen = 'rest' }) {
       if (!issue && menge !== null && typeof menge !== 'number')
         issue = 'Die Menge fehlt oder ist ungültig.'
       if (!issue && menge !== null) {
-        const spoken =
-          typeof unit === 'string'
-            ? units.get(normalize(unit)) ?? unit
-            : undefined
+        const spoken = spokenUnit(unit)
         const parsed = rest.parseSpokenQty(menge, spoken, row)
         if (decimalNotation && (spoken ?? row.unit) === 'Stück' && parsed.ok) {
           issue = 'Bitte eine ganze Zahl ohne Komma für Stück angeben.'
@@ -393,27 +397,124 @@ function validateProposal(proposal, { rows, editable, role, screen = 'rest' }) {
   )
 }
 
+// Für die Belegprüfung Satzzeichen in Zahlen beibehalten. Der Namensvergleich
+// würde hier zum Beispiel das Komma in „1,0“ verlieren.
+function speechText(text) {
+  return text.normalize('NFC').toLowerCase().trim().replace(/\s+/g, ' ')
+}
+
+function modelEvidence(heard, { surface, fragments }, row, model) {
+  const excerpt = speechText(heard)
+  const tokens = excerpt.match(TOKENS) ?? []
+  const matches = []
+  if (!tokens.length || !surface.includes(excerpt))
+    return { reason: 'Der gehörte Ausschnitt kommt im Transkript nicht vor.' }
+
+  const excerptWithoutSeparators = excerpt
+    .replace(/^[,.;!?]+|[,.;!?]+$/g, '')
+    .trim()
+  for (const fragment of fragments) {
+    if (!fragment.text.includes(excerptWithoutSeparators)) continue
+    for (
+      let start = 0;
+      start + tokens.length <= fragment.tokens.length;
+      start++
+    ) {
+      if (!tokens.every((token, i) => token === fragment.tokens[start + i]))
+        continue
+      matches.push({ fragment, start })
+    }
+  }
+  if (!matches.length)
+    return { reason: 'Der gehörte Ausschnitt kommt im Transkript nicht vor.' }
+
+  const reasons = []
+  if (matches.some(({ fragment }) => fragment.relative)) reasons.push('dazu?')
+  const amounts = tokens.flatMap((token, index) => {
+    const qty = numberWord(token)
+    return qty === undefined
+      ? []
+      : [{ qty, index, decimalNotation: /[,.]/.test(token) }]
+  })
+  const heardUnits = new Set()
+  let ambiguous = amounts.length !== 1
+  let decimalNotation = amounts.some((amount) => amount.decimalNotation)
+  for (const { index } of amounts) {
+    // Nachbarwörter zählen auch, wenn Claude sie aus einem Zitat weglässt.
+    for (const { fragment, start } of matches) {
+      const position = start + index
+      const before = fragment.tokens[position - 1]
+      const after = fragment.tokens[position + 1]
+      if (before === 'komma' || after === 'komma') decimalNotation = true
+      if (['oder', 'bis'].includes(before) || ['oder', 'bis'].includes(after))
+        ambiguous = true
+      for (const adjacent of [before, after]) {
+        const unit = units.get(normalize(adjacent ?? ''))
+        if (unit) heardUnits.add(unit)
+      }
+    }
+  }
+  if (ambiguous) {
+    reasons.push('Die gesprochene Menge ist nicht eindeutig erkennbar.')
+  } else if (amounts[0].qty !== model.menge) {
+    reasons.push(
+      'Die vorgeschlagene Menge weicht von der gesprochenen Menge ab.'
+    )
+  }
+  if (!heardUnits.size) {
+    for (const { fragment } of matches) {
+      for (const token of fragment.tokens) {
+        const unit = units.get(normalize(token))
+        if (unit) heardUnits.add(unit)
+      }
+    }
+  }
+  const claimed = spokenUnit(model.einheit)
+  const [unit] = heardUnits
+  if (
+    heardUnits.size > 1 ||
+    (claimed && claimed !== unit) ||
+    (row && unit && unit !== row.unit)
+  ) {
+    reasons.push('Die gesprochene Einheit passt nicht eindeutig zur Zählzeile.')
+  }
+
+  return {
+    unit,
+    decimalNotation,
+    reason: reasons.join(' · ') || undefined,
+    grounded: true,
+  }
+}
+
 function mergeModelProposal(parsed, result, transcript, validation) {
-  const normalizedTranscript = normalize(transcript)
-  const relative = isRelative(transcript)
+  const known = new Map(validation.rows.map((row) => [row.key, row]))
+  const fragments = transcript.split(FRAGMENT_SEPARATOR).map(speechText)
+  const context = {
+    surface: speechText(transcript),
+    fragments: fragments.map((text, index) => ({
+      text,
+      tokens: text.match(TOKENS) ?? [],
+      relative:
+        isRelative(text) ||
+        /^(dazu|plus|mehr)$/.test(fragments[index + 1] ?? ''),
+    })),
+  }
   const modelRows = result.zeilen
     .filter((row) => row && typeof row === 'object')
     .map((row) => {
       const heard = typeof row.gehoert === 'string' ? row.gehoert.trim() : ''
-      const excerpt = normalize(heard)
-      const validExcerpt =
-        excerpt && ` ${normalizedTranscript} `.includes(` ${excerpt} `)
+      const key = typeof row.key === 'string' ? row.key : ''
+      const candidate = known.get(key)
+      const evidence = modelEvidence(heard, context, candidate, row)
       return {
-        key: typeof row.key === 'string' ? row.key : '',
+        key,
         menge: row.menge,
-        unit: row.einheit,
         heard: heard || 'Gehörter Ausschnitt fehlt.',
-        unsicher: row.unsicher !== false || !validExcerpt,
-        reason: relative
-          ? 'dazu?'
-          : !validExcerpt
-          ? 'Der gehörte Ausschnitt ist unklar.'
-          : undefined,
+        unsicher: row.unsicher !== false,
+        ...evidence,
+        // Bei einem fremden Schlüssel benennt validateProposal die Ursache.
+        reason: candidate ? evidence.reason : undefined,
       }
     })
     .filter(
@@ -421,25 +522,50 @@ function mergeModelProposal(parsed, result, transcript, validation) {
         !parsed.proposal.some(
           (entry) =>
             entry.key === row.key &&
-            normalize(entry.heard) === normalize(row.heard)
+            speechText(entry.heard) === speechText(row.heard)
         )
     )
   const proposal = validateProposal(
     [...parsed.proposal, ...modelRows],
     validation
   )
-  const resolved = new Set(modelRows.map((row) => normalize(row.heard)))
+  const resolved = new Set(
+    modelRows
+      .filter(({ grounded, key }) => grounded && known.has(key))
+      .map(({ heard }) =>
+        speechText(heard)
+          .replace(/^[,.;!?]+|[,.;!?]+$/g, '')
+          .trim()
+      )
+  )
   const unmatched = new Map(
     parsed.unmatched
-      .filter(({ heard }) => !resolved.has(normalize(heard)))
-      .map((entry) => [normalize(entry.heard), entry])
+      .filter(({ heard }) => !resolved.has(speechText(heard)))
+      .map((entry) => [speechText(entry.heard), entry])
   )
   for (const heard of result.nicht_zugeordnet) {
     if (typeof heard !== 'string' || !heard.trim()) continue
-    const key = normalize(heard)
+    const key = speechText(heard)
     if (!unmatched.has(key)) unmatched.set(key, { heard })
   }
   return { proposal, unmatched: [...unmatched.values()] }
+}
+
+function settledSttCost(
+  clipSeconds,
+  reportedSeconds,
+  sttRate,
+  tokens,
+  tokenRate
+) {
+  const seconds =
+    typeof reportedSeconds === 'number' && Number.isFinite(reportedSeconds)
+      ? Math.max(clipSeconds, reportedSeconds)
+      : clipSeconds
+  return Math.max(
+    estimatedCostMicroEur({ seconds, sttRate }),
+    estimatedCostMicroEur({ ...tokens, tokenRate })
+  )
 }
 
 function budgetThreshold(microEuro) {
@@ -453,16 +579,16 @@ function estimatedCostMicroEur({
   output = 0,
   read = 0,
   write = 0,
-  llmRate,
+  tokenRate,
 }) {
   // Konservative Näherung: USD-Tarife werden 1:1 in EUR angesetzt.
   return Math.ceil(
     ((seconds * sttRate) / 60) * 1_000_000 +
-      (llmRate
-        ? input * llmRate.input +
-          output * llmRate.output +
-          read * llmRate.input * 0.1 +
-          write * llmRate.input * 1.25
+      (tokenRate
+        ? input * tokenRate.input +
+          output * tokenRate.output +
+          read * tokenRate.input * 0.1 +
+          write * tokenRate.input * 1.25
         : 0)
   )
 }
@@ -474,5 +600,6 @@ module.exports = {
   validateProposal,
   mergeModelProposal,
   budgetThreshold,
+  settledSttCost,
   estimatedCostMicroEur,
 }

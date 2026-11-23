@@ -27,6 +27,7 @@ export interface VoiceUnmatched {
 
 export interface VoiceResult {
   transcript: string
+  hint?: string
   proposal: VoiceProposal[]
   unmatched: VoiceUnmatched[]
   usage: { costEuro: number; llmUsed: boolean }
@@ -45,7 +46,9 @@ export async function understandVoice(
   const response = await apiClient.postRaw<VoiceResult>(
     `/api/sprache/verstehen?${query}`,
     clip,
-    signal
+    signal,
+    // STT und Claude haben serverseitig jeweils bis zu zwölf Sekunden.
+    { timeoutMs: 30_000 }
   )
   if (!response.data) throw new Error('Leere Antwort.')
   return response.data

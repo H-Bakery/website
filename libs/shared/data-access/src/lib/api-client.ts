@@ -37,6 +37,8 @@ export class ApiError extends Error {
 
 /** Per-request options of the public request methods. */
 export interface RequestOptions {
+  /** Abweichendes Zeitlimit für diese Anfrage in Millisekunden. */
+  timeoutMs?: number
   /** Extra headers for this request only (e.g. `X-Station-Token`). */
   headers?: Record<string, string>
   /**
@@ -216,7 +218,10 @@ export class ApiClient {
 
     // Add timeout using AbortController
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout)
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      requestOptions.timeoutMs ?? this.timeout
+    )
     const abort = () => controller.abort()
     if (options.signal?.aborted) abort()
     else options.signal?.addEventListener('abort', abort, { once: true })
@@ -323,7 +328,10 @@ export class ApiClient {
     delete headers['Content-Type']
     const withAuth = Boolean(headers['Authorization'])
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout)
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      requestOptions.timeoutMs ?? this.timeout
+    )
     try {
       const response = await fetch(`${this.baseUrl}${endpoint}`, {
         method: 'GET',
@@ -389,14 +397,19 @@ export class ApiClient {
   async postRaw<T>(
     endpoint: string,
     body: Blob,
-    signal: AbortSignal
+    signal: AbortSignal,
+    options?: RequestOptions
   ): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, {
-      method: 'POST',
-      body,
-      signal,
-      headers: { 'Content-Type': body.type },
-    })
+    return this.request<T>(
+      endpoint,
+      {
+        method: 'POST',
+        body,
+        signal,
+        headers: { 'Content-Type': body.type },
+      },
+      options
+    )
   }
 
   /**

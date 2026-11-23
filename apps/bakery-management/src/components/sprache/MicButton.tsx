@@ -142,7 +142,9 @@ export default function MicButton({
         (error: unknown) => {
           if (request.current !== controller) return
           setFailure(
-            error instanceof ApiError && error.code
+            error instanceof ApiError &&
+              error.code &&
+              error.code !== 'voice_unavailable'
               ? error.message
               : NO_INTERNET
           )
@@ -193,6 +195,9 @@ export default function MicButton({
     ? 'Warte auf Mikrofonzugriff …'
     : null
   const feedback = failure || recorder.error || message
+  const sheetOpen = results.length > 0 && !busy && !notice
+  const checkConnection = connectionError && online ? refresh : undefined
+  const retryUnavailable = failure === NO_INTERNET
 
   return (
     <>
@@ -214,17 +219,22 @@ export default function MicButton({
             : undefined
         }
       >
-        {(statusText || feedback) && (
+        {(statusText || (feedback && !sheetOpen)) && (
           <Paper elevation={showFab ? 6 : 0} sx={{ p: 1 }}>
             {statusText && (
               <Typography variant="body2" role="status" aria-live="polite">
                 {statusText}
               </Typography>
             )}
-            {feedback && <Alert severity="info">{feedback}</Alert>}
+            {feedback && !sheetOpen && (
+              <Alert severity="info">{feedback}</Alert>
+            )}
             {busy && <Button onClick={cancel}>Abbrechen</Button>}
-            {!busy && connectionError && online && (
-              <Button onClick={refresh}>Verbindung prüfen</Button>
+            {!busy && checkConnection && (
+              <Button onClick={checkConnection}>Verbindung prüfen</Button>
+            )}
+            {!busy && retryUnavailable && !blocked && (
+              <Button onClick={start}>Erneut sprechen</Button>
             )}
           </Paper>
         )}
@@ -234,7 +244,7 @@ export default function MicButton({
             aria-label={listening ? 'Aufnahme stoppen' : 'Sprechen'}
             aria-pressed={listening}
             title={listening ? 'Aufnahme stoppen' : 'Sprechen'}
-            disabled={!listening && (blocked || busy)}
+            disabled={!listening && (blocked || busy || retryUnavailable)}
             onClick={() => (listening ? recorder.stop() : start())}
             sx={{
               width: 72,
@@ -298,7 +308,9 @@ export default function MicButton({
 
       {results.length > 0 && (
         <VoiceSheet
-          open={!busy && !notice}
+          open={sheetOpen}
+          feedback={feedback}
+          onCheckConnection={checkConnection}
           day={day}
           draft={draft}
           results={results}

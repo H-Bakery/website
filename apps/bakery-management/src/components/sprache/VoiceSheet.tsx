@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react'
 import {
+  Alert,
   Autocomplete,
   Button,
   Chip,
@@ -56,6 +57,8 @@ export default function VoiceSheet({
   onRepeat,
   onDiscard,
   canRepeat,
+  feedback,
+  onCheckConnection,
 }: {
   open: boolean
   day: RestDay
@@ -65,6 +68,8 @@ export default function VoiceSheet({
   onRepeat: () => void
   onDiscard: () => void
   canRepeat: boolean
+  feedback: string | null
+  onCheckConnection?: () => void
 }) {
   const [edits, setEdits] = useState<Record<string, Edit | null>>({})
   const [pad, setPad] = useState<string | null>(null)
@@ -123,6 +128,13 @@ export default function VoiceSheet({
   }
   const update = (id: string, edit: Edit | null) =>
     setEdits((prev) => ({ ...prev, [id]: edit }))
+  const notices = Array.from(
+    new Set(
+      [feedback, ...results.map(({ hint }) => hint)].filter(
+        (message): message is string => Boolean(message)
+      )
+    )
+  )
   const activePad = rows.find(({ id }) => id === pad)
   return (
     <>
@@ -136,6 +148,13 @@ export default function VoiceSheet({
         <DialogTitle id="voice-sheet-title">Sprachvorschlag prüfen</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={1.5}>
+            <Stack spacing={1} role="status" aria-live="polite">
+              {notices.map((text) => (
+                <Alert key={text} severity="info" role="presentation">
+                  {text}
+                </Alert>
+              ))}
+            </Stack>
             <Typography sx={{ overflowWrap: 'anywhere' }}>
               Gehört:{' '}
               {results.map(({ transcript }) => `„${transcript}“`).join(' · ')}
@@ -288,6 +307,9 @@ export default function VoiceSheet({
           <Button onClick={onDiscard} color="inherit">
             Verwerfen
           </Button>
+          {onCheckConnection && (
+            <Button onClick={onCheckConnection}>Verbindung prüfen</Button>
+          )}
           <Button onClick={onRepeat} disabled={!canRepeat}>
             Nochmal sprechen
           </Button>

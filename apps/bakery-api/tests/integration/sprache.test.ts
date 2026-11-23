@@ -298,7 +298,7 @@ it.each(['end_turn', 'refusal'])(
       message: 'Nicht verstanden – bitte nochmal oder tippen.',
     })
     expect(await usage()).toEqual([
-      expect.objectContaining({ llm_used: 1, outcome: 'voice_not_understood' }),
+      expect.objectContaining({ llm_used: 1, outcome: 'llm_failed' }),
     ])
   }
 )
@@ -361,3 +361,194 @@ it('schreibt die Herkunft erst über den normalen PUT ins Audit', async () => {
     changes: [expect.objectContaining({ to: 2 })],
   })
 })
+
+const partialHint =
+  'Freie Sätze konnten nicht ausgewertet werden – bitte prüfen oder tippen.'
+
+it.each([
+  ['Anbieterfehler', async () => new Response(null, { status: 503 })],
+  [
+    'Timeout',
+    async () => {
+      throw new DOMException('Test', 'TimeoutError')
+    },
+  ],
+  [
+    'Refusal',
+    async () =>
+      response({
+        stop_reason: 'refusal',
+        usage: { input_tokens: 4, output_tokens: 2 },
+      }),
+  ],
+  [
+    'fehlendem Werkzeug',
+    async () => response({ stop_reason: 'end_turn', content: [] }),
+  ],
+  [
+    'ungültigem Werkzeug',
+    async () =>
+      response({
+        stop_reason: 'tool_use',
+        content: [
+          {
+            type: 'tool_use',
+            name: 'rest_set_counts',
+            input: {
+              zeilen: [{ key: KEY, menge: 'zwei', gehoert: 'Krustis drei' }],
+              nicht_zugeordnet: [],
+            },
+          },
+        ],
+      }),
+  ],
+] as const)(
+  'bewahrt Parser-Treffer bei %s samt Claude-Reservierung',
+  async (_case, reply) => {
+    provider.mockResolvedValueOnce(
+      response({ text: 'Weck zwei, Krustis drei' })
+    )
+    provider.mockImplementationOnce(reply)
+    const data = (await post().expect(200)).body.data
+    expect(data).toMatchObject({
+      proposal: [{ key: KEY, menge: 2, unsicher: false }],
+      unmatched: [{ heard: 'Krustis drei' }],
+      hint: partialHint,
+      usage: { llmUsed: true },
+    })
+    const [row] = await usage()
+    expect(row).toMatchObject({ llm_used: 1, outcome: 'llm_failed' })
+    expect(row.cost_micro_eur).toBeGreaterThan(1_000)
+    expect(data.usage.costEuro).toBe(Number(row.cost_micro_eur) / 1_000_000)
+  }
+)
+
+it.each([
+  ['Weck zwei, Krustis drei', 200],
+  ['Vom Weck liegen noch zwei bereit', 422],
+] as const)(
+  'sperrt Claude bei zu kleinem Budget und meldet den passenden Parser-Ausgang (%s)',
+  async (text, status) => {
+    env.VOICE_MONTHLY_BUDGET_EUR = '0.00005'
+    provider.mockResolvedValueOnce(response({ text }))
+    const res = await post().expect(status)
+    if (status === 200) {
+      expect(res.body.data).toMatchObject({
+        proposal: [{ key: KEY, menge: 2, unsicher: false }],
+        unmatched: [{ heard: 'Krustis drei' }],
+        hint: partialHint,
+        usage: { llmUsed: false, costEuro: 0.00005 },
+      })
+    } else {
+      expect(res.body).toMatchObject({
+        error: 'voice_not_understood',
+        message: 'Nicht verstanden – bitte nochmal oder tippen.',
+      })
+    }
+    expect(provider).toHaveBeenCalledTimes(1)
+    expect(await usage()).toEqual([
+      expect.objectContaining({
+        llm_used: 0,
+        outcome: 'llm_budget_exhausted',
+        cost_micro_eur: 50,
+      }),
+    ])
+  }
+)
+
+it('rechnet gemeldete Mistral-Dauer vor der Claude-Reservierung an und sperrt weitere Aufnahmen', async () => {
+  env.VOICE_MONTHLY_BUDGET_EUR = '0.0001'
+  provider.mockResolvedValueOnce(
+    response({
+      text: 'Weck zwei, Krustis drei',
+      usage: { prompt_audio_seconds: 3 },
+    })
+  )
+  const data = (await post().expect(200)).body.data
+  expect(data).toMatchObject({
+    hint: partialHint,
+    proposal: [{ key: KEY, menge: 2 }],
+    usage: { llmUsed: false, costEuro: 0.00015 },
+  })
+  expect((await getStatus()).body.data.budget).toMatchObject({
+    spentEuro: 0.00015,
+    remainingEuro: 0,
+  })
+  expect((await post().expect(429)).body.error).toBe('voice_budget_exhausted')
+  expect(provider).toHaveBeenCalledTimes(1)
+  expect(warn).toHaveBeenCalledTimes(1)
+})
+
+it.each([
+  [{ type: 'duration', seconds: 3 }, 300, 0, 0],
+  [{ type: 'duration', seconds: 0.2 }, 100, 0, 0],
+  [{ type: 'tokens', input_tokens: 19, output_tokens: 11 }, 100, 19, 11],
+] as const)(
+  'rechnet OpenAI-Verbrauch konservativ ab (%o)',
+  async (reported, cost, input, output) => {
+    Object.assign(env, {
+      VOICE_STT_PROVIDER: 'openai',
+      OPENAI_API_KEY: 'test-alternativ',
+    })
+    provider.mockResolvedValueOnce(
+      response({ text: 'Weck zwei', usage: reported })
+    )
+    const data = (await post().expect(200)).body.data
+    const body = provider.mock.calls[0][1].body as FormData
+    expect(body.get('model')).toBe('gpt-transcribe')
+    expect(body.get('languages[]')).toBe('de')
+    expect(body.has('language')).toBe(false)
+    expect(data.usage).toMatchObject({
+      costEuro: cost / 1_000_000,
+      input,
+      output,
+    })
+    expect(await usage()).toEqual([
+      expect.objectContaining({
+        stt_provider: 'openai',
+        cost_micro_eur: cost,
+        input_tokens: input,
+        output_tokens: output,
+      }),
+    ])
+  }
+)
+
+it('wendet den konfigurierten STT-Tarif auf die höhere gemeldete Dauer an', async () => {
+  env.VOICE_STT_USD_PER_MINUTE = '0.012'
+  provider.mockResolvedValueOnce(
+    response({ text: 'Weck zwei', usage: { prompt_audio_seconds: 2 } })
+  )
+  expect((await post().expect(200)).body.data.usage.costEuro).toBe(0.0004)
+})
+
+it.each([
+  ['gpt-4o-mini-transcribe', {}, 19, 11, 100],
+  ['gpt-4o-mini-transcribe', {}, 80, 20, 200],
+  [
+    'gpt-4o-transcribe',
+    { VOICE_STT_USD_PER_M_INPUT: '3', VOICE_STT_USD_PER_M_OUTPUT: '7' },
+    80,
+    20,
+    380,
+  ],
+] as const)(
+  'setzt bei OpenAI den höheren Betrag aus Dauer und belegten Tokenpreisen an (%s)',
+  async (model, tariff, input, output, cost) => {
+    Object.assign(env, {
+      VOICE_STT_PROVIDER: 'openai',
+      OPENAI_API_KEY: 'test-alternativ',
+      VOICE_STT_MODEL: model,
+      ...tariff,
+    })
+    provider.mockResolvedValueOnce(
+      response({
+        text: 'Weck zwei',
+        usage: { type: 'tokens', input_tokens: input, output_tokens: output },
+      })
+    )
+    expect((await post().expect(200)).body.data.usage.costEuro).toBe(
+      cost / 1_000_000
+    )
+  }
+)

@@ -3,6 +3,7 @@ const {
   parseCountUtterance,
   validateProposal,
   candidatesForDay,
+  mergeModelProposal,
 } = require('../../src/services/sprache.core')
 
 function countRow(key, label, extra = {}) {
@@ -227,4 +228,105 @@ it('prüft die Eingabeeinheit nach der Umrechnung und markiert Stück mit Komma'
     menge: null,
     unsicher: true,
   })
+})
+
+function modelSuggestion(transcript, gehoert, menge, einheit = null) {
+  return mergeModelProposal(
+    { proposal: [], unmatched: [{ heard: transcript }] },
+    {
+      zeilen: [{ key: rows[1].key, gehoert, menge, einheit, unsicher: false }],
+      nicht_zugeordnet: [],
+    },
+    transcript,
+    { rows, editable: true, role: 'verkauf' }
+  )
+}
+
+it.each([
+  ['Vom Weck noch 1,0 Stück', 'Weck noch 1,0 Stück', 1, 'Stück', /ohne Komma/],
+  ['Vom Weck noch 1.0 Stück', 'Weck noch 1.0 Stück', 1, null, /ohne Komma/],
+  [
+    'Vom Weck noch eins Komma null Stück',
+    'Weck noch eins',
+    1,
+    null,
+    /ohne Komma/,
+  ],
+  [
+    'Vom Weck liegen zwei oder drei bereit',
+    'Weck liegen zwei',
+    2,
+    null,
+    /nicht eindeutig erkennbar/,
+  ],
+  ['Vom Weck noch zwei, dazu', 'Weck noch zwei', 2, null, /dazu\?/],
+  ['Vom Weck noch zwei in Litern', 'Weck noch zwei', 2, null, /Einheit/],
+  [
+    'Vom Weck noch 1,0 Stück',
+    'Weck noch 1',
+    1,
+    null,
+    /kommt im Transkript nicht vor/,
+  ],
+  ['Vom Weck noch zwei Stück dazu', 'Weck noch zwei', 2, null, /dazu\?/],
+  ['Vom Weck plus zwei Stück', 'Weck plus zwei', 2, 'Stück', /dazu\?/],
+  ['Vom Weck zwei Stück mehr', 'Weck zwei', 2, null, /dazu\?/],
+  ['Vom Weck noch zwei Liter', 'Weck noch zwei', 2, null, /Einheit/],
+  ['Vom Weck noch zwei Stück', 'Weck noch zwei Stück', 2, 'Liter', /Einheit/],
+  [
+    'Vom Weck liegt etwas bereit',
+    'Weck liegt etwas bereit',
+    2,
+    null,
+    /nicht eindeutig erkennbar/,
+  ],
+  [
+    'Vom Weck liegen zwei oder drei bereit',
+    'Weck liegen zwei oder drei bereit',
+    2,
+    null,
+    /nicht eindeutig erkennbar/,
+  ],
+  [
+    'Vom Weck liegen zwei bereit',
+    'Weck liegen zwei bereit',
+    3,
+    null,
+    /weicht von der gesprochenen Menge ab/,
+  ],
+  [
+    'Vom Weck liegen zwei bereit',
+    'Weck liegen drei bereit',
+    3,
+    null,
+    /kommt im Transkript nicht vor/,
+  ],
+])(
+  'prüft den Modellvorschlag zu %s gegen das Zitat %s',
+  (transcript, excerpt, qty, unit, reason) => {
+    expect(
+      modelSuggestion(transcript, excerpt, qty, unit).proposal[0]
+    ).toMatchObject({
+      unsicher: true,
+      reason: expect.stringMatching(reason),
+    })
+  }
+)
+
+it('lässt eine belegte absolute Menge in einem freien Satz sicher', () => {
+  const heard = 'Vom Weck liegen noch ZWO Stück bereit.'
+  expect(
+    modelSuggestion(heard, 'weck liegen noch zwo stück bereit.', 2).proposal[0]
+  ).toMatchObject({
+    menge: 2,
+    unsicher: false,
+    reason: null,
+  })
+})
+
+it('lässt das offene Bruchstück stehen, wenn das Modell dessen Dezimalzeichen aus dem Zitat entfernt', () => {
+  const heard = 'Vom Weck noch 1,0 Stück'
+  expect(
+    modelSuggestion(heard, 'Vom Weck noch 1 0 Stück', 1).unmatched
+  ).toEqual([{ heard }])
 })

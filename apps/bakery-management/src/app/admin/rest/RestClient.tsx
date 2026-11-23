@@ -53,6 +53,7 @@ import {
   type RestCountRow,
   type RestDay,
   type RestDraft,
+  type RestDraftEntry,
   type RestLine,
 } from '../../../lib/restApi'
 import {
@@ -357,10 +358,13 @@ export default function RestClient({ initialDate }: RestClientProps) {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [conflicts, setConflicts] = useState<RestConflict[]>([])
   const [toast, setToast] = useState<string | null>(null)
-  const [undoVoice, setUndoVoice] = useState<{
-    run: () => void
-    count: number
-  } | null>(null)
+  const [undoVoice, setUndoVoice] = useState<
+    {
+      key: string
+      before: RestDraftEntry | undefined
+      applied: RestDraftEntry | undefined
+    }[]
+  >([])
   const requestId = useRef(0)
 
   const load = useCallback(
@@ -410,7 +414,7 @@ export default function RestClient({ initialDate }: RestClientProps) {
   )
 
   useEffect(() => {
-    setUndoVoice(null)
+    setUndoVoice([])
     void load(date)
   }, [date, load])
 
@@ -494,25 +498,40 @@ export default function RestClient({ initialDate }: RestClientProps) {
     if (affected.length === 0) return
     setDraft(next)
     storeDraft(draftOwner, day.date, next)
-    setUndoVoice({
-      count: affected.length,
-      run: () => {
-        setDraft((current) => {
-          const restored = { ...current }
-          for (const key of affected) {
-            if (current[key] !== next[key]) continue
-            if (draft[key]) restored[key] = draft[key]
-            else delete restored[key]
-          }
-          storeDraft(draftOwner, day.date, restored)
-          return restored
-        })
-        setUndoVoice(null)
-      },
-    })
+    setUndoVoice(
+      affected.map((key) => ({ key, before: draft[key], applied: next[key] }))
+    )
+  }
+
+  const undoVoiceChange = () => {
+    if (!day || draftOwner === null || saving) return
+    const restored = { ...draft }
+    for (const { key, before, applied } of undoVoice) {
+      if (draft[key] !== applied) continue
+      // Die Grundlage des vorherigen Entwurfs bleibt erhalten. Seitdem
+      // gespeicherte fremde Werte müssen beim PUT erneut erkannt werden.
+      if (before) restored[key] = before
+      else delete restored[key]
+    }
+    setDraft(restored)
+    storeDraft(draftOwner, day.date, restored)
+    const pending = pruneDraft(day, restored)
+    const remainingConflicts = new Map(
+      conflicts
+        .filter((entry) => pending[conflictKey(entry)])
+        .map((entry) => [conflictKey(entry), entry])
+    )
+    for (const entry of draftConflicts(day, restored)) {
+      remainingConflicts.set(conflictKey(entry), entry)
+    }
+    setConflicts(Array.from(remainingConflicts.values()))
+    if (conflicts.length > 0 && remainingConflicts.size === 0)
+      setSaveError(null)
+    setUndoVoice([])
   }
 
   const goTo = (target: string) => {
+    if (saving) return
     setConflicts([])
     setSaveError(null)
     setDate(target)
@@ -523,15 +542,14 @@ export default function RestClient({ initialDate }: RestClientProps) {
     if (!day) return
     if (draftOwner !== null) storeDraft(draftOwner, day.date, {})
     setDraft({})
-    setUndoVoice(null)
+    setUndoVoice([])
     setConflicts([])
     setSaveError(null)
   }
 
   const save = async () => {
-    if (!day || changes.length === 0) return
+    if (!day || saving || changes.length === 0) return
     setSaving(true)
-    setUndoVoice(null)
     setSaveError(null)
     try {
       const fromVoice = Object.values(pruneDraft(day, draft)).some(
@@ -544,6 +562,7 @@ export default function RestClient({ initialDate }: RestClientProps) {
       const rest = pruneDraft(result, draft)
       if (draftOwner !== null) storeDraft(draftOwner, result.date, rest)
       setDraft(rest)
+      setUndoVoice([])
       setConflicts([])
       setToast(
         result.changed === 1
@@ -564,7 +583,13 @@ export default function RestClient({ initialDate }: RestClientProps) {
         try {
           const fresh = await fetchRestDay(day.date)
           setDay(fresh)
-          setDraft((prev) => rebaseDraft(fresh, prev))
+          const rebased = rebaseDraft(fresh, draft)
+          setDraft(rebased)
+          setUndoVoice((entries) =>
+            entries
+              .filter(({ key, applied }) => draft[key] === applied)
+              .map((entry) => ({ ...entry, applied: rebased[entry.key] }))
+          )
         } catch {
           // Bleibt beim alten Stand; der Hinweis oben sagt, was los ist.
         }
@@ -581,6 +606,7 @@ export default function RestClient({ initialDate }: RestClientProps) {
     }
   }
 
+  const undoCount = undoVoice.length
   const confirmed = day?.backzettelStatus === 'confirmed'
   const canPrev = !!day && day.date > day.window.from
   const canNext = !!day && day.date < day.window.to
@@ -615,7 +641,7 @@ export default function RestClient({ initialDate }: RestClientProps) {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <IconButton
               aria-label="Tag davor"
-              disabled={!canPrev || loading}
+              disabled={!canPrev || loading || saving}
               onClick={() => day && goTo(addDaysIso(day.date, -1))}
               sx={{ width: 48, height: 48, border: 1, borderColor: 'divider' }}
             >
@@ -623,7 +649,7 @@ export default function RestClient({ initialDate }: RestClientProps) {
             </IconButton>
             <Button
               variant="outlined"
-              disabled={!day || day.date === day.today || loading}
+              disabled={!day || day.date === day.today || loading || saving}
               onClick={() => day && goTo(day.today)}
               sx={{ minHeight: 48, flex: { xs: 1, sm: 'none' } }}
             >
@@ -631,7 +657,7 @@ export default function RestClient({ initialDate }: RestClientProps) {
             </Button>
             <IconButton
               aria-label="Tag danach"
-              disabled={!canNext || loading}
+              disabled={!canNext || loading || saving}
               onClick={() => day && goTo(addDaysIso(day.date, 1))}
               sx={{ width: 48, height: 48, border: 1, borderColor: 'divider' }}
             >
@@ -918,23 +944,21 @@ export default function RestClient({ initialDate }: RestClientProps) {
       />
 
       <Snackbar
-        open={!!(toast || undoVoice)}
-        autoHideDuration={undoVoice ? 8000 : 3000}
+        open={!!toast || undoCount > 0}
+        autoHideDuration={undoCount ? (saving ? null : 8000) : 3000}
         onClose={(_, reason) => {
-          if (undoVoice && reason === 'clickaway') return
+          if (undoCount && (saving || reason === 'clickaway')) return
           setToast(null)
-          setUndoVoice(null)
+          setUndoVoice([])
         }}
         message={
-          undoVoice
-            ? `${undoVoice.count} ${
-                undoVoice.count === 1 ? 'Zeile' : 'Zeilen'
-              } übernommen`
+          undoCount
+            ? `${undoCount} ${undoCount === 1 ? 'Zeile' : 'Zeilen'} übernommen`
             : toast
         }
         action={
-          undoVoice && (
-            <Button color="inherit" onClick={undoVoice.run}>
+          undoCount > 0 && (
+            <Button color="inherit" onClick={undoVoiceChange} disabled={saving}>
               Rückgängig
             </Button>
           )
