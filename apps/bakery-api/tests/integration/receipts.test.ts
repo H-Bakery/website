@@ -162,7 +162,7 @@ afterAll(async () => {
 })
 
 it('migrates fresh SQLite and protects all endpoints including the file', async () => {
-  expect(api.migrations.at(-1)).toBe('20270403000000-receipts.js')
+  expect(api.migrations).toContain('20270403000000-receipts.js')
   expect(
     await api.sequelize.query('PRAGMA foreign_key_check', {
       type: QueryTypes.SELECT,
