@@ -16,6 +16,7 @@ import { ORDER_CONFIG } from './order-config'
 export interface PickupDay {
   date: string
   reason?: string
+  timeHint?: string
   times: string[]
 }
 
@@ -70,7 +71,12 @@ export function pickupDays(
       ? []
       : pickupTimeSlots(date, offset === 0 ? firstMinute : 0)
     if (!reason && !times.length)
-      reason = 'Heute keine Abholzeit mehr verfügbar'
-    return { date, reason, times }
+      reason = `Heute keine Abholzeit mehr verfügbar. Wir brauchen ${PICKUP_LEAD_MINUTES} Minuten Vorlauf.`
+    const firstTime = times[0]
+    const timeHint =
+      offset === 0 && firstTime && firstTime !== pickupTimeSlots(date)[0]
+        ? `Heute ab ${firstTime} Uhr – wir brauchen ${PICKUP_LEAD_MINUTES} Minuten Vorlauf.`
+        : undefined
+    return { date, reason, timeHint, times }
   })
 }

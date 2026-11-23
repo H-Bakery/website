@@ -1,7 +1,14 @@
 'use client'
 
-import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+} from 'react'
+import {
+  Alert,
   Box,
   Button,
   Checkbox,
@@ -25,6 +32,7 @@ import {
   orderWhatsAppLink,
 } from '../../lib/order/order-message'
 import { pickupDays, type PickupClosures } from '../../lib/order/pickup-options'
+import { CartAnnouncement } from './CartAnnouncement'
 import { CartItems, type CartLine } from './CartItems'
 import { MessagePreview } from './MessagePreview'
 import { useOrder } from './OrderContext'
@@ -43,15 +51,19 @@ const actionSx = { minHeight: 44, textTransform: 'none' }
 
 export function CartSheet({
   open,
+  announcement,
   onClose,
 }: {
   open: boolean
+  announcement: string
   onClose: () => void
 }) {
   const order = useOrder()
+  if (!order) throw new Error('CartSheet braucht OrderProvider')
   const [step, setStep] = useState(0)
   const [day, setDay] = useState('')
   const [time, setTime] = useState('')
+  const [needsNewTime, setNeedsNewTime] = useState(false)
   const [note, setNote] = useState('')
   const [now, setNow] = useState(() => new Date())
   const [followUp, setFollowUp] = useState(false)
@@ -75,8 +87,20 @@ export function CartSheet({
     if (open) heading.current?.focus()
   }, [open, step, followUp])
 
-  if (!order) return null
-  const { cart, products, notes, estimate } = order
+  const resetDraft = useCallback(() => {
+    setFollowUp(false)
+    setNote('')
+    setDay('')
+    setTime('')
+    setNeedsNewTime(false)
+    setStep(0)
+  }, [])
+
+  const { cart, products, notes, estimate, expired } = order
+  useEffect(() => {
+    if (expired) resetDraft()
+  }, [expired, resetDraft])
+
   const quantities = new Map(
     cart.items.map(({ id, quantity }) => [id, quantity])
   )
@@ -97,6 +121,15 @@ export function CartSheet({
   const validTime = Boolean(
     days.find(({ date }) => date === day)?.times.includes(time)
   )
+  const timeInvalid = Boolean(time && !validTime && !expired)
+  useEffect(() => {
+    if (timeInvalid) {
+      setTime('')
+      setNeedsNewTime(true)
+    }
+  }, [timeInvalid])
+
+  const showTimeWarning = !expired && (timeInvalid || needsNewTime)
   const message =
     canOrder && validTime && orderLine(cart.name) && order.reference
       ? buildOrderMessage({
@@ -112,6 +145,10 @@ export function CartSheet({
       : ''
 
   const handOff = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (order.expireCart()) {
+      event.preventDefault()
+      return
+    }
     const fresh = new Date()
     if (
       !pickupDays(fresh, available, calendar ?? {})
@@ -124,14 +161,6 @@ export function CartSheet({
       return
     }
     setFollowUp(true)
-  }
-
-  const resetDraft = () => {
-    setFollowUp(false)
-    setNote('')
-    setDay('')
-    setTime('')
-    setStep(0)
   }
 
   const close = () => {
@@ -195,6 +224,12 @@ export function CartSheet({
         dividers
         sx={{ px: 2, py: 1.5, scrollPadding: '8px', overflowX: 'hidden' }}
       >
+        <CartAnnouncement>{announcement}</CartAnnouncement>
+        {expired && (
+          <Alert severity="info" sx={{ mb: 1.5 }}>
+            Ihr Korb ist abgelaufen. Bitte fügen Sie Ihre Artikel erneut hinzu.
+          </Alert>
+        )}
         {followUp ? (
           <Stack spacing={2}>
             <Typography ref={heading} tabIndex={-1} component="h3" variant="h6">
@@ -249,6 +284,12 @@ export function CartSheet({
             <Typography ref={heading} tabIndex={-1} component="h3" variant="h6">
               {stepTitles[step]}
             </Typography>
+            {step > 0 && showTimeWarning && (
+              <Alert severity="warning">
+                Ihre gewählte Abholzeit ist nicht mehr verfügbar. Bitte wählen
+                Sie einen neuen Termin.
+              </Alert>
+            )}
             {step === 0 && (
               <CartItems
                 lines={lines}
@@ -272,7 +313,10 @@ export function CartSheet({
                       setTime('')
                     }
                   }}
-                  onTime={setTime}
+                  onTime={(value) => {
+                    setTime(value)
+                    setNeedsNewTime(false)
+                  }}
                 />
                 <Button
                   variant="contained"
@@ -319,6 +363,10 @@ export function CartSheet({
                     onSend={handOff}
                     onFollowUp={() => setFollowUp(true)}
                   />
+                ) : showTimeWarning ? (
+                  <Button onClick={() => setStep(1)} sx={actionSx}>
+                    Abholtermin neu wählen
+                  </Button>
                 ) : (
                   <Typography color="text.secondary">
                     {!canOrder

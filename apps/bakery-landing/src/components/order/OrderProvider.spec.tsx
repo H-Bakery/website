@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { ThemeProvider } from '@mui/material'
 import { contactConfig } from '../../config/contact'
 import {
+  CART_LIFETIME_MS,
   CART_STORAGE_KEY,
   emptyCart,
   saveCart,
@@ -26,10 +27,10 @@ const unavailable: OrderProduct = {
   available: false,
 }
 
-function renderOrder() {
+function renderOrder(product = bread) {
   render(
     <ThemeProvider theme={lightTheme}>
-      <OrderProvider catalogue={[bread, unavailable]}>
+      <OrderProvider catalogue={[product, unavailable]}>
         <AddToCartButton id={bread.id} />
         <AddToCartButton id={unavailable.id} />
       </OrderProvider>
@@ -42,6 +43,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  jest.useRealTimers()
   jest.restoreAllMocks()
   localStorage.clear()
 })
@@ -128,4 +130,153 @@ it('blockiert einen alten Korb mit nicht mehr angebotenen Artikeln und lässt di
   fireEvent.click(sheet.getByRole('button', { name: 'Angaben vergessen' }))
   expect(sheet.getByText('Ihr Korb ist leer.')).toBeInTheDocument()
   expect(localStorage.getItem(CART_STORAGE_KEY)).toBeNull()
+})
+
+function addBreadAndOpenCart() {
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Beispielbrot in den Korb' })
+  )
+  fireEvent.click(screen.getByRole('button', { name: /1 Artikel.*Korb/ }))
+  return within(screen.getByRole('dialog', { name: 'Ihr Korb' }))
+}
+
+function choosePickup(
+  sheet: ReturnType<typeof within>,
+  date: RegExp,
+  time: string
+) {
+  fireEvent.click(sheet.getByRole('button', { name: date }))
+  fireEvent.click(sheet.getByRole('button', { name: `${time} Uhr` }))
+  fireEvent.click(
+    sheet.getByRole('button', { name: 'Weiter zu Ihren Angaben' })
+  )
+  fireEvent.change(sheet.getByRole('textbox', { name: 'Name' }), {
+    target: { value: 'Erika Beispielfrau' },
+  })
+}
+
+const tuesdayMorning = new Date('2026-11-24T08:15:00Z')
+
+it('zeigt bei fehlendem Einzelpreis im Dialog und in der Nachricht eine offene Summe', () => {
+  jest.useFakeTimers({ now: tuesdayMorning })
+  renderOrder({ ...bread, price: null })
+  const sheet = addBreadAndOpenCart()
+  expect(sheet.getByText(/Summe offen/)).toBeVisible()
+  fireEvent.click(sheet.getByRole('button', { name: 'Abholung wählen' }))
+  choosePickup(sheet, /Dienstag, 24\.11\.2026/, '10:30')
+  const url = new URL(
+    sheet
+      .getByRole('link', { name: 'Per WhatsApp senden' })
+      .getAttribute('href') ?? ''
+  )
+  expect(url.searchParams.get('text')).toContain(
+    'Summe offen (bezahlt wird bei Abholung)'
+  )
+})
+
+it('erklärt den heutigen Vorlauf und verlangt eine neue Auswahl, wenn eine Uhrzeit verfällt', () => {
+  jest.useFakeTimers({ now: tuesdayMorning })
+  renderOrder()
+  const sheet = addBreadAndOpenCart()
+  fireEvent.click(sheet.getByRole('button', { name: 'Abholung wählen' }))
+
+  const today = /Dienstag, 24\.11\.2026/
+  fireEvent.click(sheet.getByRole('button', { name: today }))
+  expect(
+    sheet.getByText('Heute ab 10:30 Uhr – wir brauchen 60 Minuten Vorlauf.')
+  ).toBeVisible()
+  expect(
+    sheet.queryByRole('button', { name: '10:00 Uhr' })
+  ).not.toBeInTheDocument()
+  choosePickup(sheet, today, '10:30')
+  expect(sheet.getByRole('link', { name: 'Per WhatsApp senden' })).toBeVisible()
+
+  act(() => jest.advanceTimersByTime(15 * 60_000 + 15_000))
+  expect(sheet.getByRole('alert')).toHaveTextContent(
+    'Ihre gewählte Abholzeit ist nicht mehr verfügbar.'
+  )
+  expect(
+    sheet.queryByRole('link', { name: 'Per WhatsApp senden' })
+  ).not.toBeInTheDocument()
+
+  fireEvent.click(sheet.getByRole('button', { name: 'Abholtermin neu wählen' }))
+  expect(
+    sheet.getByText('Heute ab 11:00 Uhr – wir brauchen 60 Minuten Vorlauf.')
+  ).toBeVisible()
+  expect(
+    sheet.getByRole('button', { name: 'Weiter zu Ihren Angaben' })
+  ).toBeDisabled()
+  choosePickup(sheet, today, '11:00')
+  expect(sheet.queryByRole('alert')).not.toBeInTheDocument()
+  expect(sheet.getByRole('link', { name: 'Per WhatsApp senden' })).toBeVisible()
+})
+
+it('verwirft den Korb bei Ablauf auf einer offen gebliebenen Seite', () => {
+  jest.useFakeTimers({ now: tuesdayMorning })
+  saveCart({
+    ...emptyCart(),
+    items: [{ id: bread.id, quantity: 1 }],
+    expiresAt: Date.now() + 1000,
+  })
+  renderOrder()
+  fireEvent.click(screen.getByRole('button', { name: /1 Artikel.*Korb/ }))
+  const sheet = within(screen.getByRole('dialog', { name: 'Ihr Korb' }))
+
+  act(() => jest.advanceTimersByTime(1000))
+  expect(sheet.getByText(/Ihr Korb ist abgelaufen/)).toBeVisible()
+  expect(sheet.getByText('Ihr Korb ist leer.')).toBeVisible()
+  expect(
+    JSON.parse(localStorage.getItem(CART_STORAGE_KEY) ?? '{}').items
+  ).toEqual([])
+})
+
+it('verhindert Senden nach Ablauf auch solange der Timer noch nicht gelaufen ist', () => {
+  jest.useFakeTimers({ now: tuesdayMorning })
+  renderOrder()
+  const sheet = addBreadAndOpenCart()
+  fireEvent.click(sheet.getByRole('button', { name: 'Abholung wählen' }))
+  choosePickup(sheet, /Dienstag, 24\.11\.2026/, '10:30')
+  const send = sheet.getByRole('link', { name: 'Per WhatsApp senden' })
+
+  jest.setSystemTime(Date.now() + CART_LIFETIME_MS)
+  expect(fireEvent.click(send)).toBe(false)
+  expect(sheet.getByText(/Ihr Korb ist abgelaufen/)).toBeVisible()
+  expect(sheet.queryByText('Nachricht abgeschickt?')).not.toBeInTheDocument()
+  expect(
+    JSON.parse(localStorage.getItem(CART_STORAGE_KEY) ?? '{}')
+  ).toMatchObject({
+    items: [],
+    expiresAt: 0,
+    name: 'Erika Beispielfrau',
+  })
+})
+
+it('erneuert bei einer Mengenänderung keinen bereits abgelaufenen Korb', () => {
+  jest.useFakeTimers({ now: tuesdayMorning })
+  renderOrder()
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Beispielbrot in den Korb' })
+  )
+  jest.setSystemTime(Date.now() + CART_LIFETIME_MS)
+  fireEvent.click(screen.getByRole('button', { name: 'Mehr Beispielbrot' }))
+  expect(
+    JSON.parse(localStorage.getItem(CART_STORAGE_KEY) ?? '{}')
+  ).toMatchObject({
+    items: [],
+    expiresAt: 0,
+  })
+
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Beispielbrot in den Korb' })
+  )
+  expect(screen.getByRole('button', { name: /1 Artikel.*Korb/ })).toBeVisible()
+})
+
+it('kündigt die Mengenänderung im geöffneten Dialog an', () => {
+  renderOrder()
+  const sheet = addBreadAndOpenCart()
+  const announcement = sheet.getByRole('status')
+  expect(announcement).toHaveAttribute('aria-live', 'polite')
+  fireEvent.click(sheet.getByRole('button', { name: 'Mehr Beispielbrot' }))
+  expect(announcement).toHaveTextContent('Beispielbrot im Korb, 2 Stück')
 })

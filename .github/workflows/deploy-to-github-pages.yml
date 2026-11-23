@@ -58,13 +58,13 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
-      # hq ist privat. Geholt werden nur products/, produkte-3d/ und config/kalender.yaml
+      # hq ist privat. Geholt werden nur die Ordner products/ und produkte-3d/
       # (kein Cone-Modus, also auch keine Dateien aus der Wurzel), nur der
       # letzte Stand, mit einem Deploy-Key, der nur lesen darf. Der Schlüssel
       # bleibt nicht auf der Maschine liegen (persist-credentials: false).
       # produkte-3d/ ist der Export des Daten-Repos (Modelle und gerenderte
       # Bilder einzelner Produkte, vom Inhaber am 2026-11-13 freigegeben).
-      - name: Checkout hq (Produkte, Bilder und Kalender, nur lesend)
+      - name: Checkout hq (nur products/ und produkte-3d/, nur lesend)
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: H-Bakery/hq
@@ -73,22 +73,17 @@ jobs:
           sparse-checkout: |
             /products/
             /produkte-3d/
-            /config/kalender.yaml
           sparse-checkout-cone-mode: false
           fetch-depth: 1
           persist-credentials: false
 
       # Nur zählen, nie Inhalte ausgeben: Die Logs dieses Repos sind öffentlich.
-      - name: hq - nur freigegebene Pfade ausgecheckt?
+      - name: hq - nur products/ und produkte-3d/ ausgecheckt?
         run: |
           set -euo pipefail
-          fremd=$(find hq -mindepth 1 -maxdepth 1 ! -name .git ! -name products ! -name produkte-3d ! -name config | wc -l | tr -d ' ')
+          fremd=$(find hq -mindepth 1 -maxdepth 1 ! -name .git ! -name products ! -name produkte-3d | wc -l | tr -d ' ')
           if [ "$fremd" -ne 0 ]; then
-            echo "::error::In hq/ liegen weitere Einträge ($fremd)."
-            exit 1
-          fi
-          if [ -d hq/config ] && [ -n "$(find hq/config -mindepth 1 ! -path 'hq/config/kalender.yaml' -print -quit)" ]; then
-            echo "::error::In hq/config liegt mehr als kalender.yaml."
+            echo "::error::In hq/ liegt mehr als products/ und produkte-3d/ ($fremd weitere Einträge) - der Checkout ist nicht darauf beschränkt."
             exit 1
           fi
           if [ ! -f hq/produkte-3d/STAND.json ] || [ ! -f hq/produkte-3d/manifest.json ]; then

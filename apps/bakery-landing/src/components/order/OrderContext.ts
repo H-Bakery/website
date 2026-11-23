@@ -11,6 +11,8 @@ interface OrderContextValue {
   notes: ReadonlyMap<string, string>
   estimate: number | null
   reference: string
+  expired: boolean
+  expireCart: () => boolean
   changeQuantity: (id: string, change: number | 'remove') => void
   setNote: (id: string, note: string) => void
   setName: (name: string) => void

@@ -159,27 +159,32 @@ per WhatsApp macht die Vorbestellung fest. [Nachrichtenformat](../domains/vorbes
 
 - **Katalog und Preis.** Der Korb speichert hq-IDs und Mengen. Name, Preis und Bild kommen aus
   dem aktuellen Build. Ist ein Artikel weggefallen oder aus dem Angebot, muss er vor dem Senden
-  entfernt werden. Bei fehlenden Preisen bleibt die Summe offen. Abholort, Kategorien, Höchstmenge
+  entfernt werden. Für die Schätzung wird wie in der Vorbestellungs-API zuerst die Zeilensumme
+  gerundet. Bei fehlenden Preisen bleibt die Summe offen. Abholort, Kategorien, Höchstmenge
   und Preisanzeige stehen in `src/lib/order/order-config.ts`. Dort lässt sich auch ein
   Bestellschluss für den Folgetag setzen.
 - **Abholung.** 14 Tage ab dem heutigen Datum am Laden. Das 30-Minuten-Raster, der Vorlauf am
   selben Tag und die vorgeschlagenen Fristen für ganze Kuchen und Torten kommen aus
   `feature-cart`. Montags, an Feiertagen und an Schließtagen bleibt die Auswahl gesperrt.
-  Bei Sonderöffnungszeiten verweist der Korb ans Telefon.
-- **Kalender.** Der Next-Build liest optional `HQ_KALENDER_FILE`, sonst
-  `config/kalender.yaml` neben dem hq-Produktordner. Der GitHub-Pages-Build lädt genau diese
-  Kalenderdatei zusätzlich und liest sie mit dem API-Kalenderloader. Im Export stehen für
-  Abweichungen nur Datum und Typ (geschlossen oder Sonderzeiten).
-  Fehlt der Kalender oder ist er ungültig, zeigt die Abholauswahl „Keine Betriebsferien bekannt“.
-  Der Stand der Schließtage ändert sich mit dem nächsten Build.
+  Bei Sonderöffnungszeiten verweist der Korb ans Telefon. Heute zeigt der Korb den frühesten
+  verfügbaren Termin, wenn der Vorlauf frühere Uhrzeiten ausschließt. Wird die gewählte
+  Abholzeit ungültig, bittet der Korb um eine neue Auswahl.
+- **Kalender.** Der Next-Build kann lokal `HQ_KALENDER_FILE` oder
+  `config/kalender.yaml` neben dem hq-Produktordner mit dem API-Kalenderloader einlesen.
+  Der GitHub-Pages-Build läuft derzeit ohne diese Datei. Er sperrt Ruhetag und Feiertage
+  und zeigt „Keine Betriebsferien bekannt“. Das gilt auch lokal bei fehlender oder ungültiger
+  Datei. Nach Freigabe durch den Inhaber den Sparse-Checkout um `/config/kalender.yaml`
+  erweitern und den Checkout-Prüfschritt für genau diese Datei anpassen. Im Export stehen für Abweichungen nur Datum und Typ
+  (geschlossen oder Sonderzeiten). Der Stand der Schließtage ändert sich mit dem nächsten Build.
 - **Nachricht.** `buildOrderMessage()` erzeugt die exakte Vorschau und den Text für WhatsApp.
-  Das Ziel kommt aus `src/config/contact.ts` (`NEXT_PUBLIC_WHATSAPP_NUMBER`, sonst der
-  hinterlegte Mobilkontakt). Für GitHub Pages kommt der Wert aus der gleichnamigen
-  Actions-Variablen. Die kodierte URL muss kürzer als 2.000 Zeichen bleiben.
+  Das Ziel kommt aus `src/config/contact.ts`. Für GitHub Pages kann die Repository-Variable
+  `NEXT_PUBLIC_WHATSAPP_NUMBER` gesetzt werden. Wenn sie leer ist, gilt die Mobilnummer
+  aus dem Impressum. Die kodierte URL muss kürzer als 2.000 Zeichen bleiben.
   Der Desktop-QR-Code entsteht lokal mit `qrcode.react`. Textkopie und Telefon stehen als
   Ausweichwege bereit.
 - **Speicher.** `heusser-korb-v1` speichert die Artikel sieben Tage ab ihrer letzten Änderung
-  und merkt den Abholort. Der Name wird mit dem vorausgewählten Häkchen gespeichert.
+  und verwirft abgelaufene Artikel auch auf einer offen gebliebenen Seite. Der Abholort
+  bleibt gespeichert. Der Name wird mit dem vorausgewählten Häkchen gespeichert.
   Termin, Notizen und Bestellnummer bleiben im laufenden Entwurf. „Angaben vergessen“ löscht
   Korb und gespeicherte Angaben. Bei gesperrtem Speicher läuft die Sitzung im Browser weiter.
 - **Prüfung.** Jest prüft Nachricht, URL-Limit, Abholzeiten, Kalender und Speicherung.

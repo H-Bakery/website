@@ -52,7 +52,8 @@ it('lässt kurz vor Ladenschluss weder vergangene noch zu knappe Uhrzeiten zu', 
   expect(days[0].times).toEqual(['13:00'])
   const tooLate = pickupDays(new Date('2026-11-24T11:00:01Z'), [], {})
   expect(tooLate[0]).toMatchObject({
-    reason: 'Heute keine Abholzeit mehr verfügbar',
+    reason:
+      'Heute keine Abholzeit mehr verfügbar. Wir brauchen 60 Minuten Vorlauf.',
     times: [],
   })
 })

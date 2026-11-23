@@ -94,6 +94,11 @@ export function PickupPicker({
         <Typography id="order-time-label" fontWeight={700} gutterBottom>
           Abholzeit
         </Typography>
+        {selected?.timeHint && (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            {selected.timeHint}
+          </Typography>
+        )}
         {selected?.times.length ? (
           <Stack direction="row" useFlexGap flexWrap="wrap" gap={0.75}>
             {selected.times.map((slot) => (
