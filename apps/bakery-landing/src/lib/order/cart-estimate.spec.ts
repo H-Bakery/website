@@ -1,15 +1,11 @@
 import { estimateCart } from './cart-estimate'
 import type { OrderProduct } from './order-config'
 
-// Testorakel für die Rundung der Vorbestellungs-API.
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const {
-  orderTotal,
-}: {
-  orderTotal: (items: { qty: number; unitPrice: number }[]) => number
-} = require('../../../../bakery-api/src/services/delivery-preorders.core')
-
-function cartForPrices(prices: (number | null)[], quantities: number[]) {
+function cartForPrices(
+  prices: (number | null)[],
+  quantities: number[],
+  available = true
+) {
   const items = quantities.map((quantity, index) => ({
     id: `beispiel-${index}`,
     quantity,
@@ -21,7 +17,7 @@ function cartForPrices(prices: (number | null)[], quantities: number[]) {
         id,
         name: 'Beispielbrot',
         category: 'brot',
-        available: true,
+        available,
         price: prices[index],
         image: null,
       },
@@ -36,16 +32,16 @@ it.each([
   { prices: [4.1, 1.234, 0], quantities: [3, 2, 2], total: 14.77 },
   { prices: [], quantities: [], total: 0 },
 ])(
-  'rundet wie der Vorbestellungskern auf $total €',
+  'gibt die Bestellsumme von $total € aus',
   ({ prices, quantities, total }) => {
-    const recorded = orderTotal(
-      prices.map((unitPrice, index) => ({ qty: quantities[index], unitPrice }))
-    )
-    expect(recorded).toBe(total)
-    expect(cartForPrices(prices, quantities)).toBe(recorded)
+    expect(cartForPrices(prices, quantities)).toBe(total)
   }
 )
 
 it('lässt bei fehlendem Preis die Summe offen', () => {
   expect(cartForPrices([1.234, null], [2, 1])).toBeNull()
+})
+
+it('lässt bei nicht bestellbaren Artikeln die Summe offen', () => {
+  expect(cartForPrices([1.234], [2], false)).toBeNull()
 })

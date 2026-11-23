@@ -12,13 +12,14 @@ interface OrderContextValue {
   estimate: number | null
   reference: string
   expired: boolean
-  expireCart: () => boolean
+  draftVersion: number
+  refreshCart: () => boolean
   changeQuantity: (id: string, change: number | 'remove') => void
   setNote: (id: string, note: string) => void
   setName: (name: string) => void
   setRememberName: (rememberName: boolean) => void
-  clearCart: () => void
-  forget: () => void
+  clearCart: () => boolean
+  forget: () => boolean
   openCart: () => void
 }
 

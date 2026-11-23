@@ -1,11 +1,12 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { ThemeProvider } from '@mui/material'
 import { contactConfig } from '../../config/contact'
 import {
   CART_LIFETIME_MS,
   CART_STORAGE_KEY,
   emptyCart,
-  saveCart,
+  writeCart,
 } from '../../lib/order/cart-store'
 import type { OrderProduct } from '../../lib/order/order-config'
 import { lightTheme } from '../../theme/theme'
@@ -31,8 +32,10 @@ function renderOrder(product = bread) {
   render(
     <ThemeProvider theme={lightTheme}>
       <OrderProvider catalogue={[product, unavailable]}>
-        <AddToCartButton id={bread.id} />
-        <AddToCartButton id={unavailable.id} />
+        <main id="inhalt" tabIndex={-1}>
+          <AddToCartButton id={bread.id} />
+          <AddToCartButton id={unavailable.id} />
+        </main>
       </OrderProvider>
     </ThemeProvider>
   )
@@ -108,15 +111,18 @@ it('bereitet bei gesperrtem Speicher eine Nachricht vor und behält den Korb nac
 })
 
 it('blockiert einen alten Korb mit nicht mehr angebotenen Artikeln und lässt diese entfernen', () => {
-  saveCart({
-    ...emptyCart(),
-    items: [
-      { id: bread.id, quantity: 1 },
-      { id: unavailable.id, quantity: 1 },
-      { id: 'altes-beispiel', quantity: 1 },
-    ],
-    expiresAt: Date.now() + 100_000,
-  })
+  writeCart(
+    {
+      ...emptyCart(),
+      items: [
+        { id: bread.id, quantity: 1 },
+        { id: unavailable.id, quantity: 1 },
+        { id: 'altes-beispiel', quantity: 1 },
+      ],
+      expiresAt: Date.now() + 100_000,
+    },
+    null
+  )
   renderOrder()
 
   fireEvent.click(screen.getByRole('button', { name: /3 Artikel.*Korb/ }))
@@ -213,11 +219,14 @@ it('erklärt den heutigen Vorlauf und verlangt eine neue Auswahl, wenn eine Uhrz
 
 it('verwirft den Korb bei Ablauf auf einer offen gebliebenen Seite', () => {
   jest.useFakeTimers({ now: tuesdayMorning })
-  saveCart({
-    ...emptyCart(),
-    items: [{ id: bread.id, quantity: 1 }],
-    expiresAt: Date.now() + 1000,
-  })
+  writeCart(
+    {
+      ...emptyCart(),
+      items: [{ id: bread.id, quantity: 1 }],
+      expiresAt: Date.now() + 1000,
+    },
+    null
+  )
   renderOrder()
   fireEvent.click(screen.getByRole('button', { name: /1 Artikel.*Korb/ }))
   const sheet = within(screen.getByRole('dialog', { name: 'Ihr Korb' }))
@@ -279,4 +288,128 @@ it('kündigt die Mengenänderung im geöffneten Dialog an', () => {
   expect(announcement).toHaveAttribute('aria-live', 'polite')
   fireEvent.click(sheet.getByRole('button', { name: 'Mehr Beispielbrot' }))
   expect(announcement).toHaveTextContent('Beispielbrot im Korb, 2 Stück')
+})
+
+it('übernimmt beim alten Ablauftimer den neueren Korb aus einem anderen Tab', () => {
+  jest.useFakeTimers({ now: tuesdayMorning })
+  const oldCart = {
+    ...emptyCart(),
+    items: [{ id: bread.id, quantity: 1 }],
+    expiresAt: Date.now() + 1000,
+    name: 'Erika Beispielfrau',
+  }
+  writeCart(oldCart, null)
+  renderOrder()
+
+  const newerCart = {
+    ...oldCart,
+    items: [{ id: bread.id, quantity: 3 }],
+    expiresAt: Date.now() + CART_LIFETIME_MS,
+    name: 'Alex Beispiel',
+  }
+  writeCart(newerCart, localStorage.getItem(CART_STORAGE_KEY))
+  const saved = localStorage.getItem(CART_STORAGE_KEY)
+  // Der Timer läuft vor der Zustellung des Storage-Events.
+  act(() => jest.advanceTimersByTime(1000))
+  expect(localStorage.getItem(CART_STORAGE_KEY)).toBe(saved)
+  expect(screen.getByRole('button', { name: /3 Artikel.*Korb/ })).toBeVisible()
+})
+
+it('stellt beim alten Ablauftimer keine in einem anderen Tab vergessenen Angaben wieder her', () => {
+  jest.useFakeTimers({ now: tuesdayMorning })
+  writeCart(
+    {
+      ...emptyCart(),
+      items: [{ id: bread.id, quantity: 1 }],
+      expiresAt: Date.now() + 1000,
+      name: 'Erika Beispielfrau',
+    },
+    null
+  )
+  renderOrder()
+  fireEvent.click(screen.getByRole('button', { name: /1 Artikel.*Korb/ }))
+  const sheet = within(screen.getByRole('dialog', { name: 'Ihr Korb' }))
+  writeCart(null, localStorage.getItem(CART_STORAGE_KEY))
+
+  act(() => jest.advanceTimersByTime(1000))
+  expect(localStorage.getItem(CART_STORAGE_KEY)).toBeNull()
+  expect(sheet.getByText('Ihr Korb ist leer.')).toBeVisible()
+  fireEvent.click(sheet.getByRole('button', { name: '3. Senden' }))
+  expect(sheet.getByRole('textbox', { name: 'Name' })).toHaveValue('')
+})
+
+it('übernimmt den in einem anderen Tab geänderten Korb beim Storage-Event', () => {
+  jest.useFakeTimers({ now: tuesdayMorning })
+  renderOrder()
+  const sheet = addBreadAndOpenCart()
+  const oldValue = localStorage.getItem(CART_STORAGE_KEY)
+  writeCart(
+    {
+      ...emptyCart(),
+      items: [{ id: bread.id, quantity: 2 }],
+      expiresAt: Date.now() + CART_LIFETIME_MS,
+      name: 'Alex Beispiel',
+    },
+    oldValue
+  )
+  const newValue = localStorage.getItem(CART_STORAGE_KEY)
+
+  fireEvent(
+    window,
+    new StorageEvent('storage', {
+      key: CART_STORAGE_KEY,
+      oldValue,
+      newValue,
+      storageArea: localStorage,
+    })
+  )
+  expect(
+    sheet.getByRole('group', { name: 'Menge für Beispielbrot' })
+  ).toHaveTextContent('2')
+  fireEvent.click(sheet.getByRole('button', { name: '3. Senden' }))
+  expect(sheet.getByRole('textbox', { name: 'Name' })).toHaveValue(
+    'Alex Beispiel'
+  )
+  expect(localStorage.getItem(CART_STORAGE_KEY)).toBe(newValue)
+})
+
+it('verwirft eine Eingabe auf einem veralteten Speicherstand, wenn ein anderer Tab die Angaben gelöscht hat', () => {
+  jest.useFakeTimers({ now: tuesdayMorning })
+  renderOrder()
+  const sheet = addBreadAndOpenCart()
+  fireEvent.click(sheet.getByRole('button', { name: 'Abholung wählen' }))
+  choosePickup(sheet, /Dienstag, 24\.11\.2026/, '10:30')
+  const oldInput = sheet.getByRole('textbox', { name: 'Name' })
+  writeCart(null, localStorage.getItem(CART_STORAGE_KEY))
+
+  fireEvent.change(oldInput, { target: { value: 'Erika Beispielfrau-Test' } })
+  expect(localStorage.getItem(CART_STORAGE_KEY)).toBeNull()
+  expect(sheet.getByText('Ihr Korb ist leer.')).toBeVisible()
+  fireEvent.click(sheet.getByRole('button', { name: '3. Senden' }))
+  expect(sheet.getByRole('textbox', { name: 'Name' })).toHaveValue('')
+})
+
+it('setzt den Fokus nach dem Leeren per Tastatur auf den Hauptinhalt', async () => {
+  jest.useFakeTimers({ now: tuesdayMorning })
+  const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+  renderOrder()
+  await user.click(
+    screen.getByRole('button', { name: 'Beispielbrot in den Korb' })
+  )
+  const opener = screen.getByRole('button', { name: /1 Artikel.*Korb/ })
+  opener.focus()
+  await user.keyboard('{Enter}')
+  const sheet = within(screen.getByRole('dialog', { name: 'Ihr Korb' }))
+  fireEvent.click(sheet.getByRole('button', { name: 'Abholung wählen' }))
+  choosePickup(sheet, /Dienstag, 24\.11\.2026/, '10:30')
+  sheet.getByRole('link', { name: 'Per WhatsApp senden' }).focus()
+  await user.keyboard('{Enter}')
+  await user.tab()
+  expect(sheet.getByRole('button', { name: 'Korb leeren' })).toHaveFocus()
+  await user.keyboard('{Enter}')
+  act(() => jest.advanceTimersByTime(350))
+
+  expect(opener).not.toBeInTheDocument()
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(screen.getByRole('main')).toHaveFocus()
 })

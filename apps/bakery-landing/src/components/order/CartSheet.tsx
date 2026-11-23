@@ -68,6 +68,7 @@ export function CartSheet({
   const [now, setNow] = useState(() => new Date())
   const [followUp, setFollowUp] = useState(false)
   const heading = useRef<HTMLHeadingElement>(null)
+  const focusMainAfterClose = useRef(false)
   const theme = useTheme()
   const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
 
@@ -96,10 +97,8 @@ export function CartSheet({
     setStep(0)
   }, [])
 
-  const { cart, products, notes, estimate, expired } = order
-  useEffect(() => {
-    if (expired) resetDraft()
-  }, [expired, resetDraft])
+  const { cart, products, notes, estimate, expired, draftVersion } = order
+  useEffect(resetDraft, [draftVersion, resetDraft])
 
   const quantities = new Map(
     cart.items.map(({ id, quantity }) => [id, quantity])
@@ -145,7 +144,7 @@ export function CartSheet({
       : ''
 
   const handOff = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (order.expireCart()) {
+    if (order.refreshCart()) {
       event.preventDefault()
       return
     }
@@ -179,6 +178,13 @@ export function CartSheet({
       onClose={close}
       aria-labelledby="order-sheet-title"
       transitionDuration={reduceMotion ? 0 : undefined}
+      TransitionProps={{
+        onExited: () => {
+          if (!focusMainAfterClose.current) return
+          focusMainAfterClose.current = false
+          document.getElementById('inhalt')?.focus()
+        },
+      }}
       sx={{
         zIndex: 10010,
         '& .MuiDialog-container': {
@@ -242,7 +248,8 @@ export function CartSheet({
             <Button
               variant="contained"
               onClick={() => {
-                order.clearCart()
+                if (!order.clearCart()) return
+                focusMainAfterClose.current = true
                 resetDraft()
                 onClose()
               }}
@@ -384,8 +391,7 @@ export function CartSheet({
               </Button>
               <Button
                 onClick={() => {
-                  order.forget()
-                  resetDraft()
+                  if (order.forget()) resetDraft()
                 }}
                 sx={actionSx}
               >

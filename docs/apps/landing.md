@@ -159,8 +159,8 @@ per WhatsApp macht die Vorbestellung fest. [Nachrichtenformat](../domains/vorbes
 
 - **Katalog und Preis.** Der Korb speichert hq-IDs und Mengen. Name, Preis und Bild kommen aus
   dem aktuellen Build. Ist ein Artikel weggefallen oder aus dem Angebot, muss er vor dem Senden
-  entfernt werden. Für die Schätzung wird wie in der Vorbestellungs-API zuerst die Zeilensumme
-  gerundet. Bei fehlenden Preisen bleibt die Summe offen. Abholort, Kategorien, Höchstmenge
+  entfernt werden. Die Schätzung verwendet `orderTotal` aus dem Vorbestellungskern, der
+  zuerst die Zeilensumme rundet. Bei fehlenden Preisen bleibt die Summe offen. Abholort, Kategorien, Höchstmenge
   und Preisanzeige stehen in `src/lib/order/order-config.ts`. Dort lässt sich auch ein
   Bestellschluss für den Folgetag setzen.
 - **Abholung.** 14 Tage ab dem heutigen Datum am Laden. Das 30-Minuten-Raster, der Vorlauf am
@@ -186,7 +186,11 @@ per WhatsApp macht die Vorbestellung fest. [Nachrichtenformat](../domains/vorbes
   und verwirft abgelaufene Artikel auch auf einer offen gebliebenen Seite. Der Abholort
   bleibt gespeichert. Der Name wird mit dem vorausgewählten Häkchen gespeichert.
   Termin, Notizen und Bestellnummer bleiben im laufenden Entwurf. „Angaben vergessen“ löscht
-  Korb und gespeicherte Angaben. Bei gesperrtem Speicher läuft die Sitzung im Browser weiter.
+  Korb und gespeicherte Angaben. Ändert ein anderer Tab den gespeicherten Korb, übernimmt
+  der offene Tab den neuen Stand und setzt seinen Entwurf zurück. Vor jedem Schreiben wird
+  der gespeicherte Stand verglichen. Die Ablaufprüfung
+  bereinigt nur einen erneut gelesenen, selbst abgelaufenen Speicherstand. Bei gesperrtem
+  Speicher läuft die Sitzung im Browser weiter.
 - **Prüfung.** Jest prüft Nachricht, URL-Limit, Abholzeiten, Kalender und Speicherung.
   `whatsapp-vorbestellung.spec.ts` prüft den Ablauf mit dem synthetischen Katalog und Axe.
 
