@@ -107,6 +107,14 @@ function fromCents(cents) {
   return Math.round(cents) / 100
 }
 
+function isNumericField(value) {
+  return (
+    (typeof value === 'number' ||
+      (typeof value === 'string' && value.trim() !== '')) &&
+    Number.isFinite(Number(value))
+  )
+}
+
 function isValidDate(value) {
   if (typeof value !== 'string' || !DATE_RE.test(value)) return false
   const d = new Date(`${value}T00:00:00Z`)
@@ -242,7 +250,7 @@ function share(part, whole) {
  * kommt `{ status: 'no-data' }` zurück - der Unterschied zwischen „kein
  * Bericht" und „Umsatz 0" muss bis in die Oberfläche erhalten bleiben.
  */
-function aggregateDay(date, closings) {
+function aggregateDay(date, closings, { includeProductGroups = false } = {}) {
   const list = Array.isArray(closings) ? closings.filter(Boolean) : []
   if (!isValidDate(date) || list.length === 0) {
     return {
@@ -265,6 +273,7 @@ function aggregateDay(date, closings) {
     lastReceipt: null,
   }
   const closingInfos = []
+  let positionsMissing = false
 
   for (const entry of list) {
     const data = entry && entry.data ? entry.data : entry
@@ -317,8 +326,15 @@ function aggregateDay(date, closings) {
         acc.hours.set(hour, h)
       }
 
-      for (const item of Array.isArray(tx.items) ? tx.items : []) {
-        if (!item || typeof item !== 'object') continue
+      const positions = Array.isArray(tx.items) ? tx.items : []
+      if (includeProductGroups && total !== 0 && positions.length === 0) {
+        positionsMissing = true
+      }
+      for (const item of positions) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) {
+          if (includeProductGroups) positionsMissing = true
+          continue
+        }
         const key =
           item.product_id != null && item.product_id !== ''
             ? String(item.product_id)
@@ -328,6 +344,14 @@ function aggregateDay(date, closings) {
           productName: item.product || '',
           quantity: 0,
           revenue: 0,
+        }
+        if (includeProductGroups) {
+          const group =
+            typeof item.group_name === 'string' && item.group_name.trim()
+          if (group && p.groupName === undefined) p.groupName = group
+          else if (group && p.groupName !== group) p.groupName = null
+          if (!isNumericField(item.total)) p.revenueMissing = true
+          if (!isNumericField(item.quantity)) p.quantityMissing = true
         }
         const qty = Number(item.quantity)
         p.quantity += Number.isFinite(qty) ? qty : 0
@@ -368,6 +392,7 @@ function aggregateDay(date, closings) {
     cardShare: share(acc.payments.card.amount, acc.revenue),
     firstReceipt: acc.firstReceipt,
     lastReceipt: acc.lastReceipt,
+    ...(positionsMissing ? { positionsMissing: true } : {}),
     products,
     hours,
   }

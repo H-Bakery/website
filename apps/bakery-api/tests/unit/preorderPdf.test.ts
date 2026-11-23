@@ -66,6 +66,8 @@ function record(extra: Partial<PreorderRecord> = {}): PreorderRecord {
     pickupPointId: null,
     status: 'offen',
     paid: false,
+    externalPayment: false,
+    mixedPayment: false,
     paidAmount: null,
     note: 'Bitte in zwei Tüten packen.',
     pickedUpAt: null,

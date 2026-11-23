@@ -257,6 +257,7 @@ function fieldsOf(preorder: Preorder): PreorderDraftFields {
     pickupDate: preorder.pickupDate,
     pickupTime: preorder.pickupTime ?? '',
     paid: preorder.paid,
+    externalPayment: preorder.externalPayment ?? false,
     note: preorder.note ?? '',
     lines: preorder.items.map((item) => ({
       key: lineKey(item.productId, item.variant),
@@ -317,6 +318,9 @@ export default function PreorderForm({
   )
   const [pickupTime, setPickupTime] = useState(preorder?.pickupTime ?? '')
   const [paid, setPaid] = useState(preorder?.paid ?? false)
+  const [externalPayment, setExternalPayment] = useState(
+    preorder?.externalPayment ?? false
+  )
   const [note, setNote] = useState(preorder?.note ?? '')
   const [lines, setLines] = useState<DraftLine[]>(
     () =>
@@ -373,6 +377,7 @@ export default function PreorderForm({
     pickupDate,
     pickupTime,
     paid,
+    externalPayment,
     note,
     lines,
   }
@@ -455,6 +460,7 @@ export default function PreorderForm({
         setPickupDate(draft.pickupDate)
         setPickupTime(draft.pickupTime)
         setPaid(draft.paid)
+        setExternalPayment(draft.externalPayment ?? false)
         setNote(draft.note)
         setLines(draft.lines)
         requestIdRef.current = draft.requestId
@@ -480,6 +486,9 @@ export default function PreorderForm({
         setPickupDate(f.pickupDate)
         setPickupTime(f.pickupTime)
         setPaid(f.paid)
+        setExternalPayment(
+          f.externalPayment ?? preorder.externalPayment ?? false
+        )
         setNote(f.note)
         setLines(f.lines)
         baseVersionRef.current = draft.baseUpdatedAt
@@ -547,6 +556,7 @@ export default function PreorderForm({
     pickupDate,
     pickupTime,
     paid,
+    externalPayment,
     note,
     lines,
   ])
@@ -565,6 +575,7 @@ export default function PreorderForm({
       setPickupDate(f.pickupDate)
       setPickupTime(f.pickupTime)
       setPaid(f.paid)
+      setExternalPayment(f.externalPayment ?? false)
       setNote(f.note)
       setLines(f.lines)
       setPending(null)
@@ -586,6 +597,7 @@ export default function PreorderForm({
     )
     setPickupTime('')
     setPaid(false)
+    setExternalPayment(false)
     setNote('')
     setLines([])
     setPending(null)
@@ -1119,6 +1131,9 @@ export default function PreorderForm({
         quantity: line.quantity,
       })),
       paid,
+      ...(externalPayment || preorder?.externalPayment
+        ? { externalPayment }
+        : {}),
       note: note.trim() || null,
     }
   }
@@ -1842,6 +1857,18 @@ export default function PreorderForm({
                 label={paid ? 'Bezahlt' : 'Noch nicht bezahlt'}
                 sx={{ mb: 1, minHeight: 44 }}
               />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={externalPayment}
+                    onChange={(event) =>
+                      setExternalPayment(event.target.checked)
+                    }
+                  />
+                }
+                label="Zahlung per Überweisung oder Rechnung"
+                sx={{ mb: 1, minHeight: 44 }}
+              />
               {paidBefore != null &&
                 paid &&
                 roundCents(total - paidBefore) !== 0 && (
@@ -1854,7 +1881,11 @@ export default function PreorderForm({
                     {total > paidBefore
                       ? `Differenz ${formatCurrency(
                           roundCents(total - paidBefore)
-                        )} bei der Abholung kassieren.`
+                        )} ${
+                          externalPayment
+                            ? 'noch offen.'
+                            : 'bei der Abholung kassieren.'
+                        }`
                       : `${formatCurrency(
                           roundCents(paidBefore - total)
                         )} an die Kundschaft zurückgeben.`}

@@ -94,6 +94,8 @@ export interface Preorder {
   notCollected: boolean
   notCollectedAt: string | null
   paid: boolean
+  externalPayment?: boolean
+  mixedPayment?: boolean
   /** Bezahlter Betrag (bei `paid`); ältere Server: fehlt. */
   paidAmount?: number | null
   /**
@@ -173,6 +175,7 @@ export interface PreorderInput {
   pickupPointId?: string | null
   items: PreorderItemInput[]
   paid?: boolean
+  externalPayment?: boolean
   note?: string | null
   status?: PreorderStatus
   /** Kennung des Speicherns; ein Wiederholen legt nichts doppelt an. */
@@ -183,6 +186,8 @@ export interface PreorderStatusChange {
   status?: PreorderStatus
   notCollected?: boolean
   paid?: boolean
+  externalPayment?: boolean
+  cashTopUp?: true
 }
 
 export interface PreorderListFilters {
@@ -603,6 +608,12 @@ export function preorderPatch(
   }
   if (after.paid !== undefined && after.paid !== before.paid) {
     patch.paid = after.paid
+  }
+  if (
+    after.externalPayment !== undefined &&
+    after.externalPayment !== Boolean(before.externalPayment)
+  ) {
+    patch.externalPayment = after.externalPayment
   }
   if (!same(after.note, before.note)) patch.note = after.note ?? null
   if (itemsSignature(after.items) !== itemsSignature(before.items)) {

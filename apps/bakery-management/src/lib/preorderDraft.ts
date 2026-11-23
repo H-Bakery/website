@@ -46,6 +46,7 @@ export interface PreorderDraftFields {
   pickupDate: string
   pickupTime: string
   paid: boolean
+  externalPayment?: boolean
   note: string
   lines: PreorderDraftLine[]
 }

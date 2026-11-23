@@ -52,6 +52,7 @@ export interface CatalogProduct {
   id: string
   numeric_id?: number
   name?: string
+  price?: number
   available?: boolean
 }
 

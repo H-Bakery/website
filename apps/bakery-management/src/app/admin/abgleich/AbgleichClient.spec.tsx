@@ -778,3 +778,76 @@ describe('Abgleich Produktion ↔ Kasse', () => {
     ).toBeTruthy()
   })
 })
+
+it('zeigt den Euro-Abgleich und sendet die Abschnittsauswahl für den Folgetag', async () => {
+  mocked.fetchAbgleich.mockResolvedValue(
+    abgleich({
+      euro: {
+        abschnitte: [
+          { id: 'kuchen', label: 'Kuchen', folgetag: true },
+          { id: 'broetchen', label: 'Brötchen', folgetag: false },
+        ],
+        sammelEur: 4,
+        sammelAnteil: 0.2,
+        days: [
+          {
+            date: '2026-12-01',
+            basis: 'geplant',
+            report: true,
+            kasseEur: 20,
+            sammelEur: 4,
+            handelswareEur: 3,
+            abschnitte: [
+              {
+                section: 'kuchen',
+                sectionLabel: 'Kuchen',
+                sollEur: 17,
+                istEur: 14,
+                differenzEur: -2,
+                folgetagEur: 1,
+                sammelEur: 4,
+                handelswareEur: 0,
+                preisOffen: [],
+                grundmengeOffen: false,
+                restCounted: false,
+              },
+            ],
+            items: [],
+            nichtZuordenbar: [
+              {
+                name: 'Test Sonstige',
+                plu: '899',
+                section: 'kuchen',
+                sammel: true,
+                istEur: 4,
+              },
+            ],
+          },
+        ],
+      },
+    })
+  )
+  render(<AbgleichClient />)
+  await screen.findByRole('table', { name: 'Abgleich je Posten' })
+  fireEvent.click(screen.getByRole('button', { name: 'Euro' }))
+  const sectionTable = await screen.findByRole('table', {
+    name: 'Euro-Abgleich je Abschnitt',
+  })
+  expect(within(sectionTable).getByText(/-2,00\s*€/)).toBeInTheDocument()
+  expect(
+    within(sectionTable).getByText('Nicht verkauft oder nicht kassiert')
+  ).toBeInTheDocument()
+  expect(within(sectionTable).getByText('Handelsware')).toBeInTheDocument()
+  expect(screen.getByText(/20\s*%/)).toBeInTheDocument()
+  expect(screen.getByRole('checkbox', { name: 'Kuchen' })).toBeChecked()
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Brötchen' }))
+  await waitFor(() =>
+    expect(mocked.fetchAbgleich).toHaveBeenLastCalledWith({
+      folgetag: ['kuchen', 'broetchen'],
+    })
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Stück' }))
+  expect(
+    screen.getByRole('table', { name: 'Abgleich je Posten' })
+  ).toBeInTheDocument()
+})

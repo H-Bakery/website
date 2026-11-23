@@ -12,6 +12,7 @@ import * as os from 'os'
 import * as path from 'path'
 import request from 'supertest'
 
+import { AuditLog } from '../../src/models'
 import { createTestApp, TestApp } from '../helpers/createTestApp'
 import { bearer, sessionFor } from '../helpers/auth'
 
@@ -25,6 +26,7 @@ jest.setTimeout(30000)
 const TODAY = '2026-12-08'
 const TUE = '2026-12-01'
 const WED = '2026-12-02'
+const THU = '2026-12-03'
 const MON = '2026-12-07'
 const PINNED_NOW = new Date('2026-12-08T09:00:00Z')
 
@@ -42,6 +44,7 @@ const as = (role: keyof typeof tokens) => ({
   get: (p: string) => request(api.app).get(p).set(bearer(tokens[role])),
   put: (p: string) => request(api.app).put(p).set(bearer(tokens[role])),
   post: (p: string) => request(api.app).post(p).set(bearer(tokens[role])),
+  patch: (p: string) => request(api.app).patch(p).set(bearer(tokens[role])),
 })
 
 function writeHq(dir: string): void {
@@ -81,21 +84,24 @@ beforeAll(async () => {
   reportsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'abgleich-reports-'))
   fs.mkdirSync(path.join(reportsDir, 'converted'))
   // Tuesday: 9 Plunder (PLU 906) sold, one storno pair that nets out.
+  const converted = grundmengen.convertedReport(TUE, [
+    { items: [[906, 9]] },
+    { items: [[906, 1]] },
+    { items: [[906, -1]], type: 'storno' },
+    { items: [[701, 3]] },
+  ])
+  const collective = converted.transactions[3].items[0]
+  Object.assign(collective, { product: 'Diverse', group_name: 'Brötchen' })
   fs.writeFileSync(
     path.join(reportsDir, 'converted', `${TUE}_90000001.json`),
-    JSON.stringify(
-      grundmengen.convertedReport(TUE, [
-        { items: [[906, 9]] },
-        { items: [[906, 1]] },
-        { items: [[906, -1]] },
-      ])
-    )
+    JSON.stringify(converted)
   )
   api = await createTestApp({
     app: {
       backzettel: { hqDir, cacheMs: 0, now: () => PINNED_NOW },
       hq: { reportsDir, today: TODAY },
       hqProducts: { productsDir: path.join(hqDir, 'products'), writeDir: null },
+      preorders: { now: () => PINNED_NOW },
     },
   })
   tokens.inhaber = await sessionFor(api.app, 'test.inhaber', 'inhaber')
@@ -188,6 +194,206 @@ describe('GET /api/abgleich', () => {
     // Weck has no PLU: listed apart.
     expect(posten(data, 'weck')).toMatchObject({ status: 'keine_plu' })
     expect(data.items.some((p: any) => p.key === 'weck')).toBe(false)
+    expect(data.euro.days[0].abschnitte).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          section: 'broetchen',
+          istEur: 3,
+          sammelEur: 3,
+        }),
+        expect.objectContaining({ section: 'kaffeestueckchen', istEur: 9 }),
+      ])
+    )
+  })
+
+  it('zieht eine gekennzeichnete Vorbestellung im Entwurf und nach der Freigabe ab', async () => {
+    const created = await as('verkauf')
+      .post('/api/preorders')
+      .send({
+        channel: 'laden',
+        customerName: 'Testbestellung Euro',
+        pickupDate: THU,
+        items: [{ productId: 'test-plunder', quantity: 2 }],
+      })
+    expect(created.status).toBe(201)
+    expect(created.body.data.externalPayment).toBe(false)
+    const order = `/api/preorders/${created.body.data.id}`
+    const read = () =>
+      as('inhaber').get(`/api/abgleich?from=${THU}&to=${THU}&folgetag=`)
+    const item = (res: request.Response) =>
+      res.body.data.euro.days[0].items.find(
+        (p: { key: string }) => p.key === 'plunder'
+      )
+    const before = item(await read()).sollEur
+    expect(before).toBeGreaterThan(3)
+    const invalid = await as('verkauf')
+      .patch(order)
+      .send({ externalPayment: 'ja' })
+    expect(invalid.body.error).toBe('invalid_external_payment')
+    const updated = await as('verkauf')
+      .patch(order)
+      .send({ externalPayment: true })
+    expect(updated.body.data).toMatchObject({
+      externalPayment: true,
+      paid: false,
+    })
+    expect(item(await read())).toMatchObject({
+      sollEur: before - 3,
+      istEur: null,
+    })
+
+    expect(
+      (await as('inhaber').post(`/api/backzettel/${THU}/confirm`)).status
+    ).toBe(200)
+    const confirmed = await read()
+    expect(confirmed.body.data.euro.days[0].basis).toBe('freigegeben')
+    expect(item(confirmed)).toMatchObject({ sollEur: before - 3, istEur: null })
+
+    const driver = await as('fahrer').post(`${order}/status`).send({
+      status: 'abgeholt',
+      paid: true,
+      externalPayment: false,
+    })
+    expect(driver.status).toBe(403)
+
+    const handover = await as('verkauf').post(`${order}/status`).send({
+      status: 'abgeholt',
+      paid: true,
+      externalPayment: false,
+    })
+    expect(handover.body.data).toMatchObject({
+      status: 'abgeholt',
+      paid: true,
+      externalPayment: false,
+    })
+    expect(item(await read()).sollEur).toBe(before)
+    const undone = await as('verkauf')
+      .post(`${order}/status`)
+      .send({ status: 'offen' })
+    expect(undone.body.data).toMatchObject({
+      status: 'offen',
+      paid: false,
+      externalPayment: true,
+    })
+    expect(item(await read()).sollEur).toBe(before - 3)
+
+    const invalidSection = await as('inhaber').get(
+      '/api/abgleich?folgetag=unbekannt'
+    )
+    expect(invalidSection.body.error).toBe('invalid_next_day_sections')
+  })
+
+  it('hält bei Kassennachzahlung nach externer Teilzahlung Soll und Differenz bis zur Rücknahme offen', async () => {
+    const date = '2026-12-04'
+    const report = grundmengen.convertedReport(date, [{ items: [[907, 1]] }])
+    report.transactions[0].items[0].group_name = 'Brötchen'
+    fs.writeFileSync(
+      path.join(reportsDir, 'converted', `${date}_90000001.json`),
+      JSON.stringify(report)
+    )
+    const items = (quantity: number) => [{ productId: 'test-weck', quantity }]
+    const created = await as('verkauf')
+      .post('/api/preorders')
+      .send({
+        channel: 'laden',
+        customerName: 'Testbestellung Mischzahlung',
+        pickupDate: date,
+        items: items(2),
+        paid: true,
+        externalPayment: true,
+      })
+    expect(created.status).toBe(201)
+    const order = `/api/preorders/${created.body.data.id}`
+    const expanded = await as('verkauf')
+      .patch(order)
+      .send({ items: items(3) })
+    expect(expanded.body.data).toMatchObject({
+      paidAmount: 3,
+      paymentBalance: 1.5,
+    })
+    const readSection = async () => {
+      const response = await as('inhaber').get(
+        `/api/abgleich?from=${date}&to=${date}&folgetag=`
+      )
+      expect(response.status).toBe(200)
+      return response.body.data.euro.days[0].abschnitte.find(
+        (s: { section: string }) => s.section === 'broetchen'
+      )
+    }
+    const before = await readSection()
+    expect(before.sollEur).toEqual(expect.any(Number))
+    expect(before.istEur).toBe(1)
+    const confirm = await as('verkauf').post(`${order}/status`).send({
+      status: 'abgeholt',
+      paid: true,
+      cashTopUp: true,
+    })
+    expect(confirm.body.data).toMatchObject({
+      paid: true,
+      paidAmount: 4.5,
+      externalPayment: true,
+      mixedPayment: true,
+    })
+    const entityId = String(created.body.data.id)
+    const entry = await AuditLog.findOne({
+      where: { entity: 'preorder', entityId, action: 'status' },
+      order: [['id', 'DESC']],
+    })
+    expect(entry?.data).toMatchObject({
+      changed: expect.arrayContaining(['mixedPayment']),
+      mixedPayment: true,
+    })
+    await AuditLog.create({
+      userId: null,
+      entity: 'preorder',
+      entityId,
+      action: 'test-audit-entry',
+      data: { mixedPayment: false },
+    })
+    const day = await as('verkauf').get(`/api/preorders/day?date=${date}`)
+    expect(day.body.data.preorders).toEqual([
+      expect.objectContaining({ id: created.body.data.id, mixedPayment: true }),
+    ])
+    expect(await readSection()).toMatchObject({
+      sollEur: null,
+      istEur: before.istEur,
+      differenzEur: null,
+      mischzahlungOffen: true,
+    })
+    const undo = await as('verkauf')
+      .post(`${order}/status`)
+      .send({ status: 'offen' })
+    expect(undo.body.data).toMatchObject({
+      paidAmount: 3,
+      paymentBalance: 1.5,
+      externalPayment: true,
+    })
+    expect(await readSection()).toMatchObject({
+      sollEur: before.sollEur,
+      differenzEur: before.differenzEur,
+      mischzahlungOffen: false,
+    })
+    const oldHandover = await as('verkauf').post(`${order}/status`).send({
+      status: 'abgeholt',
+      paid: true,
+      externalPayment: false,
+    })
+    expect(oldHandover.status).toBe(409)
+    expect(oldHandover.body.error).toBe('cash_top_up_required')
+    await as('verkauf')
+      .post(`${order}/status`)
+      .send({ paid: true, cashTopUp: true })
+      .expect(200)
+    expect(await readSection()).toMatchObject({
+      sollEur: null,
+      mischzahlungOffen: true,
+    })
+    await as('verkauf').patch(order).send({ paid: false }).expect(200)
+    await as('verkauf').post(`${order}/status`).send({ paid: true }).expect(200)
+    expect(await readSection()).toMatchObject({
+      sollEur: before.sollEur,
+      mischzahlungOffen: false,
+    })
   })
 
   it('with a confirmed sheet and a rest count it gives Ungeklärt', async () => {

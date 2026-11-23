@@ -292,6 +292,19 @@ function describeChange(change: PreorderStatusChange): string {
   return 'Die Änderung'
 }
 
+function cashPaymentMissing(preorder: Preorder, change: PreorderStatusChange) {
+  return (
+    (change.externalPayment === false && preorder.externalPayment) ||
+    (change.cashTopUp && !preorder.mixedPayment)
+  )
+}
+
+function cashPaymentChange(preorder: Preorder): PreorderStatusChange {
+  return owesRest(preorder) && (preorder.paidAmount ?? 0) > 0
+    ? { paid: true, cashTopUp: true }
+    : { paid: true, externalPayment: false }
+}
+
 /**
  * Eine Übergabe scheiterte am Versionsabgleich, weil die Bestellung
  * inzwischen storniert oder ihr Betrag geändert wurde (W4-Verifikation
@@ -324,7 +337,13 @@ export function handoverConflictAdvice(
   const diff = (cents(fresh.total) - cents(before.total)) / 100
   const pay = paymentState(fresh)
   let money: string
-  if (pay.kind === 'unpaid') {
+  if (
+    fresh.externalPayment &&
+    !tookMoney &&
+    (pay.kind === 'unpaid' || pay.kind === 'rest')
+  ) {
+    money = 'Zahlungsweg und offenen Betrag prüfen'
+  } else if (pay.kind === 'unpaid') {
     money = !tookMoney
       ? `${formatCurrency(fresh.total)} kassieren`
       : diff > 0
@@ -364,6 +383,9 @@ export function lostActionText(
 ): string {
   const back = 'Die Verbindung ist wieder da -'
   if (change.status === 'abgeholt' && fresh.status === 'abgeholt') {
+    if (cashPaymentMissing(fresh, change)) {
+      return `${code}: ${back} wurde inzwischen schon übergeben. Die Kassenzahlung ist nicht erfasst. Bitte den Zahlungsweg prüfen.`
+    }
     if (change.paid === true && !fresh.paid) {
       return `${code}: ${back} wurde inzwischen schon an anderer Stelle übergeben, Ihre Zahlung ist NICHT erfasst. Wenn Sie das Geld genommen haben: jetzt bei der Bestellung „Bezahlt“ tippen.`
     }
@@ -888,6 +910,16 @@ export default function AbholListeClient({
       setToast({ text, severity: 'info' })
       return
     }
+    if (
+      fresh?.status === 'abgeholt' &&
+      change?.status === 'abgeholt' &&
+      cashPaymentMissing(fresh, change)
+    ) {
+      const text = `${preorder.code}: Wurde inzwischen schon übergeben. Die Kassenzahlung ist nicht erfasst. Bitte den Zahlungsweg prüfen.`
+      keepFailure(preorder.code, text)
+      setToast({ text, severity: 'warning' })
+      return
+    }
     // W4-verify r2: Übergabe mit Geld, aber jemand anders hat schon ohne
     // Zahlung übergeben - das kassierte Geld ist NICHT erfasst. Das muss
     // stehen bleiben und den nächsten Schritt nennen.
@@ -1085,13 +1117,18 @@ export default function AbholListeClient({
     notCollected: p.notCollected,
   })
 
-  const handOver = (preorder: Preorder, paid?: boolean) => {
+  const handOver = (
+    preorder: Preorder,
+    paidChange: Pick<
+      PreorderStatusChange,
+      'paid' | 'externalPayment' | 'cashTopUp'
+    > = {}
+  ) => {
     setHandover(null)
-    const change: PreorderStatusChange = { status: 'abgeholt' }
-    if (paid !== undefined) change.paid = paid
+    const change: PreorderStatusChange = { status: 'abgeholt', ...paidChange }
     const payment = paymentState(preorder)
     const what =
-      paid !== true
+      change.paid !== true
         ? ''
         : payment.kind === 'refund'
         ? `, ${formatCurrency(payment.amount)} erstattet`
@@ -1157,22 +1194,37 @@ export default function AbholListeClient({
     // Bezahlt, Betrag stimmt, Verkauf: ein Tipp genügt (Rückgängig im
     // Hinweis). Sonst fragen - nach dem Geld (auch nach einer Erstattung,
     // W4-Verifikation Runde 3), und Fahrer können nicht zurücknehmen.
-    if (paymentState(preorder).kind === 'paid' && canWrite) handOver(preorder)
+    if (
+      paymentState(preorder).kind === 'paid' &&
+      canWrite &&
+      !preorder.externalPayment
+    )
+      handOver(preorder)
     else setHandover(preorder)
   }
 
   /** „Erstattet“: storniert → nicht mehr bezahlt, sonst Betrag stimmt wieder. */
-  const markPaid = (preorder: Preorder) => {
+  const markPaid = (preorder: Preorder, atRegister = false) => {
     const name = preorder.customerName ?? preorder.code
     act(
       preorder,
-      { paid: true },
-      owesRest(preorder) ? `${name}: Rest kassiert.` : `${name}: bezahlt.`,
+      atRegister ? cashPaymentChange(preorder) : { paid: true },
+      owesRest(preorder) && (!preorder.externalPayment || atRegister)
+        ? `${name}: Rest kassiert.`
+        : `${name}: bezahlt.`,
       // Rückgängig nur für den Verkauf - eine erfasste Zahlung zurücknehmen
       // darf der Fahrer nicht (API 403 paid_undo_forbidden, W4-Verifikation
       // Runde 2). Deshalb fragt die Seite ihn vorher (UI-Runde 1).
-      canWrite && !preorder.paid ? { paid: false } : undefined
+      canWrite && !preorder.paid
+        ? { paid: false, ...(atRegister ? { externalPayment: true } : {}) }
+        : undefined
     )
+  }
+
+  const recordConfirmedPayment = (atRegister = false) => {
+    if (!payConfirm) return
+    setPayConfirm(null)
+    markPaid(payConfirm, atRegister)
   }
 
   const markRefunded = (preorder: Preorder) => {
@@ -1608,7 +1660,11 @@ export default function AbholListeClient({
                     variant="outlined"
                     size="large"
                     startIcon={<PaidIcon />}
-                    onClick={() => (canWrite ? markPaid(p) : setPayConfirm(p))}
+                    onClick={() =>
+                      canWrite && !p.externalPayment
+                        ? markPaid(p)
+                        : setPayConfirm(p)
+                    }
                     disabled={busy}
                     aria-label={`${name}: als bezahlt markieren`}
                     sx={{
@@ -1677,12 +1733,21 @@ export default function AbholListeClient({
   }
 
   const handoverPayment = handover ? paymentState(handover) : null
+  const externalAmountOpen =
+    handover?.externalPayment &&
+    (handoverPayment?.kind === 'unpaid' || handoverPayment?.kind === 'rest')
   const menuPreorder = menu?.preorder ?? null
   const menuActions = menuPreorder
     ? abholActions(menuPreorder, role, today)
     : null
   const menuName = menuPreorder?.customerName ?? menuPreorder?.code ?? ''
   const closeMenu = () => setMenu(null)
+  const openPaymentsLabel = preorders.some(
+    (p) =>
+      p.externalPayment && p.status !== 'storniert' && (!p.paid || owesRest(p))
+  )
+    ? 'Noch offen'
+    : 'Noch zu kassieren'
 
   const address =
     point && point.street
@@ -1706,7 +1771,7 @@ export default function AbholListeClient({
               : undefined,
         },
         {
-          label: 'Noch zu kassieren',
+          label: openPaymentsLabel,
           value: formatCurrency(summary.unpaidTotal),
           tone: summary.unpaidTotal > 0 ? 'warning' : 'default',
           hint: handedOverUnpaidNote(summary) ?? undefined,
@@ -2393,7 +2458,9 @@ export default function AbholListeClient({
             {summary?.count === 1 ? 'Bestellung' : 'Bestellungen'}
             {point?.window ? ` · Übergabe ${point.window} Uhr` : ''}
             {summary
-              ? ` · noch zu kassieren ${formatCurrency(summary.unpaidTotal)}`
+              ? ` · ${openPaymentsLabel.toLowerCase()} ${formatCurrency(
+                  summary.unpaidTotal
+                )}`
               : ''}
             {handedOverUnpaidNote(summary)
               ? ` (${handedOverUnpaidNote(summary)})`
@@ -2613,7 +2680,14 @@ export default function AbholListeClient({
                 sx={{ mt: 2 }}
                 data-testid="handover-payment"
               >
-                {handoverPayment?.kind === 'rest'
+                {handover.externalPayment && (
+                  <Typography variant="body2" fontWeight={600}>
+                    Zahlung per Überweisung oder Rechnung
+                  </Typography>
+                )}
+                {externalAmountOpen && handoverPayment
+                  ? `${formatCurrency(handoverPayment.amount)} noch offen.`
+                  : handoverPayment?.kind === 'rest'
                   ? `Bezahlt waren ${formatCurrency(
                       handover.paidAmount ?? 0
                     )}, die Bestellung kostet jetzt ${formatCurrency(
@@ -2674,16 +2748,16 @@ export default function AbholListeClient({
           <Button onClick={() => setHandover(null)} sx={TOUCH}>
             Abbrechen
           </Button>
-          {handover && !handover.paid && (
+          {handover && !handover.paid && !externalAmountOpen && (
             <Button
               variant="outlined"
-              onClick={() => handOver(handover, false)}
+              onClick={() => handOver(handover, { paid: false })}
               sx={TOUCH}
             >
               Ohne Zahlung übergeben
             </Button>
           )}
-          {handover && owesRest(handover) && (
+          {handover && owesRest(handover) && !externalAmountOpen && (
             <Button
               variant="outlined"
               onClick={() => handOver(handover)}
@@ -2701,6 +2775,17 @@ export default function AbholListeClient({
               Ohne Erstattung übergeben
             </Button>
           )}
+          {handover && externalAmountOpen && canWrite && (
+            <Button
+              variant="outlined"
+              onClick={() => handOver(handover, cashPaymentChange(handover))}
+              sx={TOUCH}
+            >
+              {handoverPayment?.kind === 'rest'
+                ? 'Rest an der Kasse bezahlt und übergeben'
+                : 'An der Kasse bezahlt und übergeben'}
+            </Button>
+          )}
           {handover && (
             <Button
               variant="contained"
@@ -2710,12 +2795,16 @@ export default function AbholListeClient({
               onClick={() =>
                 handOver(
                   handover,
-                  handoverPayment?.kind === 'paid' ? undefined : true
+                  externalAmountOpen || handoverPayment?.kind === 'paid'
+                    ? undefined
+                    : { paid: true }
                 )
               }
               sx={TOUCH}
             >
-              {handoverPayment?.kind === 'rest'
+              {externalAmountOpen
+                ? 'Mit offener Zahlung übergeben'
+                : handoverPayment?.kind === 'rest'
                 ? 'Rest kassiert und übergeben'
                 : handoverPayment?.kind === 'refund'
                 ? 'Erstattet und übergeben'
@@ -2745,9 +2834,20 @@ export default function AbholListeClient({
                 </strong>{' '}
                 von {payConfirm.customerName ?? payConfirm.code} erhalten?
               </DialogContentText>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Zurücknehmen kann danach nur der Verkauf.
-              </Typography>
+              {payConfirm.externalPayment && (
+                <Typography variant="body2" sx={{ mt: 1 }}>
+                  Zahlung per Überweisung oder Rechnung
+                </Typography>
+              )}
+              {!canWrite && (
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ mt: 1 }}
+                >
+                  Zurücknehmen kann danach nur der Verkauf.
+                </Typography>
+              )}
             </>
           )}
         </DialogContent>
@@ -2764,20 +2864,29 @@ export default function AbholListeClient({
           <Button onClick={() => setPayConfirm(null)} sx={TOUCH}>
             Abbrechen
           </Button>
+          {payConfirm?.externalPayment && canWrite && (
+            <Button
+              variant="outlined"
+              onClick={() => recordConfirmedPayment(true)}
+              sx={TOUCH}
+            >
+              {owesRest(payConfirm)
+                ? 'Rest an der Kasse bezahlt'
+                : 'An der Kasse bezahlt'}
+            </Button>
+          )}
           {payConfirm && (
             <Button
               variant="contained"
               color="success"
               autoFocus
               startIcon={<PaidIcon />}
-              onClick={() => {
-                const target = payConfirm
-                setPayConfirm(null)
-                markPaid(target)
-              }}
+              onClick={() => recordConfirmedPayment()}
               sx={TOUCH}
             >
-              {formatCurrency(paymentState(payConfirm).amount)} kassiert
+              {payConfirm.externalPayment
+                ? 'Externe Zahlung erfasst'
+                : `${formatCurrency(paymentState(payConfirm).amount)} kassiert`}
             </Button>
           )}
         </DialogActions>

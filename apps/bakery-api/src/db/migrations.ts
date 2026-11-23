@@ -106,4 +106,8 @@ export const MIGRATIONS: MigrationEntry[] = [
     name: '20270401000000-dienstplan-hourly-wage.js',
     module: require('../../migrations/20270401000000-dienstplan-hourly-wage.js'),
   },
+  {
+    name: '20270402000000-preorders-external-payment.js',
+    module: require('../../migrations/20270402000000-preorders-external-payment.js'),
+  },
 ]

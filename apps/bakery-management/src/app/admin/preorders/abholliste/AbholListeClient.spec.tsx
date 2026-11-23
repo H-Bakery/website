@@ -302,6 +302,72 @@ describe('AbholListeClient (P2)', () => {
     )
   })
 
+  it('zeigt die offene Rechnung bei der Übergabe und erfasst die abweichende Kassenzahlung', async () => {
+    const user = userEvent.setup()
+    mockDay.mockResolvedValue(ladenDay([{ ...max, externalPayment: true }]))
+    renderAs('verkauf')
+    await user.click(
+      await screen.findByRole('button', { name: 'Max Muster übergeben' })
+    )
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByTestId('handover-payment')).toHaveTextContent(
+      'Überweisung oder Rechnung'
+    )
+    expect(
+      within(dialog).getByTestId('handover-payment')
+    ).not.toHaveTextContent(/kassieren/)
+    expect(
+      within(dialog).getByRole('button', {
+        name: 'Mit offener Zahlung übergeben',
+      })
+    ).toBeVisible()
+    await user.click(
+      within(dialog).getByRole('button', {
+        name: 'An der Kasse bezahlt und übergeben',
+      })
+    )
+    expect(mockStatus).toHaveBeenCalledWith(
+      max.id,
+      { status: 'abgeholt', paid: true, externalPayment: false },
+      max.updatedAt
+    )
+  })
+
+  it.each([
+    [
+      'Max Muster übergeben',
+      'Rest an der Kasse bezahlt und übergeben',
+      { status: 'abgeholt' },
+    ],
+    ['Max Muster: als bezahlt markieren', 'Rest an der Kasse bezahlt', {}],
+  ])(
+    'erfasst die Kassennachzahlung getrennt bei „%s“',
+    async (action, confirm, status) => {
+      const user = userEvent.setup()
+      mockDay.mockResolvedValue(
+        ladenDay([
+          {
+            ...max,
+            externalPayment: true,
+            paid: true,
+            paidAmount: 10,
+            total: 15,
+            paymentBalance: 5,
+          },
+        ])
+      )
+      renderAs('verkauf')
+      await user.click(await screen.findByRole('button', { name: action }))
+      const dialog = await screen.findByRole('dialog')
+      await user.click(within(dialog).getByRole('button', { name: confirm }))
+      expect(mockStatus).toHaveBeenCalledWith(
+        max.id,
+        { ...status, paid: true, cashTopUp: true },
+        max.updatedAt
+      )
+    }
+  )
+
   it('übergibt auch ohne Zahlung (Rechnung) und markiert bezahlt einzeln', async () => {
     const user = userEvent.setup()
     renderAs('verkauf')

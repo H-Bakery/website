@@ -112,7 +112,7 @@ function readDailyReport(reportsDir, date, log) {
  * Fehlende Tage stehen nicht in der Liste - wer Lücken zeigen will, nimmt
  * `core.listDates(from, to)` dazu.
  */
-function readDailyReportsInRange(reportsDir, from, to, log) {
+function readDailyReportsInRange(reportsDir, from, to, log, options) {
   if (!core.isValidDate(from) || !core.isValidDate(to) || from > to) return []
   const dir = convertedDir(reportsDir)
   const byDate = new Map()
@@ -125,7 +125,7 @@ function readDailyReportsInRange(reportsDir, from, to, log) {
   }
   return [...byDate.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([date, closings]) => core.aggregateDay(date, closings))
+    .map(([date, closings]) => core.aggregateDay(date, closings, options))
 }
 
 module.exports = {

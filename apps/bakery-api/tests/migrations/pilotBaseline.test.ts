@@ -7,7 +7,7 @@
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import { Model, ModelStatic, QueryTypes, Sequelize } from 'sequelize'
+import { DataTypes, Model, ModelStatic, QueryTypes, Sequelize } from 'sequelize'
 
 import { openDatabase } from '../../src/db/database'
 import { runMigrations } from '../../src/db/migrate'
@@ -28,6 +28,8 @@ const invoicesPdfMigration = require('../../migrations/20270325000000-invoices-p
 const noneTodayMigration = require('../../migrations/20270310000000-backzettel-none-today.js')
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const hourlyWageMigration = require('../../migrations/20270401000000-dienstplan-hourly-wage.js')
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const paymentMigration = require('../../migrations/20270402000000-preorders-external-payment.js')
 
 /** The 17 migrations the server ran before B2, now in migrations/archive/. */
 const LEGACY_NAMES = [
@@ -107,6 +109,7 @@ describe('pilot baseline on a fresh database', () => {
       '20270320000000-invoices.js',
       '20270325000000-invoices-pdf-paid.js',
       '20270401000000-dienstplan-hourly-wage.js',
+      '20270402000000-preorders-external-payment.js',
     ])
   })
 
@@ -1669,4 +1672,71 @@ describe('Rechnungen: PDF, bezahlt, number_key (Migration 20270325)', () => {
     )
     await sequelize.close()
   })
+})
+
+describe('Zahlungsweg und Mischzahlung bei Vorbestellungen', () => {
+  it.each([false, true])(
+    'ergänzt beide Spalten idempotent und erfasst vorhandene Bestellungen mit Standardwert (externe Spalte vorhanden: %s)',
+    async (hasExternalPayment) => {
+      const sequelize = await freshDb()
+      try {
+        const qi = sequelize.getQueryInterface()
+        const name = '20270402000000-preorders-external-payment.js'
+        await runMigrations(sequelize, {
+          ...quiet,
+          migrations: MIGRATIONS.filter((m) => m.name !== name),
+        })
+        await sequelize.query(
+          `INSERT INTO preorders (id, code, channel, pickup_date, created_at, updated_at)
+             VALUES (1, 'TEST-ABHOLUNG', 'laden', '2026-11-19', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+        )
+        await sequelize.query(
+          `INSERT INTO preorder_items (preorder_id, product_id, product_name, unit_price, quantity, created_at, updated_at)
+           VALUES (1, 'test-brot', 'Testbrot', 2.5, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+        )
+        if (hasExternalPayment) {
+          await qi.addColumn('preorders', 'external_payment', {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
+          })
+          await sequelize.query('UPDATE preorders SET external_payment = 1')
+        }
+        expect((await runMigrations(sequelize, quiet)).executed).toEqual([name])
+        const described = await qi.describeTable('preorders')
+        expect(described.mixed_payment).toMatchObject({ allowNull: false })
+        const readFlags = () =>
+          sequelize.query(
+            'SELECT external_payment, mixed_payment FROM preorders',
+            {
+              type: QueryTypes.SELECT,
+            }
+          )
+        const original = {
+          external_payment: Number(hasExternalPayment),
+          mixed_payment: 0,
+        }
+        expect(await readFlags()).toEqual([original])
+        await expect(
+          sequelize.query('UPDATE preorders SET mixed_payment = NULL')
+        ).rejects.toThrow()
+        await sequelize.query('UPDATE preorders SET mixed_payment = 1')
+        await paymentMigration.up(qi, Sequelize)
+        expect(await readFlags()).toEqual([{ ...original, mixed_payment: 1 }])
+        await paymentMigration.down(qi, Sequelize)
+        await paymentMigration.down(qi, Sequelize)
+        const remaining = await columns(sequelize, 'preorders')
+        expect(remaining).not.toContain('mixed_payment')
+        expect(remaining).not.toContain('external_payment')
+        expect(
+          await sequelize.query('SELECT preorder_id FROM preorder_items', {
+            type: QueryTypes.SELECT,
+          })
+        ).toEqual([{ preorder_id: 1 }])
+        expect(await foreignKeyViolations(sequelize)).toEqual([])
+      } finally {
+        await sequelize.close()
+      }
+    }
+  )
 })

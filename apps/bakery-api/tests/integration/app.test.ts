@@ -60,6 +60,7 @@ describe('createTestApp', () => {
       '20270320000000-invoices.js',
       '20270325000000-invoices-pdf-paid.js',
       '20270401000000-dienstplan-hourly-wage.js',
+      '20270402000000-preorders-external-payment.js',
     ])
   })
 })

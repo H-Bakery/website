@@ -41,8 +41,8 @@ Routen `src/routes/abgleich.routes.ts` (`/api/abgleich`) · Management-App
   verkauft“. Solche Tage zählen nicht in die Summen des Postens (`gaps.baseOpen`).
 - **Entwurf ohne Zeile:** ein Backtag, dessen Backliste keine einzige Zeile hat, ist „kein
   Backzettel“ - nicht ein Backtag, an dem alles „verkauft, aber nicht gebacken“ wäre.
-- **CAP** (Verkaufspartner) verlässt den Laden und wird abgezogen. **Vorbestellungen** werden im
-  Laden an der Kasse bezahlt und deshalb **nicht** abgezogen - **vorläufig**.
+- **CAP** (Verkaufspartner) verlässt den Laden und wird abgezogen. In der Stückansicht bleiben
+  alle Vorbestellungen enthalten. In der Euro-Ansicht zählt der erfasste Zahlungsweg.
 - **Rest fehlt** (Tag nicht oder nur teilweise gezählt): nie 0. Dann steht nur „nicht verkauft
   oder nicht kassiert“ = gebacken − CAP − verkauft; „Ungeklärt“ gibt es erst mit vollständiger
   Zählung. Ist schon dieser Wert negativ, kann kein Rest ihn erklären - die Ampel zeigt das auch
@@ -95,6 +95,54 @@ Routen `src/routes/abgleich.routes.ts` (`/api/abgleich`) · Management-App
 - **Nur Inhaber:** `ROLE_ACCESS` (Inhaber hat alle Routen), `PILOT_ALLOWED_ROUTES` enthält
   `/admin/abgleich`, die API prüft `requireRole('inhaber')`. Verlinkt in der Navigation unter der
   Rest-Auswertung und von der Rest-Auswertung („Abgleich mit Kasse“).
+
+## Euro-Abgleich
+
+Unter „Stück | Euro“ zeigt die Euro-Ansicht Soll, Ist und Differenz je Backtag und Abschnitt.
+Die Postenansicht je Tag zeigt Soll, direkt zugeordnete Kassenumsätze und Kassennummern ohne
+eindeutigen Posten. Auch hier gilt der Backtag der Backliste, etwa Sonntag für Ware aus dem
+Samstagsteig. Geplante Mengen und fehlende Backzettel oder Kassenberichte sind je Tag gekennzeichnet.
+
+- **Soll** = (gebacken − CAP − Vorbestellungen per Überweisung oder Rechnung) × Ladenpreis.
+  Der Zahlungsweg zählt bereits bei einer offenen Rechnung. Stornierte und als nicht abgeholt
+  markierte Bestellungen bleiben ohne Abzug. Bei einem freigegebenen Zettel zählen für den Abzug
+  die enthaltenen Vorbestellmengen samt quittierter Nachträge, höchstens die aktuell bestellte
+  Menge. Bei einem reinen Entwurf gilt der aktuelle Plan.
+- Nach einer externen Teilzahlung mit Kassennachzahlung bleiben Soll und Differenz des
+  betroffenen Abschnitts offen. Das Kassen-Ist bleibt sichtbar.
+- **Der Preis** ist der Ladenpreis aus `hq/products/*.md`, mit dem Produktfaktor in die
+  Backzettel-Einheit umgerechnet. Fehlt er, gilt der positive Netto-Durchschnitt einer eindeutig zuordenbaren
+  Kassennummer aus dem Bericht des Backtags (Positionsumsatz geteilt durch Stückzahl nach
+  Stornos). Bei mehreren möglichen Produkten der Zeile muss der Preis je Backzettel-Einheit
+  übereinstimmen. Sonst bleibt der Posten „Preis offen“ und Soll und Differenz des Abschnitts
+  bleiben offen. Dasselbe gilt für Soll und Differenz bei offener Grundmenge.
+- Ein Ersatzpreis setzt vollständige Positionsdaten und gültige Mengen aller Buchungen zu
+  dieser Kassennummer voraus. Bei fehlenden Mengen bleibt der Positionsumsatz auswertbar.
+- **Ist** stammt aus den Kassenpositionen einschließlich Stornos. Sammelnummern („Sonstige“,
+  „Diverse“, „Sammelnummer“) zählen beim Abschnitt über eine eindeutige Kassengruppe oder einen
+  eindeutig benannten Produktionsabschnitt. Das gilt auch bei separat zugeordnetem Zukauf im
+  selben Abschnitt. Fehlt dieser Hinweis, zählt ein PLU-Hunderter nur dann, wenn seine bekannten
+  Kassennummern ausschließlich zur Eigenproduktion eines einzigen Abschnitts gehören. Bei
+  Zukauf im Hunderter oder widersprüchlicher Zuordnung bleiben Ist und Differenz der betroffenen
+  Abschnitte offen. In den Posten bleiben Sammelnummern „nicht zuordenbar“. Die Kennzahl oben
+  teilt den Nettoumsatz aller erkannten Sammelnummern durch den Kassenumsatz der vorhandenen
+  Berichte.
+- Eine eindeutige Kassengruppe der Eigenproduktion zählt zum Abschnitts-Ist, auch ohne
+  Postenzuordnung und Sammelbezeichnung. Kann eine Position mehreren Abschnitten oder der
+  Handelsware angehören, bleiben Ist und Differenz der infrage kommenden Abschnitte offen.
+  Fehlen Positionsdaten zu einem Umsatzbon, bleiben die Ist-Werte des Tages offen. Der Bonumsatz
+  bleibt sichtbar.
+- **Handelsware** erscheint separat. Erkannt werden Zukauf-Posten (`purchased: true` in den
+  Backzettel-Stammdaten) und erkennbare Handelswarengruppen im Bericht, etwa Getränke oder
+  Zeitungen. Ihre Beträge bleiben außerhalb von Soll, Ist der Produktion und Differenz.
+- **Differenz** = Ist − Soll. Ein negativer Betrag ist ohne vollständige Restzählung „nicht
+  verkauft oder nicht kassiert“. Der Rest fließt als Obergrenze in die Folgetagsregel ein.
+- **Folgetag einrechnen** ist je Abschnitt wählbar. Vorgabe ist Kuchen und Brot. Es zählt nur
+  ein Überschuss am direkt folgenden Kalendertag, höchstens bis zur offenen Lücke und bei
+  vollständig gezähltem Rest bis zu dessen Wert. Der übertragene Betrag erscheint am Vortag
+  positiv und am Folgetag negativ in der Differenz. Die Kassenumsätze der beiden Tage bleiben
+  als Ist sichtbar. Die Regel berücksichtigt auch die unmittelbar angrenzenden Kalendertage
+  am Rand der Datumsauswahl, wenn Backzettel, Preise und Berichte den Vergleich erlauben.
 
 ## Für die volle Rechnung
 

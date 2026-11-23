@@ -15,6 +15,8 @@
 import * as path from 'path'
 import { Op } from 'sequelize'
 
+import { Preorder } from '../models/Preorder'
+import { PreorderItem } from '../models/PreorderItem'
 import { BackzettelSource } from './backzettel-source'
 import { BackzettelError, BackzettelService } from './backzettel.service'
 import { loadRows, RestOptions } from './rest-am-abend.service'
@@ -22,6 +24,7 @@ import { loadRows, RestOptions } from './rest-am-abend.service'
 /* eslint-disable @typescript-eslint/no-var-requires */
 const core = require('./abgleich.core')
 const files = require('./reports-files.core')
+const dayCore = require('./backzettel-day.core')
 /* eslint-enable @typescript-eslint/no-var-requires */
 
 export type AbgleichOptions = Pick<
@@ -52,7 +55,10 @@ export function createAbgleichService(
   /** The bake list of `date` (confirmed or draft), `null` if there is none. */
   async function bakeLines(date: string): Promise<Abgleich | null> {
     try {
-      return await backzettel.getBakeLines(date, { light: true })
+      return await backzettel.getBakeLines(date, {
+        light: true,
+        includePreorderSources: true,
+      })
     } catch (error) {
       if (error instanceof BackzettelError) return null
       throw error
@@ -68,33 +74,75 @@ export function createAbgleichService(
     if (!range.ok) {
       throw new BackzettelError(range.status, range.error, range.message)
     }
-    const dates: string[] = core
-      .listDates(range.from, range.to)
-      .filter((d: string) => d <= day)
-    const rows = await loadRows({
-      businessDate: { [Op.between]: [range.from, range.to] },
-    })
+    const choice = core.parseNextDaySections(query, config)
+    if (!choice.ok) {
+      throw new BackzettelError(choice.status, choice.error, choice.message)
+    }
+    const from = choice.sections.length
+      ? core.addDays(range.from, -1)
+      : range.from
+    const end = choice.sections.length ? core.addDays(range.to, 1) : range.to
+    const to = end < day ? end : day
+    const dates: string[] = from <= to ? core.listDates(from, to) : []
+    const rows = await loadRows({ businessDate: { [Op.between]: [from, to] } })
+    const preorders =
+      config && dates.length
+        ? await Preorder.findAll({
+            where: {
+              pickupDate: { [Op.between]: [from, to] },
+              status: { [Op.ne]: 'storniert' },
+              externalPayment: true,
+              notCollectedAt: null,
+            },
+            attributes: ['id', 'status', 'pickupDate', 'mixedPayment'],
+            include: [
+              {
+                model: PreorderItem,
+                as: 'items',
+                attributes: ['productId', 'variant', 'quantity'],
+              },
+            ],
+          })
+        : []
+    const mixedIds = new Set(
+      preorders.filter((p) => p.mixedPayment).map((p) => p.id)
+    )
+    const externalByDate = new Map<string, unknown[]>()
+    for (const item of dayCore.snapshotFromPreorders(
+      preorders.map((p) => p.get({ plain: true }))
+    )) {
+      const list = externalByDate.get(item.pickupDate) || []
+      list.push({ ...item, mixedPayment: mixedIds.has(item.preorderId) })
+      externalByDate.set(item.pickupDate, list)
+    }
     const available = files.reportsAvailable(reportsDir, options.log)
     const reports: Record<string, unknown> = {}
     if (available) {
       for (const r of files.readDailyReportsInRange(
         reportsDir,
-        range.from,
-        range.to,
-        options.log
+        from,
+        to,
+        options.log,
+        { includeProductGroups: true }
       )) {
         reports[r.date] = r
       }
     }
     const days: Record<
       string,
-      { backzettel: unknown; rows: unknown[]; report: unknown }
+      {
+        backzettel: unknown
+        rows: unknown[]
+        report: unknown
+        externalPreorders: unknown[]
+      }
     > = {}
     for (const date of dates) {
       days[date] = {
         backzettel: config ? await bakeLines(date) : null,
         rows: [],
         report: reports[date] ?? null,
+        externalPreorders: externalByDate.get(date) ?? [],
       }
     }
     for (const r of rows) days[r.businessDate]?.rows.push(r)
@@ -106,6 +154,7 @@ export function createAbgleichService(
       catalog: loaded.catalog,
       days,
       reportsAvailable: available,
+      folgetag: choice.sections,
     })
   }
 

@@ -42,7 +42,7 @@ the Backzettel-variant hook in `src/services/preorder-variants.ts`.
   literally; phone digits from 3 on).
 - **`Preorder`** = `{ id, code, channel, customerName, customerPhone, pickupDate, pickupTime,
 pickupPointId, pickupPoint { id, name, window } | null, status, notCollected, notCollectedAt,
-paid, paidAmount, paymentBalance, note, items [{ productId, name, variant, unit, unitPrice,
+paid, externalPayment, paidAmount, paymentBalance, note, items [{ productId, name, variant, unit, unitPrice,
 quantity, lineTotal }], total, pickedUpAt, anonymizedAt, createdBy, updatedBy, createdAt,
 updatedAt, deadline, afterDeadline }`.
 - **Errors** via `sendError`: 400 `invalid_*` / `unknown_product` / `unknown_pickup_point` /
@@ -86,6 +86,22 @@ updatedAt, deadline, afterDeadline }`.
   on the status endpoint = „Rest kassiert"), kept on edit, cleared with `paid: false`.
   `paymentBalance` (core): > 0 still to collect, < 0 to refund; cancelled + paid = −paid. A NULL
   `paid_amount` with `paid` means "fully paid" (old rows, imports).
+- Für die **Zahlung außerhalb der Kasse** ist `externalPayment` (Boolean) optional bei `POST` und
+  `PATCH` unter `/api/preorders`. `true` steht für Überweisung oder Rechnung. Ohne Angabe
+  gilt beim Anlegen und im Altbestand `false`, beim Bearbeiten bleibt der gespeicherte Wert.
+  Ein anderer Datentyp ergibt 400 `invalid_external_payment`. `paid` und `paidAmount` werden
+  unabhängig davon erfasst. Der [Euro-Abgleich](abgleich.md#euro-abgleich-task-043) liest den
+  Zahlungsweg. Die Mörsbach-Aliasantwort behält ihren Vertrag.
+- Verkauf und Inhaber können `externalPayment` auch bei `POST /:id/status` mitschicken.
+  Bei vollständiger Kassenzahlung setzt die Abholliste es zusammen mit `paid: true` auf
+  `false`. Bei einer Kassennachzahlung nach externer Teilzahlung sendet sie
+  `cashTopUp: true` mit `paid: true`. Der Zahlungsweg bleibt erhalten. Der aktuelle Stand
+  liegt in `preorders.mixed_payment` (Boolean, Pflichtfeld, Standardwert `false`, Migration
+  `20270402000000-preorders-external-payment.js`). Der Euro-Abgleich liest diese Spalte.
+  Die Vorbestellantwort liefert bei einer Mischzahlung `mixedPayment: true`.
+  Das Audit protokolliert die Änderung. Bei Rücknahme einer Übergabe stellt der Dienst
+  den vorherigen Wert anhand des gespeicherten Übergabe-Snapshots wieder her, sofern
+  die Zahlung seit der Übergabe gleich geblieben ist.
 - **Retried create (`requestId`)** (migration `20261116000000-preorders-request-id.js`, unique,
   nullable): the entry form sends one id (8-64 of `[A-Za-z0-9_-]`, else 400 `invalid_request_id`)
   per order it is saving and keeps it across retries. A save whose answer was lost (Wi-Fi drop)
@@ -97,7 +113,7 @@ updatedAt, deadline, afterDeadline }`.
 - **Bulk status.** `POST /bulk-status` changes many preorders in **one** serialised write
   transaction (Abholliste: „alle bereit", Tagesabschluss „nicht abgeholt"). Body: `ids` (1-200
   positive integers or canonical digit strings like `"7"`, duplicates merged; else 400
-  `invalid_ids`), the same change fields as `/:id/status` (at least one, else 400
+  `invalid_ids`), `status`, `notCollected` or `paid` (at least one, else 400
   `invalid_status`; values that are wrong for every preorder - unknown `status`, non-boolean
   `paid`/`notCollected`, `notCollected` with a status other than `bereit` - are one top-level 400
   `invalid_status` / `invalid_paid` / `invalid_not_collected`, not `refused` per id), optional

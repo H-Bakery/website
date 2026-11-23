@@ -64,6 +64,8 @@
 
 const rest = require('./rest-am-abend.core')
 const refCore = require('./backzettel-reference.core')
+const { computePreorderDeltas } = require('./backzettel.core')
+const { toCorePreorderItems } = require('./backzettel-day.core')
 const { csvCell } = require('./partner-stats.core')
 const { SECTION_LABELS, WEEKDAY_NAMES } = require('./backzettel-config.core')
 
@@ -122,7 +124,7 @@ const DAY_STATUS_LABELS = {
 }
 
 const EXPLANATION =
-  'Ungeklärt = gebacken − CAP − verkauft (Kasse) − Rest (gezählt). Gebacken = freigegebener Backzettel plus quittierte Nachträge, sonst der geplante Wert („geplant“); ist die Grundmenge offen, gibt es keinen Plan und keinen Vergleich („Grundmenge offen“). CAP-Ware verlässt den Laden und wird abgezogen; Vorbestellungen werden an der Kasse bezahlt und nicht abgezogen (vorläufig). Ohne gezählten Rest steht nur „nicht verkauft oder nicht kassiert“ = gebacken − CAP − verkauft. In der Summe je Posten zählen gebacken und CAP nur die vergleichbaren Tage (mit Kassenbericht und festgelegter Grundmenge), damit die Rechnung aufgeht. Unterschiede sind Hinweise, keine Beweise.'
+  'Ungeklärt = gebacken − CAP − verkauft (Kasse) − Rest (gezählt). Gebacken = freigegebener Backzettel plus quittierte Nachträge, sonst der geplante Wert („geplant“); ist die Grundmenge offen, gibt es keinen Plan und keinen Vergleich („Grundmenge offen“). CAP-Ware verlässt den Laden und wird abgezogen; Vorbestellungen zählen in der Stückansicht mit. Ohne gezählten Rest steht nur „nicht verkauft oder nicht kassiert“ = gebacken − CAP − verkauft. In der Summe je Posten zählen gebacken und CAP nur die vergleichbaren Tage (mit Kassenbericht und festgelegter Grundmenge), damit die Rechnung aufgeht. Unterschiede sind Hinweise, keine Beweise.'
 
 const round2 = rest.round2
 
@@ -566,6 +568,547 @@ function signalMagnitude(p) {
   return Math.abs(p.signal || 0)
 }
 
+const NEXT_DAY_DEFAULTS = ['brot', 'kuchen']
+const euro = (cents) => (cents === null ? null : cents / 100)
+const cent = (amount) => Math.round(amount * 100)
+
+function parseNextDaySections(query, config) {
+  const sections = (config?.sections || []).filter(
+    (id) => !rest.NOT_SOLD_SECTIONS.has(id)
+  )
+  if (query.folgetag === undefined) {
+    return {
+      ok: true,
+      sections: sections.filter((id) => NEXT_DAY_DEFAULTS.includes(id)),
+    }
+  }
+  const selected =
+    typeof query.folgetag === 'string'
+      ? query.folgetag === ''
+        ? []
+        : [...new Set(query.folgetag.split(','))]
+      : null
+  return selected && selected.every((id) => sections.includes(id))
+    ? { ok: true, sections: selected }
+    : fail(
+        400,
+        'invalid_next_day_sections',
+        'Bitte gültige Abschnitte für den Folgetag wählen.'
+      )
+}
+
+function externalPreorderQty(config, catalog, date, backzettel, snapshot) {
+  const quantities = new Map()
+  if (!snapshot?.length || !config) return quantities
+  const current = toCorePreorderItems(snapshot, date)
+  const mixedOrders = new Set(
+    snapshot.filter((p) => p.mixedPayment).map((p) => p.preorderId)
+  )
+  const lineKey = (p) => `${p.itemId}|${p.variant || ''}`
+  const orderKey = (p) => `${p.preorderId}#${lineKey(p)}`
+  const add = (entry, qty) => {
+    if (qty <= 0) return
+    const key = lineKey(entry)
+    const previous = quantities.get(key)
+    quantities.set(
+      key,
+      previous === null || mixedOrders.has(entry.preorderId)
+        ? null
+        : round2((previous ?? 0) + qty)
+    )
+  }
+
+  for (const source of backzettel.preorderSources || []) {
+    const sum = (after) =>
+      computePreorderDeltas({
+        config,
+        catalog,
+        date: source.doughDate,
+        plan: source.plan,
+        after,
+      }).filter((p) => (p.bakeDate || source.doughDate) === date)
+    const orders = sum(current)
+    if (source.status !== 'confirmed') {
+      const keys = new Set(source.lineKeys)
+      for (const p of orders) if (keys.has(lineKey(p))) add(p, p.after)
+      continue
+    }
+
+    const included = new Map(
+      sum(toCorePreorderItems(source.snapshot, source.doughDate)).map((p) => [
+        orderKey(p),
+        p.after,
+      ])
+    )
+    if (backzettel.status === 'confirmed') {
+      for (const delta of source.deltas || []) {
+        if (!delta.acknowledgedAt) continue
+        const key = orderKey(delta)
+        included.set(key, (included.get(key) || 0) + delta.qty)
+      }
+    }
+    for (const p of orders) {
+      add(p, Math.min(p.after, Math.max(0, included.get(orderKey(p)) || 0)))
+    }
+  }
+  return quantities
+}
+
+function fold(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/ß/g, 'ss')
+}
+
+const SECTION_TERMS = {
+  brot: /\bbrot(?:e|waren)?\b/,
+  broetchen: /\bbrotchen\b/,
+  laugen: /\blaugen(?:geback)?\b/,
+  kaffeestueckchen: /\b(?:kaffeestuckchen|feingeback|plunder)\b/,
+  kuchen: /\b(?:kuchen|torte[n]?)\b/,
+  hefeteig: /\bhefe(?:teig|geback)\b/,
+}
+const TRADE_TERMS =
+  /\b(?:getrank\w*|zeitung\w*|zeitschrift\w*|handelsware|zukauf)\b/
+const COLLECTIVE_TERMS =
+  /\b(?:sonstig\w*|divers\w*|sammel[ -]?(?:artikel|nummern?))\b/
+
+function pluHundred(plu) {
+  return /^\d{3,}$/.test(plu) ? Math.floor(Number(plu) / 100) : null
+}
+
+/** Eine Kassenposition zählt einmal, auch wenn mehrere Posten ihre PLU führen. */
+function euroRegister(config, cmpFor, groupOf) {
+  const targets = new Map()
+  const items = new Map()
+  const hundreds = new Map()
+  const purchasedByName = new Map()
+  const purchasedSections = new Set()
+  const productionSections = new Set()
+  for (const item of config?.items || []) {
+    if (!rest.isCountable(item)) continue
+    if (item.purchased) {
+      purchasedByName.set(fold(item.name), item.section)
+      purchasedSections.add(item.section)
+    } else {
+      productionSections.add(item.section)
+    }
+    const comparison = cmpFor(item)
+    const variants = comparison.bySize ? [...comparison.sizes.keys()] : ['']
+    for (const variant of variants) {
+      const group = groupOf(item, item.id, variant)
+      items.set(group.key, {
+        name: item.name,
+        sizeLabel: variant ? rest.variantLabel(config, variant, item) : null,
+        section: item.section,
+      })
+      for (const plu of new Set(group.info?.plu || [])) {
+        const list = targets.get(plu) || []
+        list.push({
+          key: group.key,
+          section: item.section,
+          purchased: item.purchased === true,
+          conflict: group.foreignPlu.includes(plu),
+        })
+        targets.set(plu, list)
+        const hundred = pluHundred(plu)
+        if (hundred === null) continue
+        const block = hundreds.get(hundred) || {
+          sections: new Set(),
+          hasPurchased: false,
+        }
+        block.sections.add(item.section)
+        if (item.purchased) block.hasPurchased = true
+        hundreds.set(hundred, block)
+      }
+    }
+  }
+  return {
+    targets,
+    items,
+    hundreds,
+    purchasedByName,
+    purchasedSections,
+    productionSections,
+  }
+}
+
+const addCents = (a, b) => (a === null || b === null ? null : a + b)
+
+function euroSales(report, register, sections) {
+  const perItem = new Map()
+  const perSection = new Map()
+  const byPlu = new Map()
+  const blockedPlu = new Set()
+  const unmatched = []
+  const uncertainSections = new Set()
+  let sammel = 0
+  let trade = 0
+  const totalsFor = (section) => {
+    if (!perSection.has(section))
+      perSection.set(section, {
+        ist: 0,
+        sammel: 0,
+        trade: 0,
+        hasOwnSales: false,
+      })
+    return perSection.get(section)
+  }
+  const sectionsFromText = (value) =>
+    sections.filter((id) => SECTION_TERMS[id]?.test(value))
+  for (const p of report?.products || []) {
+    const plu = String(p.productId ?? '').trim()
+    const targets = register.targets.get(plu) || []
+    const name = fold(p.productName)
+    const group = fold(p.groupName)
+    const collective = COLLECTIVE_TERMS.test(name)
+    // Die Berichtsaggregation setzt widersprüchliche Gruppen auf null.
+    const conflictingGroups = collective && p.groupName === null
+    const groupSections = sectionsFromText(group)
+    const targetSections = new Set(targets.map((t) => t.section))
+    const candidates = new Set([...targetSections, ...groupSections])
+    let hundred
+    if (collective && !conflictingGroups && candidates.size === 0) {
+      const fromName = sectionsFromText(name)
+      if (fromName.length === 0)
+        hundred = register.hundreds.get(pluHundred(plu))
+      for (const id of hundred ? hundred.sections : fromName) {
+        candidates.add(id)
+      }
+    }
+    const candidate = candidates.size === 1 ? [...candidates][0] : null
+    const amount =
+      p.revenueMissing || !Number.isFinite(p.revenue) ? null : cent(p.revenue)
+    const tradeMarker = TRADE_TERMS.test(`${group} ${name}`)
+    const namedTradeSection = register.purchasedByName.get(name)
+    const isTrade = targets.length
+      ? targets.every((t) => t.purchased)
+      : Boolean(
+          namedTradeSection ||
+            (!conflictingGroups && tradeMarker && groupSections.length === 0)
+        )
+    if (isTrade) {
+      trade = addCents(trade, amount)
+      const tradeSection =
+        targetSections.size === 1 ? [...targetSections][0] : namedTradeSection
+      if (tradeSection) {
+        const totals = totalsFor(tradeSection)
+        totals.trade = addCents(totals.trade, amount)
+      }
+      continue
+    }
+    const assigned = !collective && targets.length === 1 && !targets[0].conflict
+    // Der Hunderter ist nur ein Hinweis, wenn er ausschließlich Eigenproduktion enthält.
+    const groupedProduction = targets.length
+      ? (collective || targets.length > 1) &&
+        targetSections.size === 1 &&
+        targets.every((t) => !t.purchased)
+      : collective
+      ? register.productionSections.has(candidate) && !hundred?.hasPurchased
+      : !register.purchasedSections.has(candidate)
+    const ownSection = assigned
+      ? targets[0].section
+      : groupedProduction && !tradeMarker && !conflictingGroups
+      ? candidate
+      : null
+    if (assigned) {
+      const key = targets[0].key
+      perItem.set(
+        key,
+        addCents(perItem.has(key) ? perItem.get(key) : 0, amount)
+      )
+      byPlu.set(plu, {
+        quantity: p.quantity,
+        quantityMissing: p.quantityMissing,
+        amount,
+      })
+    } else {
+      blockedPlu.add(plu)
+      unmatched.push({
+        plu: plu || null,
+        name: p.productName || null,
+        section: ownSection,
+        sammel: collective,
+        istEur: euro(amount),
+      })
+    }
+    if (collective) sammel = addCents(sammel, amount)
+    if (ownSection) {
+      const totals = totalsFor(ownSection)
+      totals.ist = addCents(totals.ist, amount)
+      totals.hasOwnSales = true
+      if (collective) totals.sammel = addCents(totals.sammel, amount)
+    } else if (amount !== 0) {
+      for (const id of candidates.size ? candidates : sections)
+        uncertainSections.add(id)
+    }
+  }
+  return {
+    perItem,
+    perSection,
+    byPlu,
+    blockedPlu,
+    unmatched,
+    sammel,
+    trade,
+    uncertainSections,
+    positionsMissing: report?.positionsMissing === true,
+  }
+}
+
+function assignablePlu(register, sales, key) {
+  const targets = register.targets.get(key)
+  return (
+    targets?.length === 1 && !targets[0].conflict && !sales.blockedPlu.has(key)
+  )
+}
+
+/** Preis je Backzettel-Einheit, wenn die Produkte dieser Zeile gleich bewertet werden können. */
+function euroUnitPrice(bucket, variant, catalog, sales, register) {
+  const item = bucket.item
+  if (!item) return null
+  const size = rest.isSizeItem(item) && item.sizes.find((s) => s.id === variant)
+  const products = (item.products || []).filter(
+    (p) => !size || p.size === size.id
+  )
+  const plu = [
+    ...new Set(size ? size.plu || [] : bucket.info?.plu || []),
+  ].filter((key) => assignablePlu(register, sales, key))
+  const reportPrice = (key) => {
+    const sale = sales.byPlu.get(key)
+    return !sales.positionsMissing &&
+      sale &&
+      !sale.quantityMissing &&
+      sale.quantity > 0 &&
+      sale.amount > 0
+      ? sale.amount / sale.quantity
+      : null
+  }
+  const prices = products.length
+    ? products.map((p) => {
+        const product = catalog.get(String(p.id))
+        const price = product?.price
+        const key =
+          plu.find(
+            (k) => k === String(p.id) || k === String(product?.numeric_id)
+          ) ?? (products.length === 1 && plu.length === 1 ? plu[0] : null)
+        const cents =
+          Number.isFinite(price) && price > 0 ? cent(price) : reportPrice(key)
+        return cents > 0 && p.factor > 0 ? cents / p.factor : null
+      })
+    : plu.map((key) => {
+        const factor =
+          bucket.info?.factors.get(key) ?? (countsPieces(item) ? 1 : null)
+        const price = reportPrice(key)
+        return price && factor > 0 ? price / factor : null
+      })
+  const first = prices[0]
+  return first > 0 &&
+    prices.every((price) => price !== null && Math.abs(price - first) < 1e-8)
+    ? first
+    : null
+}
+
+function euroDay(date, day, buckets, report, catalog, register, sectionIds) {
+  const sales = euroSales(report, register, sectionIds)
+  const { positionsMissing } = sales
+  const cashComplete = report && !positionsMissing
+  const sections = new Map()
+  const sectionFor = (id) => {
+    if (!sections.has(id)) {
+      const cash = sales.perSection.get(id)
+      sections.set(id, {
+        section: id,
+        sectionLabel: SECTION_LABELS[id] || id || 'Abschnitt offen',
+        soll: day.basis ? 0 : null,
+        ist: cashComplete ? (cash ? cash.ist : 0) : null,
+        zuordnungOffen: sales.uncertainSections.has(id),
+        sammelEur: cashComplete ? euro(cash ? cash.sammel : 0) : null,
+        handelswareEur: cashComplete ? euro(cash ? cash.trade : 0) : null,
+        preisOffen: [],
+        grundmengeOffen: false,
+        mischzahlungOffen: false,
+        rest: 0,
+        restCounted: true,
+        hasLines: false,
+        hasOwnCashLink: cash?.hasOwnSales || false,
+        carry: 0,
+      })
+    }
+    return sections.get(id)
+  }
+  const items = []
+  for (const id of sales.perSection.keys()) sectionFor(id)
+  for (const b of buckets.values()) {
+    if (b.item?.purchased) continue
+    const section = sectionFor(b.meta.section)
+    let soll = 0
+    let preisOffen = false
+    for (const line of b.lines) {
+      section.hasLines = true
+      if (line.qtyOpen) section.grundmengeOffen = true
+      if (line.externalQty === null) {
+        section.mischzahlungOffen = true
+        soll = null
+        continue
+      }
+      const shop = round2(line.baked - line.cap - line.externalQty)
+      const price =
+        shop !== 0 || line.rest > 0
+          ? euroUnitPrice(b, line.variant, catalog, sales, register)
+          : null
+      if (shop !== 0 && price === null && !line.qtyOpen) preisOffen = true
+      if (line.qtyOpen || preisOffen) soll = null
+      else if (soll !== null && shop !== 0) soll += Math.round(shop * price)
+      if (!line.complete || (line.rest > 0 && price === null))
+        section.restCounted = false
+      else if (line.rest > 0) section.rest += Math.round(line.rest * price)
+    }
+    if (preisOffen) section.preisOffen.push(b.key)
+    section.soll =
+      section.soll === null || soll === null ? null : section.soll + soll
+    const assignable = b.info?.plu.some((key) =>
+      assignablePlu(register, sales, key)
+    )
+    if (assignable) section.hasOwnCashLink = true
+    items.push({
+      key: b.key,
+      name: b.meta.name,
+      sizeLabel: b.sizeId ? rest.variantLabel(null, b.sizeId, b.item) : null,
+      section: b.meta.section,
+      sollEur: euro(soll),
+      istEur:
+        cashComplete && assignable
+          ? euro(sales.perItem.has(b.key) ? sales.perItem.get(b.key) : 0)
+          : null,
+      preisOffen,
+    })
+  }
+  for (const section of sections.values()) {
+    if (
+      section.zuordnungOffen ||
+      (section.hasLines && !section.hasOwnCashLink)
+    ) {
+      section.ist = null
+    }
+  }
+  // Ein Storno- oder Rabattpaar kann Erlös mit Nettomenge null haben.
+  const shown = new Set(items.map((item) => item.key))
+  for (const [key, amount] of sales.perItem) {
+    if (shown.has(key)) continue
+    const target = register.items.get(key)
+    items.push({
+      key,
+      ...target,
+      sollEur: day.basis ? 0 : null,
+      istEur: cashComplete ? euro(amount) : null,
+      preisOffen: false,
+    })
+  }
+  return {
+    date,
+    basis: day.basis,
+    report: Boolean(report),
+    positionsMissing,
+    sections,
+    items,
+    nichtZuordenbar: sales.unmatched,
+    sammel: cashComplete ? sales.sammel : null,
+    handelswareEur: cashComplete ? euro(sales.trade) : null,
+    kasse:
+      report && Number.isFinite(report.revenue) ? cent(report.revenue) : null,
+  }
+}
+
+/** Nur Überschuss des Folgetags, höchstens bis zur Lücke und zur bekannten Menge Rest. */
+function includeNextDay(daily, sections) {
+  for (const previous of daily.values()) {
+    const next = daily.get(rest.addDays(previous.date, 1))
+    if (!next) continue
+    for (const id of sections) {
+      const from = next.sections.get(id)
+      const to = previous.sections.get(id)
+      if (
+        !from ||
+        !to ||
+        from.ist === null ||
+        from.soll === null ||
+        to.ist === null ||
+        to.soll === null
+      )
+        continue
+      const gap = Math.max(0, to.soll - to.ist)
+      const surplus = Math.max(0, from.ist - from.soll)
+      const moved = Math.min(gap, surplus, to.restCounted ? to.rest : gap)
+      from.carry -= moved
+      to.carry += moved
+    }
+  }
+}
+
+function euroResult(daily, from, to, euroSections, folgetag, order) {
+  includeNextDay(daily, folgetag)
+  const days = [...daily.values()].filter((d) => d.date >= from && d.date <= to)
+  const cashDays = days.filter((d) => d.report)
+  const sammelsumme = cashDays.reduce((total, d) => total + (d.sammel ?? 0), 0)
+  const kassensumme = cashDays.reduce((total, d) => total + (d.kasse ?? 0), 0)
+  const knownSammel =
+    cashDays.length > 0 && cashDays.every((d) => d.sammel !== null)
+  return {
+    abschnitte: euroSections.map((id) => ({
+      id,
+      label: SECTION_LABELS[id] || id,
+      folgetag: folgetag.includes(id),
+    })),
+    sammelEur: knownSammel ? euro(sammelsumme) : null,
+    sammelAnteil:
+      knownSammel && kassensumme > 0 && cashDays.every((d) => d.kasse !== null)
+        ? sammelsumme / kassensumme
+        : null,
+    days: days.map(({ sections, sammel, kasse, ...day }) => ({
+      ...day,
+      sammelEur: euro(sammel),
+      kasseEur: euro(kasse),
+      abschnitte: [...sections.values()]
+        .sort((a, b) => order(a.section) - order(b.section))
+        .map(
+          ({
+            soll,
+            ist,
+            sammelEur,
+            handelswareEur,
+            preisOffen,
+            grundmengeOffen,
+            mischzahlungOffen,
+            zuordnungOffen,
+            section,
+            sectionLabel,
+            restCounted,
+            hasLines,
+            carry,
+          }) => ({
+            section,
+            sectionLabel,
+            sollEur: euro(soll),
+            istEur: euro(ist),
+            sammelEur,
+            handelswareEur,
+            preisOffen,
+            grundmengeOffen,
+            mischzahlungOffen,
+            zuordnungOffen,
+            restCounted: hasLines && restCounted,
+            folgetagEur: euro(carry),
+            differenzEur:
+              soll === null || ist === null ? null : euro(ist + carry - soll),
+          })
+        ),
+    })),
+  }
+}
+
 /**
  * Der Abgleich eines Zeitraums.
  *
@@ -633,6 +1176,13 @@ function reconcile(a) {
     }
   }
   const order = rest.sectionOrder(config)
+  const catalog = new Map((a.catalog || []).map((p) => [String(p.id), p]))
+  const euroSections = (config?.sections || []).filter(
+    (id) => !rest.NOT_SOLD_SECTIONS.has(id)
+  )
+  const folgetag = a.folgetag ?? parseNextDaySections({}, config).sections
+  const euroDays = new Map()
+  const register = euroRegister(config, cmpFor, groupOf)
   const configIndex = new Map(
     (config ? config.items : []).map((item, i) => [item.id, i])
   )
@@ -655,8 +1205,11 @@ function reconcile(a) {
     future: 0,
   }
 
-  for (const date of rest.listDates(a.from, a.to)) {
-    counts.days += 1
+  const readFrom = folgetag.length ? rest.addDays(a.from, -1) : a.from
+  const readTo = folgetag.length ? rest.addDays(a.to, 1) : a.to
+  for (const date of rest.listDates(readFrom, readTo)) {
+    const inRange = date >= a.from && date <= a.to
+    if (inRange) counts.days += 1
     const weekday = rest.isoWeekday(date)
     const day = {
       date,
@@ -669,10 +1222,10 @@ function reconcile(a) {
       signals: { pruefen: 0, auffaellig: 0 },
       baseOpen: 0,
     }
-    days.push(day)
+    if (inRange) days.push(day)
     if (date > a.today) {
       day.status = 'future'
-      counts.future += 1
+      if (inRange) counts.future += 1
       continue
     }
     const countDay = config ? rest.countDayStatus(config, date) : null
@@ -682,13 +1235,22 @@ function reconcile(a) {
     if (countDay && countDay.status !== 'ok') {
       // Ruhetag oder Schließtag: nichts gebacken - keine Lücke, keine 0.
       day.status = countDay.status
-      counts[countDay.status] += 1
+      if (inRange) counts[countDay.status] += 1
       continue
     }
     const input = (a.days && a.days[date]) || {}
+    const report =
+      input.report && input.report.status === 'ok' ? input.report : null
+    const addEuroDay = (buckets = new Map()) => {
+      euroDays.set(
+        date,
+        euroDay(date, day, buckets, report, catalog, register, euroSections)
+      )
+    }
     if (!input.backzettel || !Array.isArray(input.backzettel.sections)) {
       day.status = 'no_backzettel'
-      counts.noBackzettel += 1
+      if (inRange) counts.noBackzettel += 1
+      if (report || inRange) addEuroDay()
       continue
     }
     const confirmed = input.backzettel.status === 'confirmed'
@@ -707,18 +1269,26 @@ function reconcile(a) {
       // Entwurf ohne eine einzige Zeile: es gibt keinen Plan - kein
       // Backtag mit „verkauft, aber nicht gebacken“-Alarmen.
       day.status = 'no_backzettel'
-      counts.noBackzettel += 1
+      if (inRange) counts.noBackzettel += 1
+      addEuroDay()
       continue
     }
-    counts.bakeDays += 1
     day.basis = confirmed ? 'freigegeben' : 'geplant'
-    counts[confirmed ? 'confirmed' : 'planned'] += 1
-    const report =
-      input.report && input.report.status === 'ok' ? input.report : null
     const soldMap = report ? refCore.soldByPlu(report) : null
     day.report = !!soldMap
-    if (!soldMap) counts.noReport += 1
+    if (inRange) {
+      counts.bakeDays += 1
+      counts[confirmed ? 'confirmed' : 'planned'] += 1
+      if (!soldMap) counts.noReport += 1
+    }
 
+    const external = externalPreorderQty(
+      config,
+      a.catalog,
+      date,
+      input.backzettel,
+      input.externalPreorders
+    )
     const buckets = new Map()
     const bucketFor = (item, itemId, variant, meta) => {
       const g = groupOf(item, itemId, variant)
@@ -754,6 +1324,7 @@ function reconcile(a) {
         label: variant ? rest.variantLabel(config, variant, item) : null,
         baked: b ? (confirmed ? b.baked || 0 : b.planned) : 0,
         cap: b ? b.cap : 0,
+        externalQty: external.has(key) ? external.get(key) : 0,
         qtyOpen: b ? Boolean(b.qtyOpen) : false,
         anyCount: stored.length > 0,
         complete: rest.lineComplete(stored, expected),
@@ -788,6 +1359,9 @@ function reconcile(a) {
         }
       }
     }
+
+    addEuroDay(buckets)
+    if (!inRange) continue
 
     let anyLine = false
     let allCounted = true
@@ -885,6 +1459,7 @@ function reconcile(a) {
     items: compared,
     unmatched,
     days,
+    euro: euroResult(euroDays, a.from, a.to, euroSections, folgetag, order),
   }
 }
 
@@ -1078,6 +1653,7 @@ module.exports = {
   BASIS_LABELS,
   EXPLANATION,
   parseRange,
+  parseNextDaySections,
   classify,
   pieceTolerance,
   comparison,
@@ -1085,5 +1661,6 @@ module.exports = {
   abgleichCsv,
   // für den Dienst
   listDates: rest.listDates,
+  addDays: rest.addDays,
   berlinToday: rest.berlinToday,
 }
