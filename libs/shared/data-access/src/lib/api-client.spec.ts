@@ -144,6 +144,45 @@ describe('ApiClient', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('/api/x?a=1')
   })
 
+  it('wartet bei einem Audio-Upload mit eigenem Zeitlimit auf den Teilvorschlag', async () => {
+    jest.useFakeTimers()
+    try {
+      fetchMock.mockImplementation(async (_url, init: RequestInit) => {
+        const signal = init.signal
+        if (!signal) throw new Error('Abbruchsignal fehlt')
+        return new Promise((resolve, reject) => {
+          signal.addEventListener(
+            'abort',
+            () => {
+              reject(new DOMException('Abgebrochen', 'AbortError'))
+            },
+            { once: true }
+          )
+          setTimeout(
+            () =>
+              resolve(
+                jsonResponse(200, { success: true, data: 'Teilvorschlag' })
+              ),
+            24_000
+          )
+        })
+      })
+      const pending = client.postRaw(
+        '/api/sprache/verstehen',
+        new Blob(['Test'], { type: 'audio/wav' }),
+        new AbortController().signal,
+        { timeoutMs: 30_000 }
+      )
+      const check = expect(pending).resolves.toMatchObject({
+        data: 'Teilvorschlag',
+      })
+      await jest.advanceTimersByTimeAsync(24_000)
+      await check
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
   describe('getBlob', () => {
     function fileResponse(
       status: number,

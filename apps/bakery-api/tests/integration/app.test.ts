@@ -62,6 +62,7 @@ describe('createTestApp', () => {
       '20270401000000-dienstplan-hourly-wage.js',
       '20270402000000-preorders-external-payment.js',
       '20270403000000-receipts.js',
+      '20270410000000-voice-usage.js',
     ])
   })
 })

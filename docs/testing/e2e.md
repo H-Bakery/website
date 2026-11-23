@@ -30,6 +30,9 @@ API welche Suite bekommt und was der Katalog erfüllen muss: [`tools/e2e/README.
   (`test.skip(true, 'Nicht gebaut - siehe Kopf der Datei.')`). Geprüft wird die echte App in
   `landing-smoke.spec.ts` und `management-smoke.spec.ts`. Wer eine dieser Funktionen baut, zieht den
   Test um und gibt ihm echte Selektoren - nicht die Skip-Markierung entfernen und hoffen.
+- **Landing, WhatsApp-Vorbestellung:** `whatsapp-vorbestellung.spec.ts` verwendet den
+  synthetischen Katalog und eine feste Browserzeit. Der Test prüft Nachricht und Korb im
+  Handy- und Desktop-Profil, untersucht den Dialog mit Axe und fängt den WhatsApp-Aufruf lokal ab.
 - **Landing, Produktbilder:** `produktbilder.spec.ts` braucht einen zweiten Export mit
   `LANDING_PRODUKTBILDER_FIXTURE=1` und `HQ_PRODUCTS_DIR=tools/e2e/hq-products` (synthetische Bilder,
   CI baut ihn nach dem gewöhnlichen Lauf) und ist sonst übersprungen. Der gewöhnliche Export hat

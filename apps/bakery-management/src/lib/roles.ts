@@ -137,6 +137,12 @@ const REST_COUNT_ROUTE: RouteRule = {
   except: ['/admin/rest/auswertung'],
 }
 
+// Schreibrecht für die Zählliste in REST_COUNT_ROUTE.
+export const REST_COUNT_WRITE_ROLES: readonly PilotRole[] = [
+  'verkauf',
+  'inhaber',
+]
+
 /** Rezepte: Formulare zum Anlegen und Ändern (nur Inhaber und Backstubenleitung). */
 export const RECIPE_WRITE_PATHS: readonly string[] = [
   '/admin/rezepte/neu',

@@ -10,13 +10,14 @@ import {
   type BilderIndex,
 } from '@bakery/shared/produkte-3d'
 import { Product, RenderedProductImage } from '../types/product'
+import type { OrderProduct } from './order/order-config'
 
 export interface HQProduct {
   id: string
   numeric_id: number
   name: string
   category: string
-  price: number
+  price: number | null
   available: boolean
   seasonal: boolean
   image: string | null
@@ -162,7 +163,12 @@ export function getHQProducts(): HQProduct[] {
         numeric_id: p.numeric_id ?? 0,
         name: p.name,
         category: p.category,
-        price: p.price ?? 0,
+        price:
+          typeof p.price === 'number' &&
+          Number.isFinite(p.price) &&
+          p.price >= 0
+            ? p.price
+            : null,
         available: p.available ?? true,
         seasonal: p.seasonal ?? false,
         image,
@@ -174,6 +180,26 @@ export function getHQProducts(): HQProduct[] {
       }
     })
     .sort((a, b) => a.numeric_id - b.numeric_id)
+}
+
+/** Nur hq-Daten für die Vorbestellung. Die gebündelte Liste dient der Ansicht. */
+export function loadOrderCatalogue(): OrderProduct[] {
+  const products = getHQProducts()
+  const section = (category: string) => {
+    const index = CATEGORY_ORDER.indexOf(category)
+    return index === -1 ? CATEGORY_ORDER.length : index
+  }
+  return products
+    .sort((a, b) => section(a.category) - section(b.category))
+    .map(({ id, name, category, price, available, image, renderedImage }) => ({
+      id,
+      name,
+      category,
+      price,
+      available,
+      image,
+      ...(renderedImage ? { renderedImage } : {}),
+    }))
 }
 
 export interface ProductsByCategory {
@@ -259,6 +285,7 @@ export function loadProducts(): Product[] {
   }
   return hq.map((p) => ({
     id: p.numeric_id,
+    orderId: p.id,
     name: p.name,
     category: CATEGORY_LABELS[p.category] || p.category,
     price: p.price,

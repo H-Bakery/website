@@ -31,6 +31,8 @@ const hourlyWageMigration = require('../../migrations/20270401000000-dienstplan-
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const receiptsMigration = require('../../migrations/20270403000000-receipts.js')
 const paymentMigration = require('../../migrations/20270402000000-preorders-external-payment.js')
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const voiceMigration = require('../../migrations/20270410000000-voice-usage.js')
 
 /** The 17 migrations the server ran before B2, now in migrations/archive/. */
 const LEGACY_NAMES = [
@@ -112,6 +114,7 @@ describe('pilot baseline on a fresh database', () => {
       '20270401000000-dienstplan-hourly-wage.js',
       '20270402000000-preorders-external-payment.js',
       '20270403000000-receipts.js',
+      '20270410000000-voice-usage.js',
     ])
   })
 
@@ -126,6 +129,7 @@ describe('pilot baseline on a fresh database', () => {
         ...dienstplanMigration.TABLES,
         ...invoicesMigration.TABLES,
         ...receiptsMigration.TABLES,
+        'voice_usage',
         'SequelizeMeta',
       ].sort()
     )
@@ -657,6 +661,7 @@ describe('pilot baseline down()', () => {
   it('drops every baseline table (after B7 and B3 auth are undone)', async () => {
     const sequelize = await freshDb()
     await runMigrations(sequelize, quiet)
+    await voiceMigration.down(sequelize.getQueryInterface())
     await receiptsMigration.down(sequelize.getQueryInterface(), Sequelize)
     await invoicesMigration.down(sequelize.getQueryInterface(), Sequelize)
     await dienstplanMigration.down(sequelize.getQueryInterface(), Sequelize)

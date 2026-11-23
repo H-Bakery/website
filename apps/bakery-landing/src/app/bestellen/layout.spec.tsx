@@ -8,8 +8,7 @@ describe('Bestellen layout metadata', () => {
     expect(description).toContain(
       `während unserer Öffnungszeiten: ${getCompactHoursSummary()}.`
     )
-    expect(description).toContain('06841 2229')
-    expect(description).toContain('0170 6133279')
+    expect(description).toContain('per WhatsApp mit dem Warenkorb')
     expect(description).not.toMatch(/täglich|14:00/)
   })
 })

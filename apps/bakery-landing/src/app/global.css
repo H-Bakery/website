@@ -787,3 +787,11 @@ section {
     border: 0.5px solid rgba(0, 0, 0, 0.12);
   }
 }
+
+html {
+  scroll-padding-bottom: var(--order-bar-height, 0px);
+}
+
+body {
+  padding-bottom: var(--order-bar-height, 0px);
+}

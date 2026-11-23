@@ -37,7 +37,7 @@
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "same-origin"
-		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Permissions-Policy "camera=(), microphone=(self), geolocation=(), payment=(), usb=()"
 		Cross-Origin-Opener-Policy "same-origin"
 		# Bewusst nur die Teile einer CSP, die Next.js/MUI (Inline-Skripte und
 		# -Styles) nicht brechen. Eine volle CSP braucht Nonces in der App.

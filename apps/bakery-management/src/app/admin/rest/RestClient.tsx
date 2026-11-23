@@ -8,10 +8,6 @@ import {
   Box,
   Button,
   Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   IconButton,
   LinearProgress,
   Paper,
@@ -21,13 +17,18 @@ import {
 } from '@mui/material'
 import {
   Add as AddIcon,
-  Backspace as BackspaceIcon,
   ChevronLeft as PrevIcon,
   ChevronRight as NextIcon,
   Remove as RemoveIcon,
 } from '@mui/icons-material'
 import { ApiError } from '@bakery/shared/data-access'
 import { useOptionalSession } from '../../../lib/session'
+import NumberPad, {
+  type PadTarget,
+} from '../../../components/sprache/NumberPad'
+import MicButton from '../../../components/sprache/MicButton'
+import type { VoiceEntry } from '../../../components/sprache/VoiceSheet'
+import { REST_COUNT_WRITE_ROLES } from '../../../lib/roles'
 import { describeBackstubeError } from '../../../lib/backstubeErrors'
 import {
   addDaysIso,
@@ -40,7 +41,6 @@ import {
   formatQtyUnit,
   listDraftDates,
   loadDraft,
-  parsePadInput,
   pruneDraft,
   rebaseDraft,
   rowKey,
@@ -53,6 +53,7 @@ import {
   type RestCountRow,
   type RestDay,
   type RestDraft,
+  type RestDraftEntry,
   type RestLine,
 } from '../../../lib/restApi'
 import {
@@ -61,9 +62,6 @@ import {
   PageLayout,
   PageSection,
 } from '../../../components/layout'
-
-/** Wer zählen darf (wie `PUT /api/rest/:date`). */
-export const COUNT_ROLES = ['inhaber', 'verkauf']
 
 /** Hinweis, wenn ein aufgehobener Entwurf auf einem alten Stand beruht. */
 export const DRAFT_STALE_MESSAGE =
@@ -113,165 +111,6 @@ function timeOf(iso: string | null): string {
 }
 
 // ------------------------------------------------------------ Ziffernblock
-
-interface PadTarget {
-  line: RestLine
-  row: RestCountRow
-  value: number | null
-}
-
-const PAD_KEYS = ['7', '8', '9', '4', '5', '6', '1', '2', '3', ',', '0', '⌫']
-
-function NumberPad({
-  target,
-  onClose,
-  onApply,
-}: {
-  target: PadTarget | null
-  onClose: () => void
-  onApply: (value: number | null) => void
-}) {
-  const [text, setText] = useState('')
-  const [fresh, setFresh] = useState(true)
-  useEffect(() => {
-    if (target) {
-      setText(target.value === null ? '' : formatNumber(target.value))
-      setFresh(true)
-    }
-  }, [target])
-  if (!target) return null
-  const integer = target.row.integer
-  const parsed = parsePadInput(text, integer)
-  const invalid = Number.isNaN(parsed as number)
-  const press = (key: string) => {
-    if (key === '⌫') {
-      setFresh(false)
-      setText((t) => (fresh ? '' : t.slice(0, -1)))
-      return
-    }
-    if (key === ',' && integer) return
-    setText((t) => {
-      const base = fresh ? '' : t
-      if (key === ',' && base.includes(',')) return base
-      const next = `${base}${key}`
-      return next.length > 7 ? base : next
-    })
-    setFresh(false)
-  }
-  const apply = () => {
-    if (!invalid) onApply(parsed as number | null)
-  }
-  const title = target.line.variantLabel
-    ? `${target.line.name} · ${target.line.variantLabel}`
-    : target.line.name
-  return (
-    <Dialog
-      open
-      onClose={onClose}
-      maxWidth="xs"
-      fullWidth
-      aria-labelledby="rest-pad-title"
-      onKeyDown={(e) => {
-        if (/^[0-9]$/.test(e.key)) press(e.key)
-        else if (e.key === ',' || e.key === '.') press(',')
-        else if (e.key === 'Backspace') press('⌫')
-        else if (e.key === 'Enter') apply()
-      }}
-    >
-      <DialogTitle id="rest-pad-title" sx={{ pb: 1 }}>
-        {title}
-        {target.row.label !== target.line.name && (
-          <Typography variant="body2" color="text.secondary">
-            {target.row.label}
-          </Typography>
-        )}
-      </DialogTitle>
-      <DialogContent>
-        <Box
-          role="status"
-          aria-live="polite"
-          data-testid="pad-display"
-          sx={{
-            border: 1,
-            borderColor: invalid ? 'error.main' : 'divider',
-            borderRadius: 1,
-            px: 2,
-            py: 1,
-            mb: 2,
-            textAlign: 'right',
-            fontSize: '2.25rem',
-            fontVariantNumeric: 'tabular-nums',
-            minHeight: 64,
-          }}
-        >
-          {text === '' ? (
-            <Typography component="span" color="text.secondary" fontSize="1rem">
-              nicht gezählt
-            </Typography>
-          ) : (
-            <>
-              {text}{' '}
-              <Typography
-                component="span"
-                color="text.secondary"
-                fontSize="1rem"
-              >
-                {target.row.unit}
-              </Typography>
-            </>
-          )}
-        </Box>
-        {invalid && (
-          <Typography color="error" variant="body2" sx={{ mb: 1 }}>
-            {integer
-              ? 'Bitte eine ganze Zahl bis 10000.'
-              : 'Bitte eine Zahl bis 10000 mit höchstens zwei Nachkommastellen.'}
-          </Typography>
-        )}
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: 1,
-          }}
-        >
-          {PAD_KEYS.map((key) => (
-            <Button
-              key={key}
-              variant="outlined"
-              onClick={() => press(key)}
-              disabled={key === ',' && integer}
-              aria-label={key === '⌫' ? 'Löschen' : key === ',' ? 'Komma' : key}
-              sx={{ minHeight: 64, fontSize: '1.5rem' }}
-            >
-              {key === '⌫' ? <BackspaceIcon /> : key}
-            </Button>
-          ))}
-        </Box>
-      </DialogContent>
-      <DialogActions sx={{ flexWrap: 'wrap', gap: 1, px: 3, pb: 2 }}>
-        <Button
-          onClick={() => onApply(null)}
-          sx={{ minHeight: 48, mr: 'auto' }}
-          color="inherit"
-        >
-          Nicht gezählt
-        </Button>
-        <Button onClick={onClose} sx={{ minHeight: 48 }}>
-          Abbrechen
-        </Button>
-        <Button
-          variant="contained"
-          onClick={apply}
-          disabled={invalid}
-          sx={{ minHeight: 48 }}
-        >
-          Übernehmen
-        </Button>
-      </DialogActions>
-    </Dialog>
-  )
-}
 
 // ------------------------------------------------------------------ Zeile
 
@@ -389,6 +228,19 @@ function CountLine({
                 spacing={1}
                 alignItems="center"
                 justifyContent={{ xs: 'space-between', sm: 'flex-end' }}
+                sx={
+                  draft[rowKey(line, row)]?.source === 'sprache'
+                    ? {
+                        '@media (prefers-reduced-motion: no-preference)': {
+                          animation: 'restVoiceHighlight 1.5s ease-out',
+                          '@keyframes restVoiceHighlight': {
+                            from: { backgroundColor: 'action.selected' },
+                            to: { backgroundColor: 'transparent' },
+                          },
+                        },
+                      }
+                    : undefined
+                }
               >
                 {showRowLabels && (
                   <Typography
@@ -489,7 +341,7 @@ export default function RestClient({ initialDate }: RestClientProps) {
   const router = useRouter()
   const session = useOptionalSession()
   const role = session?.user?.role ?? null
-  const mayCount = role !== null && COUNT_ROLES.includes(role)
+  const mayCount = role !== null && REST_COUNT_WRITE_ROLES.includes(role)
   // Entwürfe nur für Rollen, die zählen, und je Person: Wer nur liest, sieht
   // immer den Server-Stand; an der PIN-Station erbt niemand die Zahlen der
   // vorigen Person.
@@ -506,6 +358,13 @@ export default function RestClient({ initialDate }: RestClientProps) {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [conflicts, setConflicts] = useState<RestConflict[]>([])
   const [toast, setToast] = useState<string | null>(null)
+  const [undoVoice, setUndoVoice] = useState<
+    {
+      key: string
+      before: RestDraftEntry | undefined
+      applied: RestDraftEntry | undefined
+    }[]
+  >([])
   const requestId = useRef(0)
 
   const load = useCallback(
@@ -555,6 +414,7 @@ export default function RestClient({ initialDate }: RestClientProps) {
   )
 
   useEffect(() => {
+    setUndoVoice([])
     void load(date)
   }, [date, load])
 
@@ -617,7 +477,61 @@ export default function RestClient({ initialDate }: RestClientProps) {
     [day, draftOwner]
   )
 
+  const applyVoice = (entries: VoiceEntry[]) => {
+    if (!day || draftOwner === null || !writable || loading) return
+    const byKey = new Map(
+      day.lines.flatMap((line) =>
+        line.rows.map((row) => [rowKey(line, row), row] as const)
+      )
+    )
+    let next = draft
+    const affected: string[] = []
+    for (const { key, qty } of entries) {
+      const row = byKey.get(key)
+      if (!row || row.stale) continue
+      const entry = next[key]
+      if ((entry ? entry.qty : row.qty) !== qty) {
+        next = setDraftEntry(next, key, row.qty, qty, 'sprache')
+        affected.push(key)
+      }
+    }
+    if (affected.length === 0) return
+    setDraft(next)
+    storeDraft(draftOwner, day.date, next)
+    setUndoVoice(
+      affected.map((key) => ({ key, before: draft[key], applied: next[key] }))
+    )
+  }
+
+  const undoVoiceChange = () => {
+    if (!day || draftOwner === null || saving) return
+    const restored = { ...draft }
+    for (const { key, before, applied } of undoVoice) {
+      if (draft[key] !== applied) continue
+      // Die Grundlage des vorherigen Entwurfs bleibt erhalten. Seitdem
+      // gespeicherte fremde Werte müssen beim PUT erneut erkannt werden.
+      if (before) restored[key] = before
+      else delete restored[key]
+    }
+    setDraft(restored)
+    storeDraft(draftOwner, day.date, restored)
+    const pending = pruneDraft(day, restored)
+    const remainingConflicts = new Map(
+      conflicts
+        .filter((entry) => pending[conflictKey(entry)])
+        .map((entry) => [conflictKey(entry), entry])
+    )
+    for (const entry of draftConflicts(day, restored)) {
+      remainingConflicts.set(conflictKey(entry), entry)
+    }
+    setConflicts(Array.from(remainingConflicts.values()))
+    if (conflicts.length > 0 && remainingConflicts.size === 0)
+      setSaveError(null)
+    setUndoVoice([])
+  }
+
   const goTo = (target: string) => {
+    if (saving) return
     setConflicts([])
     setSaveError(null)
     setDate(target)
@@ -628,20 +542,27 @@ export default function RestClient({ initialDate }: RestClientProps) {
     if (!day) return
     if (draftOwner !== null) storeDraft(draftOwner, day.date, {})
     setDraft({})
+    setUndoVoice([])
     setConflicts([])
     setSaveError(null)
   }
 
   const save = async () => {
-    if (!day || changes.length === 0) return
+    if (!day || saving || changes.length === 0) return
     setSaving(true)
     setSaveError(null)
     try {
-      const result = await saveRestDay(day.date, changes)
+      const fromVoice = Object.values(pruneDraft(day, draft)).some(
+        (entry) => entry.source === 'sprache'
+      )
+      const result = fromVoice
+        ? await saveRestDay(day.date, changes, 'sprache')
+        : await saveRestDay(day.date, changes)
       setDay(result)
       const rest = pruneDraft(result, draft)
       if (draftOwner !== null) storeDraft(draftOwner, result.date, rest)
       setDraft(rest)
+      setUndoVoice([])
       setConflicts([])
       setToast(
         result.changed === 1
@@ -662,7 +583,13 @@ export default function RestClient({ initialDate }: RestClientProps) {
         try {
           const fresh = await fetchRestDay(day.date)
           setDay(fresh)
-          setDraft((prev) => rebaseDraft(fresh, prev))
+          const rebased = rebaseDraft(fresh, draft)
+          setDraft(rebased)
+          setUndoVoice((entries) =>
+            entries
+              .filter(({ key, applied }) => draft[key] === applied)
+              .map((entry) => ({ ...entry, applied: rebased[entry.key] }))
+          )
         } catch {
           // Bleibt beim alten Stand; der Hinweis oben sagt, was los ist.
         }
@@ -679,6 +606,7 @@ export default function RestClient({ initialDate }: RestClientProps) {
     }
   }
 
+  const undoCount = undoVoice.length
   const confirmed = day?.backzettelStatus === 'confirmed'
   const canPrev = !!day && day.date > day.window.from
   const canNext = !!day && day.date < day.window.to
@@ -713,7 +641,7 @@ export default function RestClient({ initialDate }: RestClientProps) {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <IconButton
               aria-label="Tag davor"
-              disabled={!canPrev || loading}
+              disabled={!canPrev || loading || saving}
               onClick={() => day && goTo(addDaysIso(day.date, -1))}
               sx={{ width: 48, height: 48, border: 1, borderColor: 'divider' }}
             >
@@ -721,7 +649,7 @@ export default function RestClient({ initialDate }: RestClientProps) {
             </IconButton>
             <Button
               variant="outlined"
-              disabled={!day || day.date === day.today || loading}
+              disabled={!day || day.date === day.today || loading || saving}
               onClick={() => day && goTo(day.today)}
               sx={{ minHeight: 48, flex: { xs: 1, sm: 'none' } }}
             >
@@ -729,7 +657,7 @@ export default function RestClient({ initialDate }: RestClientProps) {
             </Button>
             <IconButton
               aria-label="Tag danach"
-              disabled={!canNext || loading}
+              disabled={!canNext || loading || saving}
               onClick={() => day && goTo(addDaysIso(day.date, 1))}
               sx={{ width: 48, height: 48, border: 1, borderColor: 'divider' }}
             >
@@ -910,6 +838,21 @@ export default function RestClient({ initialDate }: RestClientProps) {
           </PageSection>
         ))}
 
+      {day &&
+        draftOwner !== null &&
+        writable &&
+        !loading &&
+        day.lines.length > 0 && (
+          <MicButton
+            key={`${draftOwner}:${day.date}`}
+            day={day}
+            draft={draft}
+            userId={draftOwner}
+            saveBar={showSaveBar}
+            onApply={applyVoice}
+          />
+        )}
+
       {/* Platz, damit die feste Leiste die letzten Zeilen nicht verdeckt. */}
       {showSaveBar && <Box aria-hidden sx={{ height: 72 }} />}
 
@@ -1001,10 +944,25 @@ export default function RestClient({ initialDate }: RestClientProps) {
       />
 
       <Snackbar
-        open={!!toast}
-        autoHideDuration={3000}
-        onClose={() => setToast(null)}
-        message={toast}
+        open={!!toast || undoCount > 0}
+        autoHideDuration={undoCount ? (saving ? null : 8000) : 3000}
+        onClose={(_, reason) => {
+          if (undoCount && (saving || reason === 'clickaway')) return
+          setToast(null)
+          setUndoVoice([])
+        }}
+        message={
+          undoCount
+            ? `${undoCount} ${undoCount === 1 ? 'Zeile' : 'Zeilen'} übernommen`
+            : toast
+        }
+        action={
+          undoCount > 0 && (
+            <Button color="inherit" onClick={undoVoiceChange} disabled={saving}>
+              Rückgängig
+            </Button>
+          )
+        }
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
       />
     </PageLayout>

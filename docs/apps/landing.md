@@ -24,15 +24,13 @@ route of that name.
   alternatives from its category, and `noindex`.
 - **Product images rendered from the 3D models (DB13):** see [below](#product-images-from-the-3d-models).
 - **Navigation and accessibility:** see [below](#navigation-and-accessibility).
-- **Opening hours** have one source, `src/config/openingHours.ts`, mirrored into
-  `libs/shared/ui/src/lib/footer/footer-openings.tsx` and the shop's
-  `libs/bakery-shop/feature-cart/src/lib/pickup.ts` - change all three together.
-  The live status (hero badge, QuickInfoBar) comes from one `getOpenStatus()` in
-  `src/utils/openingHours.ts`, computed in German time (Europe/Berlin), not the device's. Saarland
-  legal holidays come from `src/config/holidays.ts`, a mirror of `holidaysSaarland` in the API's
-  `kalender.core.js`; `holidays.spec.ts` checks that both agree for 2024-2040. Holiday hours are not
-  configured (owner question): on a holiday the status is a neutral notice („Heute Feiertag (…) —
-  Öffnungszeiten bitte telefonisch erfragen“), never „geöffnet“, and the next opening skips holidays.
+- **Öffnungszeiten:** Landing und Shop verwenden das Wochenraster aus
+  `libs/bakery-shop/feature-cart/src/lib/pickup.ts`. `openingHours.spec.ts` prüft die Übereinstimmung
+  mit der CommonJS-Fassung der API für den Dienstplan. Der Öffnungsstatus der Startseite
+  (`src/utils/openingHours.ts`) rechnet in der Zeitzone Europe/Berlin.
+  `src/config/holidays.ts` liefert die gesetzlichen Feiertage im Saarland.
+  `holidays.spec.ts` prüft sie gegen die Kalenderformel der API. Der Öffnungsstatus bittet
+  an Feiertagen um telefonische Rückfrage.
 - Shared brand claims (`REVIEW_SUMMARY` etc.) live in `libs/shared/utils/src/lib/brand.ts`; the
   shop's rules for them (nothing invented, snapshot values) are in [shop.md](./shop.md).
 
@@ -149,6 +147,52 @@ the export with the same checks as the data repo, but only if its `STAND.json` n
 pinned in the lock. That commit is a label there, not a content hash: the images carry no checksum,
 so whoever can write to `hq/produkte-3d` can change them - the same trust as `hq/products`. How to publish a new state:
 [digitale-baeckerei.md](./digitale-baeckerei.md#veröffentlichen-der-produktmodelle-db14).
+
+## Warenkorb und WhatsApp-Vorbestellung
+
+Unter `/bestellen` geht es zum Sortiment und zum Korb. Im Sortiment, in den Suchergebnissen
+und auf der Produktseite können Kundinnen und Kunden verfügbare Artikel aus dem hq-Katalog
+hinzufügen. Die gebündelte Liste dient als Ansicht, wenn beim Build kein Katalog vorliegt.
+Im Korb folgen auf Mengen und optionale Artikelnotizen die Abholung und die Nachrichtenvorschau.
+Die Kundschaft schickt den vorbereiteten Text selbst ab. Erst die Bestätigung der Bäckerei
+per WhatsApp macht die Vorbestellung fest. [Nachrichtenformat](../domains/vorbestellungen.md#kanal-whatsapp)
+
+- **Katalog und Preis.** Der Korb speichert hq-IDs und Mengen. Name, Preis und Bild kommen aus
+  dem aktuellen Build. Ist ein Artikel weggefallen oder aus dem Angebot, muss er vor dem Senden
+  entfernt werden. Die Schätzung verwendet `orderTotal` aus dem Vorbestellungskern, der
+  zuerst die Zeilensumme rundet. Bei fehlenden Preisen bleibt die Summe offen. Abholort, Kategorien, Höchstmenge
+  und Preisanzeige stehen in `src/lib/order/order-config.ts`. Dort lässt sich auch ein
+  Bestellschluss für den Folgetag setzen.
+- **Abholung.** 14 Tage ab dem heutigen Datum am Laden. Das 30-Minuten-Raster, der Vorlauf am
+  selben Tag und die vorgeschlagenen Fristen für ganze Kuchen und Torten kommen aus
+  `feature-cart`. Montags, an Feiertagen und an Schließtagen bleibt die Auswahl gesperrt.
+  Bei Sonderöffnungszeiten verweist der Korb ans Telefon. Heute zeigt der Korb den frühesten
+  verfügbaren Termin, wenn der Vorlauf frühere Uhrzeiten ausschließt. Wird die gewählte
+  Abholzeit ungültig, bittet der Korb um eine neue Auswahl.
+- **Kalender.** Der Next-Build kann lokal `HQ_KALENDER_FILE` oder
+  `config/kalender.yaml` neben dem hq-Produktordner mit dem API-Kalenderloader einlesen.
+  Der GitHub-Pages-Build läuft derzeit ohne diese Datei. Er sperrt Ruhetag und Feiertage
+  und zeigt „Keine Betriebsferien bekannt“. Das gilt auch lokal bei fehlender oder ungültiger
+  Datei. Nach Freigabe durch den Inhaber den Sparse-Checkout um `/config/kalender.yaml`
+  erweitern und den Checkout-Prüfschritt für genau diese Datei anpassen. Im Export stehen für Abweichungen nur Datum und Typ
+  (geschlossen oder Sonderzeiten). Der Stand der Schließtage ändert sich mit dem nächsten Build.
+- **Nachricht.** `buildOrderMessage()` erzeugt die exakte Vorschau und den Text für WhatsApp.
+  Das Ziel kommt aus `src/config/contact.ts`. Für GitHub Pages kann die Repository-Variable
+  `NEXT_PUBLIC_WHATSAPP_NUMBER` gesetzt werden. Wenn sie leer ist, gilt die Mobilnummer
+  aus dem Impressum. Die kodierte URL muss kürzer als 2.000 Zeichen bleiben.
+  Der Desktop-QR-Code entsteht lokal mit `qrcode.react`. Textkopie und Telefon stehen als
+  Ausweichwege bereit.
+- **Speicher.** `heusser-korb-v1` speichert die Artikel sieben Tage ab ihrer letzten Änderung
+  und verwirft abgelaufene Artikel auch auf einer offen gebliebenen Seite. Der Abholort
+  bleibt gespeichert. Der Name wird mit dem vorausgewählten Häkchen gespeichert.
+  Termin, Notizen und Bestellnummer bleiben im laufenden Entwurf. „Angaben vergessen“ löscht
+  Korb und gespeicherte Angaben. Ändert ein anderer Tab den gespeicherten Korb, übernimmt
+  der offene Tab den neuen Stand und setzt seinen Entwurf zurück. Vor jedem Schreiben wird
+  der gespeicherte Stand verglichen. Die Ablaufprüfung
+  bereinigt nur einen erneut gelesenen, selbst abgelaufenen Speicherstand. Bei gesperrtem
+  Speicher läuft die Sitzung im Browser weiter.
+- **Prüfung.** Jest prüft Nachricht, URL-Limit, Abholzeiten, Kalender und Speicherung.
+  `whatsapp-vorbestellung.spec.ts` prüft den Ablauf mit dem synthetischen Katalog und Axe.
 
 ## Readability and tap targets
 

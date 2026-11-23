@@ -915,6 +915,7 @@ describe('DigitaleBaeckerei: Liste „Alles hier“', () => {
   function snapshotScheitert(kaputt: () => boolean) {
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith('/data/products.snapshot.json') && kaputt()) {
+        // 404 statt 5xx: 5xx wiederholt ladeJson (WIEDERHOLEN_NACH_MS).
         return { ok: false, status: 404 }
       }
       return {

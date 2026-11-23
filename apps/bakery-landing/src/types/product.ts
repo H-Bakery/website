@@ -19,9 +19,10 @@ export interface RenderedProductImage {
 
 export interface Product {
   id: number
+  orderId?: string
   name: string
   category: string
-  price: number
+  price: number | null
   image?: string | null
   imageUrl?: string | null
   /** Set only when `image` is a rendered image - see `resolveProductImage`. */

@@ -31,6 +31,12 @@
       "@bakery/shop/feature-cart": [
         "libs/bakery-shop/feature-cart/src/index.ts"
       ],
+      "@bakery/shop/feature-cart/pickup": [
+        "libs/bakery-shop/feature-cart/src/lib/pickup.ts"
+      ],
+      "@bakery/shop/feature-cart/lead-time": [
+        "libs/bakery-shop/feature-cart/src/lib/lead-time.ts"
+      ],
       "@bakery/shop/feature-catalog": [
         "libs/bakery-shop/feature-catalog/src/index.ts"
       ],

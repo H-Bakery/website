@@ -98,8 +98,9 @@ NX_ISOLATE_PLUGINS=false NODE_ENV=production NEXT_PUBLIC_PILOT_MODE=1 \
 npx nx run bakery-api:bundle
 CI=true BASE_URL=http://localhost:4382 API_URL=http://localhost:5281 npx nx e2e bakery-management-e2e
 
-# Landing: statischer Export mit dem gebündelten Produkt-Fallback (wie auf GitHub Pages)
-NX_ISOLATE_PLUGINS=false NODE_ENV=production npx nx build bakery-landing --configuration=production
+# Landing: statischer Export mit synthetischem Produktkatalog und Empfänger
+NX_ISOLATE_PLUGINS=false NODE_ENV=production HQ_PRODUCTS_DIR="$PWD/tools/e2e/hq-products" \
+  NEXT_PUBLIC_WHATSAPP_NUMBER=15550100000 npx nx build bakery-landing --configuration=production
 CI=true BASE_URL=http://localhost:4380 npx nx e2e bakery-landing-e2e
 ```
 

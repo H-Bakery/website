@@ -5,6 +5,7 @@
 | Doc                                              | What                                                                                                            |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
 | [roadmap.md](./roadmap.md)                       | Pilot plan, decisions D1…, task list, open questions - the one plan                                             |
+| [offene-fragen.md](./offene-fragen.md)           | Offene Fragen an den Inhaber - alle Entscheidungen mit gewählter Vorgabe an einer Stelle                        |
 | [architecture.md](./architecture.md)             | Apps, backend, hq, how the pieces talk                                                                          |
 | [development.md](./development.md)               | Install, run, test, build, CI, task tracking                                                                    |
 | [known-issues.md](./known-issues.md)             | Known failures and traps that are not regressions                                                               |
@@ -34,7 +35,7 @@
 **Real API internals** (English): [overview](./api/overview.md) · [auth](./api/auth.md) ·
 [hq-data](./api/hq-data.md) · [hq-products](./api/hq-products.md) ·
 [partners](./api/partners.md) · [preorders](./api/preorders.md) ·
-[deliveries](./api/deliveries.md) · [backzettel](./api/backzettel.md) · [rest](./api/rest.md) ·
+[deliveries](./api/deliveries.md) · [backzettel](./api/backzettel.md) · [rest](./api/rest.md) · [Spracheingabe](./api/sprache.md) ·
 [abgleich](./api/abgleich.md) ·
 [dienstplan](./api/dienstplan.md) · [recipes](./api/recipes.md) · [invoices](./api/invoices.md) · [Belege](./api/receipts.md)
 
