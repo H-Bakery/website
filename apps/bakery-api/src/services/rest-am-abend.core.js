@@ -272,6 +272,44 @@ function parseQty(raw, row, label) {
   return { ok: true, value: integer ? n : round2(n) }
 }
 
+/** Gesprochene absolute Menge in die Eingabeeinheit der Zählzeile bringen. */
+function parseSpokenQty(qty, spokenUnit, row) {
+  if (spokenUnit === 'g' && (row.itemUnit === 'kg' || row.unit === 'kg')) {
+    qty /= 1000
+    spokenUnit = 'kg'
+  }
+  if (spokenUnit && spokenUnit !== row.unit) {
+    if (
+      spokenUnit !== row.itemUnit ||
+      !Number.isFinite(row.factor) ||
+      row.factor <= 0
+    ) {
+      return {
+        ok: false,
+        message: `Einheit prüfen (${spokenUnit} → ${row.unit}).`,
+      }
+    }
+    const input = parseQty(qty, {
+      unit: row.itemUnit,
+      integer: false,
+    })
+    if (!input.ok) return input
+    qty = round4(input.value / row.factor)
+  }
+  const parsed = parseQty(qty, row)
+  if (
+    parsed.ok &&
+    (row.unit === 'Liter' || row.unit === 'kg') &&
+    !Number.isInteger(parsed.value * 2)
+  ) {
+    return {
+      ok: false,
+      message: `Die Menge in ${row.unit} muss in halben Schritten angegeben werden.`,
+    }
+  }
+  return parsed
+}
+
 function fail(status, error, message, extra) {
   return { ok: false, status, error, message, ...(extra || {}) }
 }
@@ -1543,6 +1581,7 @@ module.exports = {
   countRowsForItem,
   productsForVariant,
   parseQty,
+  parseSpokenQty,
   validateBatch,
   emptyVariantCandidates,
   emptyVariantLines,

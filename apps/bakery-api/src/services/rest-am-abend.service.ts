@@ -407,7 +407,12 @@ export function createRestService(
           'rest_count',
           'rest_day',
           date,
-          { changes },
+          {
+            changes,
+            ...((body as { source?: unknown })?.source === 'sprache'
+              ? { source: 'sprache' }
+              : {}),
+          },
           { transaction }
         )
       }

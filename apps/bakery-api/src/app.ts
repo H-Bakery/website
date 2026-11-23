@@ -57,7 +57,13 @@ import {
 } from './routes/invoices.routes'
 import { createRecipesRouter } from './routes/recipes.routes'
 import { RecipesOptions } from './services/recipes.service'
-import { createRestRouter, RestRouterOptions } from './routes/rest.routes'
+import { createRestRouter } from './routes/rest.routes'
+import { createSpracheRouter } from './routes/sprache.routes'
+import {
+  createRestService,
+  RestOptions,
+} from './services/rest-am-abend.service'
+import { VoiceOptions } from './services/sprache.service'
 import {
   createAbgleichRouter,
   AbgleichRouterOptions,
@@ -132,7 +138,8 @@ export interface CreateAppOptions {
    * „Rest am Abend“ (M4, after the pilot): clock and reports dir for tests.
    * Default: `hq.reportsDir` / `hq.today`, the Backzettel's master data.
    */
-  rest?: RestRouterOptions
+  rest?: RestOptions
+  voice?: VoiceOptions
   /**
    * „Abgleich Produktion ↔ Kasse“ (inhaber): clock and reports dir for
    * tests. Default: `hq.reportsDir` / `hq.today`.
@@ -294,19 +301,21 @@ export function createApp(options: CreateAppOptions = {}): Application {
   // M4 „Rest am Abend“: counts at closing (verkauf), evaluation (inhaber);
   // „gebacken“ comes from the Backzettel service, sold from the cash reports.
   // The daily rest goes to hq data/production/rest/ like the Z9 snapshots.
+  const rest = createRestService(backzettel.source, backzettel.service, {
+    reportsDir: options.hq?.reportsDir,
+    today: options.hq?.today,
+    log: options.hq?.log?.warn,
+    ...(snapshots.enabled
+      ? {
+          onCounted: (view: unknown) => snapshots.restCounted(view),
+        }
+      : {}),
+    ...options.rest,
+  })
+  app.use('/api/rest', createRestRouter(rest))
   app.use(
-    '/api/rest',
-    createRestRouter(backzettel.source, backzettel.service, {
-      reportsDir: options.hq?.reportsDir,
-      today: options.hq?.today,
-      log: options.hq?.log?.warn,
-      ...(snapshots.enabled
-        ? {
-            onCounted: (view: unknown) => snapshots.restCounted(view),
-          }
-        : {}),
-      ...options.rest,
-    })
+    '/api/sprache',
+    createSpracheRouter(rest, backzettel.source.paths.hqDir, options.voice)
   )
   // „Abgleich Produktion ↔ Kasse“ (inhaber): gebacken − CAP − verkauft −
   // Rest per bake day and item - the same sources as Rest am Abend.

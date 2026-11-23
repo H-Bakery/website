@@ -4,9 +4,14 @@ import React, { useEffect, useRef, useState } from 'react'
 import { Box, Button, Stack, Tab, Tabs, Typography } from '@mui/material'
 import { Print as PrintIcon } from '@mui/icons-material'
 import { useOptionalSession } from '../../../lib/session'
-import { ROLE_LABELS, type PilotRole } from '../../../lib/roles'
+import {
+  REST_COUNT_WRITE_ROLES,
+  ROLE_LABELS,
+  type PilotRole,
+} from '../../../lib/roles'
 import {
   SPICKZETTEL,
+  SPRACHE_TIPPS,
   spickzettelOrderFor,
 } from '../../../content/hilfe/spickzettel'
 import {
@@ -147,6 +152,20 @@ export default function HilfeClient() {
             footer="Heusser Verwaltung · in der App: Menü › Hilfe"
           />
         </Box>
+
+        {REST_COUNT_WRITE_ROLES.includes(tab) && (
+          <Box className="hilfe-screen">
+            <PageSection title={SPRACHE_TIPPS.title}>
+              <Stack component="ul" spacing={0.5}>
+                {SPRACHE_TIPPS.steps.map((tip) => (
+                  <Typography component="li" key={tip}>
+                    {tip}
+                  </Typography>
+                ))}
+              </Stack>
+            </PageSection>
+          </Box>
+        )}
 
         <PageSection
           id="papierbetrieb"

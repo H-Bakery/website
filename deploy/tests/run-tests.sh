@@ -272,6 +272,7 @@ check "Vorlage caddy.env.example: lan-http" test "$(bash -c '. "$1"; caddy_mode 
 CADDY_DIR="$REPO_ROOT/deploy/caddy"
 check "gemeinsamer Block in beiden Caddyfiles gleich" sh -c "test -n \"\$(sed -n '/^# >>> gemeinsam/,/^# <<< gemeinsam/p' '$CADDY_DIR/Caddyfile')\" && test \"\$(sed -n '/^# >>> gemeinsam/,/^# <<< gemeinsam/p' '$CADDY_DIR/Caddyfile')\" = \"\$(sed -n '/^# >>> gemeinsam/,/^# <<< gemeinsam/p' '$CADDY_DIR/Caddyfile.lan-http')\""
 check "gemeinsamer Block: /api -> 5000, sonst -> 4201" sh -c "sed -n '/^# >>> gemeinsam/,/^# <<< gemeinsam/p' '$CADDY_DIR/Caddyfile' | grep -q 'reverse_proxy 127.0.0.1:5000' && sed -n '/^# >>> gemeinsam/,/^# <<< gemeinsam/p' '$CADDY_DIR/Caddyfile' | grep -q 'reverse_proxy 127.0.0.1:4201'"
+check "Mikrofon nur für dieselbe Origin" grep -Fq 'Permissions-Policy "camera=(), microphone=(self), geolocation=(), payment=(), usb=()"' "$CADDY_DIR/Caddyfile"
 check "HTTPS-Caddyfile setzt HSTS" sh -c "grep -v '^[[:space:]]*#' '$CADDY_DIR/Caddyfile' | grep -q 'Strict-Transport-Security'"
 check "LAN-HTTP ohne HSTS, ohne TLS, auf :80" sh -c "! grep -v '^[[:space:]]*#' '$CADDY_DIR/Caddyfile.lan-http' | grep -q 'Strict-Transport-Security\|tls ' && grep -q '^:80 {' '$CADDY_DIR/Caddyfile.lan-http' && grep -q 'auto_https off' '$CADDY_DIR/Caddyfile.lan-http'"
 if command -v caddy >/dev/null 2>&1; then
