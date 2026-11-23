@@ -1,12 +1,16 @@
 import { createHash } from 'node:crypto'
 import { open } from 'node:fs/promises'
 import type { Request } from 'express'
-import type { Transaction } from 'sequelize'
+import { QueryTypes, type Transaction } from 'sequelize'
 
 import { audit } from '../auth/audit'
 import { getSequelize } from '../models'
 import { insert, ReceiptError, select, update, write } from './receipt-db'
-import { readReceiptFile, type Extraction } from './receipt-extractors'
+import {
+  parseReceiptXmlBytes,
+  readReceiptFile,
+  type Extraction,
+} from './receipt-extractors'
 import {
   detectExtension,
   FILE_TYPES,
@@ -34,8 +38,7 @@ import { balances, targetKey } from './receipt-matching.core'
 const EDITABLE: readonly (keyof Omit<ReceiptFields, 'vat_lines'>)[] =
   extract.FIELDS
 const STATUSES = ['neu', 'erkannt', 'geprueft', 'verworfen']
-const RECEIPT_MONTH =
-  'COALESCE(substr(invoice_date, 1, 7), substr(created_at, 1, 7))'
+const RECEIPT_MONTH = 'substr(COALESCE(invoice_date, upload_date), 1, 7)'
 
 export interface ReceiptsOptions {
   directory?: string
@@ -77,16 +80,27 @@ export function receiptNotFound() {
 
 /** Freitext in JSON kann ebenfalls eine IBAN enthalten. Originale werden als Dateien ausgeliefert. */
 export function redactIban(text: string | null): string | null {
-  return (
-    text?.replace(/\b[A-Z]{2}\d{2}(?:[ \t]?[A-Z0-9]){11,30}/gi, (candidate) => {
-      for (let end = candidate.length; end >= 15; end--) {
-        const prefix = candidate.slice(0, end).trimEnd()
-        if (isValidIban(prefix))
-          return maskIban(prefix) + candidate.slice(prefix.length)
-      }
-      return candidate
-    }) ?? null
-  )
+  if (text === null) return null
+  // Wie normalizeIban auch Unicode-Leerraum an jeder Zeichenposition zulassen.
+  const starts = /\b[A-Z]\s*[A-Z]\s*\d\s*\d(?:\s*[A-Z0-9]){11,30}/gi
+  let result = ''
+  let copied = 0
+  for (let match = starts.exec(text); match; match = starts.exec(text)) {
+    const candidate = match[0]
+    // Nach einem Treffer ab dem wirklichen IBAN-Ende weitersuchen. Der
+    // Kandidat kann schon Zeichen aus nachfolgendem Freitext enthalten.
+    starts.lastIndex = match.index + 1
+    for (let end = candidate.length; end >= 15; end--) {
+      if (!/[A-Z0-9]/i.test(candidate[end - 1])) continue
+      const prefix = candidate.slice(0, end)
+      if (!isValidIban(prefix)) continue
+      result += text.slice(copied, match.index) + maskIban(prefix)
+      copied = match.index + end
+      starts.lastIndex = copied
+      break
+    }
+  }
+  return result + text.slice(copied)
 }
 
 function fieldsOf(row: ReceiptRow, vat_lines: VatLine[]): ReceiptFields {
@@ -248,6 +262,19 @@ function requireOpen(row: ReceiptRow, allowDiscarded = false) {
   }
 }
 
+function requireConfirmable(
+  fields: Pick<ReceiptFields, 'supplier_name' | 'invoice_date' | 'gross_cents'>,
+  today: string
+) {
+  if (extract.missingRequiredFields(fields, today)) {
+    throw new ReceiptError(
+      422,
+      'incomplete_receipt',
+      'Bitte Lieferant, Rechnungsdatum und Bruttobetrag prüfen und ergänzen.'
+    )
+  }
+}
+
 export class ReceiptsService {
   private readonly store: ReceiptFileStore
   private readonly now: () => Date
@@ -400,6 +427,17 @@ export class ReceiptsService {
         'invalid_receipt_file',
         'Erlaubt sind JPEG, PNG, HEIC, PDF und XML.'
       )
+    if (extension === 'xml') {
+      try {
+        parseReceiptXmlBytes(bytes)
+      } catch {
+        throw new ReceiptError(
+          415,
+          'invalid_receipt_file',
+          'Die Datei enthält keine gültige Beleg-XML ohne DTD.'
+        )
+      }
+    }
     const now = this.now()
     const day = berlinToday(now)
     const sha256 = createHash('sha256').update(bytes).digest('hex')
@@ -577,6 +615,9 @@ export class ReceiptsService {
       if (row.status === 'verworfen') requireOpen(row)
       const before = fieldsOf(row, await this.vat(id, transaction))
       const after = { ...before, ...patch }
+      if (row.confirmed_at || row.status === 'geprueft') {
+        requireConfirmable(after, this.today())
+      }
       const changes = changed(before, after)
       if (!Object.keys(changes).length) return
 
@@ -642,19 +683,7 @@ export class ReceiptsService {
       requireOpen(row, action === 'delete')
 
       if (action === 'confirm') {
-        if (
-          !row.supplier_name ||
-          !row.invoice_date ||
-          row.invoice_date > this.today() ||
-          row.gross_cents == null ||
-          row.gross_cents < 0
-        ) {
-          throw new ReceiptError(
-            422,
-            'incomplete_receipt',
-            'Bitte Lieferant, Rechnungsdatum und Bruttobetrag prüfen und ergänzen.'
-          )
-        }
+        requireConfirmable(row, this.today())
         await update(
           'receipts',
           id,
@@ -739,9 +768,10 @@ export class ReceiptsService {
   }
 
   /** Für eine spätere regelmäßige Ausführung. Meldet fehlende und veränderte Originale. */
-  async verifyFileHashes() {
-    const files = await select<StoredReceiptFile>(
-      'SELECT * FROM receipt_files ORDER BY id'
+  async verifyFileHashes(db = getSequelize()) {
+    const files = await db.query<StoredReceiptFile>(
+      'SELECT id, receipt_id, path, sha256 FROM receipt_files ORDER BY id',
+      { type: QueryTypes.SELECT }
     )
     const issues: { file_id: number; receipt_id: number; reason: string }[] = []
     for (const file of files) {

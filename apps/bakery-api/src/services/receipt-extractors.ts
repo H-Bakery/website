@@ -78,6 +78,10 @@ export function parseReceiptXml(input: string): XmlNode {
   return root
 }
 
+export function parseReceiptXmlBytes(bytes: Buffer): XmlNode {
+  return parseReceiptXml(decodeXml(bytes))
+}
+
 interface Reading {
   raw?: unknown
   result?: Extraction
@@ -95,7 +99,7 @@ const xmlExtractor: Extractor = {
   version: '1',
   async read(filename, today) {
     try {
-      const root = parseReceiptXml(decodeXml(await readFile(filename)))
+      const root = parseReceiptXmlBytes(await readFile(filename))
       const raw = { root: root.name, namespace: root.uri }
       const result = extractXml(root, today)
       return result

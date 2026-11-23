@@ -68,7 +68,7 @@ it('verwendet das Datumsfenster einschließlich der Grenzen', () => {
   ).toHaveLength(0)
 })
 
-it('verwendet nur ausdrücklich erfasstes Skonto innerhalb der Frist', () => {
+it('verwendet angegebenes Skonto innerhalb der Frist', () => {
   const target = receipt({ skonto_rate: 2, skonto_due_date: '2026-11-20' })
   const discount = offers([target], [tx({ amount: -120.98 })])[0]
   expect(discount).toMatchObject({
@@ -195,7 +195,7 @@ it('listet Ausgaben ohne bestätigten Link abzüglich konfigurierter Kategorien'
     expensesWithoutReceipt([...debits, tx({ amount: 1 })], links, [
       'beispiel_ausnahme',
     ])
-  ).toEqual([debits[1]])
+  ).toEqual([{ ...debits[1], remaining_cents: 12345 }])
 })
 
 it('erkennt dieselbe Lieferanten-IBAN auch bei abweichender Schreibweise der Namen', () => {
@@ -217,4 +217,57 @@ it('erkennt dieselbe Lieferanten-IBAN auch bei abweichender Schreibweise der Nam
   expect(result).toMatchObject([
     { type: 'sammellastschrift', parts: [{ target_id: 1 }, { target_id: 2 }] },
   ])
+})
+
+it.each([
+  [2, -120.98],
+  [3, -119.75],
+])(
+  'schlägt bei bekannter Frist %i %% Skonto mit geringerem Gewicht vor',
+  (rate, amount) => {
+    const skonto_due_date = '2026-11-20'
+    const inferred = offers([receipt({ skonto_due_date })], [tx({ amount })])[0]
+    const explicit = offers(
+      [receipt({ skonto_due_date, skonto_rate: rate })],
+      [tx({ amount })]
+    )[0]
+    expect(inferred).toMatchObject({
+      type: 'skonto',
+      estimated_skonto_rate: rate,
+    })
+    expect(inferred.score).toBeLessThan(explicit.score)
+    expect(explicit).not.toHaveProperty('estimated_skonto_rate')
+    expect(
+      offers(
+        [receipt({ skonto_due_date })],
+        [tx({ amount, booking_date: '2026-11-21' })]
+      )
+    ).toMatchObject([{ type: 'teilzahlung' }])
+    expect(
+      offers([receipt({ skonto_due_date, skonto_rate: 1 })], [tx({ amount })])
+    ).toMatchObject([{ type: 'teilzahlung' }])
+  }
+)
+
+it('zieht nur bestätigte Bankanteile vom Restbetrag ab', () => {
+  const debit = tx({ amount: -100 })
+  const first = {
+    transaction_id: debit.id,
+    amount_cents: 4000,
+    discount_cents: 200,
+    status: 'bestaetigt',
+  }
+  const second = {
+    transaction_id: debit.id,
+    amount_cents: 6000,
+    status: 'bestaetigt',
+  }
+  expect(
+    expensesWithoutReceipt(
+      [debit],
+      [first, { ...second, status: 'abgelehnt' }],
+      []
+    )
+  ).toMatchObject([{ amount: -100, remaining_cents: 6000 }])
+  expect(expensesWithoutReceipt([debit], [first, second], [])).toEqual([])
 })

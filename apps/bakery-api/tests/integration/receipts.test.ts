@@ -24,11 +24,18 @@ import { createTestApp, type TestApp } from '../helpers/createTestApp'
 jest.setTimeout(30_000)
 
 const NOW = new Date('2026-11-23T11:00:00Z')
+let clock = NOW
 const MONTH = '2026-11'
 const BILL = '/api/receipts'
 const BANK = '/api/finance/transactions/without-receipt'
 const LINKS = '/api/transaction-links'
 const PNG = Buffer.from('89504e470d0a1a0a', 'hex')
+const PDF_TEXT = [
+  'Lieferant: Beispiel-Mühle GmbH',
+  'Rechnungsdatum: 21.11.2026',
+  'Summe: 15,00 €',
+  'Gesamtbetrag: 17,85 €',
+].join('\n')
 let api: TestApp
 let server: Server
 let root: string
@@ -94,7 +101,7 @@ const args = process.argv.slice(2);
 const fs = require('fs');
 if (args.join('|').startsWith('-layout|-enc|UTF-8|') && args[4] === '-' &&
     fs.readFileSync(args[3]).subarray(0, 5).toString() === '%PDF-') {
-  process.stdout.write('Lieferant: Beispiel-Mühle GmbH\\nRechnungsdatum: 21.11.2026\\nBrutto: 17,85 €');
+  process.stdout.write(${JSON.stringify(PDF_TEXT)});
 } else { process.exitCode = 1; }`,
     { mode: 0o700 }
   )
@@ -103,7 +110,7 @@ if (args.join('|').startsWith('-layout|-enc|UTF-8|') && args[4] === '-' &&
       hq: { financeDir: path.join(root, 'finance') },
       receipts: {
         directory: path.join(root, 'belege'),
-        now: () => NOW,
+        now: () => clock,
         pdftotext: process.env['RECEIPT_TEST_PDFTOTEXT'] || localTextTool,
       },
     },
@@ -267,14 +274,23 @@ it('prüft Anfragegröße vor dem Puffern und protokolliert fehlerhafte Erkennun
   await upload('nur Text', BILL, 'application/pdf').expect(415)
   const unsafeXml =
     '<?xml version="1.0"?><!DOCTYPE Invoice [<!ENTITY test "TEST">]><Invoice>&test;</Invoice>'
-  const receipt = await extracted(unsafeXml)
+  for (const invalid of [
+    unsafeXml,
+    '<Test>keine XML-Datei',
+    '<Test></Andere>',
+  ]) {
+    await upload(invalid, BILL, 'application/xml').expect(415)
+  }
+  const receipt = await extracted(
+    '<Test>Gültige XML mit unbekanntem Rechnungsformat</Test>'
+  )
   const detail = await owner()
     .get(BILL + '/' + receipt.id)
     .set(auth())
     .expect(200)
   expect(detail.body.data.status).toBe('neu')
   expect(detail.body.data.extraction_errors).toEqual([
-    'Die Beleg-XML konnte nicht sicher gelesen werden.',
+    'Die XML ist keine unterstützte UBL- oder CII-Rechnung.',
   ])
   await owner()
     .post(BILL + '/' + receipt.id + '/discard')
@@ -293,9 +309,7 @@ it('prüft Anfragegröße vor dem Puffern und protokolliert fehlerhafte Erkennun
 
 it('liest Textschicht nach der Antwort und speichert Erkennungsläufe serverseitig', async () => {
   const { doc, done } = openDocument({ info: { Title: 'Synthetischer Beleg' } })
-  doc.text(
-    'Lieferant: Beispiel-Mühle GmbH\nRechnungsdatum: 21.11.2026\nBrutto: 17,85 €'
-  )
+  doc.text(PDF_TEXT)
   doc.end()
   const receipt = await extracted(await done)
   const detail = await owner()
@@ -356,6 +370,36 @@ it('behält bestätigte Belege bei Korrekturen mit Alt- und Neuwert', async () =
   await upload(Buffer.concat([PNG, Buffer.from([3])]), route + '/files').expect(
     409
   )
+  for (const patch of [
+    { supplier_name: null },
+    { supplier_name: '   ' },
+    { invoice_date: null },
+    { invoice_date: '2026-11-24' },
+    { gross_cents: null },
+  ]) {
+    const invalid = await owner()
+      .patch(route)
+      .set(auth())
+      .send(patch)
+      .expect(422)
+    expect(invalid.body.error).toBe('incomplete_receipt')
+  }
+  const afterRejectedPatches = await owner().get(route).set(auth()).expect(200)
+  expect(afterRejectedPatches.body.data).toMatchObject({
+    status: 'geprueft',
+    supplier_name: 'Beispiel-Mühle GmbH',
+    invoice_date: '2026-11-14',
+    gross_cents: 10700,
+  })
+  expect(
+    await AuditLog.count({
+      where: {
+        entity: 'receipt',
+        entityId: String(receipt.id),
+        action: 'update',
+      },
+    })
+  ).toBe(0)
   await owner()
     .patch(route)
     .set(auth())
@@ -556,6 +600,14 @@ it('verbindet sowohl eine manuelle Teilzahlung als auch einen Vorschlag für Aus
       amount_cents: 420,
     })
     .expect(201)
+  const partial = await owner()
+    .get(BANK)
+    .set(auth())
+    .query({ monat: MONTH })
+    .expect(200)
+  expect(partial.body.data.transactions).toMatchObject([
+    { id: 'dcba1122', amount: -5, remaining_cents: 80 },
+  ])
   const invoice = await Invoice.create({
     number: 'TA-0726',
     buyerName: 'Testabnehmer GmbH',
@@ -594,4 +646,198 @@ it('verbindet sowohl eine manuelle Teilzahlung als auch einen Vorschlag für Aus
     .delete(BILL + '/' + receipt.id)
     .set(auth())
     .expect(200)
+})
+
+it('maskiert IBANs mit Unicode-Leerraum in Hinweisen, Vorschlägen und Ausgaben', async () => {
+  const iban = Array.from(EXAMPLE_IBAN).join('\u202f\u00a0')
+  const second = EXAMPLE_IBAN.replace(/(.{4})(?=.)/g, '$1\u2009')
+  const purpose = 'Testkonto ' + iban + ' und ' + second
+  await writeMonth([
+    bankRow('abcdf190', {
+      amount: -62.06,
+      purpose,
+      counterparty: 'Testkonto ' + second,
+      booking_text: 'Empfang ' + iban,
+      counterparty_iban: null,
+    }),
+  ])
+  const receipt = await extracted(
+    ubl('TEST-MASKIERUNG').replace('118.90', '62.06'),
+    BILL + '?buchung=abcdf190'
+  )
+  const detail = await owner()
+    .get(BILL + '/' + receipt.id)
+    .set(auth())
+    .expect(200)
+  const matches = await owner()
+    .get(BILL + '/matches')
+    .set(auth())
+    .query({ buchung: 'abcdf190' })
+    .expect(200)
+  const expenses = await owner()
+    .get(BANK)
+    .set(auth())
+    .query({ monat: MONTH })
+    .expect(200)
+  for (const data of [
+    detail.body.data.booking_hint,
+    matches.body.data.proposals[0].parts[0].booking,
+    expenses.body.data.transactions[0],
+  ]) {
+    expect(data).toMatchObject({
+      purpose: 'Testkonto DE•• •••• 3000 und DE•• •••• 3000',
+      counterparty: 'Testkonto DE•• •••• 3000',
+      booking_text: 'Empfang DE•• •••• 3000',
+    })
+  }
+})
+
+it('ordnet Belege ohne Rechnungsdatum dem Berliner Uploadmonat zu', async () => {
+  const boundary = new Date('2026-11-30T23:05:00Z')
+  clock = boundary
+  try {
+    const receipt = await extracted(
+      Buffer.concat([PNG, Buffer.from('Monatswechsel')])
+    )
+    for (const route of [BILL, BILL + '/without-booking']) {
+      const actual = await owner()
+        .get(route)
+        .set(auth())
+        .query({ monat: '2026-12' })
+        .expect(200)
+      expect(actual.body.data.receipts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: receipt.id,
+            created_at: boundary.toISOString(),
+            invoice_date: null,
+          }),
+        ])
+      )
+      const previous = await owner()
+        .get(route)
+        .set(auth())
+        .query({ monat: '2026-11' })
+        .expect(200)
+      expect(previous.body.data.receipts.map(({ id }) => id)).not.toContain(
+        receipt.id
+      )
+    }
+  } finally {
+    clock = NOW
+  }
+})
+
+async function manualReceipt(number: string, cents: number) {
+  const receipt = await extracted(Buffer.concat([PNG, Buffer.from(number)]))
+  await owner()
+    .patch(BILL + '/' + receipt.id)
+    .set(auth())
+    .send({
+      supplier_name: 'Beispielgruppe GmbH',
+      gross_cents: cents,
+      invoice_number: number,
+      invoice_date: '2026-11-12',
+    })
+    .expect(200)
+  return receipt.id
+}
+
+async function checkGroupRejection(
+  scope: { buchung: string } | { beleg: number },
+  type: string,
+  expectedSingletons: number
+) {
+  const load = async () =>
+    (
+      await owner()
+        .get(BILL + '/matches')
+        .set(auth())
+        .query(scope)
+        .expect(200)
+    ).body.data
+  const initial = await load()
+  const groups = initial.proposals.filter((proposal) => proposal.type === type)
+  expect(groups).toHaveLength(2)
+  await owner()
+    .post(LINKS + '/' + groups[0].id + '/reject')
+    .set(auth())
+    .expect(200)
+
+  const stillVisible = await load()
+  expect(stillVisible.links).toEqual([])
+  expect(
+    stillVisible.proposals.filter((proposal) => proposal.type === type)
+  ).toEqual([expect.objectContaining({ id: groups[1].id })])
+  expect(
+    stillVisible.proposals.filter((proposal) => proposal.parts.length === 1)
+  ).toHaveLength(expectedSingletons)
+  expect(
+    await AuditLog.findOne({
+      where: {
+        entity: 'transaction_link_proposal',
+        entityId: groups[0].id,
+        action: 'reject',
+      },
+    })
+  ).toMatchObject({
+    data: {
+      type,
+      parts: expect.arrayContaining(
+        groups[0].parts.map(
+          ({ kind, target_id, transaction_id, amount_cents }) =>
+            expect.objectContaining({
+              kind,
+              target_id,
+              transaction_id,
+              amount_cents,
+            })
+        )
+      ),
+    },
+  })
+
+  await owner()
+    .post(LINKS)
+    .set(auth())
+    .send({ proposal_id: groups[1].id })
+    .expect(201)
+  expect((await load()).links).toHaveLength(2)
+}
+
+it('lässt nach Ablehnung einer Sammellastschrift die überlappende Kombination zu', async () => {
+  await writeMonth([
+    bankRow('abcd0190', {
+      amount: -100,
+      counterparty: 'Beispielgruppe GmbH',
+      booking_text: 'SEPA-Lastschrift',
+      counterparty_iban: null,
+      purpose: 'Test-Sammellastschrift',
+    }),
+  ])
+  await manualReceipt('TEST-GRUPPE-1', 7000)
+  await manualReceipt('TEST-GRUPPE-2', 3000)
+  await manualReceipt('TEST-GRUPPE-3', 3000)
+  await checkGroupRejection({ buchung: 'abcd0190' }, 'sammellastschrift', 0)
+  const expenses = await owner()
+    .get(BANK)
+    .set(auth())
+    .query({ monat: MONTH })
+    .expect(200)
+  expect(expenses.body.data.transactions).toEqual([])
+})
+
+it('lässt nach Ablehnung einer Teilzahlungsgruppe die gemeinsamen Einzelteile und Alternativen zu', async () => {
+  await writeMonth(
+    [70, 30, 30].map((amount, index) =>
+      bankRow('fabc019' + index, {
+        amount: -amount,
+        counterparty: 'Beispielgruppe GmbH',
+        counterparty_iban: null,
+        purpose: 'Test-Teilzahlung',
+      })
+    )
+  )
+  const id = await manualReceipt('TEST-TEILZAHLUNGEN', 10000)
+  await checkGroupRejection({ beleg: id }, 'teilzahlungen', 3)
 })

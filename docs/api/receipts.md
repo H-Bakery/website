@@ -23,7 +23,7 @@ Dateidownload gibt das unveränderte Original mit den darin enthaltenen Angaben 
 | `GET /api/receipts/matches?monat=&beleg=&buchung=`     | Rangliste der Vorschläge und bestätigte Zuordnungen, optional nach Beleg-ID oder Buchungs-ID gefiltert       |
 | `POST /api/transaction-links`                          | Vorschlag bestätigen oder ausdrücklich manuell verknüpfen                                                    |
 | `POST /api/transaction-links/:id/reject`               | Vorschlag ablehnen. `:id` ist die ID aus der Rangliste                                                       |
-| `GET /api/finance/transactions/without-receipt?monat=` | Abbuchungen ohne bestätigte Zuordnung, abzüglich konfigurierter Ausnahmen                                    |
+| `GET /api/finance/transactions/without-receipt?monat=` | Abbuchungen mit offenem Restbetrag, abzüglich konfigurierter Ausnahmen                                       |
 
 Der Monat hat das Format `JJJJ-MM` und ist standardmäßig der laufende Berliner Monat. Bei Belegen
 zählt das Rechnungsdatum, ersatzweise der Uploadmonat. Bei Buchungen zählt das Buchungsdatum. Mit
@@ -34,7 +34,7 @@ Monatsdatei ohne offene Buchungen ergibt `available: true` mit leerer Liste.
 ## Dateien und Erkennung
 
 Je Upload eine Datei als Rohkörper, mit `Content-Type` für JPEG, PNG, HEIC, PDF, XML oder
-`application/octet-stream`. Der Server prüft den tatsächlichen Dateianfang. Das Limit beträgt
+`application/octet-stream`. Der Server prüft den tatsächlichen Dateianfang und validiert XML vor der Ablage ohne DTD oder eigene Entitäten. Das Limit beträgt
 15.000.000 Bytes je Datei und zehn Dateien je Beleg. Die Schreibpfade entstehen aus Uploadmonat,
 SHA-256 und erkannter Endung. Als Pfadangabe dient ausschließlich der intern erzeugte Dateiname.
 HTTP 201 enthält `{ id, file_id, status: 'gespeichert' }`. Derselbe SHA-256 ergibt `409
@@ -57,12 +57,19 @@ bleibt ein noch unbearbeiteter Beleg manuell prüfbar.
 `skonto_due_date` und `vat_lines: [{ rate, net_cents, vat_cents }]`. Geld steht in ganzen Cent,
 Datum in `JJJJ-MM-TT` und Steuersatz und Skonto in Prozent. Ein gesendetes `vat_lines` ersetzt die
 ganze Aufteilung. `null` leert optionale Felder. Bestätigen verlangt mindestens Lieferant,
-Rechnungsdatum bis heute und einen eingetragenen Bruttobetrag.
+Rechnungsdatum bis heute und einen eingetragenen Bruttobetrag. Dieselben Pflichtfelder gelten
+für Korrekturen an einem bestätigten Beleg.
 
 ## Bestätigung des Abgleichs
 
+Die Ausgabenliste liefert den ursprünglichen Buchungsbetrag und `remaining_cents` als
+unbelegten Rest in Cent. Erst bei vollständig bestätigter Zuordnung entfällt die Buchung.
+
 Ein Vorschlag trägt `status: 'vorgeschlagen'`, eine ID, einen Punktwert und einen oder mehrere
-`parts` mit Buchung, Ziel, Teilbetrag und gegebenenfalls Skonto. Die API berechnet Vorschläge beim
+`parts` mit Buchung, Ziel, Teilbetrag und gegebenenfalls Skonto. Bei bekannter Skontofrist und
+fehlendem Satz kennzeichnet `estimated_skonto_rate` die schwächeren Vorschläge mit 2 % oder 3 %.
+Die Ablehnung einer Gruppe gilt für die gesamte Kombination. Überlappende Vorschläge bleiben
+verfügbar. Die API berechnet Vorschläge beim
 Lesen und speichert eine Entscheidung erst nach ausdrücklicher Aktion. Bestätigung mit
 `{ proposal_id }` berechnet den Vorschlag erneut und speichert alle Teile in einer Transaktion.
 Einen inzwischen geänderten Vorschlag beantwortet die API mit `409 proposal_changed`.
@@ -81,4 +88,5 @@ Die Migration `20270403000000-receipts.js` legt `receipts`, `receipt_vat_lines`,
 `receipt_extractions` und `transaction_links` an. `audit_log` enthält Erfassung, Dateiergänzungen,
 Feldänderungen, Bestätigungen und Ablehnungen mit Zeit und Akteur. Der
 Dienst `ReceiptsService.verifyFileHashes()` prüft alle in der Datenbank geführten Originale
-und meldet fehlende, unlesbare oder geänderte Dateien.
+und meldet fehlende, unlesbare oder geänderte Dateien. Zur Restore-Prüfung gibt es den
+schreibgeschützten Befehl `cli.js verify-receipt-files --db <SQLite-Datei> --files <Belegordner>`.

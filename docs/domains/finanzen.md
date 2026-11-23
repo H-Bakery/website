@@ -147,18 +147,18 @@ Lieferant und gleiche Rechnungsnummer lösen einen Hinweis „Schon erfasst?“ 
   vorhandenes `pdftotext` Vorschläge aus. Fotos und Scans werden von Hand erfasst.
 - Der Inhaber prüft Felder und Original, ergänzt fehlende Angaben und bestätigt. Auch XML-Belege
   benötigen die Bestätigung. Änderungen bleiben als Alt- und Neuwert im Audit nachvollziehbar.
-  Bei bestätigten Belegen bleiben die Originale festgeschrieben und der Beleg bleibt erhalten.
+  Bei bestätigten Belegen bleiben Originale, Lieferant, gültiges Rechnungsdatum und Bruttobetrag erhalten.
 - Der Bankabgleich bewertet Betrag, Skontofrist, Buchungszeitraum, Gegenseite und Rechnungsnummer.
   Das Fenster reicht von drei Tagen vor Rechnungsdatum bis 14 Tage nach Fälligkeit, ohne Fälligkeit
-  bis 45 Tage nach dem Rechnungsdatum. Skonto wird mit ausdrücklich erfasstem Satz und Frist
-  berücksichtigt. Sammellastschriften können zwei bis sechs Belege umfassen. Teilzahlungen und
+  bis 45 Tage nach dem Rechnungsdatum. Skonto wird mit Satz und Frist berücksichtigt. Ist nur die Frist bekannt, erscheinen 2 % und 3 %
+  als schwächere, ausdrücklich gekennzeichnete Schätzungen. Sammellastschriften können zwei bis sechs Belege umfassen. Teilzahlungen und
   mehrere ähnlich starke Vorschläge werden angezeigt. Vormerkungen sind gekennzeichnet.
 - Übernommen wird eine Verknüpfung erst beim ausdrücklichen Bestätigen oder manuellen Zuordnen.
   Wechselt eine Buchungs-ID, helfen Buchungstag (± drei Tage), Betrag und Gegenseite beim
   Wiederfinden. Der Inhaber prüft und wählt eine angebotene Ersatzbuchung.
 - Monatlich stehen „Zu prüfen“, „Ohne Buchung“ und „Ausgaben ohne Beleg“ zur Verfügung.
   Bar bezahlte oder verworfene Belege fehlen in „Ohne Buchung“. In „Ausgaben ohne Beleg“ erscheinen
-  Abbuchungen ohne bestätigte Verknüpfung. Die optionale Ausnahmeliste liegt in hq und ist zunächst
+  Abbuchungen mit einem noch unbelegten Restbetrag. Die optionale Ausnahmeliste liegt in hq und ist zunächst
   leer. Fehlen Bankdaten, zeigt die Liste den fehlenden Monat an.
 - Rechte wie bei den Buchungen. Siehe [Belege-API](../api/receipts.md) und
   [Betrieb und Sicherung](../runbook.md#belegoriginale).

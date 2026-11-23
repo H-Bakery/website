@@ -55,6 +55,8 @@
  * local and the server's retry timer pushes it (exit 0, noted on stderr).
  */
 import * as fs from 'fs'
+import { Sequelize } from 'sequelize'
+import { OPEN_READONLY } from 'sqlite3'
 
 import {
   ConfigError,
@@ -63,6 +65,7 @@ import {
   loadHqConfig,
   loadHqSyncConfig,
 } from './config/env'
+import { ReceiptsService } from './services/receipts.service'
 import { openDatabase } from './db/database'
 import { pendingMigrations, runMigrations } from './db/migrate'
 import { initializeModels } from './models'
@@ -132,6 +135,10 @@ const USAGE = `Aufruf:
     DSGVO: Name, Telefon und Anmerkung aller Vorbestellungen, deren
     Abholtag mehr als 90 Tage zurückliegt, werden gelöscht (in jedem
     Status). Migriert nie: bei ausstehenden Migrationen bricht der Lauf ab.
+
+  cli.js verify-receipt-files --db <SQLite-Datei> --files <Belegordner>
+    Prüft die SHA-256-Werte aller Belegdateien in einer Datenbankkopie.
+    Öffnet die Datenbank schreibgeschützt. Exit 2: Dateien fehlen oder weichen ab.
 
   cli.js snapshot-preorders [--date JJJJ-MM-TT]
     Schreibt die Summen der Vorbestellungen eines Abholtags (Vorgabe: heute)
@@ -527,6 +534,34 @@ async function snapshotPreorders(
   )
 }
 
+async function verifyReceiptFiles(
+  flags: Record<string, string>
+): Promise<number> {
+  const dbPath = flags['db']
+  const directory = flags['files']
+  if (
+    !dbPath ||
+    !directory ||
+    Object.keys(flags).some((key) => key !== 'db' && key !== 'files')
+  ) {
+    throw new UserInputError('Dateiprüfung braucht --db und --files.')
+  }
+
+  const db = new Sequelize({
+    dialect: 'sqlite',
+    storage: dbPath,
+    dialectOptions: { mode: OPEN_READONLY },
+    logging: false,
+  })
+  try {
+    const report = await new ReceiptsService({ directory }).verifyFileHashes(db)
+    console.log(JSON.stringify(report, null, 2))
+    return report.issues.length ? 2 : 0
+  } finally {
+    await db.close()
+  }
+}
+
 export async function main(argv: string[]): Promise<number> {
   try {
     loadEnvFile()
@@ -549,6 +584,8 @@ export async function main(argv: string[]): Promise<number> {
       await anonymize(flags)
       return 0
     }
+    if (command === 'verify-receipt-files')
+      return await verifyReceiptFiles(flags)
     if (command === 'snapshot-preorders') {
       return await snapshotPreorders(flags)
     }

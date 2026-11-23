@@ -22,7 +22,7 @@ import {
   formatReceiptMoney,
   receiptHref,
   RECEIPT_STATUS,
-  type ReceiptBooking,
+  type UncoveredExpense,
   type ReceiptSummary,
 } from '../../../../lib/receiptsApi'
 
@@ -30,7 +30,7 @@ const tabs = ['Zu prüfen', 'Ohne Buchung', 'Ausgaben ohne Beleg'] as const
 type TabName = (typeof tabs)[number]
 type Listing =
   | { receipts: ReceiptSummary[] }
-  | { transactions: ReceiptBooking[]; available: boolean }
+  | { transactions: UncoveredExpense[]; available: boolean }
 
 const receiptsColumns: ResponsiveColumn<ReceiptSummary>[] = [
   {
@@ -71,7 +71,7 @@ const receiptsColumns: ResponsiveColumn<ReceiptSummary>[] = [
   },
 ]
 
-const bookingColumns: ResponsiveColumn<ReceiptBooking>[] = [
+const bookingColumns: ResponsiveColumn<UncoveredExpense>[] = [
   {
     key: 'name',
     header: 'Buchung',
@@ -92,6 +92,12 @@ const bookingColumns: ResponsiveColumn<ReceiptBooking>[] = [
     header: 'Betrag',
     align: 'right',
     cell: (row) => formatReceiptMoney(row.amount, row.currency),
+  },
+  {
+    key: 'remaining',
+    header: 'Ohne Beleg',
+    align: 'right',
+    cell: (row) => formatReceiptMoney(row.remaining_cents / 100, row.currency),
   },
   {
     key: 'status',

@@ -96,6 +96,7 @@ export interface Offer {
     | 'teilzahlungen'
     | 'sammellastschrift'
   score: number
+  estimated_skonto_rate?: number
   ambiguous: boolean
   parts: LinkPart[]
 }

@@ -16,6 +16,7 @@ const DAYS_AFTER_DUE = 14
 const DAYS_WITHOUT_DUE = 45
 const SNAPSHOT_DAYS = 3
 const SIMILAR_SCORE = 8
+const ESTIMATED_DISCOUNT_RATES = [2, 3]
 const MAX_GROUP_SIZE = 6
 const GROUP_SEARCH_BUDGET = 20000
 
@@ -185,6 +186,33 @@ function part(target, tx, amount_cents, discount_cents = 0) {
   }
 }
 
+function discountOffer(target, tx, open, free, base) {
+  if (
+    !target.skonto_due_date ||
+    target.skonto_due_date < target.invoice_date ||
+    (target.due_date && target.skonto_due_date > target.due_date) ||
+    tx.booking_date > target.skonto_due_date ||
+    open !== target.gross_cents
+  ) {
+    return null
+  }
+  const estimated = target.skonto_rate == null
+  const rates = estimated ? ESTIMATED_DISCOUNT_RATES : [target.skonto_rate]
+  for (const rate of rates) {
+    if (!(rate > 0 && rate < 100)) continue
+    const discount = Math.round((open * rate) / 100)
+    if (discount && free === open - discount) {
+      return {
+        type: 'skonto',
+        score: base + (estimated ? 24 : 38),
+        ...(estimated ? { estimated_skonto_rate: rate } : {}),
+        parts: [part(target, tx, free, discount)],
+      }
+    }
+  }
+  return null
+}
+
 function proposeMatches(targets, bookings, links) {
   const amounts = balances(links)
   const offers = []
@@ -223,22 +251,9 @@ function proposeMatches(targets, bookings, links) {
         })
         continue
       }
-      const discount =
-        target.skonto_rate > 0 &&
-        target.skonto_rate < 100 &&
-        target.skonto_due_date &&
-        target.skonto_due_date >= target.invoice_date &&
-        (!target.due_date || target.skonto_due_date <= target.due_date) &&
-        tx.booking_date <= target.skonto_due_date &&
-        open === target.gross_cents
-          ? Math.round((open * target.skonto_rate) / 100)
-          : 0
-      if (discount && free === open - discount) {
-        offers.push({
-          type: 'skonto',
-          score: base + 38,
-          parts: [part(target, tx, free, discount)],
-        })
+      const skonto = discountOffer(target, tx, open, free, base)
+      if (skonto) {
+        offers.push(skonto)
         continue
       }
       if (free < open && known) {
@@ -340,11 +355,11 @@ function markAmbiguity(offers) {
 }
 
 function expensesWithoutReceipt(bookings, links, exclusions) {
-  const confirmed = balances(links).byBooking
-  return bookings.filter(
-    (tx) =>
-      tx.cents < 0 && !confirmed.has(tx.id) && !exclusions.includes(tx.category)
-  )
+  const amounts = balances(links)
+  return bookings
+    .filter((tx) => tx.cents < 0 && !exclusions.includes(tx.category))
+    .map((tx) => ({ ...tx, remaining_cents: availableBooking(tx, amounts) }))
+    .filter((tx) => tx.remaining_cents > 0)
 }
 
 module.exports = {

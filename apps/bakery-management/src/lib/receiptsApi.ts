@@ -67,6 +67,10 @@ export interface ReceiptBooking {
   purpose: string | null
 }
 
+export interface UncoveredExpense extends ReceiptBooking {
+  remaining_cents: number
+}
+
 export interface ReceiptTarget {
   target_id: number
   kind: 'invoice' | 'receipt'
@@ -83,6 +87,7 @@ export interface ReceiptMatch {
     | 'teilzahlungen'
     | 'sammellastschrift'
   ambiguous: boolean
+  estimated_skonto_rate?: number
   parts: {
     amount_cents: number
     booking: ReceiptBooking
@@ -160,10 +165,10 @@ export async function fetchReceiptMatches(scope: {
 
 export async function fetchExpensesWithoutReceipt(month: string) {
   return dataOf(
-    await apiClient.get<{ transactions: ReceiptBooking[]; available: boolean }>(
-      '/api/finance/transactions/without-receipt',
-      { monat: month }
-    )
+    await apiClient.get<{
+      transactions: UncoveredExpense[]
+      available: boolean
+    }>('/api/finance/transactions/without-receipt', { monat: month })
   )
 }
 

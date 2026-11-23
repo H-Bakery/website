@@ -1,5 +1,5 @@
 import React from 'react'
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import { apiClient, ApiError } from '@bakery/shared/data-access'
 
@@ -150,4 +150,37 @@ it('zeigt Belege an der Buchung und übergibt die Buchung beim Upload als Hinwei
   expect(
     await screen.findByRole('link', { name: 'Beleg prüfen' })
   ).toHaveAttribute('href', '/admin/finance/belege/22')
+})
+
+it('zeigt in der Monatskontrolle den offenen Rest neben dem ursprünglichen Buchungsbetrag', async () => {
+  get.mockImplementation(async (url) => ({
+    success: true,
+    data: (url.includes('without-receipt')
+      ? {
+          available: true,
+          transactions: [
+            {
+              id: 'abcd1901',
+              booking_date: '2026-11-19',
+              amount: -50,
+              remaining_cents: 1200,
+              currency: 'EUR',
+              status: 'gebucht',
+              counterparty: 'Beispielgruppe GmbH',
+              booking_text: null,
+              purpose: null,
+            },
+          ],
+        }
+      : { receipts: [] }) as never,
+  }))
+  renderWithTheme(<ReceiptsClient />)
+  await screen.findByText('Keine Belege zur Prüfung in diesem Monat.')
+  fireEvent.click(screen.getByRole('tab', { name: 'Ausgaben ohne Beleg' }))
+  const list = await screen.findByRole('table', { name: 'Ausgaben ohne Beleg' })
+  expect(
+    within(list).getByRole('columnheader', { name: 'Ohne Beleg' })
+  ).toBeInTheDocument()
+  expect(within(list).getByText(/12,00\s*€/)).toBeInTheDocument()
+  expect(within(list).getByText(/-50,00\s*€/)).toBeInTheDocument()
 })

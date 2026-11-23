@@ -144,3 +144,25 @@ it('lässt ein PDF bei fehlendem pdftotext für die manuelle Erfassung offen', a
   expect(attempt).not.toHaveProperty('result')
   expect(attempt).not.toHaveProperty('error')
 })
+
+it.each([
+  ['Summe: 10,00 €\nSumme: 25,00 €'],
+  ['Gesamtbetrag: 25,00 €\nBrutto: 26,00 €'],
+])('markiert widersprüchliche Summen zur Prüfung (%s)', (text) => {
+  const result = core.extractText(text, today)
+  expect(result.fields.gross_cents).toBeNull()
+  expect(result.field_flags.gross_cents).toMatch(
+    /Mehrere unterschiedliche Summen/
+  )
+})
+
+it('behält eine erkannte Skontofrist auch ohne Satz', () => {
+  const result = core.extractText(
+    'Gesamtbetrag: 97,00 €\nSkonto bis 23.11.2026',
+    today
+  )
+  expect(result.fields).toMatchObject({
+    skonto_rate: null,
+    skonto_due_date: '2026-11-23',
+  })
+})

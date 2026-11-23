@@ -170,3 +170,27 @@ it('fügt eine Seite an denselben Beleg an', async () => {
     expect.anything()
   )
 })
+
+it('kennzeichnet geschätztes Skonto und wartet auf ausdrückliche Bestätigung', async () => {
+  const estimated = {
+    ...first,
+    type: 'skonto',
+    estimated_skonto_rate: 3,
+    ambiguous: false,
+  }
+  get.mockImplementation(async (url) => ({
+    success: true,
+    data: (url.endsWith('/matches')
+      ? { ...matches, proposals: [estimated] }
+      : receipt) as never,
+  }))
+  renderWithTheme(<ReceiptDetailClient id={17} />)
+  expect(await screen.findByText(/3 % Skonto geschätzt/)).toBeInTheDocument()
+  expect(post).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: 'Ja, verknüpfen' }))
+  await waitFor(() =>
+    expect(post).toHaveBeenCalledWith('/api/transaction-links', {
+      proposal_id: first.id,
+    })
+  )
+})

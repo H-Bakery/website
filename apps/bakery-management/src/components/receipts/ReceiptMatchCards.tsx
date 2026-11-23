@@ -118,6 +118,11 @@ export function ReceiptMatchCards({
           <Typography fontWeight={600}>
             Passt zu: {LABELS[match.type]}
           </Typography>
+          {match.estimated_skonto_rate !== undefined && (
+            <Typography variant="body2">
+              ⚠ Bitte prüfen – {match.estimated_skonto_rate} % Skonto geschätzt.
+            </Typography>
+          )}
           {match.ambiguous && (
             <Typography variant="body2">
               ⚠ Bitte prüfen – es gibt ähnlich passende Vorschläge.

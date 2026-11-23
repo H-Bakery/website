@@ -5,7 +5,7 @@ import type { Request } from 'express'
 import type { Transaction } from 'sequelize'
 
 import { audit } from '../auth/audit'
-import { getSequelize, Invoice } from '../models'
+import { AuditLog, getSequelize, Invoice } from '../models'
 import { insert, ReceiptError, select, update } from './receipt-db'
 import type {
   Booking,
@@ -43,7 +43,7 @@ function publicBooking(tx: Booking) {
     amount: tx.amount,
     currency: tx.currency,
     status: tx.status,
-    category: tx.category,
+    category: redactIban(tx.category),
     counterparty: redactIban(tx.counterparty),
     booking_text: redactIban(tx.booking_text),
     purpose: redactIban(tx.purpose),
@@ -73,6 +73,8 @@ function proposalId(offer: Offer) {
     .sort()
   return createHash('sha256').update(entries.join('|')).digest('hex')
 }
+
+const GROUP_REJECTION_ENTITY = 'transaction_link_proposal'
 
 interface MatchScope {
   month?: string
@@ -104,7 +106,7 @@ export class ReceiptLinksService {
 
   private async state(transaction?: Transaction) {
     const { months, byId, bookings } = this.readBookings()
-    const [receipts, invoices, links] = await Promise.all([
+    const [receipts, invoices, links, rejections] = await Promise.all([
       select<ReceiptRow>(
         "SELECT * FROM receipts WHERE status != 'verworfen'",
         {},
@@ -127,6 +129,11 @@ export class ReceiptLinksService {
         {},
         transaction
       ),
+      AuditLog.findAll({
+        where: { entity: GROUP_REJECTION_ENTITY, action: 'reject' },
+        attributes: ['entityId'],
+        transaction,
+      }),
     ])
     const targets: MatchTarget[] = [
       ...receipts.map((row) => ({
@@ -157,32 +164,37 @@ export class ReceiptLinksService {
     const byTarget = new Map(
       targets.map((target) => [core.targetKey(target) as string, target])
     )
-    return { months, byId, bookings, links, targets, byTarget }
+    const rejectedGroups = new Set(rejections.map((entry) => entry.entityId))
+    return { months, byId, bookings, links, targets, byTarget, rejectedGroups }
   }
 
   private offers(
     state: Awaited<ReturnType<ReceiptLinksService['state']>>,
     scope: MatchScope
   ) {
-    const { targets, bookings, links, byId, byTarget } = state
+    const { targets, bookings, links, byId, byTarget, rejectedGroups } = state
     const sorted = core.proposeMatches(targets, bookings, links) as Offer[]
-    const visible = sorted.filter((offer) =>
-      offer.parts.some((part) => {
-        if (
-          scope.receiptId !== undefined &&
-          (part.kind !== 'receipt' || part.target_id !== scope.receiptId)
-        )
-          return false
-        if (scope.bookingId && part.transaction_id !== scope.bookingId)
-          return false
-        if (!scope.month) return true
-        return (
-          byId.get(part.transaction_id)?.booking_date.startsWith(scope.month) ||
-          byTarget
-            .get(core.targetKey(part))
-            ?.invoice_date?.startsWith(scope.month)
-        )
-      })
+    const visible = sorted.filter(
+      (offer) =>
+        !(offer.parts.length > 1 && rejectedGroups.has(proposalId(offer))) &&
+        offer.parts.some((part) => {
+          if (
+            scope.receiptId !== undefined &&
+            (part.kind !== 'receipt' || part.target_id !== scope.receiptId)
+          )
+            return false
+          if (scope.bookingId && part.transaction_id !== scope.bookingId)
+            return false
+          if (!scope.month) return true
+          return (
+            byId
+              .get(part.transaction_id)
+              ?.booking_date.startsWith(scope.month) ||
+            byTarget
+              .get(core.targetKey(part))
+              ?.invoice_date?.startsWith(scope.month)
+          )
+        })
     )
     return core.markAmbiguity(visible) as Offer[]
   }
@@ -282,8 +294,11 @@ export class ReceiptLinksService {
           bookings,
           links,
           this.excludedCategories()
-        ) as Booking[]
-      ).map(publicBooking),
+        ) as (Booking & { remaining_cents: number })[]
+      ).map((tx) => ({
+        ...publicBooking(tx),
+        remaining_cents: tx.remaining_cents,
+      })),
     }))
   }
 
@@ -350,6 +365,22 @@ export class ReceiptLinksService {
             'proposal_changed',
             'Der Vorschlag hat sich geändert. Bitte lade die Ansicht neu.'
           )
+        if (rejectedId && offer.parts.length > 1) {
+          // Den Gruppenvorschlag als Ganzes ablehnen. Seine Einzelteile
+          // können weiterhin zu anderen plausiblen Vorschlägen gehören.
+          await audit(
+            req,
+            'reject',
+            GROUP_REJECTION_ENTITY,
+            proposal,
+            {
+              type: offer.type,
+              parts: offer.parts,
+            },
+            { transaction }
+          )
+          return { ids: [] }
+        }
         const ids: number[] = []
         for (const part of offer.parts) {
           ids.push(
