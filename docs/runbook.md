@@ -513,6 +513,7 @@ Jede Nacht um 23:30 (`bakery-backup.timer`; Backbeginn ist 02:00):
    und restic-Passwort – sie öffnen das Backup selbst und gehören in den Passwort-Safe –, und
    ohne Schlüssel und Token der GitHub-App: das Token entsteht nach einem Restore neu),
    `BACKUP_EXTRA_PATHS` (Vorgabe: hq-Schreib-Klon mit evtl. noch nicht gepushten Commits)
+   sowie der Belegordner `RECEIPTS_DIR` (Vorgabe `/var/lib/bakery/belege`)
 4. `restic forget --keep-daily 14 --keep-weekly 8 --prune` (nicht bei `RESTIC_FORGET=0`),
    sonntags zusätzlich `restic check`
 5. `backup/last-success` – der Health-Check meldet, wenn es älter als 36 h ist
@@ -537,6 +538,26 @@ mit Exit 1 ab und nennt sie – dann zuerst die API in Ordnung bringen (§4). Vo
 `sudo systemctl start bakery-anonymize && journalctl -u bakery-anonymize -n 50` (Probelauf:
 `cli.js anonymize-preorders --dry-run`). Die Backups enthalten die Namen noch bis zu ihrem Ablauf
 (`--keep-weekly 8`, also höchstens etwa 8 Wochen länger).
+
+### Belegoriginale
+
+Standardordner ist `/var/lib/bakery/belege`. Bei einem abweichenden Verzeichnis `RECEIPTS_DIR`
+in der gemeinsamen Box-Umgebung setzen, damit API und Backup denselben absoluten Pfad nutzen.
+Im regulären Systemdienst liegt dieser Ordner unter `/var/lib/bakery`, wo die API schreiben darf.
+Der Benutzer `bakery` braucht Schreibzugriff im Ablageordner und Lesezugriff für die Sicherung.
+Die API erzeugt die Unterordner bei Bedarf. Neue Originale erhalten Modus `0440`. Die nächtliche
+Off-site-Sicherung nimmt den Ordner auf, sobald er existiert. `--local-only` erzeugt wie bisher
+eine reine Datenbankkopie. Beim Wiederherstellen die Datenbank und den Belegordner aus demselben
+restic-Snapshot zurückholen und anschließend die Hashes über `ReceiptsService.verifyFileHashes()`
+prüfen. Der Prüfservice läuft aktuell bei ausdrücklichem Aufruf.
+
+Beim Löschen eines ungeprüften Belegs wird dessen Eintrag aus der App entfernt. Die unveränderten
+Dateibytes bleiben im Sicherungsordner, damit eine bereits laufende DB-Sicherung konsistent
+zurückgespielt werden kann. Die Betriebs- und Aufbewahrungsregeln für diese Dateien bleiben offen.
+
+Für automatische Vorschläge aus PDF-Textschichten kann auf der Box optional `poppler-utils`
+installiert werden. Die API findet `pdftotext` über den Programmpfad. Ohne das Programm werden die
+Belegfelder von Hand erfasst.
 
 ### 5.2 Erstes Einrichten des Off-site-Ziels (Q4)
 

@@ -1,3 +1,4 @@
+import { File as NodeFile } from 'node:buffer'
 import { ApiClient, ApiError, filenameFromDisposition } from './api-client'
 
 function jsonResponse(status: number, body: unknown) {
@@ -65,6 +66,34 @@ describe('ApiClient', () => {
     expect(handler).toHaveBeenCalledTimes(1)
     expect(sentHeaders(0)['Authorization']).toBe('Bearer alt')
     expect(sentHeaders(1)['Authorization']).toBe('Bearer neu')
+  })
+
+  it('sendet denselben Datei-Rohkörper beim Wiederholen mit dem neuen Token', async () => {
+    const file = new NodeFile(['%PDF-1.7'], 'test.pdf', {
+      type: 'application/pdf',
+    }) as unknown as File
+    client.setAuthToken('alt')
+    client.setUnauthorizedHandler(async () => {
+      client.setAuthToken('neu')
+      return true
+    })
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(401, { error: 'unauthorized' }))
+      .mockResolvedValueOnce(
+        jsonResponse(201, { success: true, data: { id: 12 } })
+      )
+
+    await expect(client.postFile('/api/receipts', file)).resolves.toMatchObject(
+      { data: { id: 12 } }
+    )
+    expect(fetchMock.mock.calls.map(([, init]) => init.body)).toEqual([
+      file,
+      file,
+    ])
+    expect(sentHeaders(1)).toMatchObject({
+      Authorization: 'Bearer neu',
+      'Content-Type': 'application/pdf',
+    })
   })
 
   it('wirft die 401, wenn die Erneuerung scheitert, und versucht es nur einmal', async () => {

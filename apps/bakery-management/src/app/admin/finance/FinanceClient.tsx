@@ -43,6 +43,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { RECEIPTS_PATH } from '../../../lib/receiptsApi'
 import { useSession } from '../../../lib/session'
 import {
   classifyFinanceError,
@@ -626,7 +627,15 @@ export default function FinanceClient() {
 
   if (state.phase === 'no-data') {
     return (
-      <PageLayout title={TITLE} subtitle={SUBTITLE}>
+      <PageLayout
+        title={TITLE}
+        subtitle={SUBTITLE}
+        actions={
+          <Button component={Link} href={RECEIPTS_PATH} variant="outlined">
+            Belege
+          </Button>
+        }
+      >
         <EmptyState
           title="Keine Finanzdaten vorhanden"
           description={`${state.reason} Die Daten entstehen im hq-Repo unter data/finance (Import der Kontoauszüge); es werden bewusst keine Beispielwerte angezeigt.`}
@@ -675,6 +684,9 @@ export default function FinanceClient() {
             startIcon={<TransactionsIcon />}
           >
             Buchungen
+          </Button>
+          <Button component={Link} href={RECEIPTS_PATH} variant="outlined">
+            Belege
           </Button>
         </>
       }

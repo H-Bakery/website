@@ -29,6 +29,7 @@ const noneTodayMigration = require('../../migrations/20270310000000-backzettel-n
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const hourlyWageMigration = require('../../migrations/20270401000000-dienstplan-hourly-wage.js')
 // eslint-disable-next-line @typescript-eslint/no-var-requires
+const receiptsMigration = require('../../migrations/20270403000000-receipts.js')
 const paymentMigration = require('../../migrations/20270402000000-preorders-external-payment.js')
 
 /** The 17 migrations the server ran before B2, now in migrations/archive/. */
@@ -110,6 +111,7 @@ describe('pilot baseline on a fresh database', () => {
       '20270325000000-invoices-pdf-paid.js',
       '20270401000000-dienstplan-hourly-wage.js',
       '20270402000000-preorders-external-payment.js',
+      '20270403000000-receipts.js',
     ])
   })
 
@@ -123,6 +125,7 @@ describe('pilot baseline on a fresh database', () => {
         ...restMigration.TABLES,
         ...dienstplanMigration.TABLES,
         ...invoicesMigration.TABLES,
+        ...receiptsMigration.TABLES,
         'SequelizeMeta',
       ].sort()
     )
@@ -654,6 +657,7 @@ describe('pilot baseline down()', () => {
   it('drops every baseline table (after B7 and B3 auth are undone)', async () => {
     const sequelize = await freshDb()
     await runMigrations(sequelize, quiet)
+    await receiptsMigration.down(sequelize.getQueryInterface(), Sequelize)
     await invoicesMigration.down(sequelize.getQueryInterface(), Sequelize)
     await dienstplanMigration.down(sequelize.getQueryInterface(), Sequelize)
     await deliveriesMigration.down(sequelize.getQueryInterface(), Sequelize)

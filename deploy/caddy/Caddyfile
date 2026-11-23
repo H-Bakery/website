@@ -62,7 +62,20 @@
 	}
 	encode zstd gzip
 
-	request_body {
+	@receipt_upload {
+		method POST
+		path_regexp receipt_upload ^/api/receipts(/[0-9]+/files)?/?$
+	}
+	request_body @receipt_upload {
+		max_size 15MB
+	}
+	@other_body {
+		not {
+			method POST
+			path_regexp other_receipt_upload ^/api/receipts(/[0-9]+/files)?/?$
+		}
+	}
+	request_body @other_body {
 		max_size 5MB
 	}
 

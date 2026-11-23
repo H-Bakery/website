@@ -21,6 +21,7 @@
 #   BACKUP_KEEP_LOCAL    lokale Kopien je Label (Vorgabe 7)
 #   BACKUP_SQLITE_METHOD auto | cli | node (Vorgabe auto)
 #   APP_DIR              Release mit node_modules/sqlite3 (Vorgabe /opt/bakery/current)
+#   RECEIPTS_DIR        Belegoriginale (Vorgabe /var/lib/bakery/belege)
 #   BACKUP_EXTRA_PATHS   weitere Pfade fürs Off-site-Backup, Leerzeichen-getrennt
 #   BACKUP_HOST          restic --host (Vorgabe bakery-box)
 #   RESTIC_REPOSITORY, RESTIC_PASSWORD_FILE, ggf. AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY
@@ -164,6 +165,10 @@ fi
 export RESTIC_REPOSITORY
 
 paths=("$BACKUP_DIR/current/bakery.db")
+receipts_dir="${RECEIPTS_DIR:-$BAKERY_VAR/belege}"
+if [ -d "$receipts_dir" ]; then
+  paths+=("$receipts_dir")
+fi
 # Aus /etc/bakery nur lesbare Dateien (bakery.env). ops.env und das restic-
 # Passwort sind für bakery absichtlich unlesbar - sie öffnen das Backup selbst
 # und gehören in den Passwort-Safe, nicht ins Backup. Ebenso nie ins Backup:
@@ -182,6 +187,7 @@ for f in "$BAKERY_ETC"/*; do
   fi
 done
 for p in ${BACKUP_EXTRA_PATHS:-}; do
+  [ "$p" != "$receipts_dir" ] || continue
   if [ -e "$p" ]; then paths+=("$p"); else warn "BACKUP_EXTRA_PATHS: $p existiert nicht - übersprungen"; fi
 done
 

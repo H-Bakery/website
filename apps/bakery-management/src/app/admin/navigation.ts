@@ -151,6 +151,12 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Einnahmen und Ausgaben',
   },
   {
+    label: 'Belege',
+    href: '/admin/finance/belege',
+    icon: 'invoices',
+    description: 'Belege erfassen und mit Buchungen abgleichen',
+  },
+  {
     label: 'Tagesziel',
     href: '/admin/finance/tagesziel',
     icon: 'target',
