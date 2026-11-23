@@ -6,7 +6,7 @@ import { SaxesParser } from 'saxes'
 import { decodeXml, StoredReceiptFile } from './receipt-files'
 import type { ReceiptFields } from './receipt-types'
 
-import { extractText, extractXml } from './receipt-extract.core'
+import { extractText, extractXml, MISSING_GROSS } from './receipt-extract.core'
 const run = promisify(execFile)
 const PDF_OPTIONS = {
   timeout: 8_000,
@@ -136,7 +136,9 @@ function textExtractor(executable: string): Extractor {
             supplier_name ||
             invoice_number ||
             invoice_date ||
-            gross_cents != null
+            gross_cents != null ||
+            (result.field_flags.gross_cents &&
+              result.field_flags.gross_cents !== MISSING_GROSS)
               ? result
               : undefined,
         }

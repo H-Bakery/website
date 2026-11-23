@@ -33,8 +33,8 @@ const PNG = Buffer.from('89504e470d0a1a0a', 'hex')
 const PDF_TEXT = [
   'Lieferant: Beispiel-Mühle GmbH',
   'Rechnungsdatum: 21.11.2026',
-  'Summe: 15,00 €',
-  'Gesamtbetrag: 17,85 €',
+  'Summe: 15,00 EUR',
+  'Gesamtbetrag: EUR 17,85',
 ].join('\n')
 let api: TestApp
 let server: Server
@@ -578,6 +578,7 @@ it('verbindet sowohl eine manuelle Teilzahlung als auch einen Vorschlag für Aus
       supplier_name: 'Laternen-Testbedarf GmbH',
       invoice_date: '2026-11-10',
       gross_cents: 800,
+      currency: 'EUR',
     })
     .expect(200)
   await owner()
@@ -608,6 +609,15 @@ it('verbindet sowohl eine manuelle Teilzahlung als auch einen Vorschlag für Aus
   expect(partial.body.data.transactions).toMatchObject([
     { id: 'dcba1122', amount: -5, remaining_cents: 80 },
   ])
+  const withPartial = await owner()
+    .get(BILL + '/' + receipt.id)
+    .set(auth())
+    .expect(200)
+  expect(withPartial.body.data.booking_hint.allocation).toMatchObject({
+    booking_open_cents: 80,
+    receipt_open_cents: 380,
+    max_cents: 80,
+  })
   const invoice = await Invoice.create({
     number: 'TA-0726',
     buyerName: 'Testabnehmer GmbH',
@@ -651,13 +661,14 @@ it('verbindet sowohl eine manuelle Teilzahlung als auch einen Vorschlag für Aus
 it('maskiert IBANs mit Unicode-Leerraum in Hinweisen, Vorschlägen und Ausgaben', async () => {
   const iban = Array.from(EXAMPLE_IBAN).join('\u202f\u00a0')
   const second = EXAMPLE_IBAN.replace(/(.{4})(?=.)/g, '$1\u2009')
-  const purpose = 'Testkonto ' + iban + ' und ' + second
+  const purpose =
+    'Testkonto ' + iban + ' und ' + second + ' und IBAN' + EXAMPLE_IBAN
   await writeMonth([
     bankRow('abcdf190', {
       amount: -62.06,
       purpose,
       counterparty: 'Testkonto ' + second,
-      booking_text: 'Empfang ' + iban,
+      booking_text: 'Empfang IBAN' + iban,
       counterparty_iban: null,
     }),
   ])
@@ -685,9 +696,10 @@ it('maskiert IBANs mit Unicode-Leerraum in Hinweisen, Vorschlägen und Ausgaben'
     expenses.body.data.transactions[0],
   ]) {
     expect(data).toMatchObject({
-      purpose: 'Testkonto DE•• •••• 3000 und DE•• •••• 3000',
+      purpose:
+        'Testkonto DE•• •••• 3000 und DE•• •••• 3000 und IBANDE•• •••• 3000',
       counterparty: 'Testkonto DE•• •••• 3000',
-      booking_text: 'Empfang DE•• •••• 3000',
+      booking_text: 'Empfang IBANDE•• •••• 3000',
     })
   }
 })
@@ -736,6 +748,7 @@ async function manualReceipt(number: string, cents: number) {
     .send({
       supplier_name: 'Beispielgruppe GmbH',
       gross_cents: cents,
+      currency: 'EUR',
       invoice_number: number,
       invoice_date: '2026-11-12',
     })
@@ -840,4 +853,59 @@ it('lässt nach Ablehnung einer Teilzahlungsgruppe die gemeinsamen Einzelteile u
   )
   const id = await manualReceipt('TEST-TEILZAHLUNGEN', 10000)
   await checkGroupRejection({ beleg: id }, 'teilzahlungen', 3)
+})
+
+it('lässt die Währung eines Fotos offen und gleicht einen manuell erfassten Fremdwährungsbeleg nicht mit EUR ab', async () => {
+  const booking = 'abcde192'
+  await writeMonth([
+    bankRow(booking, { amount: -150, purpose: 'Test-Fremdwährung' }),
+  ])
+  const receipt = await extracted(
+    Buffer.concat([PNG, Buffer.from('Test-Fremdwährung')]),
+    BILL + '?buchung=' + booking
+  )
+  const route = BILL + '/' + receipt.id
+  const start = await owner().get(route).set(auth()).expect(200)
+  expect(start.body.data).toMatchObject({
+    status: 'neu',
+    currency: 'XXX',
+    field_flags: { currency: expect.stringMatching(/fehlt|unklar/) },
+  })
+  await owner()
+    .patch(route)
+    .set(auth())
+    .send({
+      supplier_name: 'Test-Export GmbH',
+      invoice_date: '2026-11-12',
+      gross_cents: 15000,
+    })
+    .expect(200)
+  const confirm = await owner()
+    .post(route + '/confirm')
+    .set(auth())
+    .expect(422)
+  expect(confirm.body.error).toBe('incomplete_receipt')
+  const link = {
+    transaction_id: booking,
+    kind: 'receipt',
+    target_id: receipt.id,
+  }
+  await owner().post(LINKS).set(auth()).send(link).expect(422)
+  await owner().patch(route).set(auth()).send({ currency: 'CHF' }).expect(200)
+  const checked = await owner()
+    .post(route + '/confirm')
+    .set(auth())
+    .expect(200)
+  expect(checked.body.data).toMatchObject({
+    status: 'geprueft',
+    currency: 'CHF',
+    booking_hint: { allocation: null },
+  })
+  const matches = await owner()
+    .get(BILL + '/matches')
+    .query({ beleg: receipt.id })
+    .set(auth())
+    .expect(200)
+  expect(matches.body.data.proposals).toEqual([])
+  await owner().post(LINKS).set(auth()).send(link).expect(422)
 })

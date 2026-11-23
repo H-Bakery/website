@@ -9,6 +9,7 @@
  *   node sqlite-tool.js selftest [APP_DIR]       native Modul laden + :memory: testen
  *   node sqlite-tool.js backup SRC DEST [APP_DIR] konsistente Kopie (VACUUM INTO) + Prüfung
  *   node sqlite-tool.js check DB [APP_DIR]       integrity_check + Zeilen je Tabelle
+ *   node sqlite-tool.js receipt-paths DB [APP_DIR] registrierte Belegpfade einer Kopie
  *
  * APP_DIR (Argument oder Umgebung) ist das Verzeichnis, dessen node_modules
  * `sqlite3` enthält; Vorgabe /opt/bakery/current.
@@ -147,6 +148,32 @@ async function check(file, appDir) {
   if (!res.ok) process.exit(1)
 }
 
+async function receiptPaths(file, appDir) {
+  const sqlite3 = loadSqlite(appDir)
+  const db = await open(sqlite3, file, sqlite3.OPEN_READONLY)
+  try {
+    const tables = await all(
+      db,
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'receipt_files'"
+    )
+    if (tables.length === 0) return
+    const rows = await all(db, 'SELECT path FROM receipt_files')
+    for (const row of rows) {
+      if (
+        typeof row.path !== 'string' ||
+        !row.path ||
+        row.path.includes('\0') ||
+        /[\n\r]/.test(row.path)
+      ) {
+        throw new Error('Ungültiger Belegpfad in der Datenbankkopie')
+      }
+      console.log(row.path)
+    }
+  } finally {
+    await close(db)
+  }
+}
+
 async function main() {
   const [cmd, ...args] = process.argv.slice(2)
   switch (cmd) {
@@ -155,12 +182,15 @@ async function main() {
     case 'backup':
       if (args.length < 2) break
       return backup(args[0], args[1], args[2])
+    case 'receipt-paths':
+      if (args.length < 1) break
+      return receiptPaths(args[0], args[1])
     case 'check':
       if (args.length < 1) break
       return check(args[0], args[1])
   }
   console.error(
-    'Aufruf: sqlite-tool.js selftest [APP_DIR] | backup SRC DEST [APP_DIR] | check DB [APP_DIR]'
+    'Aufruf: sqlite-tool.js selftest [APP_DIR] | backup SRC DEST [APP_DIR] | check DB [APP_DIR] | receipt-paths DB [APP_DIR]'
   )
   process.exit(2)
 }

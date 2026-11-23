@@ -166,3 +166,24 @@ it('behält eine erkannte Skontofrist auch ohne Satz', () => {
     skonto_due_date: '2026-11-23',
   })
 })
+
+it.each(['EUR 119,00', '119,00 EUR'])(
+  'liest den Gesamtbetrag mit Währung vor oder nach dem Wert (%s)',
+  (total) => {
+    const result = core.extractText(
+      'Summe: 100,00 EUR\nGesamtbetrag: ' + total,
+      today
+    )
+    expect(result.fields).toMatchObject({ gross_cents: 11900, currency: 'EUR' })
+    expect(result.field_flags.gross_cents).toBeUndefined()
+  }
+)
+
+it('lässt Brutto bei einem unlesbaren Gesamtbetrag trotz lesbarer Zwischensumme offen', () => {
+  const result = core.extractText(
+    'Summe: 100,00 EUR\nGesamtbetrag: EUR 1?9,00',
+    today
+  )
+  expect(result.fields.gross_cents).toBeNull()
+  expect(result.field_flags.gross_cents).toMatch(/konnte nicht gelesen/)
+})

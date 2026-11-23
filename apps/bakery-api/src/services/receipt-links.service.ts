@@ -339,6 +339,33 @@ export class ReceiptLinksService {
     return tx ? publicBooking(tx) : null
   }
 
+  async receiptBookingHint(
+    id: string,
+    receipt: Pick<
+      ReceiptRow,
+      'id' | 'kind' | 'status' | 'gross_cents' | 'currency' | 'payment'
+    >
+  ) {
+    const tx = this.readBookings().byId.get(id)
+    if (!tx) return null
+    const target = {
+      ...receipt,
+      kind: 'receipt',
+      target_id: receipt.id,
+      receipt_kind: receipt.kind,
+    }
+    let allocation = null
+    if (core.eligible(target, tx)) {
+      const links = await select<LinkRow>(
+        `SELECT * FROM transaction_links WHERE status = 'bestaetigt'
+         AND (transaction_id = $id OR (kind = 'receipt' AND target_id = $receipt))`,
+        { id, receipt: receipt.id }
+      )
+      allocation = core.allocationAmounts(target, tx, core.balances(links))
+    }
+    return { ...publicBooking(tx), allocation }
+  }
+
   async decide(
     body: Record<string, unknown> | undefined,
     rejectedId: string | null,
@@ -453,18 +480,19 @@ export class ReceiptLinksService {
       const amounts = core.balances(
         state.links.filter((link) => link !== stale)
       )
-      const maximum = Math.min(
-        core.availableTarget(target, amounts),
-        core.availableBooking(tx, amounts)
+      const { max_cents, receipt_open_cents } = core.allocationAmounts(
+        target,
+        tx,
+        amounts
       )
-      const amount = stale?.amount_cents ?? body?.['amount_cents'] ?? maximum
+      const amount = stale?.amount_cents ?? body?.['amount_cents'] ?? max_cents
       const discount = stale?.discount_cents ?? 0
       if (
         typeof amount !== 'number' ||
         !Number.isSafeInteger(amount) ||
         amount < 1 ||
-        amount > maximum ||
-        amount + discount > core.availableTarget(target, amounts)
+        amount > max_cents ||
+        amount + discount > receipt_open_cents
       ) {
         throw new ReceiptError(
           422,

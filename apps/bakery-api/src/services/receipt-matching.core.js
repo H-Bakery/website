@@ -142,6 +142,16 @@ function availableBooking(tx, amounts) {
   return Math.max(0, Math.abs(tx.cents) - (amounts.byBooking.get(tx.id) || 0))
 }
 
+function allocationAmounts(target, tx, amounts) {
+  const booking_open_cents = availableBooking(tx, amounts)
+  const receipt_open_cents = availableTarget(target, amounts)
+  return {
+    booking_open_cents,
+    receipt_open_cents,
+    max_cents: Math.min(booking_open_cents, receipt_open_cents),
+  }
+}
+
 function eligible(target, tx) {
   return (
     target.currency === 'EUR' &&
@@ -157,22 +167,48 @@ function matchingSubsets(entries, total, amount) {
   if (entries.length < 2) return []
   const found = []
   const sorted = [...entries].sort((a, b) => amount(a) - amount(b))
+  const previousByAmount = new Map()
+  for (const entry of sorted) {
+    const cents = amount(entry)
+    for (const previous of previousByAmount.get(total - cents) || []) {
+      found.push([previous, entry])
+    }
+    if (!previousByAmount.has(cents)) previousByAmount.set(cents, [])
+    previousByAmount.get(cents).push(entry)
+  }
+
+  // Zweiergruppen sind vollständig erfasst. Das Budget gilt nur für die
+  // weitere Suche in aufsteigender Gruppengröße.
   let budget = GROUP_SEARCH_BUDGET
-  function search(from, remaining, path) {
-    if (remaining === 0) {
-      if (path.length >= 2) found.push(path)
+  const sums = [0]
+  for (const entry of sorted) sums.push(sums.at(-1) + amount(entry))
+
+  function search(from, remaining, slots, path) {
+    if (slots === 0) {
+      if (remaining === 0) found.push(path)
       return
     }
-    if (path.length === MAX_GROUP_SIZE) return
-    for (let index = from; index < sorted.length && budget > 0; index++) {
+    const length = sorted.length
+    if (
+      length - from < slots ||
+      sums[from + slots] - sums[from] > remaining ||
+      sums[length] - sums[length - slots] < remaining
+    )
+      return
+    for (let index = from; index <= length - slots && budget > 0; index++) {
+      if (sums[index + slots] - sums[index] > remaining) break
       budget--
       const entry = sorted[index]
-      const cents = amount(entry)
-      if (cents > remaining) break
-      search(index + 1, remaining - cents, [...path, entry])
+      search(index + 1, remaining - amount(entry), slots - 1, [...path, entry])
     }
   }
-  search(0, total, [])
+  for (
+    let size = 3;
+    size <= Math.min(MAX_GROUP_SIZE, sorted.length) && budget > 0;
+    size++
+  ) {
+    search(0, total, size, [])
+  }
   return found
 }
 
@@ -252,18 +288,17 @@ function proposeMatches(targets, bookings, links) {
         continue
       }
       const skonto = discountOffer(target, tx, open, free, base)
-      if (skonto) {
-        offers.push(skonto)
-        continue
-      }
+      if (skonto) offers.push(skonto)
       if (free < open && known) {
         const entry = { target, tx, score: base, cents: free }
         partials.push(entry)
-        offers.push({
-          type: 'teilzahlung',
-          score: base + 14,
-          parts: [part(target, tx, free)],
-        })
+        if (!skonto) {
+          offers.push({
+            type: 'teilzahlung',
+            score: base + 14,
+            parts: [part(target, tx, free)],
+          })
+        }
       }
       if (
         tx.direct_debit &&
@@ -368,6 +403,7 @@ module.exports = {
   balances,
   availableTarget,
   availableBooking,
+  allocationAmounts,
   eligible,
   replacementBookings,
   matchingSubsets,

@@ -144,7 +144,7 @@ export function createReceiptsRoutes(
     detail: Awaited<ReturnType<ReceiptsService['detail']>>
   ) {
     const booking_hint = detail.booking_hint
-      ? matches.bookingHint(detail.booking_hint)
+      ? await matches.receiptBookingHint(detail.booking_hint, detail)
       : null
     return { ...detail, booking_hint }
   }

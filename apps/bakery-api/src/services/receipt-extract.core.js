@@ -73,13 +73,25 @@ function rate(value) {
   return /^\d{1,3}(?:\.\d{1,3}0*)?$/.test(text) && number <= 100 ? number : null
 }
 
+const UNKNOWN_CURRENCY = 'XXX'
+const MISSING_GROSS = 'Der Bruttobetrag fehlt oder ist ungültig.'
+
+function knownCurrency(currency) {
+  return (
+    typeof currency === 'string' &&
+    /^[A-Z]{3}$/.test(currency) &&
+    currency !== UNKNOWN_CURRENCY
+  )
+}
+
 function missingRequiredFields(fields, today) {
   return (
     !fields.supplier_name?.trim() ||
     !isIsoDate(fields.invoice_date) ||
     fields.invoice_date > today ||
     !Number.isSafeInteger(fields.gross_cents) ||
-    fields.gross_cents < 0
+    fields.gross_cents < 0 ||
+    !knownCurrency(fields.currency)
   )
 }
 
@@ -100,8 +112,8 @@ function checkFields(fields, today) {
     flags.due_date = 'Die Fälligkeit liegt vor dem Rechnungsdatum.'
   }
   if (fields.gross_cents == null || fields.gross_cents < 0)
-    flags.gross_cents = 'Der Bruttobetrag fehlt oder ist ungültig.'
-  if (fields.currency === 'XXX')
+    flags.gross_cents = MISSING_GROSS
+  if (!knownCurrency(fields.currency))
     flags.currency = 'Währung fehlt oder ist unklar.'
   else if (fields.currency !== 'EUR')
     flags.currency = 'Fremdwährung. Der Bankabgleich ist auf Euro beschränkt.'
@@ -191,28 +203,34 @@ const TEXT_MONEY = '([+-]?(?:\\d{1,3}(?:\\.\\d{3})+|\\d+),\\d{2})(?![\\d,.])'
 const TEXT_DATE = '(\\d{1,2}\\.\\d{1,2}\\.\\d{4}|\\d{4}-\\d{2}-\\d{2})'
 
 function textGross(text) {
+  const currency = '(?:[A-Z]{3}|[€$£])'
+  const amount = '[ \\t:]*' + '(?:' + currency + '[ \\t]*)?' + TEXT_MONEY
   const explicit = new RegExp(
-    '\\b(?:Gesamtbetrag(?:[ \\t]+brutto)?|Bruttobetrag|Brutto(?:summe)?|Summe[ \\t]+brutto|Endbetrag)\\b[ \\t:€]*' +
-      TEXT_MONEY,
+    '\\b(?:Gesamtbetrag(?:[ \\t]+brutto)?|Bruttobetrag|Brutto(?:summe)?|Summe[ \\t]+brutto|Endbetrag)\\b(?:' +
+      amount +
+      ')?',
     'gi'
   )
-  const generic = new RegExp(
-    '^[ \\t]*(?:Summe|Total)\\b[ \\t:€]*' + TEXT_MONEY,
-    'gim'
-  )
-  const amounts = (pattern) => [
+  const generic = new RegExp('^[ \\t]*(?:Summe|Total)\\b' + amount, 'gim')
+  const labels = [...text.matchAll(explicit)]
+  const preferred = labels.length > 0
+  const amounts = [
     ...new Set(
-      [...text.matchAll(pattern)]
-        .map((match) => cents(match[1], true))
-        .filter((amount) => amount != null)
+      (preferred ? labels : [...text.matchAll(generic)]).map((match) =>
+        cents(match[1], true)
+      )
     ),
   ]
-  const preferred = amounts(explicit)
-  const candidates = preferred.length ? preferred : amounts(generic)
-  return {
-    gross: candidates.length === 1 ? candidates[0] : null,
-    ambiguous: candidates.length > 1,
+  if (preferred && amounts.includes(null)) {
+    return {
+      gross: null,
+      reason: 'Ein Brutto- oder Gesamtbetrag konnte nicht gelesen werden.',
+    }
   }
+  if (amounts.length > 1) {
+    return { gross: null, reason: 'Mehrere unterschiedliche Summen gefunden.' }
+  }
+  return { gross: amounts[0] ?? null }
 }
 
 function textCurrency(text) {
@@ -262,7 +280,7 @@ function extractText(text, today) {
       'i'
     )
   )
-  const { gross, ambiguous } = textGross(text)
+  const { gross, reason: grossReason } = textGross(text)
   const discount = /\b(\d{1,2}(?:,\d{1,3})?)\s*%\s+Skonto\b/i.exec(text)
   const discountDate = capture(
     new RegExp('Skonto[^\\r\\n]*?\\bbis[ \\t]+' + TEXT_DATE, 'i')
@@ -279,7 +297,7 @@ function extractText(text, today) {
     'gim'
   )
   const flags = {}
-  if (ambiguous) flags.gross_cents = 'Mehrere unterschiedliche Summen gefunden.'
+  if (grossReason) flags.gross_cents = grossReason
   for (const row of text.matchAll(vatRow)) {
     const net_cents = cents(row[2], true)
     const vat_cents = cents(row[3], true)
@@ -492,6 +510,8 @@ function extractXml(root, today) {
 
 module.exports = {
   KINDS,
+  UNKNOWN_CURRENCY,
+  MISSING_GROSS,
   PAYMENTS,
   FIELDS,
   checkFields,

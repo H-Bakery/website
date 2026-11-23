@@ -57,7 +57,10 @@ bleibt ein noch unbearbeiteter Beleg manuell prüfbar.
 `skonto_due_date` und `vat_lines: [{ rate, net_cents, vat_cents }]`. Geld steht in ganzen Cent,
 Datum in `JJJJ-MM-TT` und Steuersatz und Skonto in Prozent. Ein gesendetes `vat_lines` ersetzt die
 ganze Aufteilung. `null` leert optionale Felder. Bestätigen verlangt mindestens Lieferant,
-Rechnungsdatum bis heute und einen eingetragenen Bruttobetrag. Dieselben Pflichtfelder gelten
+Rechnungsdatum bis heute, eingetragenen Bruttobetrag und bekannte Währung. Bei neuen Uploads
+steht die Währung zunächst auf `XXX` (unbekannt). XML und PDF-Text können sie ermitteln. Bei der
+manuellen Erfassung trägt sie der Inhaber ein. Der Bankabgleich setzt EUR voraus.
+Dieselben Pflichtfelder gelten
 für Korrekturen an einem bestätigten Beleg.
 
 ## Bestätigung des Abgleichs
@@ -75,6 +78,9 @@ Lesen und speichert eine Entscheidung erst nach ausdrücklicher Aktion. Bestäti
 Einen inzwischen geänderten Vorschlag beantwortet die API mit `409 proposal_changed`.
 Eine manuelle Bestätigung erwartet `{ transaction_id, kind, target_id, amount_cents? }`. Bei
 weggelassenem Teilbetrag nimmt der Server den kleineren offenen Betrag von Beleg und Buchung.
+Ein Upload an einer Buchung liefert im `booking_hint.allocation` die offenen Beträge und
+den höchstens zuordenbaren Betrag. Die Verwaltung sendet für diesen Einstieg den angezeigten
+Zuordnungsbetrag und verlangt bei abweichenden offenen Beträgen eine Teilbetragseingabe.
 Für eine ausdrücklich ausgewählte Ersatzbuchung sendet der Client zusätzlich `replace_link_id`.
 Die bestätigte Zuordnung zeigt bei fehlender alter Buchungs-ID `review_required` und gegebenenfalls
 `replacements`. Die API hält die alte ID bis zur ausdrücklichen Korrektur fest. Wird ein ungeprüfter Beleg

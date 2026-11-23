@@ -4,6 +4,7 @@ import { renderWithTheme } from '@bakery/shared/test-utils'
 import { apiClient } from '@bakery/shared/data-access'
 
 import ReceiptDetailClient from './ReceiptDetailClient'
+import { BookingReceipts } from '../../../../../components/receipts/BookingReceipts'
 import type {
   ReceiptDetail,
   ReceiptMatch,
@@ -193,4 +194,93 @@ it('kennzeichnet geschätztes Skonto und wartet auf ausdrückliche Bestätigung'
       proposal_id: first.id,
     })
   )
+})
+
+it('zeigt nach dem Upload aus der Buchung den Teilbetrag und Rest vor der Bestätigung', async () => {
+  const booking = { ...first.parts[0].booking, id: 'abcd0192', amount: -150 }
+  const fromBooking = {
+    ...receipt,
+    gross_cents: 10000,
+    booking_hint: {
+      ...booking,
+      allocation: {
+        max_cents: 10000,
+        booking_open_cents: 15000,
+        receipt_open_cents: 10000,
+      },
+    },
+  }
+  get.mockImplementation(async (url) => ({
+    success: true,
+    data: (url.endsWith('/matches')
+      ? { ...matches, proposals: [] }
+      : fromBooking) as never,
+  }))
+  postFile.mockResolvedValue({ success: true, data: { id: 17, file_id: 1 } })
+  const { rerender } = renderWithTheme(
+    <BookingReceipts bookingId={booking.id} />
+  )
+  const upload = screen.getByLabelText('Beleg hinzufügen', {
+    selector: 'input',
+  })
+  const file = new File(['Test-PDF'], 'test.pdf', { type: 'application/pdf' })
+  fireEvent.change(upload, { target: { files: [file] } })
+  const link = await screen.findByRole('link', { name: 'Beleg prüfen' })
+  expect(link).toHaveAttribute('href', '/admin/finance/belege/17')
+  expect(postFile).toHaveBeenCalledWith(
+    '/api/receipts?buchung=abcd0192',
+    file,
+    expect.anything()
+  )
+  rerender(<ReceiptDetailClient id={17} />)
+
+  expect(
+    await screen.findByText(/Höchstens zuordnen.*100,00/)
+  ).toBeInTheDocument()
+  expect(
+    screen.getByText(/Danach offen auf der Buchung.*50,00/)
+  ).toBeInTheDocument()
+  const confirm = screen.getByRole('button', { name: 'Ja, verknüpfen' })
+  expect(confirm).toBeDisabled()
+  const input = screen.getByRole('textbox', { name: 'Teilbetrag in Euro' })
+  fireEvent.change(input, { target: { value: '110,00' } })
+  expect(confirm).toBeDisabled()
+  expect(post).not.toHaveBeenCalled()
+
+  fireEvent.change(input, { target: { value: '90,00' } })
+  expect(screen.getByText(/Zuordnungsbetrag.*90,00/)).toBeInTheDocument()
+  expect(
+    screen.getByText(/Danach offen auf der Buchung.*60,00/)
+  ).toBeInTheDocument()
+  expect(
+    screen.getByText(/Danach offen auf dem Beleg.*10,00/)
+  ).toBeInTheDocument()
+  fireEvent.click(confirm)
+  await waitFor(() =>
+    expect(post).toHaveBeenCalledWith('/api/transaction-links', {
+      transaction_id: booking.id,
+      kind: 'receipt',
+      target_id: 17,
+      amount_cents: 9000,
+    })
+  )
+})
+
+it('zeigt für ein Foto ohne Währung ein leeres Eingabefeld mit Prüfhinweis', async () => {
+  get.mockImplementation(async (url) => ({
+    success: true,
+    data: (url.endsWith('/matches')
+      ? { ...matches, proposals: [] }
+      : {
+          ...receipt,
+          status: 'neu',
+          currency: 'XXX',
+          field_flags: { currency: 'Währung fehlt oder ist unklar.' },
+        }) as never,
+  }))
+  renderWithTheme(<ReceiptDetailClient id={17} />)
+  expect(await screen.findByRole('textbox', { name: 'Währung' })).toHaveValue(
+    ''
+  )
+  expect(screen.getByText(/bitte prüfen.*Währung fehlt/)).toBeInTheDocument()
 })

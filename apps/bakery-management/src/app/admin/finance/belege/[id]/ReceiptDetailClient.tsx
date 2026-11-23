@@ -33,6 +33,7 @@ import {
   currentReceiptMonth,
   fetchReceipt,
   fetchReceiptMatches,
+  formatReceiptMoney,
   linkReceipt,
   patchReceipt,
   receiptHref,
@@ -41,6 +42,7 @@ import {
   rejectReceiptMatch,
   transitionReceipt,
   type ReceiptBooking,
+  type ReceiptBookingHint,
   type ReceiptDetail,
   type ReceiptMatches,
 } from '../../../../../lib/receiptsApi'
@@ -86,6 +88,96 @@ function fieldPatch(
       return { rate, net_cents, vat_cents }
     })
   return mapped
+}
+
+function BookingHintCard({
+  booking,
+  busy,
+  changed,
+  onLink,
+}: {
+  booking: ReceiptBookingHint
+  busy: boolean
+  changed: boolean
+  onLink: (id: string, amount: number) => void
+}) {
+  const [input, setInput] = useState('')
+  const allocation = booking.allocation
+  const money = (cents: number) =>
+    formatReceiptMoney(cents / 100, booking.currency)
+
+  if (changed || !allocation || allocation.max_cents <= 0) {
+    return (
+      <Alert severity="info">
+        <Typography>Buchung zum Upload · {bookingLabel(booking)}</Typography>
+        <Typography variant="body2">
+          {changed
+            ? 'Speichere die Belegfelder, um den Zuordnungsbetrag zu prüfen.'
+            : 'Für diese Buchung und diesen Beleg ist derzeit keine Zuordnung möglich.'}
+        </Typography>
+      </Alert>
+    )
+  }
+
+  const { max_cents, booking_open_cents, receipt_open_cents } = allocation
+  const partial = booking_open_cents !== receipt_open_cents
+  let cents: number | null = partial ? null : max_cents
+  let validation = ''
+  if (partial && input.trim()) {
+    try {
+      cents = parseCents(input)
+      if (cents === null || cents <= 0 || cents > max_cents) {
+        cents = null
+        validation = 'Gib einen Betrag innerhalb der offenen Beträge ein.'
+      }
+    } catch (error) {
+      validation =
+        error instanceof Error ? error.message : 'Der Teilbetrag ist ungültig.'
+    }
+  }
+  const preview = cents ?? max_cents
+
+  return (
+    <Alert severity="info">
+      <Stack spacing={1}>
+        <Typography>Buchung zum Upload · {bookingLabel(booking)}</Typography>
+        <Typography variant="body2">
+          {cents === null ? 'Höchstens zuordnen' : 'Zuordnungsbetrag'} ·{' '}
+          {money(preview)}
+        </Typography>
+        <Typography variant="body2">
+          Danach offen auf der Buchung · {money(booking_open_cents - preview)}
+        </Typography>
+        {receipt_open_cents - preview > 0 && (
+          <Typography variant="body2">
+            Danach offen auf dem Beleg · {money(receipt_open_cents - preview)}
+          </Typography>
+        )}
+        {partial && (
+          <TextField
+            label="Teilbetrag in Euro"
+            inputProps={{ inputMode: 'decimal' }}
+            value={input}
+            disabled={busy}
+            error={Boolean(validation)}
+            helperText={
+              validation || 'Gib den Betrag ein, den du verknüpfen möchtest.'
+            }
+            onChange={(event) => setInput(event.target.value)}
+          />
+        )}
+        <Button
+          variant="outlined"
+          disabled={busy || cents === null}
+          onClick={() => {
+            if (cents !== null) onLink(booking.id, cents)
+          }}
+        >
+          Ja, verknüpfen
+        </Button>
+      </Stack>
+    </Alert>
+  )
 }
 
 function OtherBooking({
@@ -411,20 +503,13 @@ export default function ReceiptDetailClient({ id }: { id: number }) {
                 }
               />
               {!closed && !hasLinks && bookingHint && !bar && (
-                <Alert
-                  severity="info"
-                  action={
-                    <Button
-                      color="inherit"
-                      disabled={busy}
-                      onClick={() => manual(bookingHint.id, null)}
-                    >
-                      Ja, verknüpfen
-                    </Button>
-                  }
-                >
-                  Passt zu: {bookingLabel(bookingHint)}
-                </Alert>
+                <BookingHintCard
+                  key={bookingHint.id}
+                  booking={bookingHint}
+                  busy={busy}
+                  changed={changed}
+                  onLink={manual}
+                />
               )}
               {!closed &&
                 !bar &&

@@ -144,7 +144,9 @@ registriert und schreibgeschützt. Ein Dateiduplikat verweist auf den vorhandene
 Lieferant und gleiche Rechnungsnummer lösen einen Hinweis „Schon erfasst?“ aus.
 
 - UBL- und CII-XML liefern die strukturierten Zahlen. Bei einer PDF-Textschicht liest ein lokal
-  vorhandenes `pdftotext` Vorschläge aus. Fotos und Scans werden von Hand erfasst.
+  vorhandenes `pdftotext` Vorschläge aus. Ein unlesbarer ausgewiesener Gesamtbetrag bleibt offen.
+  Fotos und Scans werden von Hand erfasst. Die Währung muss vor der Bestätigung bekannt sein.
+  Der Bankabgleich verarbeitet Euro-Belege.
 - Der Inhaber prüft Felder und Original, ergänzt fehlende Angaben und bestätigt. Auch XML-Belege
   benötigen die Bestätigung. Änderungen bleiben als Alt- und Neuwert im Audit nachvollziehbar.
   Bei bestätigten Belegen bleiben Originale, Lieferant, gültiges Rechnungsdatum und Bruttobetrag erhalten.
@@ -152,10 +154,12 @@ Lieferant und gleiche Rechnungsnummer lösen einen Hinweis „Schon erfasst?“ 
   Das Fenster reicht von drei Tagen vor Rechnungsdatum bis 14 Tage nach Fälligkeit, ohne Fälligkeit
   bis 45 Tage nach dem Rechnungsdatum. Skonto wird mit Satz und Frist berücksichtigt. Ist nur die Frist bekannt, erscheinen 2 % und 3 %
   als schwächere, ausdrücklich gekennzeichnete Schätzungen. Sammellastschriften können zwei bis sechs Belege umfassen. Teilzahlungen und
-  mehrere ähnlich starke Vorschläge werden angezeigt. Vormerkungen sind gekennzeichnet.
+  mehrere ähnlich starke Vorschläge werden angezeigt. Eine vollständige Teilzahlungsgruppe
+  bleibt auch bei einem Skontotreffer sichtbar. Vormerkungen sind gekennzeichnet.
 - Übernommen wird eine Verknüpfung erst beim ausdrücklichen Bestätigen oder manuellen Zuordnen.
   Wechselt eine Buchungs-ID, helfen Buchungstag (± drei Tage), Betrag und Gegenseite beim
-  Wiederfinden. Der Inhaber prüft und wählt eine angebotene Ersatzbuchung.
+  Wiederfinden. Der Inhaber prüft und wählt eine angebotene Ersatzbuchung. Beim Upload an einer
+  Buchung zeigt die Verwaltung den Zuordnungsbetrag und den offenen Rest vor der Bestätigung.
 - Monatlich stehen „Zu prüfen“, „Ohne Buchung“ und „Ausgaben ohne Beleg“ zur Verfügung.
   Bar bezahlte oder verworfene Belege fehlen in „Ohne Buchung“. In „Ausgaben ohne Beleg“ erscheinen
   Abbuchungen mit einem noch unbelegten Restbetrag. Die optionale Ausnahmeliste liegt in hq und ist zunächst

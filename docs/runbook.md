@@ -546,7 +546,11 @@ in der gemeinsamen Box-Umgebung setzen, damit API und Backup denselben absoluten
 Im regulären Systemdienst liegt dieser Ordner unter `/var/lib/bakery`, wo die API schreiben darf.
 Der Benutzer `bakery` braucht Schreibzugriff im Ablageordner und Lesezugriff für die Sicherung.
 Die API erzeugt die Unterordner bei Bedarf. Neue Originale erhalten Modus `0440`. Die nächtliche
-Off-site-Sicherung nimmt den Ordner auf, sobald er existiert. `--local-only` erzeugt wie bisher
+Off-site-Sicherung nimmt den Ordner auf, sobald er existiert. Die Sicherung prüft anhand der
+SQLite-Kopie, ob alle registrierten Originale vorhanden und lesbar sind. Ein fehlender Ordner
+bei registrierten Originalen oder eine fehlende Datei beendet den Lauf mit Exit 15 vor der
+Aufbewahrungsbereinigung. Die lokale SQLite-Kopie bleibt dabei erhalten.
+`--local-only` erzeugt wie bisher
 eine reine Datenbankkopie. Datenbank und Originale werden beim vollständigen Restore aus derselben
 Snapshot-ID geholt und mit `cli.js verify-receipt-files` geprüft (§5.3).
 

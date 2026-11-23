@@ -82,7 +82,7 @@ export function receiptNotFound() {
 export function redactIban(text: string | null): string | null {
   if (text === null) return null
   // Wie normalizeIban auch Unicode-Leerraum an jeder Zeichenposition zulassen.
-  const starts = /\b[A-Z]\s*[A-Z]\s*\d\s*\d(?:\s*[A-Z0-9]){11,30}/gi
+  const starts = /[A-Z]\s*[A-Z]\s*\d\s*\d(?:\s*[A-Z0-9]){11,30}/gi
   let result = ''
   let copied = 0
   for (let match = starts.exec(text); match; match = starts.exec(text)) {
@@ -263,14 +263,17 @@ function requireOpen(row: ReceiptRow, allowDiscarded = false) {
 }
 
 function requireConfirmable(
-  fields: Pick<ReceiptFields, 'supplier_name' | 'invoice_date' | 'gross_cents'>,
+  fields: Pick<
+    ReceiptFields,
+    'supplier_name' | 'invoice_date' | 'gross_cents' | 'currency'
+  >,
   today: string
 ) {
   if (extract.missingRequiredFields(fields, today)) {
     throw new ReceiptError(
       422,
       'incomplete_receipt',
-      'Bitte Lieferant, Rechnungsdatum und Bruttobetrag prüfen und ergänzen.'
+      'Bitte Lieferant, Rechnungsdatum, Bruttobetrag und Währung prüfen und ergänzen.'
     )
   }
 }
@@ -480,13 +483,17 @@ export class ReceiptsService {
             status: 'neu',
             kind: 'eingangsrechnung',
             payment: 'offen',
+            currency: extract.UNKNOWN_CURRENCY,
             created_by: req.user?.id ?? null,
             created_at: now.toISOString(),
             upload_date: day,
             booking_hint: bookingHint,
             field_flags: JSON.stringify(
               extract.checkFields(
-                { currency: 'EUR', kind: 'eingangsrechnung' },
+                {
+                  currency: extract.UNKNOWN_CURRENCY,
+                  kind: 'eingangsrechnung',
+                },
                 day
               )
             ),

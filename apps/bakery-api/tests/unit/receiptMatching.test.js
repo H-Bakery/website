@@ -271,3 +271,72 @@ it('zieht nur bestätigte Bankanteile vom Restbetrag ab', () => {
   ).toMatchObject([{ amount: -100, remaining_cents: 6000 }])
   expect(expensesWithoutReceipt([debit], [first, second], [])).toEqual([])
 })
+
+it('zeigt geschätztes Skonto und die vollständige Teilzahlungsgruppe nebeneinander', () => {
+  const target = receipt({
+    gross_cents: 10000,
+    skonto_rate: null,
+    skonto_due_date: '2026-11-20',
+  })
+  const first = tx({ id: 'eeab0191', amount: -98 })
+  const second = tx({ id: 'eeab0192', amount: -2 })
+  const ranked = offers([target], [first, second])
+  expect(ranked).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        type: 'skonto',
+        estimated_skonto_rate: 2,
+        parts: [
+          expect.objectContaining({
+            transaction_id: first.id,
+            amount_cents: 9800,
+            discount_cents: 200,
+          }),
+        ],
+      }),
+      expect.objectContaining({
+        type: 'teilzahlungen',
+        parts: [
+          expect.objectContaining({
+            transaction_id: second.id,
+            amount_cents: 200,
+            discount_cents: 0,
+          }),
+          expect.objectContaining({
+            transaction_id: first.id,
+            amount_cents: 9800,
+            discount_cents: 0,
+          }),
+        ],
+      }),
+    ])
+  )
+})
+
+it('findet Zweiergruppen unabhängig von vielen kleinen Beträgen', () => {
+  const amounts = [...Array(20).fill(1), 45, 55]
+  const receipts = amounts.map((amount, i) =>
+    receipt({ target_id: i + 1, gross_cents: amount * 100 })
+  )
+  const debit = tx({ amount: -100, mandate_reference: 'TEST' })
+  expect(offers(receipts, [debit])).toMatchObject([
+    {
+      type: 'sammellastschrift',
+      parts: [{ target_id: 21 }, { target_id: 22 }],
+    },
+  ])
+  const payments = amounts.map((amount, i) =>
+    tx({ id: (0xaaaa0000 + i).toString(16), amount: -amount })
+  )
+  const result = offers([receipt({ gross_cents: 10000 })], payments)
+  expect(
+    result.filter((offer) => offer.type === 'teilzahlungen')
+  ).toMatchObject([
+    {
+      parts: [
+        { transaction_id: payments[20].id },
+        { transaction_id: payments[21].id },
+      ],
+    },
+  ])
+})

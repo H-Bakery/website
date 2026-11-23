@@ -53,7 +53,7 @@ export interface ReceiptDetail extends ReceiptSummary {
   extraction_pending: boolean
   extraction_errors: string[]
   duplicates: number[]
-  booking_hint: ReceiptBooking | null
+  booking_hint: ReceiptBookingHint | null
 }
 
 export interface ReceiptBooking {
@@ -65,6 +65,14 @@ export interface ReceiptBooking {
   counterparty: string | null
   booking_text: string | null
   purpose: string | null
+}
+
+export interface ReceiptBookingHint extends ReceiptBooking {
+  allocation: {
+    max_cents: number
+    booking_open_cents: number
+    receipt_open_cents: number
+  } | null
 }
 
 export interface UncoveredExpense extends ReceiptBooking {

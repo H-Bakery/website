@@ -633,6 +633,34 @@ check "kein forget bei RESTIC_FORGET=0" sh -c "! grep -q 'restic forget' '$TEST_
 check "Log: Append-only" log_has "RESTIC_FORGET=0"
 expect 12 "restic backup schlägt fehl -> exit 12" env PATH="$FAKEBIN:$PATH" FAKE_RESTIC_EXIT=1 RESTIC_REPOSITORY="$TEST_TMP/repo" RESTIC_PASSWORD_FILE="$BAKERY_ETC/restic-password" "$SCRIPTS/backup.sh"
 
+# Eine Kopie mit registrierten Originalen braucht einen vollständigen Belegordner.
+RECEIPT_DB="$TEST_TMP/mit-belegen.db"
+RECEIPT_BACKUP="$TEST_TMP/backup-belege"
+RECEIPT_DIR="$TEST_TMP/registrierte belege"
+RECEIPT_A="2026/11/$(printf 'a%.0s' {1..64}).pdf"
+RECEIPT_B="2026/11/$(printf 'b%.0s' {1..64}).xml"
+cp "$DB_PATH" "$RECEIPT_DB"
+sqlite3 "$RECEIPT_DB" "CREATE TABLE receipt_files (path TEXT NOT NULL)"
+receipt_backup() {
+  env PATH="$FAKEBIN:$PATH" APP_DIR="$REPO_ROOT" DB_PATH="$RECEIPT_DB" BACKUP_DIR="$RECEIPT_BACKUP" \
+    RECEIPTS_DIR="$RECEIPT_DIR" RESTIC_REPOSITORY="$TEST_TMP/repo" RESTIC_PASSWORD_FILE="$BAKERY_ETC/restic-password" "$@" "$SCRIPTS/backup.sh"
+}
+expect 0 "leere Belegtabelle ohne Ordner bleibt sicherbar" receipt_backup BACKUP_SQLITE_METHOD=cli
+sqlite3 "$RECEIPT_DB" "INSERT INTO receipt_files VALUES ('$RECEIPT_A'), ('$RECEIPT_B')"
+cp "$RECEIPT_BACKUP/last-success" "$TEST_TMP/receipt-last-success"
+: >"$TEST_TMP/restic.log"
+expect 15 "registrierte Originale ohne Ordner stoppen Off-site" receipt_backup BACKUP_SQLITE_METHOD=cli
+check "Meldung nennt fehlenden Belegordner" log_has "Belegordner fehlt"
+mkdir -p "$RECEIPT_DIR/2026/11"
+printf 'synthetisches Original' >"$RECEIPT_DIR/$RECEIPT_A"
+expect 15 "ein fehlendes Original stoppt Off-site trotz Ordner (Node-SQLite)" receipt_backup BACKUP_SQLITE_METHOD=node
+check "fehlende Dateien starten weder restic backup noch forget" test ! -s "$TEST_TMP/restic.log"
+check "fehlende Originale lassen last-success stehen" cmp "$TEST_TMP/receipt-last-success" "$RECEIPT_BACKUP/last-success"
+check "lokale DB-Kopie bleibt bei Exit 15 erhalten" sh -c "ls '$RECEIPT_BACKUP'/snapshots/bakery-nightly-*.db >/dev/null"
+printf 'zweites synthetisches Original' >"$RECEIPT_DIR/$RECEIPT_B"
+expect 0 "vollständiger registrierter Belegbestand erlaubt wieder Off-site" receipt_backup BACKUP_SQLITE_METHOD=node
+check "vollständige Belegablage wird übernommen und Aufbewahrung läuft" sh -c "grep -Fq '$RECEIPT_DIR' '$TEST_TMP/restic.log' && grep -q 'restic forget' '$TEST_TMP/restic.log'"
+
 SNAP="$(find "$BACKUP_DIR/snapshots" -name 'bakery-nightly-*.db' | sort | tail -n 1)"
 expect 0 "restore --from-file prüft die Kopie" "$SCRIPTS/restore.sh" --from-file "$SNAP" --target "$TEST_TMP/restore1"
 check "restore zeigt Tabellen" log_has "users"

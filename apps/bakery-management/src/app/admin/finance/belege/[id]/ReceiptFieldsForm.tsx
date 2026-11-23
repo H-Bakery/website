@@ -79,7 +79,11 @@ export default function ReceiptFieldsForm({
     draft[key] ??
     (key === 'gross_cents'
       ? centText(fields.gross_cents)
-      : String(fields[key] ?? ''))
+      : String(
+          key === 'currency' && fields.currency === 'XXX'
+            ? ''
+            : fields[key] ?? ''
+        ))
 
   return (
     <Stack spacing={2}>
