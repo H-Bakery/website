@@ -95,10 +95,13 @@ updatedAt, deadline, afterDeadline }`.
 - Verkauf und Inhaber können `externalPayment` auch bei `POST /:id/status` mitschicken.
   Bei vollständiger Kassenzahlung setzt die Abholliste es zusammen mit `paid: true` auf
   `false`. Bei einer Kassennachzahlung nach externer Teilzahlung sendet sie
-  `cashTopUp: true` mit `paid: true`. Der Zahlungsweg bleibt erhalten und die Mischzahlung
-  wird im Audit gespeichert. Die Vorbestellantwort liefert dann `mixedPayment: true`.
-  Eine Rücknahme der Übergabe übernimmt den vorherigen Zahlungsstand aus dem Audit-Eintrag,
-  sofern die Zahlung seit der Übergabe gleich geblieben ist.
+  `cashTopUp: true` mit `paid: true`. Der Zahlungsweg bleibt erhalten. Der aktuelle Stand
+  liegt in `preorders.mixed_payment` (Boolean, Pflichtfeld, Standardwert `false`, Migration
+  `20270402000000-preorders-external-payment.js`). Der Euro-Abgleich liest diese Spalte.
+  Die Vorbestellantwort liefert bei einer Mischzahlung `mixedPayment: true`.
+  Das Audit protokolliert die Änderung. Bei Rücknahme einer Übergabe stellt der Dienst
+  den vorherigen Wert anhand des gespeicherten Übergabe-Snapshots wieder her, sofern
+  die Zahlung seit der Übergabe gleich geblieben ist.
 - **Retried create (`requestId`)** (migration `20261116000000-preorders-request-id.js`, unique,
   nullable): the entry form sends one id (8-64 of `[A-Za-z0-9_-]`, else 400 `invalid_request_id`)
   per order it is saving and keeps it across retries. A save whose answer was lost (Wi-Fi drop)

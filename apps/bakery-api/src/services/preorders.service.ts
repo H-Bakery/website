@@ -25,7 +25,6 @@ import {
   PreorderItem,
 } from '../models'
 import { catalogueFor, defaultProductsDir } from './hq-catalogue'
-import { mixedPaymentAttribute } from '../models/Preorder'
 import {
   createVariantsHook,
   VariantsForProduct,
@@ -96,7 +95,7 @@ export interface PreorderRecord {
   status: string
   paid: boolean
   externalPayment: boolean
-  mixedPayment?: boolean
+  mixedPayment: boolean
   /** Amount recorded as paid; `null` with `paid` = paid in full (legacy). */
   paidAmount: number | null
   note: string | null
@@ -252,7 +251,7 @@ export function toRecord(row: Preorder): PreorderRecord {
     status: p.status,
     paid: !!p.paid,
     externalPayment: !!p.externalPayment,
-    mixedPayment: Boolean(p.mixedPayment),
+    mixedPayment: p.mixedPayment,
     paidAmount:
       p.paid && p.paidAmount != null && p.paidAmount !== ''
         ? Number(p.paidAmount)
@@ -346,6 +345,7 @@ function changedFields(
     'paid',
     'paidAmount',
     'externalPayment',
+    'mixedPayment',
     'note',
     'notCollectedAt',
   ]
@@ -707,7 +707,6 @@ export class PreordersService {
   ): Promise<PreorderRecord[]> {
     const rows = await Preorder.findAll({
       where,
-      attributes: { include: [mixedPaymentAttribute] },
       include: [{ model: PreorderItem, as: 'items' }],
       transaction,
     })
@@ -723,7 +722,6 @@ export class PreordersService {
       return null
     }
     const row = await Preorder.findByPk(n, {
-      attributes: { include: [mixedPaymentAttribute] },
       include: [{ model: PreorderItem, as: 'items' }],
       transaction,
     })
@@ -1287,7 +1285,13 @@ export class PreordersService {
         : current.paid
         ? current.paidAmount ?? (itemsChanged ? current.total : null)
         : core.itemsTotal(next.items ?? current.items)
-      const changed = changedFields(current, { ...next, paidAmount })
+      const mixedPayment =
+        current.mixedPayment && next.paid && next.externalPayment
+      const changed = changedFields(current, {
+        ...next,
+        paidAmount,
+        mixedPayment,
+      })
       if (changed.length === 0) {
         return { ok: true as const, status: 200, data: current }
       }
@@ -1311,6 +1315,7 @@ export class PreordersService {
           paid: next.paid,
           paidAmount,
           externalPayment: next.externalPayment,
+          mixedPayment,
           note: next.note,
           pickedUpAt: next.pickedUpAt ? new Date(next.pickedUpAt) : null,
           notCollectedAt: next.notCollectedAt
@@ -1327,9 +1332,6 @@ export class PreordersService {
         current.id,
         transaction
       )) as PreorderRecord
-      const clearsMixedPayment =
-        current.mixedPayment && (!record.paid || !record.externalPayment)
-      if (clearsMixedPayment) record.mixedPayment = false
       await audit(
         req,
         'update',
@@ -1337,7 +1339,9 @@ export class PreordersService {
         record.id,
         auditData(record, {
           changed,
-          ...(clearsMixedPayment ? { mixedPayment: false } : {}),
+          ...(changed.includes('mixedPayment')
+            ? { mixedPayment: record.mixedPayment }
+            : {}),
           ...(code !== current.code ? { previousCode: current.code } : {}),
           ...(changed.includes('status') ? { from: current.status } : {}),
         }),
@@ -1415,7 +1419,7 @@ export class PreordersService {
       ) as Failure
     }
     const changes = result.changes as Record<string, unknown>
-    let mixedPayment = Boolean(current.mixedPayment || changes['cashTopUp'])
+    let mixedPayment = current.mixedPayment || changes['cashTopUp'] === true
     // An explicit `paid: true` means the full current total was collected -
     // also on an order already paid with a balance left (W4-verify r2).
     const explicitPaid =
@@ -1464,9 +1468,8 @@ export class PreordersService {
       ...current,
       ...changes,
       paidAmount,
+      mixedPayment,
     })
-    const mixedPaymentChanged = mixedPayment !== Boolean(current.mixedPayment)
-    if (mixedPaymentChanged) changed.push('mixedPayment')
     if (changed.length === 0) {
       return { ok: true, status: 200, data: current, changed: false }
     }
@@ -1486,6 +1489,7 @@ export class PreordersService {
           ? { externalPayment: changes['externalPayment'] as boolean }
           : {}),
         paidAmount,
+        mixedPayment,
         updatedBy: req?.user?.id ?? null,
       },
       { where: { id: current.id }, transaction }
@@ -1494,7 +1498,6 @@ export class PreordersService {
       current.id,
       transaction
     )) as PreorderRecord
-    record.mixedPayment = mixedPayment
     await audit(
       req,
       options.action ?? 'status',
@@ -1502,7 +1505,9 @@ export class PreordersService {
       record.id,
       auditData(record, {
         changed,
-        ...(mixedPaymentChanged ? { mixedPayment } : {}),
+        ...(changed.includes('mixedPayment')
+          ? { mixedPayment: record.mixedPayment }
+          : {}),
         from: current.status,
         ...(handover
           ? {
@@ -1511,13 +1516,13 @@ export class PreordersService {
                   paid: current.paid,
                   paidAmount: current.paidAmount,
                   externalPayment: current.externalPayment,
-                  mixedPayment: Boolean(current.mixedPayment),
+                  mixedPayment: current.mixedPayment,
                 },
                 after: {
                   paid: record.paid,
                   paidAmount: record.paidAmount,
                   externalPayment: record.externalPayment,
-                  mixedPayment,
+                  mixedPayment: record.mixedPayment,
                 },
               },
             }
@@ -1599,7 +1604,7 @@ export class PreordersService {
             ? payment.before.externalPayment
             : undefined,
         mixedPayment:
-          payment.after.mixedPayment === Boolean(current.mixedPayment) &&
+          payment.after.mixedPayment === current.mixedPayment &&
           typeof payment.before.mixedPayment === 'boolean'
             ? payment.before.mixedPayment
             : undefined,

@@ -686,11 +686,14 @@ function euroRegister(config, cmpFor, groupOf) {
   const hundreds = new Map()
   const purchasedByName = new Map()
   const purchasedSections = new Set()
+  const productionSections = new Set()
   for (const item of config?.items || []) {
     if (!rest.isCountable(item)) continue
     if (item.purchased) {
       purchasedByName.set(fold(item.name), item.section)
       purchasedSections.add(item.section)
+    } else {
+      productionSections.add(item.section)
     }
     const comparison = cmpFor(item)
     const variants = comparison.bySize ? [...comparison.sizes.keys()] : ['']
@@ -712,13 +715,24 @@ function euroRegister(config, cmpFor, groupOf) {
         targets.set(plu, list)
         const hundred = pluHundred(plu)
         if (hundred === null) continue
-        const sections = hundreds.get(hundred) || new Set()
-        sections.add(item.section)
-        hundreds.set(hundred, sections)
+        const block = hundreds.get(hundred) || {
+          sections: new Set(),
+          hasPurchased: false,
+        }
+        block.sections.add(item.section)
+        if (item.purchased) block.hasPurchased = true
+        hundreds.set(hundred, block)
       }
     }
   }
-  return { targets, items, hundreds, purchasedByName, purchasedSections }
+  return {
+    targets,
+    items,
+    hundreds,
+    purchasedByName,
+    purchasedSections,
+    productionSections,
+  }
 }
 
 const addCents = (a, b) => (a === null || b === null ? null : a + b)
@@ -750,14 +764,17 @@ function euroSales(report, register, sections) {
     const name = fold(p.productName)
     const group = fold(p.groupName)
     const collective = COLLECTIVE_TERMS.test(name)
+    // Die Berichtsaggregation setzt widersprüchliche Gruppen auf null.
+    const conflictingGroups = collective && p.groupName === null
     const groupSections = sectionsFromText(group)
     const targetSections = new Set(targets.map((t) => t.section))
     const candidates = new Set([...targetSections, ...groupSections])
-    if (collective && candidates.size === 0) {
+    let hundred
+    if (collective && !conflictingGroups && candidates.size === 0) {
       const fromName = sectionsFromText(name)
-      for (const id of fromName.length
-        ? fromName
-        : register.hundreds.get(pluHundred(plu)) || []) {
+      if (fromName.length === 0)
+        hundred = register.hundreds.get(pluHundred(plu))
+      for (const id of hundred ? hundred.sections : fromName) {
         candidates.add(id)
       }
     }
@@ -769,7 +786,8 @@ function euroSales(report, register, sections) {
     const isTrade = targets.length
       ? targets.every((t) => t.purchased)
       : Boolean(
-          namedTradeSection || (tradeMarker && groupSections.length === 0)
+          namedTradeSection ||
+            (!conflictingGroups && tradeMarker && groupSections.length === 0)
         )
     if (isTrade) {
       trade = addCents(trade, amount)
@@ -782,16 +800,17 @@ function euroSales(report, register, sections) {
       continue
     }
     const assigned = !collective && targets.length === 1 && !targets[0].conflict
-    const ownGroup = targets.length
+    // Der Hunderter ist nur ein Hinweis, wenn er ausschließlich Eigenproduktion enthält.
+    const groupedProduction = targets.length
       ? (collective || targets.length > 1) &&
         targetSections.size === 1 &&
         targets.every((t) => !t.purchased)
-      : candidate &&
-        !tradeMarker &&
-        (collective || !register.purchasedSections.has(candidate))
+      : collective
+      ? register.productionSections.has(candidate) && !hundred?.hasPurchased
+      : !register.purchasedSections.has(candidate)
     const ownSection = assigned
       ? targets[0].section
-      : ownGroup
+      : groupedProduction && !tradeMarker && !conflictingGroups
       ? candidate
       : null
     if (assigned) {

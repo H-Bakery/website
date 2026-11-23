@@ -79,7 +79,8 @@ Verwaltung `apps/bakery-management/src/lib/preordersApi.ts`, `preordersTypes.ts`
   Betrag. Verkauf und Inhaber können eine tatsächlich an der Ladenkasse erhaltene
   Zahlung ausdrücklich erfassen. Bei vollständiger Kassenzahlung setzt die API den
   Zahlungsweg auf Kasse. War ein Teil schon extern bezahlt, bleibt der Zahlungsweg
-  erhalten und die Kassennachzahlung markiert die Bestellung im Audit als Mischzahlung.
+  erhalten und die Kassennachzahlung markiert die Bestellung als Mischzahlung. Das Audit
+  protokolliert die Änderung.
   Der Euro-Abgleich weist das Soll im betroffenen Abschnitt als offen aus.
   Eine anschließende Rücknahme der Übergabe stellt den vorherigen Zahlungsstand
   wieder her, sofern er seither gleich geblieben ist.

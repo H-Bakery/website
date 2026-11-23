@@ -119,13 +119,14 @@ Samstagsteig. Geplante Mengen und fehlende Backzettel oder Kassenberichte sind j
 - Ein Ersatzpreis setzt vollständige Positionsdaten und gültige Mengen aller Buchungen zu
   dieser Kassennummer voraus. Bei fehlenden Mengen bleibt der Positionsumsatz auswertbar.
 - **Ist** stammt aus den Kassenpositionen einschließlich Stornos. Sammelnummern („Sonstige“,
-  „Diverse“, „Sammelnummer“) zählen beim Abschnitt über die Kassengruppe, den Abschnitt im Namen
-  oder die eindeutig zugeordneten Hunderter der Kassennummern. In den Posten bleiben sie „nicht
-  zuordenbar“. Separat zugeordneter Zukauf im selben Abschnitt steht der Zuordnung einer
-  Sammelnummer nicht im Weg. Die Kennzahl oben teilt den Nettoumsatz aller erkannten Sammelnummern durch den
-  Kassenumsatz der vorhandenen Berichte. Eine Kassennummer ohne eindeutigen Abschnitt bleibt in
-  den Details offen. Ist für einen Produktionsabschnitt keine Kassenzuordnung bekannt, bleiben
-  Ist und Differenz offen.
+  „Diverse“, „Sammelnummer“) zählen beim Abschnitt über eine eindeutige Kassengruppe oder einen
+  eindeutig benannten Produktionsabschnitt. Das gilt auch bei separat zugeordnetem Zukauf im
+  selben Abschnitt. Fehlt dieser Hinweis, zählt ein PLU-Hunderter nur dann, wenn seine bekannten
+  Kassennummern ausschließlich zur Eigenproduktion eines einzigen Abschnitts gehören. Bei
+  Zukauf im Hunderter oder widersprüchlicher Zuordnung bleiben Ist und Differenz der betroffenen
+  Abschnitte offen. In den Posten bleiben Sammelnummern „nicht zuordenbar“. Die Kennzahl oben
+  teilt den Nettoumsatz aller erkannten Sammelnummern durch den Kassenumsatz der vorhandenen
+  Berichte.
 - Eine eindeutige Kassengruppe der Eigenproduktion zählt zum Abschnitts-Ist, auch ohne
   Postenzuordnung und Sammelbezeichnung. Kann eine Position mehreren Abschnitten oder der
   Handelsware angehören, bleiben Ist und Differenz der infrage kommenden Abschnitte offen.

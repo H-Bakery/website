@@ -1312,44 +1312,154 @@ describe('Euro-Abgleich', () => {
     expect(day.nichtZuordenbar[0].section).toBeNull()
   })
 
-  it.each([['Brot'], [undefined]])(
-    'zählt Sammelumsatz bei separat zugeordnetem Zukauf im selben Abschnitt (%s)',
-    (groupName) => {
-      const mixedConfig = {
+  it.each([
+    {
+      fall: 'Kassengruppe mit Eigenproduktion',
+      groupName: 'Brot',
+      result: 'eigen',
+    },
+    {
+      fall: 'Kassengruppe mit Eigenproduktion und separat erfasstem Zukauf',
+      groupName: 'Brot',
+      purchasedPlu: 613,
+      result: 'eigen',
+    },
+    {
+      fall: 'Kassengruppe der Eigenproduktion bei Zukauf im Hunderter',
+      groupName: 'Brot',
+      plu: 912,
+      purchasedPlu: 913,
+      result: 'eigen',
+    },
+    {
+      fall: 'Kassengruppe eines Abschnitts mit ausschließlich Zukauf',
+      groupName: 'Laugen',
+      purchasedPlu: 613,
+      purchasedSection: 'laugen',
+      result: 'offen',
+    },
+    {
+      fall: 'Kassengruppe mit Eigenproduktion und ausdrücklichem Zukaufhinweis',
+      groupName: 'Brot und Zukauf',
+      result: 'offen',
+    },
+    {
+      fall: 'Kassengruppe mit zwei Produktionsabschnitten',
+      groupName: 'Brot und Brötchen',
+      result: 'offen',
+    },
+    {
+      fall: 'widersprüchliche Kassengruppen auf derselben Sammel-PLU',
+      groupName: 'Brot',
+      conflictingGroup: 'Laugen',
+      result: 'offen',
+    },
+    {
+      fall: 'ausdrückliche Handelswarengruppe trotz Produktionshunderter',
+      groupName: 'Handelsware',
+      result: 'handelsware',
+    },
+    {
+      fall: 'Hunderter mit Eigenproduktion und Zukauf in einem anderen Hunderter',
+      purchasedPlu: 913,
+      result: 'eigen',
+    },
+    {
+      fall: 'Hunderter mit Eigenproduktion und Zukauf im selben Abschnitt',
+      purchasedPlu: 613,
+      result: 'offen',
+    },
+    {
+      fall: 'Hunderter mit ausschließlich Zukauf',
+      plu: 912,
+      purchasedPlu: 913,
+      result: 'offen',
+    },
+    {
+      fall: 'Hunderter mit zwei Produktionsabschnitten',
+      secondProductionPlu: 613,
+      result: 'offen',
+    },
+    {
+      fall: 'Hunderter ohne bekannte Kassennummer',
+      plu: 912,
+      result: 'offen',
+    },
+  ])(
+    'ordnet Sammelumsatz nach den verfügbaren Hinweisen zu: $fall',
+    ({
+      groupName,
+      conflictingGroup,
+      plu = 612,
+      purchasedPlu,
+      purchasedSection = 'brot',
+      secondProductionPlu,
+      result,
+    }) => {
+      const config = {
         ...euroConfig,
-        items: euroConfig.items.map((item) =>
-          item.id === 'test-brezel'
-            ? { ...item, section: 'brot', plu: [613] }
-            : item
-        ),
+        items: euroConfig.items.map((item) => {
+          if (item.id === 'test-wecken' && secondProductionPlu)
+            return { ...item, plu: [secondProductionPlu] }
+          if (item.id === 'test-brezel' && purchasedPlu)
+            return { ...item, section: purchasedSection, plu: [purchasedPlu] }
+          return item
+        }),
+      }
+      const items = [
+        breadSale,
+        {
+          product_id: plu,
+          product: 'Diverse',
+          group_name: groupName,
+          quantity: conflictingGroup ? 1 : 2,
+          total: conflictingGroup ? 4 : 8,
+        },
+      ]
+      if (conflictingGroup) {
+        items.push({ ...items[1], group_name: conflictingGroup })
+      }
+      if (purchasedPlu) {
+        items.push({
+          product_id: purchasedPlu,
+          product: 'Testzukauf',
+          quantity: 1,
+          total: 2,
+        })
       }
       const day = breadDay(
-        [
-          {
-            total: 16,
-            items: [
-              breadSale,
-              {
-                product_id: 612,
-                product: 'Diverse',
-                group_name: groupName,
-                quantity: 2,
-                total: 8,
-              },
-              { product_id: 613, product: 'Testzukauf', quantity: 1, total: 2 },
-            ],
-          },
-        ],
+        [{ total: purchasedPlu ? 16 : 14, items }],
         3.5,
-        mixedConfig
+        config
       )
-      expect(section(day, 'brot')).toMatchObject({
-        sollEur: 14,
-        istEur: 14,
-        sammelEur: 8,
-        handelswareEur: 2,
-        differenzEur: 0,
+      const ist = { eigen: 14, offen: null, handelsware: 6 }[result]
+      const difference = { eigen: 0, offen: null, handelsware: -8 }[result]
+      const evaluatedSection = section(day, purchasedSection)
+      expect(evaluatedSection).toMatchObject({
+        istEur: ist,
+        sammelEur: result === 'eigen' ? 8 : 0,
+        differenzEur: difference,
       })
+      expect(day.handelswareEur).toBe(
+        (purchasedPlu ? 2 : 0) + (result === 'handelsware' ? 8 : 0)
+      )
+      expect(day.nichtZuordenbar).toEqual(
+        result === 'handelsware'
+          ? []
+          : [
+              expect.objectContaining({
+                plu: String(plu),
+                sammel: true,
+                section: result === 'eigen' ? 'brot' : null,
+              }),
+            ]
+      )
+      if (purchasedSection !== 'brot')
+        expect(section(day, 'brot')).toMatchObject({
+          sollEur: 14,
+          istEur: 6,
+          differenzEur: -8,
+        })
     }
   )
 

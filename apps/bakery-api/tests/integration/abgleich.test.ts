@@ -12,6 +12,7 @@ import * as os from 'os'
 import * as path from 'path'
 import request from 'supertest'
 
+import { AuditLog } from '../../src/models'
 import { createTestApp, TestApp } from '../helpers/createTestApp'
 import { bearer, sessionFor } from '../helpers/auth'
 
@@ -332,6 +333,22 @@ describe('GET /api/abgleich', () => {
       paidAmount: 4.5,
       externalPayment: true,
       mixedPayment: true,
+    })
+    const entityId = String(created.body.data.id)
+    const entry = await AuditLog.findOne({
+      where: { entity: 'preorder', entityId, action: 'status' },
+      order: [['id', 'DESC']],
+    })
+    expect(entry?.data).toMatchObject({
+      changed: expect.arrayContaining(['mixedPayment']),
+      mixedPayment: true,
+    })
+    await AuditLog.create({
+      userId: null,
+      entity: 'preorder',
+      entityId,
+      action: 'test-audit-entry',
+      data: { mixedPayment: false },
     })
     const day = await as('verkauf').get(`/api/preorders/day?date=${date}`)
     expect(day.body.data.preorders).toEqual([

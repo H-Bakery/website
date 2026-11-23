@@ -15,7 +15,6 @@ import {
   Model,
   NonAttribute,
   Sequelize,
-  literal,
 } from 'sequelize'
 import type { PreorderItem } from './PreorderItem'
 
@@ -36,18 +35,6 @@ export const PREORDER_STATUSES = [
 ] as const
 export type PreorderStatus = (typeof PREORDER_STATUSES)[number]
 
-/** Der jüngste Eintrag zur Mischzahlung im bestehenden Audit. */
-export const mixedPaymentAttribute: [ReturnType<typeof literal>, string] = [
-  literal(`(
-    SELECT json_extract(data, '$.mixedPayment')
-    FROM audit_log
-    WHERE entity = 'preorder' AND entity_id = CAST(Preorder.id AS TEXT)
-      AND json_extract(data, '$.mixedPayment') IS NOT NULL
-    ORDER BY id DESC LIMIT 1
-  )`),
-  'mixedPayment',
-]
-
 export class Preorder extends Model<
   InferAttributes<Preorder>,
   InferCreationAttributes<Preorder>
@@ -66,6 +53,7 @@ export class Preorder extends Model<
   declare status: CreationOptional<PreorderStatus>
   declare paid: CreationOptional<boolean>
   declare externalPayment: CreationOptional<boolean>
+  declare mixedPayment: CreationOptional<boolean>
   /**
    * Amount paid when payment was recorded; `null` = not paid, or paid before
    * the column existed (then: in full). See migration 20261114.
@@ -84,7 +72,6 @@ export class Preorder extends Model<
   declare updatedAt: CreationOptional<Date>
 
   declare items?: NonAttribute<PreorderItem[]>
-  declare mixedPayment?: NonAttribute<number | null>
 
   static initModel(sequelize: Sequelize): typeof Preorder {
     Preorder.init(
@@ -111,6 +98,11 @@ export class Preorder extends Model<
           defaultValue: false,
         },
         externalPayment: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: false,
+        },
+        mixedPayment: {
           type: DataTypes.BOOLEAN,
           allowNull: false,
           defaultValue: false,

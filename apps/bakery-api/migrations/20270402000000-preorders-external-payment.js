@@ -1,10 +1,13 @@
 'use strict'
 
+const COLUMNS = ['external_payment', 'mixed_payment']
+
 module.exports = {
   async up(queryInterface, Sequelize) {
     const columns = await queryInterface.describeTable('preorders')
-    if (!columns.external_payment) {
-      await queryInterface.addColumn('preorders', 'external_payment', {
+    for (const column of COLUMNS) {
+      if (columns[column]) continue
+      await queryInterface.addColumn('preorders', column, {
         type: Sequelize.BOOLEAN,
         allowNull: false,
         defaultValue: false,
@@ -14,8 +17,12 @@ module.exports = {
 
   async down(queryInterface) {
     const columns = await queryInterface.describeTable('preorders')
-    if (columns.external_payment) {
-      await queryInterface.removeColumn('preorders', 'external_payment')
+    // In SQLite bleiben beim direkten DROP COLUMN Fremdschlüssel und Indizes erhalten.
+    for (const column of COLUMNS) {
+      if (!columns[column]) continue
+      await queryInterface.sequelize.query(
+        `ALTER TABLE preorders DROP COLUMN ${column}`
+      )
     }
   },
 }

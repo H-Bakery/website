@@ -15,7 +15,7 @@
 import * as path from 'path'
 import { Op } from 'sequelize'
 
-import { mixedPaymentAttribute, Preorder } from '../models/Preorder'
+import { Preorder } from '../models/Preorder'
 import { PreorderItem } from '../models/PreorderItem'
 import { BackzettelSource } from './backzettel-source'
 import { BackzettelError, BackzettelService } from './backzettel.service'
@@ -94,7 +94,7 @@ export function createAbgleichService(
               externalPayment: true,
               notCollectedAt: null,
             },
-            attributes: ['id', 'status', 'pickupDate', mixedPaymentAttribute],
+            attributes: ['id', 'status', 'pickupDate', 'mixedPayment'],
             include: [
               {
                 model: PreorderItem,
@@ -105,7 +105,7 @@ export function createAbgleichService(
           })
         : []
     const mixedIds = new Set(
-      preorders.filter((p) => p.get('mixedPayment')).map((p) => p.id)
+      preorders.filter((p) => p.mixedPayment).map((p) => p.id)
     )
     const externalByDate = new Map<string, unknown[]>()
     for (const item of dayCore.snapshotFromPreorders(
