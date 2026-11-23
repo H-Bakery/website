@@ -362,6 +362,7 @@ module.exports = {
   isValidId,
   monthsFromFileNames,
   maskIban,
+  counterpartyKey,
   parseMonthFile,
   labelsFrom,
   sanitizeTransaction,

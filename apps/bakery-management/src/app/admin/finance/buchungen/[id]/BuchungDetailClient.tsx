@@ -25,6 +25,8 @@ import {
 } from '../../../../../components/finance/FinanceReportParts'
 import { buchungHref, buchungenHref, KIND_LABEL } from '../BuchungenClient'
 
+import { BookingReceipts } from '../../../../../components/receipts/BookingReceipts'
+
 const TITLE = 'Buchung'
 
 type PageState =
@@ -247,6 +249,8 @@ export default function BuchungDetailClient({ id }: { id: string }) {
           </Field>
         </Box>
       </PageSection>
+
+      <BookingReceipts key={tx.id} bookingId={tx.id} />
 
       <PageSection
         title="Zuordnung"

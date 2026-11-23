@@ -37,7 +37,7 @@
 [partners](./api/partners.md) · [preorders](./api/preorders.md) ·
 [deliveries](./api/deliveries.md) · [backzettel](./api/backzettel.md) · [rest](./api/rest.md) · [Spracheingabe](./api/sprache.md) ·
 [abgleich](./api/abgleich.md) ·
-[dienstplan](./api/dienstplan.md) · [recipes](./api/recipes.md) · [invoices](./api/invoices.md)
+[dienstplan](./api/dienstplan.md) · [recipes](./api/recipes.md) · [invoices](./api/invoices.md) · [Belege](./api/receipts.md)
 
 **Apps:** [landing](./apps/landing.md) · [shop](./apps/shop.md) · [delivery](./apps/delivery.md) ·
 [partybrezel](./apps/partybrezel.md) (Klick-Prototyp, nicht im Pilot) ·

@@ -537,6 +537,7 @@ Jede Nacht um 23:30 (`bakery-backup.timer`; Backbeginn ist 02:00):
    und restic-Passwort – sie öffnen das Backup selbst und gehören in den Passwort-Safe –, und
    ohne Schlüssel und Token der GitHub-App: das Token entsteht nach einem Restore neu),
    `BACKUP_EXTRA_PATHS` (Vorgabe: hq-Schreib-Klon mit evtl. noch nicht gepushten Commits)
+   sowie der Belegordner `RECEIPTS_DIR` (Vorgabe `/var/lib/bakery/belege`)
 4. `restic forget --keep-daily 14 --keep-weekly 8 --prune` (nicht bei `RESTIC_FORGET=0`),
    sonntags zusätzlich `restic check`
 5. `backup/last-success` – der Health-Check meldet, wenn es älter als 36 h ist
@@ -562,6 +563,29 @@ mit Exit 1 ab und nennt sie – dann zuerst die API in Ordnung bringen (§4). Vo
 `cli.js anonymize-preorders --dry-run`). Die Backups enthalten die Namen noch bis zu ihrem Ablauf
 (`--keep-weekly 8`, also höchstens etwa 8 Wochen länger).
 
+### Belegoriginale
+
+Standardordner ist `/var/lib/bakery/belege`. Bei einem abweichenden Verzeichnis `RECEIPTS_DIR`
+in der gemeinsamen Box-Umgebung setzen, damit API und Backup denselben absoluten Pfad nutzen.
+Im regulären Systemdienst liegt dieser Ordner unter `/var/lib/bakery`, wo die API schreiben darf.
+Der Benutzer `bakery` braucht Schreibzugriff im Ablageordner und Lesezugriff für die Sicherung.
+Die API erzeugt die Unterordner bei Bedarf. Neue Originale erhalten Modus `0440`. Die nächtliche
+Off-site-Sicherung nimmt den Ordner auf, sobald er existiert. Die Sicherung prüft anhand der
+SQLite-Kopie, ob alle registrierten Originale vorhanden und lesbar sind. Ein fehlender Ordner
+bei registrierten Originalen oder eine fehlende Datei beendet den Lauf mit Exit 15 vor der
+Aufbewahrungsbereinigung. Die lokale SQLite-Kopie bleibt dabei erhalten.
+`--local-only` erzeugt wie bisher
+eine reine Datenbankkopie. Datenbank und Originale werden beim vollständigen Restore aus derselben
+Snapshot-ID geholt und mit `cli.js verify-receipt-files` geprüft (§5.3).
+
+Beim Löschen eines ungeprüften Belegs wird dessen Eintrag aus der App entfernt. Die unveränderten
+Dateibytes bleiben im Sicherungsordner, damit eine bereits laufende DB-Sicherung konsistent
+zurückgespielt werden kann. Die Betriebs- und Aufbewahrungsregeln für diese Dateien bleiben offen.
+
+Für automatische Vorschläge aus PDF-Textschichten kann auf der Box optional `poppler-utils`
+installiert werden. Die API findet `pdftotext` über den Programmpfad. Ohne das Programm werden die
+Belegfelder von Hand erfasst.
+
 ### 5.2 Erstes Einrichten des Off-site-Ziels (Q4)
 
 ```bash
@@ -583,46 +607,107 @@ Entwickler-Rechner mit einem eigenen, vollen Zugang (nicht auf der Box):
 
 ### 5.3 Restore-Übung (vor M0, dann monatlich)
 
-Ziel: beweisen, dass sich die Daten **auf einem anderen Rechner** zurückholen lassen.
+Ziel ist eine geprüfte Kopie der Datenbank und der Belegoriginale auf einem anderen Rechner.
 
-1. Auf dem Entwickler-Rechner restic installieren; Repository-Adresse und Zugangsdaten aus
-   `ops.env`, das Passwort aus dem **Passwort-Safe** (nicht von der Box kopieren – genau das wird
-   geübt).
-2. Website-Repo auschecken (für `restore.sh` und `sqlite-tool.js`), dann:
+1. Restic installieren. Repository-Adresse und Zugangsdaten aus `ops.env` und das
+   Repository-Passwort aus dem Passwort-Safe verwenden. Das Website-Repo auschecken,
+   Abhängigkeiten installieren und `npm run build:api` ausführen.
+2. Eine **konkrete Snapshot-ID** aus der Liste auswählen. Die Pfade in diesem Beispiel entsprechen
+   der Standardkonfiguration der gesicherten Box. Bei abweichendem `BACKUP_DIR` oder
+   `RECEIPTS_DIR` hier und beim Einspielen die passenden absoluten Pfade setzen.
 
    ```bash
-   export RESTIC_REPOSITORY=... RESTIC_PASSWORD_FILE=~/restic-pw AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
    restic snapshots --tag bakery
-   BACKUP_DIR=/var/lib/bakery/backup deploy/scripts/restore.sh --snapshot latest --target ~/restore-test
+   read -r -p 'Snapshot-ID: ' snapshot
+   backup_dir=/var/lib/bakery/backup
+   receipt_dir=/var/lib/bakery/belege
+   stage=$(mktemp -d)
+   restic restore "$snapshot" --target "$stage" \
+     --include "$backup_dir/current/bakery.db" \
+     --include "$receipt_dir"
+   db="$stage$backup_dir/current/bakery.db"
+   mkdir -p "$stage$receipt_dir"
    ```
 
-   Das Skript prüft `integrity_check` und zeigt die Zeilen je Tabelle. Plausibel? (Anzahl
-   Benutzer, Vorbestellungen der letzten Tage.)
+   Die Datenbank und die Originale stammen so aus demselben Snapshot. Das leere Verzeichnis
+   deckt Sicherungen vor dem ersten Upload ab. Enthält die Datenbank Belege, meldet die
+   Hash-Prüfung jeden fehlenden Eintrag.
 
-3. Ergebnis mit Datum im Log von roadmap.md §11 vermerken. Restore-Kopie danach löschen
-   (enthält Kundendaten).
+3. Die Kopie per `integrity_check` und die Originale gegen die SHA-256-Werte der Datenbank prüfen.
+   Bei Fehlern oder unerwarteter Zeilenzahl die Kopie untersuchen, bevor sie eingespielt wird.
+   Bei Dateien mit abweichendem Modus meldet `find` deren Pfad.
 
-### 5.4 Ernstfall: DB auf der Box zurückholen
+   ```bash
+   deploy/scripts/restore.sh --from-file "$db" --target "$stage/db-check"
+   node dist/apps/bakery-api/bundle/cli.js verify-receipt-files \
+     --db "$db" --files "$stage$receipt_dir"
+   find "$stage$receipt_dir" -type f ! -perm 0440 -print
+   ```
 
-```bash
-sudo /opt/bakery/bin/restore.sh --snapshot latest                 # erst nur holen und prüfen
-sudo /opt/bakery/bin/restore.sh --snapshot latest --apply         # dann einspielen
-# oder aus einer lokalen Kopie:
-sudo /opt/bakery/bin/restore.sh --from-file /var/lib/bakery/backup/snapshots/<datei>.db --apply
-```
+   Der Hash-Befehl öffnet SQLite schreibgeschützt. Exit 0 bestätigt alle registrierten Originale.
+   Exit 2 meldet fehlende oder veränderte Dateien. Bei älteren Sicherungen aus der Zeit vor der
+   Belegfunktion fehlt die Tabelle `receipt_files` und es ist nur die Datenbankprüfung möglich.
 
-`--apply` stoppt die API, verschiebt die alte DB **samt `-wal` und `-shm`** nach
-`bakery.db.vor-restore-<Zeit>`, setzt die Kopie ein und startet die API. Währenddessen liegt
-`state/maintenance` (kein Fehlalarm), und das nächtliche Backup wartet (gemeinsame Sperre). Die `-wal`-Datei der
-alten DB darf nie neben der eingespielten liegen bleiben – SQLite würde sie anwenden und die DB
-beschädigen.
+4. Snapshot-ID, Datum und Ergebnis im Log von roadmap.md §11 vermerken. Die Restore-Kopie
+   anschließend löschen.
+
+### 5.4 Ernstfall: Datenbank und Belegoriginale einspielen
+
+1. Wie in §5.3 **beide Pfade aus derselben Snapshot-ID** in ein privates Temporärverzeichnis holen.
+   Auf der Box die Prüfungen mit `/opt/bakery/bin/restore.sh` und
+   `/opt/bakery/current/dist/apps/bakery-api/bundle/cli.js` ausführen. Die Shell-Variablen
+   `stage`, `db` und `receipt_dir` aus diesem Abruf beibehalten.
+2. Das Backup-Timerfenster schließen und gegebenenfalls das bereits laufende Backup beenden
+   lassen. Dann die API und die Verwaltung stoppen. Die bisherige Belegablage als Ganzes
+   sichern und die geprüfte Kopie mit Eigentümer `bakery:bakery`, Verzeichnismodus `0750`
+   und Dateimodus `0440` einsetzen.
+
+   ```bash
+   sudo systemctl stop bakery-backup.timer
+   # Erst fortfahren, wenn bakery-backup.service inaktiv ist.
+   sudo systemctl is-active bakery-backup.service
+   sudo systemctl stop bakery-management.service bakery-api.service
+   stamp=$(date +%Y%m%d-%H%M%S)
+   if sudo test -e "$receipt_dir"; then
+     sudo mv -- "$receipt_dir" "$receipt_dir.vor-restore-$stamp"
+   fi
+   sudo install -d -o bakery -g bakery -m 0750 "$receipt_dir"
+   sudo cp -a -- "$stage$receipt_dir/." "$receipt_dir/"
+   sudo chown -R bakery:bakery "$receipt_dir"
+   sudo find "$receipt_dir" -type d -exec chmod 0750 {} +
+   sudo find "$receipt_dir" -type f -exec chmod 0440 {} +
+   ```
+
+3. Die zugehörige Datenbank einspielen. `--apply` legt die bisherige DB samt `-wal` und
+   `-shm` beiseite und startet die API. Danach als Benutzer `bakery` die installierte DB
+   und den installierten Belegordner verifizieren. Hier den konfigurierten `DB_PATH` einsetzen.
+   Die Verwaltung und den Timer erst nach erfolgreicher Prüfung wieder starten.
+
+   ```bash
+   sudo /opt/bakery/bin/restore.sh --from-file "$db" --apply
+   sudo -u bakery node /opt/bakery/current/dist/apps/bakery-api/bundle/cli.js \
+     verify-receipt-files --db /var/lib/bakery/bakery.db --files "$receipt_dir"
+   sudo systemctl start bakery-management.service bakery-backup.timer
+   ```
+
+Bei einem Fehler die Dienste bis zur Klärung gestoppt halten und die beiseitegelegte Kopie
+aus Datenbank und Belegen gemeinsam zurücksetzen. Eine lokale `--local-only`-Kopie eignet sich
+für einen reinen DB-Rollback mit weiterhin vorhandenen passenden Originalen. Vor solch einem
+Rollback das Kopiepaar ebenfalls mit dem Hash-Befehl prüfen.
 
 ### 5.5 Box komplett verloren
 
-Neue Box nach §3 aufsetzen, dann `bakery.env` aus dem Backup holen
-(`restic restore latest --target /tmp/r --include /etc/bakery`), `ops.env` und das
-restic-Passwort aus dem Passwort-Safe, `install.sh`, `deploy.sh`,
-`restore.sh --snapshot latest --apply`.
+Neue Box nach §3 vorbereiten. Eine konkrete Snapshot-ID wie in §5.3 auswählen. Aus diesem
+Snapshot auch die gesicherte `bakery.env` holen. `ops.env` und das Restic-Passwort stammen
+aus dem Passwort-Safe.
+
+```bash
+restic restore "$snapshot" --target "$stage" --include /etc/bakery/bakery.env
+```
+
+`bakery.env` wieder einrichten, `install.sh` und `deploy.sh` ausführen und anschließend
+Datenbank und Belegordner derselben Snapshot-ID nach §5.4 einspielen. Die Hash-Prüfung
+vor der Freigabe der Verwaltung ausführen.
 
 ## 6. hq-Sync
 

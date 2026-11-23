@@ -75,6 +75,8 @@ import {
 import { BACKZETTEL_CONFIG_REL } from './services/backzettel-config-write'
 import { HqEditsSync } from './services/hq-edits-sync.service'
 import { HqSnapshotWriter } from './services/hq-snapshots.service'
+import { createReceiptsRoutes } from './routes/receipts.routes'
+import type { ReceiptsOptions } from './services/receipts.service'
 import { createErrorHandler, notFoundHandler } from './utils/http-error'
 
 export interface CreateAppOptions {
@@ -161,6 +163,7 @@ export interface CreateAppOptions {
    * `INVOICE_IBAN` …) und die Uhr, für Tests.
    */
   invoices?: Omit<InvoicesRouterOptions, 'preorders'>
+  receipts?: ReceiptsOptions
 }
 
 export function createApp(options: CreateAppOptions = {}): Application {
@@ -178,7 +181,6 @@ export function createApp(options: CreateAppOptions = {}): Application {
       allowedHeaders: ['Content-Type', 'Authorization', STATION_TOKEN_HEADER],
     })
   )
-  app.use(express.json({ limit: options.jsonLimit ?? '200kb' }))
   // W4 verification round 2: API answers carry names, phone numbers and
   // money. Without this, Chrome kept them in its disk cache on the shared
   // shop tablet after "Abmelden". A route may still override it.
@@ -186,6 +188,7 @@ export function createApp(options: CreateAppOptions = {}): Application {
     res.setHeader('Cache-Control', 'no-store')
     next()
   })
+  app.use(express.json({ limit: options.jsonLimit ?? '200kb' }))
   if (options.logRequests !== false) {
     app.use(loggerMiddleware)
   }
@@ -239,6 +242,13 @@ export function createApp(options: CreateAppOptions = {}): Application {
   // B4: /api/reports, /api/analytics (inhaber), /api/finance/* incl. targets
   // (inhaber, personal session) - the route modules behind the B3 guards.
   // Absolute paths, so mounted at the root.
+  const receipts = createReceiptsRoutes({
+    financeDir: options.hq?.financeDir,
+    log: options.hq?.log,
+    ...options.receipts,
+  })
+  app.use(receipts.router)
+  app.locals['receiptsService'] = receipts.service
   app.use(createHqDataRouter(options.hq))
   if (!options.publicCatalogue) app.use('/api/products', hqProducts.products)
   app.use('/api/hq-products', hqProducts.hqProducts)

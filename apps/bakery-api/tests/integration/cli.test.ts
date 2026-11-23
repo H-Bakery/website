@@ -3,6 +3,7 @@
  * run against a temp SQLite file) and the development bootstrap admin.
  * Synthetic users only.
  */
+import { createHash } from 'node:crypto'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
@@ -210,4 +211,51 @@ describe('bootstrapAdmin (development only)', () => {
       ).toBe(1)
     })
   })
+})
+
+it('prüft Restore-Daten schreibgeschützt und meldet veränderte oder fehlende Belegdateien', async () => {
+  const dbPath = path.join(dir, 'restore.db')
+  const files = path.join(dir, 'wiederhergestellte belege')
+  const content = '<Testbeleg>Erfunden</Testbeleg>'
+  const sha256 = createHash('sha256').update(content).digest('hex')
+  const relative = '2026/11/' + sha256 + '.xml'
+  const filename = path.join(files, relative)
+  fs.mkdirSync(path.dirname(filename), { recursive: true })
+  fs.writeFileSync(filename, content, { mode: 0o440 })
+
+  const { sequelize } = await openDatabase({ storage: dbPath })
+  try {
+    await runMigrations(sequelize, { log: () => undefined })
+    await sequelize.query(`INSERT INTO receipts (id, status, kind, payment, created_at, upload_date)
+      VALUES (1, 'neu', 'eingangsrechnung', 'offen', '2026-11-23T12:00:00Z', '2026-11-23')`)
+    await sequelize.query(
+      `INSERT INTO receipt_files (id, receipt_id, role, mime, sha256, path, page, size)
+      VALUES (1, 1, 'xml', 'application/xml', $sha256, $relative, 1, $size)`,
+      {
+        bind: { sha256, relative, size: Buffer.byteLength(content) },
+      }
+    )
+  } finally {
+    await sequelize.close()
+  }
+  fs.chmodSync(dbPath, 0o440)
+  const databaseBytes = fs.readFileSync(dbPath)
+  const command = ['verify-receipt-files', '--db', dbPath, '--files', files]
+
+  expect(await main(command)).toBe(0)
+  expect(console.log).toHaveBeenLastCalledWith(
+    JSON.stringify({ checked: 1, issues: [] }, null, 2)
+  )
+  fs.chmodSync(filename, 0o640)
+  fs.writeFileSync(filename, '<Testbeleg>Geändert</Testbeleg>')
+  expect(await main(command)).toBe(2)
+  expect(console.log).toHaveBeenLastCalledWith(
+    expect.stringContaining('Hash weicht ab.')
+  )
+  fs.unlinkSync(filename)
+  expect(await main(command)).toBe(2)
+  expect(console.log).toHaveBeenLastCalledWith(
+    expect.stringContaining('Datei fehlt oder ist nicht lesbar.')
+  )
+  expect(fs.readFileSync(dbPath)).toEqual(databaseBytes)
 })

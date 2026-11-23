@@ -169,7 +169,7 @@ const BACKSTUBE_ROUTES: readonly RouteRule[] = [
  * DIE Zuordnung Rolle → Routen + Startseite.
  *
  * - inhaber: alles, Start Dashboard. Nur er: u. a. Benutzer, Finanzen,
- *   Dienstplan, Rechnungen (`/admin/rechnungen`, API `/api/invoices`) und
+ *   Belege (`/admin/finance/belege`), Dienstplan, Rechnungen (`/admin/rechnungen`, API `/api/invoices`) und
  *   der Abgleich Produktion ↔ Kasse (`/admin/abgleich`, API `/api/abgleich`).
  * - verkauf: Vorbestellungen (M1, inkl. Abholliste darunter), Sammelstelle
  *   Mörsbach (heute die einzige Vorbestell-Erfassung), Produkte nur lesen
@@ -277,7 +277,7 @@ export const PERSONAL_ONLY_ROUTES: readonly string[] = [
   '/admin/users',
   // Finanzen und Tagesziel (B4: `inhaber` mit Passwort-Sitzung) - vorher
   // standen sie an der Station im Menü und antworteten dann mit 403
-  // (W4-verify r2). `/admin/finance` schließt `/admin/finance/tagesziel` ein.
+  // (W4-verify r2). `/admin/finance` schließt Tagesziel, Buchungen und Belege ein.
   '/admin/finance',
   // Dienstplan samt Mitarbeiterprofilen und Urlaub (TASK-042): Personendaten,
   // die API verlangt `requirePersonalSession` auf dem ganzen Router.

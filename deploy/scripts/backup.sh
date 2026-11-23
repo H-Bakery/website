@@ -21,6 +21,7 @@
 #   BACKUP_KEEP_LOCAL    lokale Kopien je Label (Vorgabe 7)
 #   BACKUP_SQLITE_METHOD auto | cli | node (Vorgabe auto)
 #   APP_DIR              Release mit node_modules/sqlite3 (Vorgabe /opt/bakery/current)
+#   RECEIPTS_DIR        Belegoriginale (Vorgabe /var/lib/bakery/belege)
 #   BACKUP_EXTRA_PATHS   weitere Pfade fürs Off-site-Backup, Leerzeichen-getrennt
 #   BACKUP_HOST          restic --host (Vorgabe bakery-box)
 #   RESTIC_REPOSITORY, RESTIC_PASSWORD_FILE, ggf. AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY
@@ -37,7 +38,8 @@
 #   0 ok · 2 Datenbank fehlt / Aufruf falsch · 5 kein Backup-Werkzeug
 #   6 Kopie fehlerhaft · 10 restic nicht installiert · 11 Off-site-Ziel nicht konfiguriert
 #   12 restic backup fehlgeschlagen · 13 restic forget/check fehlgeschlagen
-#   (bei 10-13 liegt die lokale Kopie trotzdem vor)
+#   15 Belegbestand unvollständig oder nicht prüfbar (kein restic, keine Aufbewahrungsbereinigung)
+#   (bei 10-13 und 15 liegt die lokale Kopie trotzdem vor)
 #
 # Wiederherstellen: deploy/scripts/restore.sh (siehe dort und docs/runbook.md).
 set -euo pipefail
@@ -130,6 +132,44 @@ chmod 0640 "$final"
 size="$(wc -c <"$final" | tr -d ' ')"
 log "lokale Kopie ok ($method, $size Bytes): $final"
 
+# Die Originale müssen zu genau der Kopie passen, die restic später erhält.
+# Alte Sicherungen ohne Belegtabellen und lokale DB-Kopien bleiben nutzbar.
+receipts_dir="${RECEIPTS_DIR:-$BAKERY_VAR/belege}"
+if [ "$local_only" -eq 0 ]; then
+  if [ "$method" = "cli" ]; then
+    # Die Kopie kann den WAL-Modus geerbt haben. Der konsistente Stand
+    # steht vollständig in der DB-Datei, auch ohne WAL/SHM am neuen Pfad.
+    receipt_db_uri="${final//%/%25}"
+    receipt_db_uri="${receipt_db_uri//\?/%3F}"
+    receipt_db_uri="${receipt_db_uri//\#/%23}"
+    receipt_db_uri="file:$receipt_db_uri?immutable=1"
+    receipt_table="$(sqlite3 -readonly -batch -bail -noheader -list "$receipt_db_uri" "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'receipt_files'")" ||
+      die 15 "Belegbestand der Datenbankkopie konnte nicht geprüft werden"
+    receipt_paths=""
+    if [ -n "$receipt_table" ]; then
+      receipt_paths="$(sqlite3 -readonly -batch -bail -noheader -list "$receipt_db_uri" "SELECT CASE WHEN path IS NULL OR path = '' OR instr(path,char(0)) OR instr(path,char(10)) OR instr(path,char(13)) THEN '-' ELSE path END FROM receipt_files")" ||
+        die 15 "Belegbestand der Datenbankkopie konnte nicht geprüft werden"
+    fi
+  else
+    receipt_paths="$(node "$SCRIPT_DIR/sqlite-tool.js" receipt-paths "$final" "$APP_DIR")" ||
+      die 15 "Belegbestand der Datenbankkopie konnte nicht geprüft werden"
+  fi
+
+  if [ -n "$receipt_paths" ]; then
+    [ -d "$receipts_dir" ] && [ ! -L "$receipts_dir" ] ||
+      die 15 "Belegordner fehlt oder ist ein Verweis: $receipts_dir. Lokale DB-Kopie: $final"
+    while IFS= read -r relative; do
+      [[ "$relative" =~ ^[0-9]{4}/(0[1-9]|1[0-2])/[a-f0-9]{64}\.(jpg|png|heic|pdf|xml)$ ]] ||
+        die 15 "Ungültiger Belegpfad in der Datenbankkopie"
+      original="$receipts_dir/$relative"
+      month_dir="${original%/*}"
+      [ -f "$original" ] && [ -r "$original" ] && [ ! -L "$original" ] &&
+        [ ! -L "$month_dir" ] && [ ! -L "${month_dir%/*}" ] ||
+        die 15 "Registriertes Belegoriginal fehlt oder ist nicht lesbar: $original. Lokale DB-Kopie: $final"
+    done <<< "$receipt_paths"
+  fi
+fi
+
 # --- 3. lokale Aufbewahrung ---
 
 # Dateinamen tragen den Zeitstempel, also sortiert `sort` chronologisch.
@@ -164,6 +204,9 @@ fi
 export RESTIC_REPOSITORY
 
 paths=("$BACKUP_DIR/current/bakery.db")
+if [ -d "$receipts_dir" ]; then
+  paths+=("$receipts_dir")
+fi
 # Aus /etc/bakery nur lesbare Dateien (bakery.env). ops.env und das restic-
 # Passwort sind für bakery absichtlich unlesbar - sie öffnen das Backup selbst
 # und gehören in den Passwort-Safe, nicht ins Backup. Ebenso nie ins Backup:
@@ -182,6 +225,7 @@ for f in "$BAKERY_ETC"/*; do
   fi
 done
 for p in ${BACKUP_EXTRA_PATHS:-}; do
+  [ "$p" != "$receipts_dir" ] || continue
   if [ -e "$p" ]; then paths+=("$p"); else warn "BACKUP_EXTRA_PATHS: $p existiert nicht - übersprungen"; fi
 done
 

@@ -46,6 +46,7 @@ const nextConfig = {
   // Use this to set Nx-specific options
   // See: https://nx.dev/recipes/next/next-config-setup
   nx: {},
+  experimental: { proxyClientMaxBodySize: 15_000_000 },
   env: {
     NEXT_PUBLIC_SW_VERSION: SW_VERSION,
   },

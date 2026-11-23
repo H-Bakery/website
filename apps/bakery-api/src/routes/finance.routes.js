@@ -45,22 +45,10 @@ const reportsFiles = require('../services/reports-files.core')
 const { berlinToday } = require('../services/backzettel-reference.core')
 
 const SUMMARY_FILENAME = 'finance-summary.json'
-const TRANSACTIONS_DIRNAME = 'transactions'
-
-/** Verzeichnis der Finanzdaten, relativ zu `apps/bakery-api/`. */
-function defaultFinanceDir() {
-  return path.join(
-    __dirname,
-    '..',
-    '..',
-    '..',
-    '..',
-    '..',
-    'hq',
-    'data',
-    'finance'
-  )
-}
+const {
+  createFinanceTransactionSource,
+  defaultFinanceDir,
+} = require('../services/finance-transaction-source')
 
 /**
  * Liest und bereinigt die Zusammenfassung. Liefert das Ergebnis von
@@ -280,37 +268,10 @@ function install(app, auth, options = {}) {
   // Einzelbuchungen (Buchungsliste, Detailseite)
   // -------------------------------------------------------------------------
 
-  const transactionsDir = path.join(financeDir, TRANSACTIONS_DIRNAME)
-
-  /** Monate mit Datei in `transactions/`, aufsteigend - wirft nie. */
-  function transactionMonths() {
-    try {
-      return transactions.monthsFromFileNames(fs.readdirSync(transactionsDir))
-    } catch {
-      return []
-    }
-  }
-
-  /** Rohzeilen eines Monats oder `null` (fehlt/ungültig) - wirft nie. */
-  function readMonth(month) {
-    const file = path.join(transactionsDir, `${month}.json`)
-    let text
-    try {
-      text = fs.readFileSync(file, 'utf-8')
-    } catch {
-      return null
-    }
-    const parsed = transactions.parseMonthFile(text)
-    if (parsed.status !== 'ok' || parsed.month !== month) {
-      log.warn(
-        `[finance] Buchungen ${month} verworfen: ${
-          parsed.reason || 'Monat passt nicht zum Dateinamen'
-        }`
-      )
-      return null
-    }
-    return parsed.transactions
-  }
+  const { transactionMonths, readMonth } = createFinanceTransactionSource({
+    financeDir,
+    log,
+  })
 
   /** Einzelbuchungen nie im Browser- oder Proxy-Cache ablegen. */
   function noStore(res) {

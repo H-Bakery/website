@@ -1,7 +1,7 @@
 # Plan: Bankbuchungen in der App - ansehen, zuordnen, mit Rechnungen verknüpfen
 
-Stand 22.11.2026. Planungsdokument, kein Pflichtenheft: Stufe 0 ist gebaut, alles danach ist
-Vorschlag und wartet auf die Entscheidungen des Inhabers (Abschnitt „Offene Fragen“).
+Planung mit Umsetzungsstand. Stufe 0 und die unten beschriebenen Teile aus Stufe 3 sind umgesetzt.
+Die weiteren Vorschläge stehen zur Entscheidung des Inhabers.
 Regeln der gebauten Teile: [`domains/finanzen.md`](domains/finanzen.md) (Abschnitt Buchungen),
 API: [`api/hq-data.md`](api/hq-data.md).
 
@@ -78,12 +78,12 @@ Empfehlung: erst a); b) nur, wenn das Herunterladen wirklich stört.
 
 ## Stufe 3 - Mit Rechnungen verknüpfen
 
-### 3a Ausgangsrechnungen (gibt es schon)
+### 3a Ausgangsrechnungen
 
 Eine Rechnung „per Überweisung“ wartet auf Geld. Ein Zahlungseingang trägt meist die
 Rechnungsnummer im Verwendungszweck.
 
-- **Vorschlag automatisch, Bestätigen von Hand.** Treffer, wenn ein Eingang die normalisierte
+- **Umgesetzt:** Vorschläge und manuelle Bestätigung an der Bankbuchung. Treffer, wenn ein Eingang die normalisierte
   Rechnungsnummer (`numberKey()` aus `invoice.core.js`) im Zweck enthält und der Betrag passt;
   schwächer: nur Betrag + Name. Der Inhaber bestätigt mit einem Tipp.
 - **Speicherort: Datenbank der App**, nicht hq (Rechnungen leben dort): Tabelle
@@ -91,24 +91,25 @@ Rechnungsnummer im Verwendungszweck.
 confirmed_by, confirmed_at)`. Teilzahlungen = mehrere Zeilen.
 - **Ausgestellte Rechnungen bleiben unveränderlich** - der Zahlungseingang ist ein eigener
   Datensatz, der Rechnungsinhalt und das festgeschriebene PDF ändern sich nicht.
-- **Anzeige auf beiden Seiten:** an der Buchung „gehört zu Rechnung RE-…“, an der Rechnung
+- **Noch offen:** an der Buchung „gehört zu Rechnung RE-…“, an der Rechnung
   „bezahlt am … (Bankeingang)“. Neue Liste **„Offene Posten“**: per Überweisung, fällig, kein
   Eingang.
 - Wenn sich eine Buchungs-ID ändert (vorgemerkt → gebucht), wird die Verknüpfung über Betrag +
   Datum ± 3 Tage + Gegenseite neu gesucht und als „bitte prüfen“ markiert, nie still umgehängt.
 
-### 3b Eingangsrechnungen und Belege (neu)
+### 3b Eingangsrechnungen und Belege
 
-Zu jeder Lieferanten-Abbuchung gehört ein Beleg. Heute ist der nur auf Papier.
+TASK-045 setzt die Ablage von Fotos, PDF und reiner UBL-/CII-XML um. Eine vorhandene
+PDF-Textschicht kann lokal mit `pdftotext` gelesen werden. Der Inhaber prüft den Vorschlag
+oder erfasst die Felder von Hand und bestätigt den Beleg ausdrücklich.
 
-- **Beleg erfassen:** an der Buchung „Beleg hinzufügen“ → Foto (Handy) oder PDF; Lieferant,
-  Rechnungsnummer, Datum, Betrag, Steuersatz von Hand (später Texterkennung als Vorschlag).
-- **Ablage:** Dateien auf der Box unter `/var/lib/bakery/belege/` mit SHA-256 in der Datenbank,
-  im restic-Backup. **Nicht** in `website` und nicht in hq (Git ist für PDFs und Fotos schlecht
-  geeignet). Aufbewahrungsfristen und GoBD-Anforderungen vorher mit dem Steuerberater klären.
-- **Abgleich:** „Ausgaben ohne Beleg“ je Monat als Liste - genau das, was der Steuerberater am
-  Jahresende fragt.
-- Optional: Belege per Telegram an Anna, die sie ablegt. Offen, ob gewünscht (siehe unten).
+- **Ablage:** konfigurierbarer Ordner auf der Box, Original mit SHA-256, Prüfservice und
+  Korrekturhistorie. Das Off-site-Skript nimmt den Ordner in die Sicherung auf.
+- **Abgleich:** Vorschläge, Teilzahlungen, Sammellastschriften und ausdrücklich bestätigte
+  Verknüpfungen. Die Monatslisten zeigen „Ausgaben ohne Beleg“ und „Belege ohne Buchung“.
+- **Offen:** eingebettete XML in ZUGFeRD/Factur-X-PDF, Bilderkennung, zusätzliche Eingangswege,
+  Backup-Ziel und Restore-Probe sowie Prüfung mit echten Belegen und Geräten.
+  [Fachregeln und Betrieb](domains/finanzen.md#belege-adminfinancebelege).
 
 ## Stufe 4 - Auswertungen auf dieser Grundlage
 

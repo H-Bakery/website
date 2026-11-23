@@ -111,6 +111,10 @@ export const MIGRATIONS: MigrationEntry[] = [
     module: require('../../migrations/20270402000000-preorders-external-payment.js'),
   },
   {
+    name: '20270403000000-receipts.js',
+    module: require('../../migrations/20270403000000-receipts.js'),
+  },
+  {
     name: '20270410000000-voice-usage.js',
     module: require('../../migrations/20270410000000-voice-usage.js'),
   },

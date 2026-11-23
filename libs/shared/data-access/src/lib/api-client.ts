@@ -393,6 +393,23 @@ export class ApiClient {
     )
   }
 
+  /** POST a single file as a raw request body with the normal session retry. */
+  async postFile<T>(
+    endpoint: string,
+    file: File,
+    options: RequestOptions = {}
+  ): Promise<ApiResponse<T>> {
+    return this.request<T>(
+      endpoint,
+      {
+        method: 'POST',
+        body: file,
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      },
+      options
+    )
+  }
+
   /** Binärdaten mit derselben Sitzung und Fehlerbehandlung wie JSON senden. */
   async postRaw<T>(
     endpoint: string,
