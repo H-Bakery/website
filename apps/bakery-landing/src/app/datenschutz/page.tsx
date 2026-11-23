@@ -181,6 +181,23 @@ export default function DatenschutzPage() {
 
         <LegalSection title="WhatsApp" level="h3">
           <P>
+            Der Warenkorb und der letzte Abholort werden im lokalen Speicher
+            Ihres Browsers (localStorage) gespeichert. Der Korb verfällt sieben
+            Tage nach der letzten Änderung seiner Artikel. Wenn „Auf diesem
+            Gerät merken“ angekreuzt ist, wird auch Ihr Name auf diesem Gerät
+            gespeichert. „Angaben vergessen“ löscht den Korb und die
+            gespeicherten Angaben. Für den Warenkorb setzen wir kein Tracking
+            ein.
+          </P>
+          <P>
+            Ihre Bestellangaben bleiben auf Ihrem Gerät, solange Sie den
+            Warenkorb auf unserer Website nutzen. Die Website bereitet den
+            Nachrichtentext und den QR-Code lokal vor. Wenn Sie den Link öffnen
+            oder den QR-Code scannen, wird der vorbereitete Text an WhatsApp
+            übergeben. Wir erhalten die Nachricht, wenn Sie sie selbst in
+            WhatsApp abschicken.
+          </P>
+          <P>
             Wir bieten Ihnen die Möglichkeit, Bestellungen und Anfragen per
             WhatsApp an uns zu richten. Wenn Sie auf einen WhatsApp-Link auf
             unserer Website klicken, werden Sie zu WhatsApp weitergeleitet.

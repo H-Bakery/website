@@ -1,6 +1,7 @@
 import React from 'react'
 import { Box } from '@mui/system'
 import { Typography } from '@mui/material'
+import { LEGAL } from '../../config/legal'
 
 const Contact: React.FC = () => {
   return (
@@ -27,7 +28,7 @@ const Contact: React.FC = () => {
           06841 2229
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          0170 6133279
+          {LEGAL.mobile}
         </Typography>
       </Box>
     </Box>

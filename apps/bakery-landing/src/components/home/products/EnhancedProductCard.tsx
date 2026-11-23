@@ -19,6 +19,7 @@ import Image from 'next/image'
 import { formatPrice } from '../../../utils/formatPrice'
 import { Product } from '../../../types/product'
 import RenderedImage from '../../products/RenderedImage'
+import { AddToCartButton } from '../../order/AddToCartButton'
 
 // Animation keyframes removed - using simple CSS transitions instead
 
@@ -156,6 +157,11 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
           </Box>
         </CardContent>
       </CardActionArea>
+      {product.available !== false && product.orderId && (
+        <Box sx={{ px: 2, pb: 2 }}>
+          <AddToCartButton id={product.orderId} />
+        </Box>
+      )}
     </Card>
   )
 }

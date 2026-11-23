@@ -3,8 +3,7 @@
  *
  * In CI läuft diese Suite gegen den statischen Export in
  * `apps/bakery-landing/out/` - dieselben Dateien, die nach GitHub Pages gehen.
- * Der Export hat kein `hq` und keine API: die Produkte kommen aus dem
- * gebündelten Fallback (`src/mocks/products`), genau wie auf der Live-Seite.
+ * Der Export verwendet den synthetischen Katalog aus `tools/e2e/hq-products`.
  * Deshalb steht hier keine feste Produktzahl; geprüft wird, dass die Seite
  * zeigt, was ihre Daten hergeben, und dass jede Karte auf eine existierende
  * Detailseite führt.

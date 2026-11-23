@@ -290,10 +290,14 @@ const Products: React.FC<Props> = (props) => {
         ? [...searchHits]
         : searchHits.filter((item) => item.category === category)
 
-    if (sortBy === 'price-asc') {
-      result.sort((a, b) => a.price - b.price)
-    } else if (sortBy === 'price-desc') {
-      result.sort((a, b) => b.price - a.price)
+    if (sortBy === 'price-asc' || sortBy === 'price-desc') {
+      const direction = sortBy === 'price-asc' ? 1 : -1
+      result.sort((a, b) => {
+        if (a.price === b.price) return 0
+        if (a.price === null) return 1
+        if (b.price === null) return -1
+        return (a.price - b.price) * direction
+      })
     } else if (sortBy === 'name') {
       result.sort((a, b) => a.name.localeCompare(b.name, 'de'))
     }

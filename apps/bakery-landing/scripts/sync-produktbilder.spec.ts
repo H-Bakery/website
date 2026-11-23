@@ -7,6 +7,7 @@ import { execFileSync, spawnSync } from 'child_process'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import { parseBilderLock } from '@bakery/shared/produkte-3d'
 
 const SCRIPT = path.join(__dirname, 'sync-produktbilder.js')
 const FIXTURES = path.join(
@@ -344,8 +345,6 @@ describe('sync-produktbilder mit einem Daten-Repo', () => {
 
 describe('das eingecheckte Lock', () => {
   it('ist gültig', () => {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { parseBilderLock } = require('@bakery/shared/produkte-3d')
     const lock = JSON.parse(
       fs.readFileSync(
         path.join(__dirname, '..', 'produkte-3d-bilder.lock.json'),

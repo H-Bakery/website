@@ -6,6 +6,8 @@ import { LocalFooter } from '../components/LocalFooter'
 import { getSeoOpeningHours } from '../utils/openingHours'
 import { Box } from '@mui/material'
 import { SITE_URL, LEGAL } from '../config/legal'
+import { loadOrderCatalogue } from '../lib/products'
+import { OrderProvider } from '../components/order/OrderProvider'
 
 export const metadata = {
   title:
@@ -221,37 +223,39 @@ export default function RootLayout({
       </head>
       <body>
         <ThemeRegistry>
-          <Box
-            sx={{
-              background:
-                'radial-gradient(143.25% 143.25% at 50% 100%, #FFFFFF 0%, rgba(255, 255, 255, 0) 100%), #FFF3E6',
-              minHeight: '100vh',
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-          >
-            {/* Erstes fokussierbares Element: springt an der Kopfzeile vorbei. */}
-            <Box component="a" href="#inhalt" sx={skipLinkSx}>
-              Zum Inhalt springen
-            </Box>
-            <Header />
+          <OrderProvider catalogue={loadOrderCatalogue()}>
             <Box
-              component="main"
-              id="inhalt"
-              tabIndex={-1}
               sx={{
-                flex: 1,
-                minHeight: 'calc(100vh - 332px)',
-                // Der Sprung landet nicht unter der fixierten Kopfzeile
-                // (Werte wie HEADER_SPACE in components/header).
-                scrollMarginTop: { xs: '72px', sm: '102px' },
-                '&:focus': { outline: 'none' },
+                background:
+                  'radial-gradient(143.25% 143.25% at 50% 100%, #FFFFFF 0%, rgba(255, 255, 255, 0) 100%), #FFF3E6',
+                minHeight: '100vh',
+                display: 'flex',
+                flexDirection: 'column',
               }}
             >
-              {children}
+              {/* Erstes fokussierbares Element: springt an der Kopfzeile vorbei. */}
+              <Box component="a" href="#inhalt" sx={skipLinkSx}>
+                Zum Inhalt springen
+              </Box>
+              <Header />
+              <Box
+                component="main"
+                id="inhalt"
+                tabIndex={-1}
+                sx={{
+                  flex: 1,
+                  minHeight: 'calc(100vh - 332px)',
+                  // Der Sprung landet nicht unter der fixierten Kopfzeile
+                  // (Werte wie HEADER_SPACE in components/header).
+                  scrollMarginTop: { xs: '72px', sm: '102px' },
+                  '&:focus': { outline: 'none' },
+                }}
+              >
+                {children}
+              </Box>
+              <LocalFooter />
             </Box>
-            <LocalFooter />
-          </Box>
+          </OrderProvider>
         </ThemeRegistry>
       </body>
     </html>

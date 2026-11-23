@@ -5,13 +5,17 @@
 
 import { LEGAL } from './legal'
 
+const whatsappNumber =
+  process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ||
+  LEGAL.mobileHref.replace(/^tel:\+?/, '')
+
 export const contactConfig = {
   whatsapp: {
     // WhatsApp number in international format without + or spaces
-    number: process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '491706133279',
+    number: whatsappNumber,
     // Fallback contact methods if WhatsApp is not available
     fallback: {
-      phone: process.env.NEXT_PUBLIC_PHONE_NUMBER || '+49 170 6133279',
+      phone: process.env.NEXT_PUBLIC_PHONE_NUMBER || LEGAL.mobile,
       email: process.env.NEXT_PUBLIC_CONTACT_EMAIL || LEGAL.email,
     },
     // Default message template
@@ -19,7 +23,7 @@ export const contactConfig = {
   },
   // Store contact information
   store: {
-    phone: process.env.NEXT_PUBLIC_STORE_PHONE || '+49 6841 2229',
+    phone: process.env.NEXT_PUBLIC_STORE_PHONE || LEGAL.phone,
     email: process.env.NEXT_PUBLIC_STORE_EMAIL || LEGAL.email,
     address: {
       street: 'Eckstraße 3',
@@ -38,10 +42,12 @@ export const contactConfig = {
 /**
  * Helper function to create WhatsApp link with message
  */
-export const createWhatsAppLink = (message?: string): string => {
-  const { number, defaultMessage } = contactConfig.whatsapp
-  const text = message || defaultMessage
-  return `https://wa.me/${number}?text=${encodeURIComponent(text)}`
+export const createWhatsAppLink = (
+  message: string | null = contactConfig.whatsapp.defaultMessage,
+  number = contactConfig.whatsapp.number
+): string => {
+  const base = `https://wa.me/${number}`
+  return message === null ? base : `${base}?text=${encodeURIComponent(message)}`
 }
 
 /**
@@ -50,7 +56,7 @@ export const createWhatsAppLink = (message?: string): string => {
 export const createPhoneLink = (phoneNumber?: string): string => {
   const number = phoneNumber || contactConfig.store.phone
   // Remove spaces and special characters for tel: link
-  const cleanNumber = number.replace(/[\s\-\(\)]/g, '')
+  const cleanNumber = number.replace(/[\s()-]/g, '')
   return `tel:${cleanNumber}`
 }
 

@@ -138,8 +138,8 @@ fields are kept, every `productId` (slug or numeric id) is resolved against `hq`
 name are taken from there**, `total` is recomputed, unknown or unavailable products and past dates
 (today in Europe/Berlin — the server runs in UTC) are rejected, and the answer is `400` with a
 German `message`, which `submitOrder()` surfaces in `checkout-error` (a 401/403 becomes
-`ORDERING_UNAVAILABLE_ERROR`, see Status). Opening hours and the Ruhetag
-are deliberately _not_ checked server-side: that would be a third copy of the hours table.
+`ORDERING_UNAVAILABLE_ERROR`, see Status).
+Die Shop-Kasse prüft Abholzeiten anhand des gemeinsamen Wochenrasters für Shop und Landing.
 
 **Der Warenkorb ist eine Momentaufnahme, der Server bepreist neu.** `CartProvider` legt jede
 Zeile mit Preis und Name im `localStorage` ab und lässt sie dort, bis die Kundschaft den Korb
@@ -351,13 +351,10 @@ like the landing app.
   (`checkout-items-unavailable`, submit disabled) until they are removed.
 - Touch targets in header search, cart and product detail are at least 44 × 44 px; do not shrink
   them back.
-- Opening hours: `apps/bakery-landing/src/config/openingHours.ts` is the source of truth, mirrored
-  into `libs/shared/ui/src/lib/footer/footer-openings.tsx` and into `feature-cart/src/lib/pickup.ts`
-  because an Nx lib may not import from an app. **Inside the shop there is only the `pickup.ts`
-  copy** — the footer and the JSON-LD (`structured-data.tsx`) render `OPENING_HOURS_ROWS`, which
-  `pickup.ts` _derives_ from the same `WEEKDAY_HOURS` table the checkout uses for its slots, so a
-  displayed hour can never disagree with a bookable one. Do not re-inline an hours literal in a
-  component; a change to the hours touches all three copies.
+- **Öffnungszeiten:** Shop und Landing teilen das Wochenraster `WEEKDAY_HOURS` in
+  `feature-cart/src/lib/pickup.ts`. Die Shop-Kasse leitet ihre Abholzeiten daraus ab. Footer und
+  JSON-LD nutzen die daraus abgeleitete Darstellung `OPENING_HOURS_ROWS`. Die Landing prüft
+  per Test die Übereinstimmung mit dem Wochenraster der API für den Dienstplan.
 - `libs/shared/utils` `contactConfig` (`contact.ts`) still carries a wrong address (Hauptstraße 123,
   München). The shop footer hardcodes the correct Homburg address instead.
 - Only **Chromium** Playwright browsers are installed; the E2E config is scoped to `chromium` + a

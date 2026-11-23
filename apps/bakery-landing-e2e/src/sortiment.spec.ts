@@ -2,9 +2,8 @@
  * @fileoverview Bedienung des Sortiments: Kategorie per Tastatur, Seitenwechsel
  * auf dem Handy, Suche aus der Adresse und „Zurück“ von einer Produktseite.
  *
- * Läuft in CI gegen den statischen Export mit dem gebündelten Produkt-Fallback
- * (siehe landing-smoke.spec.ts), lokal gegen das, was der Dev-Server liest -
- * am besten das synthetische `tools/e2e/hq-products`. Deshalb datengetrieben:
+ * Der statische CI-Export und der lokale Testserver verwenden den synthetischen
+ * Katalog `tools/e2e/hq-products`. Die Tests sind datengetrieben:
  * Namen und Seitenzahlen kommen aus der Seite, nicht aus dem Test.
  */
 

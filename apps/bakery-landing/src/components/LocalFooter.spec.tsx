@@ -2,6 +2,13 @@ import { screen } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import { FOOTER_WAPPEN_SRC, LocalFooter } from './LocalFooter'
 import { LEGAL } from '../config/legal'
+import { createWhatsAppLink } from '../config/contact'
+
+jest.mock('../config/contact', () => {
+  const contact = jest.requireActual('../config/contact')
+  contact.contactConfig.whatsapp.number = '15550100000'
+  return contact
+})
 
 describe('LocalFooter', () => {
   it('renders clickable phone and mobile numbers', () => {
@@ -29,7 +36,7 @@ describe('LocalFooter', () => {
     }
     expect(screen.getByRole('link', { name: 'WhatsApp' })).toHaveAttribute(
       'href',
-      'https://wa.me/491706133279'
+      createWhatsAppLink(null)
     )
   })
 
