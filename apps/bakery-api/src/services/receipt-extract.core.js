@@ -74,6 +74,20 @@ function rate(value) {
 }
 
 const UNKNOWN_CURRENCY = 'XXX'
+const CURRENCY_CODES = [
+  'EUR',
+  'USD',
+  'GBP',
+  'CHF',
+  'CAD',
+  'AUD',
+  'JPY',
+  'PLN',
+  'DKK',
+  'NOK',
+  'SEK',
+  'CZK',
+]
 const MISSING_GROSS = 'Der Bruttobetrag fehlt oder ist ungültig.'
 
 function knownCurrency(currency) {
@@ -202,11 +216,30 @@ function mergeTextResult(previous, previousFlags, next, today) {
 const TEXT_MONEY = '([+-]?(?:\\d{1,3}(?:\\.\\d{3})+|\\d+),\\d{2})(?![\\d,.])'
 const TEXT_DATE = '(\\d{1,2}\\.\\d{1,2}\\.\\d{4}|\\d{4}-\\d{2}-\\d{2})'
 
+/** Währung einer Betragszeile: Code oder eindeutiges Symbol, `$` bleibt offen. */
+function lineCurrency(before, after) {
+  const token = before || after
+  if (!token) return null
+  if (token === '€') return 'EUR'
+  if (token === '£') return 'GBP'
+  if (token === '$') return UNKNOWN_CURRENCY
+  return token.toUpperCase()
+}
+
 function textGross(text) {
-  const currency = '(?:[A-Z]{3}|[€$£])'
-  const amount = '[ \\t:]*' + '(?:' + currency + '[ \\t]*)?' + TEXT_MONEY
+  // Nur bekannte Codes: Mit dem i-Flag passte [A-Z]{3} sonst auf Wörter wie „von“.
+  const currency = '(' + CURRENCY_CODES.join('|') + '|[€$£])'
+  const amount =
+    '[ \\t:]*' +
+    '(?:' +
+    currency +
+    '[ \\t]*)?' +
+    TEXT_MONEY +
+    '(?:[ \\t]*' +
+    currency +
+    '(?![A-Za-z]))?'
   const explicit = new RegExp(
-    '\\b(?:Gesamtbetrag(?:[ \\t]+brutto)?|Bruttobetrag|Brutto(?:summe)?|Summe[ \\t]+brutto|Endbetrag)\\b(?:' +
+    '\\b(?:Gesamtbetrag(?:[ \\t]+brutto)?|Rechnungsbetrag(?:[ \\t]+brutto)?|Bruttobetrag|Brutto(?:summe)?|Summe[ \\t]+brutto|Endbetrag)\\b(?:' +
       amount +
       ')?',
     'gi'
@@ -214,13 +247,8 @@ function textGross(text) {
   const generic = new RegExp('^[ \\t]*(?:Summe|Total)\\b' + amount, 'gim')
   const labels = [...text.matchAll(explicit)]
   const preferred = labels.length > 0
-  const amounts = [
-    ...new Set(
-      (preferred ? labels : [...text.matchAll(generic)]).map((match) =>
-        cents(match[1], true)
-      )
-    ),
-  ]
+  const matches = preferred ? labels : [...text.matchAll(generic)]
+  const amounts = [...new Set(matches.map((match) => cents(match[2], true)))]
   if (preferred && amounts.includes(null)) {
     return {
       gross: null,
@@ -230,14 +258,29 @@ function textGross(text) {
   if (amounts.length > 1) {
     return { gross: null, reason: 'Mehrere unterschiedliche Summen gefunden.' }
   }
-  return { gross: amounts[0] ?? null }
+  // Die Währung der gewählten Summenzeile geht der des übrigen Texts vor.
+  const currencies = [
+    ...new Set(
+      matches.map((match) => lineCurrency(match[1], match[3])).filter(Boolean)
+    ),
+  ]
+  return {
+    gross: amounts[0] ?? null,
+    currency:
+      currencies.length === 0
+        ? null
+        : currencies.length === 1
+        ? currencies[0]
+        : UNKNOWN_CURRENCY,
+  }
 }
 
 function textCurrency(text) {
   const explicit = /\bWährung[ \t]*:?[ \t]*([A-Z]{3})\b/.exec(text)?.[1]
   if (explicit) return explicit
   const tokens = new Set(
-    text.match(/\b(?:EUR|USD|GBP|CHF|CAD|AUD|JPY|PLN|DKK|NOK|SEK|CZK)\b/g) || []
+    text.match(new RegExp('\\b(?:' + CURRENCY_CODES.join('|') + ')\\b', 'g')) ||
+      []
   )
   if (text.includes('€')) tokens.add('EUR')
   return tokens.size === 1 ? [...tokens][0] : 'XXX'
@@ -280,7 +323,11 @@ function extractText(text, today) {
       'i'
     )
   )
-  const { gross, reason: grossReason } = textGross(text)
+  const {
+    gross,
+    currency: grossCurrency,
+    reason: grossReason,
+  } = textGross(text)
   const discount = /\b(\d{1,2}(?:,\d{1,3})?)\s*%\s+Skonto\b/i.exec(text)
   const discountDate = capture(
     new RegExp('Skonto[^\\r\\n]*?\\bbis[ \\t]+' + TEXT_DATE, 'i')
@@ -327,7 +374,7 @@ function extractText(text, today) {
     invoice_date: date(documentDate),
     due_date: date(due),
     gross_cents: gross,
-    currency: textCurrency(text),
+    currency: grossCurrency ?? textCurrency(text),
     payment: /\bLastschrift\b/i.test(text)
       ? 'lastschrift'
       : /\b(?:Bar bezahlt|Barzahlung)\b/i.test(text)

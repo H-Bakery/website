@@ -909,3 +909,51 @@ it('lässt die Währung eines Fotos offen und gleicht einen manuell erfassten Fr
   expect(matches.body.data.proposals).toEqual([])
   await owner().post(LINKS).set(auth()).send(link).expect(422)
 })
+
+it('lässt eine spätere Erkennung die Felder einer bestätigten Verknüpfung nicht still ändern', async () => {
+  await writeMonth([
+    bankRow('feed4455', {
+      amount: -17.85,
+      booking_date: '2026-11-22',
+      purpose: 'Testzahlung Textschicht',
+    }),
+  ])
+  const { doc, done } = openDocument({ info: { Title: 'Synthetischer Beleg' } })
+  doc.text(PDF_TEXT)
+  doc.end()
+  const receipt = await extracted(await done)
+  await owner()
+    .post(LINKS)
+    .set(auth())
+    .send({
+      transaction_id: 'feed4455',
+      kind: 'receipt',
+      target_id: receipt.id,
+      amount_cents: 1785,
+    })
+    .expect(201)
+
+  // Die angehängte XML weist 107,00 € aus - die Verknüpfung über 17,85 € bleibt.
+  await extracted(
+    cii.replace('BEISPIEL-002', 'BEISPIEL-XML-NACH-LINK'),
+    BILL + '/' + receipt.id + '/files'
+  )
+  const detail = await owner()
+    .get(BILL + '/' + receipt.id)
+    .set(auth())
+    .expect(200)
+  expect(detail.body.data).toMatchObject({
+    extracted_by: 'xml',
+    invoice_number: 'BEISPIEL-XML-NACH-LINK',
+    gross_cents: 1785,
+    currency: 'EUR',
+  })
+  expect(detail.body.data.field_flags.gross_cents).toMatch(
+    /anderen Wert \(10700\).*bestätigte Buchungsverknüpfung bleibt/
+  )
+  const missing = await owner()
+    .get(BANK + '?monat=' + MONTH)
+    .set(auth())
+    .expect(200)
+  expect(JSON.stringify(missing.body.data)).not.toContain('feed4455')
+})

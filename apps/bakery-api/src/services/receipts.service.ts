@@ -120,6 +120,24 @@ function changed(before: ReceiptFields, after: ReceiptFields) {
   )
 }
 
+/** Felder, an denen eine bestätigte Buchungsverknüpfung hängt. */
+const LINK_FIELDS = ['gross_cents', 'currency', 'kind', 'payment'] as const
+
+/** Passt der neue Stand nicht mehr zu den bestätigten Verknüpfungen? */
+function linkConflict(
+  before: ReceiptFields,
+  after: ReceiptFields,
+  allocated: number
+) {
+  return (
+    after.gross_cents == null ||
+    after.gross_cents < allocated ||
+    after.currency !== before.currency ||
+    after.kind !== before.kind ||
+    after.payment === 'bar'
+  )
+}
+
 function publicReceipt(row: ReceiptRow) {
   return {
     id: row.id,
@@ -594,6 +612,20 @@ export class ReceiptsService {
             this.today()
           ) as Extraction)
         : result
+    // Bestätigte Buchungsverknüpfungen gelten: Die Erkennung darf die Felder,
+    // an denen sie hängen, nicht still ändern. Sie meldet die Abweichung, der
+    // Inhaber entscheidet per Korrektur (PATCH, mit Audit).
+    if ((await this.confirmedLinks(row.id, transaction)).length) {
+      for (const field of LINK_FIELDS) {
+        const extracted = fields[field]
+        if (extracted === before[field]) continue
+        Object.assign(fields, { [field]: before[field] })
+        field_flags[field] =
+          'Die Erkennung ergab einen anderen Wert (' +
+          String(extracted ?? 'leer') +
+          '). Die bestätigte Buchungsverknüpfung bleibt bestehen - bitte prüfen.'
+      }
+    }
     await this.saveFields(
       row.id,
       fields,
@@ -615,6 +647,22 @@ export class ReceiptsService {
     )
   }
 
+  private confirmedLinks(id: number, transaction: Transaction) {
+    return select<LinkRow>(
+      "SELECT * FROM transaction_links WHERE kind = 'receipt' AND target_id = $id AND status = 'bestaetigt'",
+      { id },
+      transaction
+    )
+  }
+
+  private allocated(links: LinkRow[], id: number) {
+    return (
+      balances(links).byTarget.get(
+        targetKey({ kind: 'receipt', target_id: id })
+      ) ?? 0
+    )
+  }
+
   async patch(id: number, input: unknown, req: Request) {
     const patch = readPatch(input)
     await getSequelize().transaction(async (transaction) => {
@@ -628,22 +676,9 @@ export class ReceiptsService {
       const changes = changed(before, after)
       if (!Object.keys(changes).length) return
 
-      const links = await select<LinkRow>(
-        "SELECT * FROM transaction_links WHERE kind = 'receipt' AND target_id = $id AND status = 'bestaetigt'",
-        { id },
-        transaction
-      )
+      const links = await this.confirmedLinks(id, transaction)
       if (links.length) {
-        const allocated = balances(links).byTarget.get(
-          targetKey({ kind: 'receipt', target_id: id })
-        )
-        if (
-          after.gross_cents == null ||
-          after.gross_cents < allocated ||
-          after.currency !== before.currency ||
-          after.kind !== before.kind ||
-          after.payment === 'bar'
-        ) {
+        if (linkConflict(before, after, this.allocated(links, id))) {
           throw new ReceiptError(
             409,
             'receipt_has_links',

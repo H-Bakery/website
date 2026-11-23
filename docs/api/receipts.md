@@ -49,7 +49,12 @@ Scheitert ein Erkennungslauf, enthält die Detailantwort `extraction_errors` mit
 Hinweis. Rohdaten und vollständige Extraktionsfelder bleiben auf dem Server. Der gemeinsame
 Feldvorschlag wird mit `extracted_by`, `confidence` und `field_flags` gespeichert. Bei bereits
 bearbeiteten, bestätigten oder verworfenen Belegen protokolliert die Erkennung ihren Lauf und
-belässt die Belegfelder. Pure XML hat Vorrang vor einer Textschicht. Nach einem Prozessneustart
+belässt die Belegfelder. Pure XML hat Vorrang vor einer Textschicht. Hat ein Beleg schon eine
+bestätigte Buchungsverknüpfung, ändert eine spätere Erkennung (etwa eine angehängte XML) Brutto,
+Währung, Belegart und Zahlungsart nicht; ein abweichender Wert steht als „bitte prüfen“ in
+`field_flags`, die Korrektur macht der Inhaber per `PATCH`. In der Textschicht gelten
+„Gesamtbetrag“, „Rechnungsbetrag“, „Brutto“ und „Endbetrag“ vor einer allgemeinen „Summe“; die
+Währung kommt aus der gewählten Summenzeile, `$` bleibt offen. Nach einem Prozessneustart
 bleibt ein noch unbearbeiteter Beleg manuell prüfbar.
 
 `PATCH` akzeptiert unter anderem `kind`, `supplier_name`, `supplier_vat_id`, `supplier_iban`,

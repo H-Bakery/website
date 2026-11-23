@@ -187,3 +187,33 @@ it('lässt Brutto bei einem unlesbaren Gesamtbetrag trotz lesbarer Zwischensumme
   expect(result.fields.gross_cents).toBeNull()
   expect(result.field_flags.gross_cents).toMatch(/konnte nicht gelesen/)
 })
+
+it('bevorzugt den Rechnungsbetrag vor einer abweichenden Zwischensumme', () => {
+  const result = core.extractText(
+    'Summe: 100,00 EUR\nRechnungsbetrag: 119,00 EUR',
+    today
+  )
+  expect(result.fields).toMatchObject({ gross_cents: 11900, currency: 'EUR' })
+  expect(result.field_flags.gross_cents).toBeUndefined()
+})
+
+it.each([
+  ['Gesamtbetrag: $ 119,00\nBankgebühr in EUR', 'XXX', /unklar/],
+  ['Gesamtbetrag: 119,00 CHF\nBankgebühr in EUR', 'CHF', /Fremdwährung/],
+  ['Gesamtbetrag: £ 119,00\nBankgebühr in EUR', 'GBP', /Fremdwährung/],
+])(
+  'nimmt die Währung aus der Summenzeile, nicht aus dem übrigen Text (%s)',
+  (text, currency, flag) => {
+    const result = core.extractText(text, today)
+    expect(result.fields).toMatchObject({ gross_cents: 11900, currency })
+    expect(result.field_flags.currency).toMatch(flag)
+  }
+)
+
+it('hält ein Wort hinter dem Gesamtbetrag nicht für eine Währung', () => {
+  const result = core.extractText(
+    'Gesamtbetrag: 119,00 von Beispiel-Mühle GmbH\nAlle Beträge in EUR',
+    today
+  )
+  expect(result.fields).toMatchObject({ gross_cents: 11900, currency: 'EUR' })
+})
