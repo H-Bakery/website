@@ -272,6 +272,7 @@ check "Vorlage caddy.env.example: lan-http" test "$(bash -c '. "$1"; caddy_mode 
 CADDY_DIR="$REPO_ROOT/deploy/caddy"
 check "gemeinsamer Block in beiden Caddyfiles gleich" sh -c "test -n \"\$(sed -n '/^# >>> gemeinsam/,/^# <<< gemeinsam/p' '$CADDY_DIR/Caddyfile')\" && test \"\$(sed -n '/^# >>> gemeinsam/,/^# <<< gemeinsam/p' '$CADDY_DIR/Caddyfile')\" = \"\$(sed -n '/^# >>> gemeinsam/,/^# <<< gemeinsam/p' '$CADDY_DIR/Caddyfile.lan-http')\""
 check "gemeinsamer Block: /api -> 5000, sonst -> 4201" sh -c "sed -n '/^# >>> gemeinsam/,/^# <<< gemeinsam/p' '$CADDY_DIR/Caddyfile' | grep -q 'reverse_proxy 127.0.0.1:5000' && sed -n '/^# >>> gemeinsam/,/^# <<< gemeinsam/p' '$CADDY_DIR/Caddyfile' | grep -q 'reverse_proxy 127.0.0.1:4201'"
+check "Mikrofon nur für dieselbe Origin" grep -Fq 'Permissions-Policy "camera=(), microphone=(self), geolocation=(), payment=(), usb=()"' "$CADDY_DIR/Caddyfile"
 check "HTTPS-Caddyfile setzt HSTS" sh -c "grep -v '^[[:space:]]*#' '$CADDY_DIR/Caddyfile' | grep -q 'Strict-Transport-Security'"
 check "LAN-HTTP ohne HSTS, ohne TLS, auf :80" sh -c "! grep -v '^[[:space:]]*#' '$CADDY_DIR/Caddyfile.lan-http' | grep -q 'Strict-Transport-Security\|tls ' && grep -q '^:80 {' '$CADDY_DIR/Caddyfile.lan-http' && grep -q 'auto_https off' '$CADDY_DIR/Caddyfile.lan-http'"
 if command -v caddy >/dev/null 2>&1; then
@@ -467,12 +468,39 @@ rm -f "$STATE_DIR/maintenance"
 
 expect 1 "ohne Telegram: Störung nur im Log" env HEALTH_API_URL="http://127.0.0.1:$P_CLOSED/health" "$SCRIPTS/health.sh"
 check "Log sagt, dass Telegram fehlt" log_has "Telegram nicht konfiguriert"
+# Fehlender Alarmkanal: eigener Zustand OFFEN, einmal gemeldet, macht keinen Lauf rot
+check "Log: Alarmkanal OFFEN" log_has "Alarmkanal: OFFEN - Telegram nicht eingerichtet"
+check "einmal als NICHT EINGERICHTET im Log" log_has "NICHT EINGERICHTET auf testbox"
 expect 0 "ohne Telegram: wieder gesund" "$SCRIPTS/health.sh"
+check "fehlender Alarmkanal wird nicht erneut gemeldet" sh -c "! grep -q 'NICHT EINGERICHTET' '$TEST_TMP/last.log' && grep -q 'Alarmkanal: OFFEN' '$TEST_TMP/last.log'"
+check "Zustand alarm=open" grep -q "^alarm=open" "$STATE_DIR/health.state"
+before="$(tg_count)"
+expect 0 "Telegram eingerichtet -> Bestätigung über den neuen Kanal" env "${TG_ENV[@]}" "$SCRIPTS/health.sh"
+check "eine Nachricht: Alarmkanal jetzt eingerichtet" sh -c "test \"\$(grep -c '^POST' '$TG_LOG')\" = $((before + 1)) && grep -q 'Alarmkanal (jetzt eingerichtet)' '$TG_LOG'"
 
 mkdir -p "$BAKERY_VAR/backup"
 expect 1 "Backup-Prüfung: noch nie gesichert" env HEALTH_CHECKS="backup" "$SCRIPTS/health.sh"
 touch -t 202001010000 "$BAKERY_VAR/backup/last-success"
 expect 1 "Backup-Prüfung: zu alt" env HEALTH_CHECKS="backup" "$SCRIPTS/health.sh"
+# Off-site-Ziel nicht eingerichtet (Q4): entsteht die lokale Kopie der Nacht,
+# ist das OFFEN - einmal gemeldet, der Lauf bleibt grün (sonst wäre die Unit
+# bis zur Antwort des Inhabers alle 5 Minuten rot und ein echter Ausfall unsichtbar).
+mkdir -p "$BAKERY_VAR/backup/current"
+touch "$BAKERY_VAR/backup/current/bakery.db"
+rm -f "$STATE_DIR/health.state"
+before="$(tg_count)"
+expect 0 "Backup ohne Off-site-Ziel, lokale Kopie frisch -> offen, nicht rot" env "${TG_ENV[@]}" HEALTH_CHECKS="backup" "$SCRIPTS/health.sh"
+check "Log: Backup OFFEN, nennt Q4" log_has "Backup: OFFEN - Off-site-Backup nicht eingerichtet .*Q4"
+check "Zustand backup=open" grep -q "^backup=open" "$STATE_DIR/health.state"
+check "einmal gemeldet: NICHT EINGERICHTET" sh -c "test \"\$(grep -c '^POST' '$TG_LOG')\" = $((before + 1)) && grep -q 'NICHT EINGERICHTET auf testbox' '$TG_LOG'"
+expect 0 "nächster Lauf: weiter offen" env "${TG_ENV[@]}" HEALTH_CHECKS="backup" "$SCRIPTS/health.sh"
+check "keine zweite Nachricht" test "$(tg_count)" = "$((before + 1))"
+expect 1 "mit Off-site-Ziel zählt nur last-success -> gestört" env "${TG_ENV[@]}" HEALTH_CHECKS="backup" RESTIC_REPOSITORY="$TEST_TMP/repo" "$SCRIPTS/health.sh"
+check "Meldung: STÖRUNG Backup" grep -q "Backup: Backup: letzter Erfolg vor" "$TG_LOG"
+touch -t 202001010000 "$BAKERY_VAR/backup/current/bakery.db"
+expect 1 "ohne Off-site-Ziel, lokale Kopie zu alt -> gestört" env "${TG_ENV[@]}" HEALTH_CHECKS="backup" "$SCRIPTS/health.sh"
+check "Log nennt die lokale Kopie und journalctl" log_has "lokale DB-Kopie: letzter Erfolg vor .*journalctl -u bakery-backup"
+rm -rf "$BAKERY_VAR/backup/current"
 touch "$BAKERY_VAR/backup/last-success"
 expect 0 "Backup-Prüfung: frisch" env HEALTH_CHECKS="backup" "$SCRIPTS/health.sh"
 expect 0 "hq-Sync-Prüfung: frisch" env HEALTH_CHECKS="hq-sync" "$SCRIPTS/health.sh"
@@ -531,6 +559,35 @@ done
 check "lokale Aufbewahrung: 2 von 3 behalten" test "$(find "$BACKUP_DIR/snapshots" -name 'bakery-probe-*.db' | wc -l | tr -d ' ')" = "2"
 expect 2 "ungültiges Label" "$SCRIPTS/backup.sh" --local-only --label 'a b'
 
+# Aufruf aus einem Verzeichnis, das der ausführende Benutzer nicht betreten darf
+# (auf der Box: `sudo deploy.sh` aus /home/<admin>, backup.sh läuft als bakery).
+# GNU find bricht dort ab ("Failed to restore initial working directory"); die
+# Attrappe verhält sich auf macOS genauso. Die Skripte wechseln deshalb nach /.
+NOCWD="$TEST_TMP/nocwd"
+CWDBIN="$TEST_TMP/cwdbin"
+REAL_FIND="$(command -v find)"
+mkdir -p "$NOCWD" "$CWDBIN"
+cat >"$CWDBIN/find" <<EOF
+#!/bin/sh
+if ! ls . >/dev/null 2>&1; then
+  echo "find: Failed to restore initial working directory: Permission denied" >&2
+  exit 1
+fi
+exec "$REAL_FIND" "\$@"
+EOF
+chmod +x "$CWDBIN/find"
+from_nocwd() {
+  local rc=0
+  (cd "$NOCWD" && chmod 000 "$NOCWD" && PATH="$CWDBIN:$PATH" "$@") || rc=$?
+  chmod 755 "$NOCWD"
+  return "$rc"
+}
+if [ "$(id -u)" -ne 0 ]; then
+  expect 1 "Attrappe: find scheitert im unlesbaren Verzeichnis" from_nocwd find "$BACKUP_DIR/snapshots" -maxdepth 1 -name 'bakery-probe-*.db'
+fi
+expect 0 "backup.sh --local-only aus unlesbarem Verzeichnis" from_nocwd "$SCRIPTS/backup.sh" --local-only --label cwd
+check "Kopie angelegt und als ok gemeldet" sh -c "grep -q 'lokale Kopie ok' '$TEST_TMP/last.log' && ! grep -q 'Failed to restore' '$TEST_TMP/last.log' && ls '$BACKUP_DIR'/snapshots/bakery-cwd-*.db >/dev/null"
+
 # restic-Attrappe: protokolliert die Aufrufe
 FAKEBIN="$TEST_TMP/fakebin"
 mkdir -p "$FAKEBIN"
@@ -553,6 +610,14 @@ expect 11 "Passwortdatei fehlt -> exit 11" env PATH="$FAKEBIN:$PATH" RESTIC_REPO
 rm -f "$BACKUP_DIR/last-success" "$TEST_TMP/restic.log"
 expect 0 "voller Lauf mit restic-Attrappe" env PATH="$FAKEBIN:$PATH" RESTIC_REPOSITORY="$TEST_TMP/repo" RESTIC_PASSWORD_FILE="$BAKERY_ETC/restic-password" "$SCRIPTS/backup.sh"
 check "restic backup mit current/bakery.db" grep -q "restic backup .*backup/current/bakery.db" "$TEST_TMP/restic.log"
+check "Backup klappt ohne Belegordner" sh -c "! grep -q '/belege' '$TEST_TMP/restic.log'"
+mkdir -p "$BAKERY_VAR/belege" "$TEST_TMP/eigene belege" "$TEST_TMP/extra"
+expect 0 "Belegordner im Off-site-Backup" env PATH="$FAKEBIN:$PATH" RESTIC_REPOSITORY="$TEST_TMP/repo" RESTIC_PASSWORD_FILE="$BAKERY_ETC/restic-password" "$SCRIPTS/backup.sh"
+check "Standardordner im restic-Aufruf" grep -Fq "$BAKERY_VAR/belege" "$TEST_TMP/restic.log"
+expect 0 "eigener Belegordner neben BACKUP_EXTRA_PATHS" env PATH="$FAKEBIN:$PATH" RECEIPTS_DIR="$TEST_TMP/eigene belege" BACKUP_EXTRA_PATHS="$TEST_TMP/extra" RESTIC_REPOSITORY="$TEST_TMP/repo" RESTIC_PASSWORD_FILE="$BAKERY_ETC/restic-password" "$SCRIPTS/backup.sh"
+check "eigener Belegordner im restic-Aufruf" grep -Fq "$TEST_TMP/eigene belege" "$TEST_TMP/restic.log"
+check "Zusatzpfad weiterhin im restic-Aufruf" grep -Fq "$TEST_TMP/extra" "$TEST_TMP/restic.log"
+
 check "Passwortdatei nicht im Backup" sh -c "! grep -q 'restic-password' '$TEST_TMP/restic.log'"
 check "ops.env nicht im Backup" sh -c "! grep -q 'ops.env' '$TEST_TMP/restic.log'"
 check "GitHub-App-Schlüssel und Token nicht im Backup" sh -c "! grep -q 'github-app.pem\|hq-token' '$TEST_TMP/restic.log'"
@@ -569,10 +634,42 @@ check "kein forget bei RESTIC_FORGET=0" sh -c "! grep -q 'restic forget' '$TEST_
 check "Log: Append-only" log_has "RESTIC_FORGET=0"
 expect 12 "restic backup schlägt fehl -> exit 12" env PATH="$FAKEBIN:$PATH" FAKE_RESTIC_EXIT=1 RESTIC_REPOSITORY="$TEST_TMP/repo" RESTIC_PASSWORD_FILE="$BAKERY_ETC/restic-password" "$SCRIPTS/backup.sh"
 
+# Eine Kopie mit registrierten Originalen braucht einen vollständigen Belegordner.
+RECEIPT_DB="$TEST_TMP/mit-belegen.db"
+RECEIPT_BACKUP="$TEST_TMP/backup-belege"
+RECEIPT_DIR="$TEST_TMP/registrierte belege"
+RECEIPT_A="2026/11/$(printf 'a%.0s' {1..64}).pdf"
+RECEIPT_B="2026/11/$(printf 'b%.0s' {1..64}).xml"
+cp "$DB_PATH" "$RECEIPT_DB"
+sqlite3 "$RECEIPT_DB" "CREATE TABLE receipt_files (path TEXT NOT NULL)"
+receipt_backup() {
+  env PATH="$FAKEBIN:$PATH" APP_DIR="$REPO_ROOT" DB_PATH="$RECEIPT_DB" BACKUP_DIR="$RECEIPT_BACKUP" \
+    RECEIPTS_DIR="$RECEIPT_DIR" RESTIC_REPOSITORY="$TEST_TMP/repo" RESTIC_PASSWORD_FILE="$BAKERY_ETC/restic-password" "$@" "$SCRIPTS/backup.sh"
+}
+expect 0 "leere Belegtabelle ohne Ordner bleibt sicherbar" receipt_backup BACKUP_SQLITE_METHOD=cli
+sqlite3 "$RECEIPT_DB" "INSERT INTO receipt_files VALUES ('$RECEIPT_A'), ('$RECEIPT_B')"
+cp "$RECEIPT_BACKUP/last-success" "$TEST_TMP/receipt-last-success"
+: >"$TEST_TMP/restic.log"
+expect 15 "registrierte Originale ohne Ordner stoppen Off-site" receipt_backup BACKUP_SQLITE_METHOD=cli
+check "Meldung nennt fehlenden Belegordner" log_has "Belegordner fehlt"
+mkdir -p "$RECEIPT_DIR/2026/11"
+printf 'synthetisches Original' >"$RECEIPT_DIR/$RECEIPT_A"
+expect 15 "ein fehlendes Original stoppt Off-site trotz Ordner (Node-SQLite)" receipt_backup BACKUP_SQLITE_METHOD=node
+check "fehlende Dateien starten weder restic backup noch forget" test ! -s "$TEST_TMP/restic.log"
+check "fehlende Originale lassen last-success stehen" cmp "$TEST_TMP/receipt-last-success" "$RECEIPT_BACKUP/last-success"
+check "lokale DB-Kopie bleibt bei Exit 15 erhalten" sh -c "ls '$RECEIPT_BACKUP'/snapshots/bakery-nightly-*.db >/dev/null"
+printf 'zweites synthetisches Original' >"$RECEIPT_DIR/$RECEIPT_B"
+expect 0 "vollständiger registrierter Belegbestand erlaubt wieder Off-site" receipt_backup BACKUP_SQLITE_METHOD=node
+check "vollständige Belegablage wird übernommen und Aufbewahrung läuft" sh -c "grep -Fq '$RECEIPT_DIR' '$TEST_TMP/restic.log' && grep -q 'restic forget' '$TEST_TMP/restic.log'"
+
 SNAP="$(find "$BACKUP_DIR/snapshots" -name 'bakery-nightly-*.db' | sort | tail -n 1)"
 expect 0 "restore --from-file prüft die Kopie" "$SCRIPTS/restore.sh" --from-file "$SNAP" --target "$TEST_TMP/restore1"
 check "restore zeigt Tabellen" log_has "users"
 expect 6 "restore einer kaputten Datei" "$SCRIPTS/restore.sh" --from-file "$TEST_TMP/broken.db" --target "$TEST_TMP/restore2"
+# relative Pfade gelten ab dem Verzeichnis des Aufrufers, obwohl das Skript nach / wechselt
+restore_relative() { (cd "$TEST_TMP" && "$SCRIPTS/restore.sh" --from-file "${SNAP#"$TEST_TMP"/}" --target restore-relativ); }
+expect 0 "restore mit relativen Pfaden" restore_relative
+check "Kopie liegt im Verzeichnis des Aufrufers" test -f "$TEST_TMP/restore-relativ/bakery.db"
 
 STUB_SYSTEMCTL="$FAKEBIN/systemctl"
 cat >"$STUB_SYSTEMCTL" <<EOF
@@ -732,6 +829,14 @@ cp "$DB" "$TEST_TMP/live.db"
 expect 0 "Deploy mit DB legt pre-deploy-Kopie an" env "${DEPLOY_ENV[@]}" DB_PATH="$TEST_TMP/live.db" APP_DIR="$REPO_ROOT" BACKUP_SQLITE_METHOD=cli "$SCRIPTS/deploy.sh" main
 check "pre-deploy-Kopie vorhanden" sh -c "ls '$BACKUP_DIR'/snapshots/bakery-pre-deploy-*.db >/dev/null"
 check "Pfad der Kopie vermerkt" sh -c "test -f \"\$(cat '$STATE_DIR/deploy-pre-db')\""
+# ... auch wenn deploy.sh aus einem Verzeichnis gestartet wird, das der
+# App-Benutzer nicht betreten darf (Deploy vom 12.11.: "DB-Kopie fehlgeschlagen",
+# obwohl sie geschrieben war)
+PRE_BEFORE="$(cat "$STATE_DIR/deploy-pre-db")"
+sleep 1
+expect 0 "Deploy aus unlesbarem Verzeichnis" from_nocwd env "${DEPLOY_ENV[@]}" DB_PATH="$TEST_TMP/live.db" APP_DIR="$REPO_ROOT" BACKUP_SQLITE_METHOD=cli "$SCRIPTS/deploy.sh" main
+check "DB-Kopie zählt als gelungen" sh -c "! grep -q 'DB-Kopie vor dem Deploy fehlgeschlagen' '$TEST_TMP/last.log' && grep -q 'DB-Kopie vor dem Umschalten' '$TEST_TMP/last.log'"
+check "neue Kopie vermerkt" sh -c "test -f \"\$(cat '$STATE_DIR/deploy-pre-db')\" && test \"\$(cat '$STATE_DIR/deploy-pre-db')\" != '$PRE_BEFORE'"
 
 # Ein Commit, den es nur im Code-Repository der Box gibt (nicht auf origin),
 # wird gebaut, aber nie aktiviert: der root-eigene Klon kennt ihn nicht.

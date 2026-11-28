@@ -15,6 +15,8 @@
 
 'use strict'
 
+const kalender = require('../../src/services/kalender.core')
+
 function bucket(amount, subcategories = {}, extra = {}) {
   return {
     amount,
@@ -164,4 +166,72 @@ function kasseMonth({
   }
 }
 
-module.exports = { buildReportSummary, kasseMonth, listMonths }
+/** Alle Tage eines Monats `JJJJ-MM` als `JJJJ-MM-TT`. */
+function datesOf(month) {
+  const [y, m] = month.split('-').map(Number)
+  const total = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  return Array.from(
+    { length: total },
+    (_, i) => `${month}-${String(i + 1).padStart(2, '0')}`
+  )
+}
+
+/**
+ * Backzettel-Stammdaten, wie `backzettel-source.ts` sie liefert, nur mit dem,
+ * was die Öffnungstage brauchen: Montag Ruhetag (`days` 2-7) und ein Kalender
+ * mit den gesetzlichen Feiertagen der `years` plus eigenen `tage`.
+ */
+function calendarConfig({ years = [2025, 2026], tage = [] } = {}) {
+  return {
+    days: [2, 3, 4, 5, 6, 7],
+    dough_days: [2, 3, 4, 5, 6, 7],
+    calendar: kalender.normalizeKalender({
+      version: 1,
+      bundesland: 'saarland',
+      feiertage: Object.fromEntries(
+        years.map((y) => [
+          y,
+          kalender
+            .holidaysSaarland(y)
+            .map((h) => ({ datum: h.date, name: h.name })),
+        ])
+      ),
+      tage,
+    }),
+  }
+}
+
+/** Öffnungstage laut `config` in `month`, wahlweise ab `from` / bis `to`. */
+function openDates(config, month, { from = '', to = '9999', skip = [] } = {}) {
+  return datesOf(month).filter(
+    (d) =>
+      d >= from &&
+      d <= to &&
+      !skip.includes(d) &&
+      kalender.dayKind(config, d).open
+  )
+}
+
+/**
+ * Monatssumme der Kasse wie `kasseMonth`, aber mit Berichten genau an
+ * `reportDates` (`missingDays` wie bei `reports.core.aggregateMonth`).
+ */
+function kasseMonthOn(month, reportDates, amounts = {}) {
+  const have = new Set(reportDates)
+  return {
+    ...kasseMonth({ ...amounts, days: reportDates.length }),
+    from: `${month}-01`,
+    to: datesOf(month).slice(-1)[0],
+    missingDays: datesOf(month).filter((d) => !have.has(d)),
+  }
+}
+
+module.exports = {
+  buildReportSummary,
+  kasseMonth,
+  kasseMonthOn,
+  calendarConfig,
+  openDates,
+  datesOf,
+  listMonths,
+}

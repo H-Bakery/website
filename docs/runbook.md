@@ -260,6 +260,69 @@ Telegram: mit @BotFather einen eigenen Bot „Bäckerei Box" anlegen (nicht Anna
 gewünschten Chat schreiben, die Chat-ID über `https://api.telegram.org/bot<TOKEN>/getUpdates`
 ablesen.
 
+**Bankverbindung für Rechnungen.** Die Ausgangsrechnungen (`/admin/rechnungen`,
+[domains/rechnungen.md](domains/rechnungen.md)) drucken die Bankverbindung der Bäckerei und
+schreiben sie in die ZUGFeRD-XML. Sie steht nicht im öffentlichen Repo, sondern in
+`/etc/bakery/bakery.env`:
+
+```bash
+sudoedit /etc/bakery/bakery.env
+#   INVOICE_IBAN="DE.. .... .... .... .... .."     Leerzeichen erlaubt, dann in Anführungszeichen
+#   INVOICE_BIC=........
+#   INVOICE_ACCOUNT_HOLDER="Vorname Nachname"
+#   INVOICE_BANK_NAME="Name der Bank"              optional, nur Fußzeile
+sudo systemctl restart bakery-api                  # kein Rebuild nötig
+```
+
+Eine Box, deren `bakery.env` älter ist als diese Funktion, hat die Zeilen noch nicht - von Hand
+ergänzen (Vorlage: `deploy/bakery.env.example`). Prüfen: als Inhaber `/admin/rechnungen` öffnen und
+einen Entwurf anlegen; fehlt etwas oder ist die IBAN falsch (Prüfziffer), steht dort
+„Die Bankverbindung der Bäckerei ist auf der Box nicht eingerichtet …“ und „Ausstellen“ wird
+abgelehnt. Die Tabellen `invoices` / `invoice_lines` legt die Migration beim ersten Start der API
+nach dem Deploy an (wie jede Migration, §4). Die Rechnungen liegen in der SQLite-Datenbank und sind
+damit im Backup (§5) - **auch die ausgestellten PDF-Dateien selbst** (Spalte `invoices.pdf` mit
+SHA-256, etwa 40 kB je Rechnung): es gibt kein eigenes Verzeichnis, das zusätzlich gesichert werden
+müsste. Ausgestellte Rechnungen werden **nicht** nach 90 Tagen anonymisiert (Aufbewahrung § 14b
+UStG); liegengebliebene Entwürfe verlieren im nächtlichen Lauf Name und Anschrift.
+
+- **Schriften:** das PDF braucht `apps/bakery-api/assets/fonts/LiberationSans-*.ttf` aus dem
+  Release (kommen mit dem Repo, nichts zu installieren). Fehlen sie, steht beim Start der API
+  `[WARN] Rechnungs-PDF: Schriften nicht gefunden …` im Journal
+  (`journalctl -u bakery-api | grep Rechnungs-PDF`), der Entwurf zeigt einen roten Hinweis und
+  „Ausstellen“ antwortet mit 503 `invoice_fonts_missing` - es wird nichts halb ausgestellt.
+  Abhilfe: Release prüfen bzw. neu deployen; notfalls `INVOICE_FONTS_DIR` auf ein Verzeichnis mit
+  beiden Dateien setzen.
+- **Anmeldung:** Rechnungen gibt es nur mit Benutzername und Passwort, nicht mit der PIN am
+  Laden-Tablet.
+- **Rollback:** die Migration der Rechnungstabellen lässt sich nicht zurückrollen, solange es
+  ausgestellte oder stornierte Rechnungen gibt (`down` bricht ab). Das ist Absicht. Nur mit
+  gesicherter Datenbank und `INVOICES_ALLOW_DROP=1` wird trotzdem gelöscht. Ein Rollback des
+  Releases (§4.1) braucht das nicht: ältere Releases lassen die Tabellen einfach unbenutzt.
+
+**Spracheingabe für Rest am Abend (TASK-048).** Vor der Pilotfreigabe:
+
+- [ ] HTTPS gemäß §3.7 einrichten. Beide Caddy-Profile erlauben den Mikrofonzugriff für dieselbe Origin. Die Aufnahme braucht einen sicheren Browserkontext mit HTTPS.
+- [ ] Mitarbeitende schriftlich gemäß Art. 13 DSGVO über die Verarbeitung informieren. Die Nutzung ist freiwillig. Tippen bleibt gleichwertig. [Art. 13 DSGVO](https://eur-lex.europa.eu/eli/reg/2016/679/oj/deu)
+- [ ] AVV/DPA für die genutzten Anbieter in hq ablegen.
+- [ ] Bei Claude einen eigenen Workspace „Verwaltung“ und einen eigenen API-Schlüssel getrennt von den Agenten anlegen. Für den Workspace eine monatliche Ausgabengrenze in der Console setzen. [Claude-Workspace-Limits](https://platform.claude.com/docs/en/manage-claude/workspaces)
+- [ ] Beim genutzten STT-Anbieter eine harte Ausgabengrenze in der Console setzen. Bei Mistral den Workspace begrenzen. Bei OpenAI im Projekt das harte Limit aktivieren. [Mistral-Ausgabengrenzen](https://docs.mistral.ai/admin/billing-usage/usage-limits) · [OpenAI-Ausgabengrenzen](https://developers.openai.com/api/docs/guides/spend-limits)
+- [ ] Den STT-Vergleich aus Phase 0 durchführen und das Pilotmodell festlegen. Die Mistral-Vorgabe `voxtral-mini-2602` ist als veraltet markiert. Den Nachfolger `voxtral-mini-transcribe-3-0` mit deutschen Aufnahmen am EU-Endpunkt mittesten. Für OpenAI ist `gpt-transcribe` die Vorgabe. [Mistral-Modellstatus](https://docs.mistral.ai/models/voxtral-mini-transcribe-26-02) · [OpenAI-Transkriptionsdoku](https://developers.openai.com/api/docs/guides/speech-to-text)
+
+Zur Freigabe in `bakery.env` `VOICE_ENABLED=1`, `VOICE_STT_PROVIDER=mistral`
+und `MISTRAL_API_KEY` setzen. Für OpenAI `openai` und `OPENAI_API_KEY` setzen.
+`VOICE_STT_MODEL` überschreibt die Vorgabe. Mit `ANTHROPIC_API_KEY` und
+`VOICE_LLM_MODEL` (Vorgabe `claude-haiku-5-5`) kann die API Parser-Lücken an
+Claude schicken. Die Schlüssel bleiben in der API-Umgebung. Nach Änderungen
+reicht ein Neustart der API.
+
+`VOICE_MONTHLY_BUDGET_EUR` (Vorgabe 10) steuert das Budget auf Basis lokaler
+Kostenschätzungen. `VOICE_STT_USD_PER_MINUTE` überschreibt den Schätzwert
+(0,003 USD/min für Mistral, 0,006 USD/min für OpenAI). Die harte Ausgabengrenze
+gilt in der jeweiligen Anbieter-Console. `VOICE_RATE_PER_MINUTE` (10) und
+`VOICE_RATE_PER_DAY` (150) begrenzen die Nutzung je Benutzer. Bei 80 % steht
+einmal pro Monat eine Warnung im API-Journal und die Zählseite zeigt einen
+Hinweis. [Spracheingabe und Kostenschätzung](api/sprache.md)
+
 ### 3.7 Zertifikat (DNS-01, Q2)
 
 **LAN-HTTP bis Q2 (Entscheidung 2026-11-08).** Bis das Zertifikat da ist, läuft Caddy mit
@@ -425,6 +488,12 @@ Was passiert:
 
 Während des Neustarts liegt `state/maintenance`, damit der Health-Check nicht Alarm schlägt.
 
+Von wo aus man `deploy.sh` (oder ein anderes Skript aus `/opt/bakery/bin`) startet, ist egal: jedes
+Skript wechselt beim Start nach `/`. Bis 12.11. brach ein Deploy aus `/home/<admin>` mit „DB-Kopie
+vor dem Deploy fehlgeschlagen“ ab, weil `bakery` dieses Verzeichnis nicht betreten darf (`find:
+Failed to restore initial working directory`) – die Kopie war da, nur das Aufräumen scheiterte.
+Relative Pfade (`restore.sh --from-file`, `--target`) gelten weiter ab dem eigenen Verzeichnis.
+
 `npm ci` und der Build laufen als `bakery` mit **geleerter Umgebung** (`env -i`): sie sehen nur
 `PATH`, `HOME`, Locale, die Nx-/Node-Schalter und die Build-Schlüssel aus `bakery.env`
 (`NEXT_PUBLIC_*`, `API_URL`, `HQ_*_DIR`, `TZ`; einstellbar über `DEPLOY_BUILD_ENV_KEYS`) – kein
@@ -468,9 +537,16 @@ Jede Nacht um 23:30 (`bakery-backup.timer`; Backbeginn ist 02:00):
    und restic-Passwort – sie öffnen das Backup selbst und gehören in den Passwort-Safe –, und
    ohne Schlüssel und Token der GitHub-App: das Token entsteht nach einem Restore neu),
    `BACKUP_EXTRA_PATHS` (Vorgabe: hq-Schreib-Klon mit evtl. noch nicht gepushten Commits)
+   sowie der Belegordner `RECEIPTS_DIR` (Vorgabe `/var/lib/bakery/belege`)
 4. `restic forget --keep-daily 14 --keep-weekly 8 --prune` (nicht bei `RESTIC_FORGET=0`),
    sonntags zusätzlich `restic check`
 5. `backup/last-success` – der Health-Check meldet, wenn es älter als 36 h ist
+
+**Solange das Off-site-Ziel fehlt (Q4, `RESTIC_REPOSITORY` in `ops.env` leer):** die Schritte 1–2
+laufen jede Nacht, dann endet `bakery-backup.service` mit Exit 11 und steht in `systemctl
+--failed` – das ist gewollt, das Log nennt Q4 und die lokale Kopie. Der Health-Check prüft
+währenddessen `backup/current/bakery.db` (jünger als 36 h) und führt das Backup als „OFFEN“ (§8.1).
+Die Daten liegen dann nur auf der Box selbst.
 
 Nicht gesichert, weil reproduzierbar: Code (`/opt/bakery`), hq-Lese-Klon (liegt auf GitHub).
 
@@ -486,6 +562,29 @@ mit Exit 1 ab und nennt sie – dann zuerst die API in Ordnung bringen (§4). Vo
 `sudo systemctl start bakery-anonymize && journalctl -u bakery-anonymize -n 50` (Probelauf:
 `cli.js anonymize-preorders --dry-run`). Die Backups enthalten die Namen noch bis zu ihrem Ablauf
 (`--keep-weekly 8`, also höchstens etwa 8 Wochen länger).
+
+### Belegoriginale
+
+Standardordner ist `/var/lib/bakery/belege`. Bei einem abweichenden Verzeichnis `RECEIPTS_DIR`
+in der gemeinsamen Box-Umgebung setzen, damit API und Backup denselben absoluten Pfad nutzen.
+Im regulären Systemdienst liegt dieser Ordner unter `/var/lib/bakery`, wo die API schreiben darf.
+Der Benutzer `bakery` braucht Schreibzugriff im Ablageordner und Lesezugriff für die Sicherung.
+Die API erzeugt die Unterordner bei Bedarf. Neue Originale erhalten Modus `0440`. Die nächtliche
+Off-site-Sicherung nimmt den Ordner auf, sobald er existiert. Die Sicherung prüft anhand der
+SQLite-Kopie, ob alle registrierten Originale vorhanden und lesbar sind. Ein fehlender Ordner
+bei registrierten Originalen oder eine fehlende Datei beendet den Lauf mit Exit 15 vor der
+Aufbewahrungsbereinigung. Die lokale SQLite-Kopie bleibt dabei erhalten.
+`--local-only` erzeugt wie bisher
+eine reine Datenbankkopie. Datenbank und Originale werden beim vollständigen Restore aus derselben
+Snapshot-ID geholt und mit `cli.js verify-receipt-files` geprüft (§5.3).
+
+Beim Löschen eines ungeprüften Belegs wird dessen Eintrag aus der App entfernt. Die unveränderten
+Dateibytes bleiben im Sicherungsordner, damit eine bereits laufende DB-Sicherung konsistent
+zurückgespielt werden kann. Die Betriebs- und Aufbewahrungsregeln für diese Dateien bleiben offen.
+
+Für automatische Vorschläge aus PDF-Textschichten kann auf der Box optional `poppler-utils`
+installiert werden. Die API findet `pdftotext` über den Programmpfad. Ohne das Programm werden die
+Belegfelder von Hand erfasst.
 
 ### 5.2 Erstes Einrichten des Off-site-Ziels (Q4)
 
@@ -508,46 +607,107 @@ Entwickler-Rechner mit einem eigenen, vollen Zugang (nicht auf der Box):
 
 ### 5.3 Restore-Übung (vor M0, dann monatlich)
 
-Ziel: beweisen, dass sich die Daten **auf einem anderen Rechner** zurückholen lassen.
+Ziel ist eine geprüfte Kopie der Datenbank und der Belegoriginale auf einem anderen Rechner.
 
-1. Auf dem Entwickler-Rechner restic installieren; Repository-Adresse und Zugangsdaten aus
-   `ops.env`, das Passwort aus dem **Passwort-Safe** (nicht von der Box kopieren – genau das wird
-   geübt).
-2. Website-Repo auschecken (für `restore.sh` und `sqlite-tool.js`), dann:
+1. Restic installieren. Repository-Adresse und Zugangsdaten aus `ops.env` und das
+   Repository-Passwort aus dem Passwort-Safe verwenden. Das Website-Repo auschecken,
+   Abhängigkeiten installieren und `npm run build:api` ausführen.
+2. Eine **konkrete Snapshot-ID** aus der Liste auswählen. Die Pfade in diesem Beispiel entsprechen
+   der Standardkonfiguration der gesicherten Box. Bei abweichendem `BACKUP_DIR` oder
+   `RECEIPTS_DIR` hier und beim Einspielen die passenden absoluten Pfade setzen.
 
    ```bash
-   export RESTIC_REPOSITORY=... RESTIC_PASSWORD_FILE=~/restic-pw AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=...
    restic snapshots --tag bakery
-   BACKUP_DIR=/var/lib/bakery/backup deploy/scripts/restore.sh --snapshot latest --target ~/restore-test
+   read -r -p 'Snapshot-ID: ' snapshot
+   backup_dir=/var/lib/bakery/backup
+   receipt_dir=/var/lib/bakery/belege
+   stage=$(mktemp -d)
+   restic restore "$snapshot" --target "$stage" \
+     --include "$backup_dir/current/bakery.db" \
+     --include "$receipt_dir"
+   db="$stage$backup_dir/current/bakery.db"
+   mkdir -p "$stage$receipt_dir"
    ```
 
-   Das Skript prüft `integrity_check` und zeigt die Zeilen je Tabelle. Plausibel? (Anzahl
-   Benutzer, Vorbestellungen der letzten Tage.)
+   Die Datenbank und die Originale stammen so aus demselben Snapshot. Das leere Verzeichnis
+   deckt Sicherungen vor dem ersten Upload ab. Enthält die Datenbank Belege, meldet die
+   Hash-Prüfung jeden fehlenden Eintrag.
 
-3. Ergebnis mit Datum im Log von roadmap.md §11 vermerken. Restore-Kopie danach löschen
-   (enthält Kundendaten).
+3. Die Kopie per `integrity_check` und die Originale gegen die SHA-256-Werte der Datenbank prüfen.
+   Bei Fehlern oder unerwarteter Zeilenzahl die Kopie untersuchen, bevor sie eingespielt wird.
+   Bei Dateien mit abweichendem Modus meldet `find` deren Pfad.
 
-### 5.4 Ernstfall: DB auf der Box zurückholen
+   ```bash
+   deploy/scripts/restore.sh --from-file "$db" --target "$stage/db-check"
+   node dist/apps/bakery-api/bundle/cli.js verify-receipt-files \
+     --db "$db" --files "$stage$receipt_dir"
+   find "$stage$receipt_dir" -type f ! -perm 0440 -print
+   ```
 
-```bash
-sudo /opt/bakery/bin/restore.sh --snapshot latest                 # erst nur holen und prüfen
-sudo /opt/bakery/bin/restore.sh --snapshot latest --apply         # dann einspielen
-# oder aus einer lokalen Kopie:
-sudo /opt/bakery/bin/restore.sh --from-file /var/lib/bakery/backup/snapshots/<datei>.db --apply
-```
+   Der Hash-Befehl öffnet SQLite schreibgeschützt. Exit 0 bestätigt alle registrierten Originale.
+   Exit 2 meldet fehlende oder veränderte Dateien. Bei älteren Sicherungen aus der Zeit vor der
+   Belegfunktion fehlt die Tabelle `receipt_files` und es ist nur die Datenbankprüfung möglich.
 
-`--apply` stoppt die API, verschiebt die alte DB **samt `-wal` und `-shm`** nach
-`bakery.db.vor-restore-<Zeit>`, setzt die Kopie ein und startet die API. Währenddessen liegt
-`state/maintenance` (kein Fehlalarm), und das nächtliche Backup wartet (gemeinsame Sperre). Die `-wal`-Datei der
-alten DB darf nie neben der eingespielten liegen bleiben – SQLite würde sie anwenden und die DB
-beschädigen.
+4. Snapshot-ID, Datum und Ergebnis im Log von roadmap.md §11 vermerken. Die Restore-Kopie
+   anschließend löschen.
+
+### 5.4 Ernstfall: Datenbank und Belegoriginale einspielen
+
+1. Wie in §5.3 **beide Pfade aus derselben Snapshot-ID** in ein privates Temporärverzeichnis holen.
+   Auf der Box die Prüfungen mit `/opt/bakery/bin/restore.sh` und
+   `/opt/bakery/current/dist/apps/bakery-api/bundle/cli.js` ausführen. Die Shell-Variablen
+   `stage`, `db` und `receipt_dir` aus diesem Abruf beibehalten.
+2. Das Backup-Timerfenster schließen und gegebenenfalls das bereits laufende Backup beenden
+   lassen. Dann die API und die Verwaltung stoppen. Die bisherige Belegablage als Ganzes
+   sichern und die geprüfte Kopie mit Eigentümer `bakery:bakery`, Verzeichnismodus `0750`
+   und Dateimodus `0440` einsetzen.
+
+   ```bash
+   sudo systemctl stop bakery-backup.timer
+   # Erst fortfahren, wenn bakery-backup.service inaktiv ist.
+   sudo systemctl is-active bakery-backup.service
+   sudo systemctl stop bakery-management.service bakery-api.service
+   stamp=$(date +%Y%m%d-%H%M%S)
+   if sudo test -e "$receipt_dir"; then
+     sudo mv -- "$receipt_dir" "$receipt_dir.vor-restore-$stamp"
+   fi
+   sudo install -d -o bakery -g bakery -m 0750 "$receipt_dir"
+   sudo cp -a -- "$stage$receipt_dir/." "$receipt_dir/"
+   sudo chown -R bakery:bakery "$receipt_dir"
+   sudo find "$receipt_dir" -type d -exec chmod 0750 {} +
+   sudo find "$receipt_dir" -type f -exec chmod 0440 {} +
+   ```
+
+3. Die zugehörige Datenbank einspielen. `--apply` legt die bisherige DB samt `-wal` und
+   `-shm` beiseite und startet die API. Danach als Benutzer `bakery` die installierte DB
+   und den installierten Belegordner verifizieren. Hier den konfigurierten `DB_PATH` einsetzen.
+   Die Verwaltung und den Timer erst nach erfolgreicher Prüfung wieder starten.
+
+   ```bash
+   sudo /opt/bakery/bin/restore.sh --from-file "$db" --apply
+   sudo -u bakery node /opt/bakery/current/dist/apps/bakery-api/bundle/cli.js \
+     verify-receipt-files --db /var/lib/bakery/bakery.db --files "$receipt_dir"
+   sudo systemctl start bakery-management.service bakery-backup.timer
+   ```
+
+Bei einem Fehler die Dienste bis zur Klärung gestoppt halten und die beiseitegelegte Kopie
+aus Datenbank und Belegen gemeinsam zurücksetzen. Eine lokale `--local-only`-Kopie eignet sich
+für einen reinen DB-Rollback mit weiterhin vorhandenen passenden Originalen. Vor solch einem
+Rollback das Kopiepaar ebenfalls mit dem Hash-Befehl prüfen.
 
 ### 5.5 Box komplett verloren
 
-Neue Box nach §3 aufsetzen, dann `bakery.env` aus dem Backup holen
-(`restic restore latest --target /tmp/r --include /etc/bakery`), `ops.env` und das
-restic-Passwort aus dem Passwort-Safe, `install.sh`, `deploy.sh`,
-`restore.sh --snapshot latest --apply`.
+Neue Box nach §3 vorbereiten. Eine konkrete Snapshot-ID wie in §5.3 auswählen. Aus diesem
+Snapshot auch die gesicherte `bakery.env` holen. `ops.env` und das Restic-Passwort stammen
+aus dem Passwort-Safe.
+
+```bash
+restic restore "$snapshot" --target "$stage" --include /etc/bakery/bakery.env
+```
+
+`bakery.env` wieder einrichten, `install.sh` und `deploy.sh` ausführen und anschließend
+Datenbank und Belegordner derselben Snapshot-ID nach §5.4 einspielen. Die Hash-Prüfung
+vor der Freigabe der Verwaltung ausführen.
 
 ## 6. hq-Sync
 
@@ -698,6 +858,16 @@ systemctl --failed
 Nicht `sudo -u bakery health.sh` von Hand: als `bakery` ist `ops.env` nicht lesbar, das Skript
 hätte keinen Telegram-Zugang, würde eine Störung aber trotzdem als „gemeldet" vermerken.
 
+**Drei Zustände je Prüfung.** `ok`, `GESTÖRT` (Telegram „STÖRUNG“, der Lauf endet mit Exit 1, die
+Unit steht in `systemctl --failed`) und `OFFEN`: die Box läuft, aber etwas ist noch nicht
+eingerichtet – das Off-site-Ziel des Backups (Q4) oder der Alarmkanal selbst (`TELEGRAM_BOT_TOKEN`
+/ `TELEGRAM_CHAT_ID` in `ops.env` leer; Prüfung „Alarmkanal“, läuft immer mit). `OFFEN` wird einmal
+gemeldet („NICHT EINGERICHTET“, ohne Telegram nur im Journal), steht bei jedem Lauf als eine Zeile
+im Log und macht die Unit nicht rot. Eine rote `bakery-health.service` heißt damit immer: jetzt
+ist etwas gestört. Bis 12.11. war sie wegen des fehlenden Off-site-Ziels bei jedem Lauf rot.
+Sobald Telegram eingetragen ist, kommt beim nächsten Lauf „WIEDER OK … Alarmkanal (jetzt
+eingerichtet)“ – das ist zugleich der Test des Kanals.
+
 Testalarm: `sudo systemctl stop bakery-management`, bis zu 5 Minuten warten → Telegram „STÖRUNG",
 `sudo systemctl start bakery-management` → „WIEDER OK". Gemeldet wird nur der Wechsel, nicht jede
 Minute der Störung.
@@ -720,6 +890,7 @@ Minute der Störung.
 | Backzettel/Vorbestellungen fehlen in hq               | `/api/hq-sync/status` → `snapshots`, `journalctl -u bakery-snapshot-preorders` | §6.1; offline wird alle 15 min nachgeschoben                                            |
 | Alarm „Speicherplatz"                                 | `df -h /var/lib/bakery`, `du -sh /opt/bakery/releases/*`                       | `KEEP_RELEASES` senken, `journalctl --vacuum-time=14d`, alte `backup/snapshots` löschen |
 | Produkte/Preise geändert, App zeigt alten Stand       | `cat /var/lib/bakery/state/hq-sync.ok`                                         | Änderung schon in hq `main` gemerged? Sonst „wartet auf Freigabe" (D6); Sync von Hand   |
+| Health-Log „OFFEN“ / Meldung „NICHT EINGERICHTET“     | `journalctl -u bakery-health -n 20`                                            | kein Ausfall: Q4 bzw. Telegram in `ops.env` eintragen (§8.1); die Unit bleibt grün      |
 | Kein Telegram trotz Störung                           | `journalctl -u bakery-health -n 20`                                            | Token/Chat-ID in `ops.env`; Telegram-Fehler werden beim nächsten Lauf erneut gesendet   |
 
 ## 9. Papierbetrieb (Papier-Fallback)

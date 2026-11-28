@@ -35,6 +35,7 @@
 'use strict'
 
 const configCore = require('./backzettel-config.core')
+const doughCore = require('./backzettel-dough.core')
 const refCore = require('./backzettel-reference.core')
 const kalender = require('./kalender.core')
 const { csvCell, deNumber } = require('./partner-stats.core')
@@ -271,6 +272,44 @@ function parseQty(raw, row, label) {
   return { ok: true, value: integer ? n : round2(n) }
 }
 
+/** Gesprochene absolute Menge in die Eingabeeinheit der Zählzeile bringen. */
+function parseSpokenQty(qty, spokenUnit, row) {
+  if (spokenUnit === 'g' && (row.itemUnit === 'kg' || row.unit === 'kg')) {
+    qty /= 1000
+    spokenUnit = 'kg'
+  }
+  if (spokenUnit && spokenUnit !== row.unit) {
+    if (
+      spokenUnit !== row.itemUnit ||
+      !Number.isFinite(row.factor) ||
+      row.factor <= 0
+    ) {
+      return {
+        ok: false,
+        message: `Einheit prüfen (${spokenUnit} → ${row.unit}).`,
+      }
+    }
+    const input = parseQty(qty, {
+      unit: row.itemUnit,
+      integer: false,
+    })
+    if (!input.ok) return input
+    qty = round4(input.value / row.factor)
+  }
+  const parsed = parseQty(qty, row)
+  if (
+    parsed.ok &&
+    (row.unit === 'Liter' || row.unit === 'kg') &&
+    !Number.isInteger(parsed.value * 2)
+  ) {
+    return {
+      ok: false,
+      message: `Die Menge in ${row.unit} muss in halben Schritten angegeben werden.`,
+    }
+  }
+  return parsed
+}
+
 function fail(status, error, message, extra) {
   return { ok: false, status, error, message, ...(extra || {}) }
 }
@@ -500,7 +539,11 @@ function acknowledgedExtra(delta) {
  * einmal: `deltaTotals[key]` (über alle Zettel summiert), sonst die
  * Nachträge an den Zeilen.
  *
- * @returns {Map<string, {itemId, variant, name, section, unit, planned, baked, cap, confirmed}>}
+ * `qtyOpen`: mindestens eine Zeile des Schlüssels hat eine offene
+ * Grundmenge ohne Tagesentscheidung (`totalIsMinimum`) - `planned` ist dann
+ * nur ein Mindestwert („≥ n“), kein Plan.
+ *
+ * @returns {Map<string, {itemId, variant, name, section, unit, planned, baked, cap, confirmed, qtyOpen}>}
  */
 function backzettelLines(day, config) {
   const out = new Map()
@@ -522,12 +565,14 @@ function backzettelLines(day, config) {
       const variant = line.variant || ''
       const key = lineKey(line.itemId, variant)
       const total = num(line.total)
+      const qtyOpen = line.totalIsMinimum === true || doughCore.qtyUnknown(line)
       const extra = confirmed ? acknowledgedExtra(line.delta || null) : 0
       lineExtras.set(key, round2((lineExtras.get(key) || 0) + extra))
       const known = out.get(key)
       if (known) {
         known.planned = round2(known.planned + total)
         known.cap = round2(known.cap + num(line.cap))
+        known.qtyOpen = known.qtyOpen || qtyOpen
         continue
       }
       out.set(key, {
@@ -540,6 +585,7 @@ function backzettelLines(day, config) {
         baked: null,
         cap: num(line.cap),
         confirmed,
+        qtyOpen,
       })
     }
   }
@@ -1515,6 +1561,18 @@ module.exports = {
   lineKey,
   rowKey,
   isoWeek,
+  // Bausteine, die der Abgleich Produktion ↔ Kasse (`abgleich.core.js`)
+  // mitbenutzt - eine Regel, keine Kopie.
+  round2,
+  itemsById,
+  isCountable,
+  isSizeItem,
+  variantLabel,
+  sectionOrder,
+  rowsByLine,
+  qtyCell,
+  pct,
+  rate,
   listDates,
   isCalendarDate,
   isoWeekday,
@@ -1523,6 +1581,7 @@ module.exports = {
   countRowsForItem,
   productsForVariant,
   parseQty,
+  parseSpokenQty,
   validateBatch,
   emptyVariantCandidates,
   emptyVariantLines,

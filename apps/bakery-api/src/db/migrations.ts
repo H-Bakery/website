@@ -89,4 +89,33 @@ export const MIGRATIONS: MigrationEntry[] = [
     name: '20270310000000-backzettel-none-today.js',
     module: require('../../migrations/20270310000000-backzettel-none-today.js'),
   },
+  {
+    // Ausgangsrechnungen (ZUGFeRD/Factur-X): invoices, invoice_lines
+    name: '20270320000000-invoices.js',
+    module: require('../../migrations/20270320000000-invoices.js'),
+  },
+  {
+    // Rechnungen: festgeschriebenes PDF, „bereits bezahlt“, number_key,
+    // anonymized_at für liegengebliebene Entwürfe
+    name: '20270325000000-invoices-pdf-paid.js',
+    module: require('../../migrations/20270325000000-invoices-pdf-paid.js'),
+  },
+  {
+    // Dienstplan: employees.hourly_wage_cents (Stundenlohn, geschätzte
+    // Überstundenbezahlung), additive, NULL = offen
+    name: '20270401000000-dienstplan-hourly-wage.js',
+    module: require('../../migrations/20270401000000-dienstplan-hourly-wage.js'),
+  },
+  {
+    name: '20270402000000-preorders-external-payment.js',
+    module: require('../../migrations/20270402000000-preorders-external-payment.js'),
+  },
+  {
+    name: '20270403000000-receipts.js',
+    module: require('../../migrations/20270403000000-receipts.js'),
+  },
+  {
+    name: '20270410000000-voice-usage.js',
+    module: require('../../migrations/20270410000000-voice-usage.js'),
+  },
 ]

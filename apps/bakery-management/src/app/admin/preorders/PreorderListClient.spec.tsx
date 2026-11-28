@@ -1,5 +1,5 @@
 import React from 'react'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import PreorderListClient from './PreorderListClient'
@@ -191,6 +191,64 @@ describe('PreorderListClient (P3)', () => {
     expect(
       screen.queryByRole('link', { name: /Neue Vorbestellung/ })
     ).toBeNull()
+  })
+
+  describe('Tabelle oder Karten nach Breite des Inhalts (Tablet quer)', () => {
+    const original = window.matchMedia
+    /** `matchMedia` wie ein Fenster mit `width` px (nur `min-width`). */
+    function viewport(width: number) {
+      window.matchMedia = jest.fn().mockImplementation((query: string) => {
+        const min = /min-width:\s*([\d.]+)px/.exec(query)
+        return {
+          matches: min ? width >= Number(min[1]) : false,
+          media: query,
+          onchange: null,
+          addListener: jest.fn(),
+          removeListener: jest.fn(),
+          addEventListener: jest.fn(),
+          removeEventListener: jest.fn(),
+          dispatchEvent: jest.fn(),
+        }
+      }) as unknown as typeof window.matchMedia
+    }
+    afterEach(() => {
+      window.matchMedia = original
+    })
+
+    it.each([
+      ['am Handy (390 px)', 390],
+      // neben der festen Seitenleiste bleiben ~700 px - die Summe lag
+      // in der Tabelle seitlich außer Sicht
+      ['quer am Tablet (1024 px)', 1024],
+      ['quer am Tablet (1180 px)', 1180],
+    ])('%s: Karten mit Status und Summe', async (_label, width) => {
+      viewport(width)
+      renderAs('verkauf')
+      const list = await screen.findByRole('list', { name: 'Vorbestellungen' })
+      expect(screen.queryByRole('table')).toBeNull()
+      const cards = within(list).getAllByRole('listitem')
+      expect(cards).toHaveLength(2)
+      const first = within(cards[0])
+      expect(first.getByText('Erika Beispiel')).toBeInTheDocument()
+      expect(first.getByText('Offen')).toBeInTheDocument()
+      expect(first.getByText(/4,80\s€/)).toBeInTheDocument()
+      expect(first.getByText(/nicht bezahlt/)).toBeInTheDocument()
+      expect(within(cards[1]).getByText('Storniert')).toBeInTheDocument()
+    })
+
+    it('am PC (1440 px): die Tabelle mit Status und Summe', async () => {
+      viewport(1440)
+      renderAs('verkauf')
+      const table = await screen.findByRole('table', {
+        name: 'Vorbestellungen',
+      })
+      expect(
+        within(table)
+          .getAllByRole('columnheader')
+          .map((th) => th.textContent)
+      ).toEqual(['Code', 'Status', 'Abholung', 'Kunde', 'Artikel', 'Summe'])
+      expect(screen.queryByRole('list', { name: 'Vorbestellungen' })).toBeNull()
+    })
   })
 
   it('zeigt Fehler mit „Erneut versuchen“', async () => {

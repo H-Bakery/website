@@ -88,8 +88,55 @@ Die Produktseiten holen ihre Daten im Browser über `fetchManagementProducts()` 
 serverseitig aus `HQ_PRODUCTS_DIR` (`hqProductsFs.ts`, dasselbe Verzeichnis wie die API). Die
 Dashboard-Kachel zählt `/api/products` (freigegebener Stand).
 
+## Preisliste (Export)
+
+Auf der Produktseite öffnet „Preisliste“ einen Dialog: ganzes Sortiment oder Kategorien, Laden oder
+Verkaufspartner, „gültig ab“, mit/ohne Allergene, mit/ohne nicht verfügbare Produkte. Daraus entsteht
+die Druckansicht `/admin/products/preisliste` (A4 hoch, zweispaltig, immer hell; „Drucken / als PDF
+speichern“) und ein CSV für Excel (Semikolon, Dezimalkomma, BOM).
+
+**Code:** Regeln `apps/bakery-api/src/services/price-list.core.js` (`buildPriceList`,
+`priceListToCsv`) · Routen `src/routes/price-list.routes.ts` · Management-App
+`src/lib/priceListApi.ts`, `src/app/admin/products/preisliste/**` (`PriceListDialog`,
+`PriceListSheet`) · Absender `src/lib/seller.ts` (aus `LEGAL` in `@bakery/shared/utils`,
+`lib/legal.ts` - dieselben Angaben wie im Impressum, nicht abtippen).
+
+- **Ein Dokument, zwei Ausgaben.** `GET /api/price-list` liefert Kategorien, Zeilen, Varianten und
+  fertig formatierte Preise; `GET /api/price-list/export.csv` dieselbe Liste als CSV. Die App
+  gruppiert, sortiert und formatiert nichts selbst. Query: `audience=laden|partner`, `partnerId`,
+  `categories=brot,kuchen`, `validFrom=JJJJ-MM-TT`, `includeUnavailable=1`, `allergens=1`.
+- **Rollen:** Ladenliste `inhaber` und `verkauf`, Partnerliste nur `inhaber` (sonst 403). Die Seite
+  steht für `verkauf` in `ROLE_ACCESS`.
+- **Freigegebener Stand** (`hq-catalogue.ts`, wie `/api/products`): eine Liste, die das Haus
+  verlässt, zeigt keine Änderung, die noch auf Freigabe wartet. Der Dialog weist darauf hin.
+- **Preise wie gespeichert**, nur auf zwei Nachkommastellen aufgefüllt („2,50 €“). Gerundet wird
+  nie; ein Preis mit mehr als zwei Nachkommastellen bleibt stehen und kommt als `dataWarnings`.
+- **Kein Preis ist kein Preis.** Ein Produkt ohne Preis (fehlt, kein Zahlwert, 0) steht nicht auf
+  dem Blatt und nicht im CSV, sondern in `omitted.noPrice` - die Seite nennt es über dem Blatt als
+  „Preis offen“ (nur am Bildschirm). Nie „auf Anfrage“, nie „0,00 €“.
+- **Einheiten nur aus dem Namen.** hq hat kein Feld für Einheit oder Gewicht. Der Core liest
+  „500g“, „(1 Stück)“, „(1/4 Stück)“ und - bei Geschwistern - „klein“/„groß“ aus dem Namen und
+  fasst gleiche Grundnamen zu einer Zeile zusammen (Brot als Tabelle 500 g | 750 g | 1000 g). Der
+  ganze Kuchen neben seinem Stück bekommt **keine** erfundene Einheit („ganz“ steht nicht in hq).
+- **Reihenfolge:** Kategorien fest (Brot, Brötchen, Baguette, Snacks, Teilchen, Kuchen, Torten,
+  Unbekanntes danach), darin wie in hq (`numeric_id`).
+- **Allergene nur positiv** (Texte und Reihenfolge aus `@bakery/shared/utils`): ohne Eintrag in hq
+  steht „bitte nachfragen“ mit dem Hinweis aus `NO_DECLARATION_NOTE`, nie „keine“. Weichen
+  Varianten einer Zeile ab, steht die Angabe je Variante da, nie die Vereinigung.
+- **Druck:** Fußzeile mit „Stand“ und Seitenzahl über `@page`-Randfelder (Chrome); „Stand“ steht
+  auch im Kopf. Eine Kategorie-Überschrift bleibt mit ihren ersten drei Zeilen zusammen
+  (`ROWS_KEPT_WITH_HEADING`), eine Zeile wird nie getrennt. Geprüft wird das echte Blatt mit
+  `page.pdf()`.
+- **Kein PDF vom Server.** Auf `main` gibt es noch keine PDF-Bibliothek; das PDF entsteht über den
+  Druckdialog des Browsers. Kommt mit den Rechnungen eine PDF-Bibliothek, kann
+  `GET /api/price-list/export.pdf` dasselbe Dokument rendern.
+- **Partnerliste:** siehe [`verkaufspartner.md`](verkaufspartner.md#preisliste-für-partner).
+
 ## Tests
 
 `apps/bakery-api/tests/unit/{hqProductsCore,productFileSerializer,productInputValidation}.test.js`,
 `tests/integration/hqProducts.test.ts` (u. a. Null-Diff mit `rawDescription`),
 `tests/contract/hqProducts.contract.test.ts`; Management-App `admin/products/{page,productsApi}.spec.tsx`.
+Preisliste: `tests/unit/priceListCore.test.js`, `tests/integration/priceList.test.ts`; Management-App
+`lib/priceListApi.spec.ts`, `admin/products/preisliste/*.spec.tsx` (Dokument aus dem echten Core,
+`lib/priceListFixtures.ts`).

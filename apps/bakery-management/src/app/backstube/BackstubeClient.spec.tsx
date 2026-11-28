@@ -20,6 +20,7 @@ import {
   saturdayDraft,
 } from '../../lib/backzettelFixtures'
 import type { PilotRole } from '../../lib/roles'
+import { PLAN_SHORT_LABEL_SX } from '../../components/backstube/BackstubeHeader'
 
 jest.mock('../../lib/backzettelApi', () => {
   const actual = jest.requireActual('../../lib/backzettelApi')
@@ -291,9 +292,9 @@ describe('Backstube-Tablet', () => {
       doneBy: null,
     })
     renderTablet()
-    fireEvent.click(
-      await screen.findByRole('checkbox', { name: 'Testweck erledigt' })
-    )
+    // UI-Runde 2: Erledigtes steht zugeklappt - erst aufklappen.
+    fireEvent.click(await screen.findByTestId('bs-done-broetchen'))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Testweck erledigt' }))
     await waitFor(() =>
       expect(mocked.setLineDone).toHaveBeenCalledWith(
         SAT,
@@ -924,7 +925,7 @@ describe('Backstube-Tablet', () => {
   it('Vorbereitung heute: für den nächsten Backtag', async () => {
     renderTablet()
     await screen.findByTestId('bs-progress')
-    fireEvent.click(screen.getByRole('tab', { name: 'Vorbereitung heute' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Vorbereitung' }))
     const prep = await screen.findByTestId('bs-prep')
     expect(mocked.fetchPrep).toHaveBeenCalledWith('2026-11-29')
     // gilt immer dem nächsten Backtag: kein Heute/Morgen, Kopf = heute
@@ -958,7 +959,7 @@ describe('Backstube-Tablet', () => {
     })
     renderTablet({ now: at('2026-11-29', 15) })
     await waitFor(() => expect(mocked.fetchBackzettelDay).toHaveBeenCalled())
-    fireEvent.click(screen.getByRole('tab', { name: 'Vorbereitung heute' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Vorbereitung' }))
     const prep = await screen.findByTestId('bs-prep')
     expect(mocked.fetchPrep).toHaveBeenCalledWith('2026-12-01')
     expect(prep).toHaveTextContent('Vorzubereiten am Montag, 30.11.2026.')
@@ -1009,6 +1010,59 @@ describe('Backstube-Tablet', () => {
     expect(
       screen.getByRole('link', { name: 'Planung & Druck' })
     ).toHaveAttribute('href', `/admin/backzettel/${SAT}`)
+  })
+
+  it('Kopf: „Planung & Druck“ behält seinen Namen und zeigt am Tablet „Planung“', async () => {
+    renderTablet()
+    await screen.findByTestId('bs-progress')
+    const link = screen.getByRole('link', { name: 'Planung & Druck' })
+    // Sichtbarer Kurzname im Link, am Tablet quer (md) eingeblendet, ab lg
+    // der volle Name - vorher stand am Tablet nur ein Drucker-Zeichen.
+    // Hochkant (sm) bleibt es beim Zeichen, sonst würde das Datum gekürzt.
+    expect(within(link).getByTestId('bs-plan-label-short')).toHaveTextContent(
+      /^Planung$/
+    )
+    expect(PLAN_SHORT_LABEL_SX.display).toEqual({
+      xs: 'none',
+      md: 'inline',
+      lg: 'none',
+    })
+  })
+
+  it.each([
+    ['backstube', 'station'],
+    ['inhaber', 'personal'],
+    ['backstubenleiter', 'station'],
+  ] as const)(
+    'Entwurf als %s: „Prüfen und freigeben“ im Banner führt zur Tagesplanung',
+    async (role, sessionKind) => {
+      mocked.fetchBackzettelDay.mockResolvedValue(saturdayDraft())
+      renderTablet({ session: fakeSession({ role, sessionKind }) })
+      const banner = await screen.findByTestId('bs-draft-banner')
+      const link = within(banner).getByRole('link', {
+        name: 'Prüfen und freigeben',
+      })
+      expect(link).toHaveAttribute('href', `/admin/backzettel/${SAT}`)
+    }
+  )
+
+  it('Entwurf als Verkauf (darf nicht freigeben): Banner ohne „Prüfen und freigeben“', async () => {
+    mocked.fetchBackzettelDay.mockResolvedValue(saturdayDraft())
+    renderTablet({ role: 'verkauf' })
+    const banner = await screen.findByTestId('bs-draft-banner')
+    expect(banner).toHaveTextContent('Noch nicht freigegeben')
+    expect(
+      screen.queryByRole('link', { name: 'Prüfen und freigeben' })
+    ).not.toBeInTheDocument()
+  })
+
+  it('Freigegebener Tag: kein Banner, kein „Prüfen und freigeben“', async () => {
+    renderTablet()
+    await screen.findByTestId('bs-progress')
+    expect(screen.queryByTestId('bs-draft-banner')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: 'Prüfen und freigeben' })
+    ).not.toBeInTheDocument()
   })
 
   it('„Zur Verwaltung“ nur mit persönlicher Sitzung, nicht an der Station', async () => {
@@ -1172,5 +1226,331 @@ describe('Backstube-Tablet: UI-Runde 1', () => {
       )
     ).map((el) => el.getAttribute('data-testid'))
     expect(order[0]).toBe('bs-warnings')
+  })
+})
+
+describe('Backstube-Tablet: Aufbau (UI-Umbau 2026-11)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    mocked.fetchBackzettelConfig.mockResolvedValue(CONFIG_RESPONSE)
+    mocked.fetchBackzettelDay.mockResolvedValue(saturdayConfirmed())
+  })
+
+  it('Überblick: je Abschnitt ein Sprungknopf mit „erledigt von“', async () => {
+    const scrollIntoView = jest.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    renderTablet()
+    const overview = within(await screen.findByTestId('bs-overview'))
+    expect(overview.getByTestId('bs-progress')).toHaveTextContent(
+      '0 von 4 erledigt'
+    )
+    expect(
+      overview.getByRole('button', { name: 'Hefeteig: 0 von 2' })
+    ).toBeInTheDocument()
+    const broetchen = overview.getByRole('button', {
+      name: 'Brötchen: 0 von 1',
+    })
+    // Hefeteig & Füllungen ist Ansicht ohne Haken - nur der Name.
+    expect(
+      overview.getByRole('button', { name: 'Hefeteig & Füllungen' })
+    ).toBeInTheDocument()
+
+    fireEvent.click(broetchen)
+    expect(scrollIntoView).toHaveBeenCalledTimes(1)
+    expect(scrollIntoView.mock.contexts[0]).toBe(
+      document.getElementById('bs-anchor-broetchen')
+    )
+    expect(document.getElementById('bs-anchor-broetchen')).toBe(
+      screen.getByTestId('bs-section-broetchen')
+    )
+  })
+
+  it('Fortschritt im Kopf zählt beim Abhaken mit; Stand steht oben', async () => {
+    mocked.setLineDone.mockReturnValue(new Promise(() => undefined))
+    renderTablet()
+    await screen.findByTestId('bs-progress')
+    const bar = screen.getByTestId('bs-header-progress')
+    expect(bar).toHaveAttribute('aria-valuenow', '0')
+    expect(screen.getByTestId('bs-loaded-at')).toHaveTextContent('Stand 03:00')
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Testweck abhaken' }))
+    expect(bar).toHaveAttribute('aria-valuenow', '25')
+    expect(bar).toHaveAccessibleName('1 von 4 erledigt')
+    expect(
+      within(screen.getByTestId('bs-overview')).getByRole('button', {
+        name: 'Brötchen: 1 von 1',
+      })
+    ).toBeInTheDocument()
+  })
+
+  it('offene Nachträge stehen vor dem Überblick und den Zeilen', async () => {
+    renderTablet()
+    await screen.findByTestId('bs-overview')
+    const order = Array.from(
+      document.querySelectorAll(
+        '[data-testid="bs-deltas"], [data-testid="bs-overview"], [data-testid^="bs-section-"]'
+      )
+    ).map((el) => el.getAttribute('data-testid'))
+    expect(order.slice(0, 2)).toEqual(['bs-deltas', 'bs-overview'])
+    // Seitenspalte und Zeilen getrennt (zwei Spalten ab 1080 px).
+    expect(
+      within(screen.getByTestId('bs-aside')).getByTestId('bs-deltas')
+    ).toBeInTheDocument()
+    expect(
+      within(screen.getByTestId('bs-main')).getByTestId('bs-section-brot')
+    ).toBeInTheDocument()
+  })
+
+  it('Entwurf: Überblick nennt je Abschnitt nur die Zahl der Zeilen', async () => {
+    mocked.fetchBackzettelDay.mockResolvedValue(saturdayDraft())
+    renderTablet()
+    const overview = within(await screen.findByTestId('bs-overview'))
+    expect(overview.getByTestId('bs-draft-banner')).toBeInTheDocument()
+    expect(
+      overview.getByRole('button', { name: 'Hefeteig: 2 Zeilen' })
+    ).toBeInTheDocument()
+    expect(
+      overview.getByRole('button', { name: 'Brot: 1 Zeile' })
+    ).toBeInTheDocument()
+    // Kein Fortschritt im Kopf, solange nichts abgehakt werden kann.
+    expect(screen.getByTestId('bs-header-progress')).toHaveStyle({
+      visibility: 'hidden',
+    })
+  })
+
+  it('ein gescheiterter Haken meldet sich unten fest im Bild', async () => {
+    mocked.setLineDone.mockRejectedValue(
+      apiError(500, 'internal', 'Interner Fehler')
+    )
+    renderTablet()
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: 'Testweck abhaken' })
+    )
+    const alert = await screen.findByText(/^Nicht gespeichert:/)
+    const box = alert.closest('[data-print="hide"]') as HTMLElement
+    expect(getComputedStyle(box).position).toBe('fixed')
+    fireEvent.click(within(box).getByRole('button', { name: /close/i }))
+    expect(screen.queryByText(/^Nicht gespeichert:/)).not.toBeInTheDocument()
+  })
+})
+
+describe('Backstube-Tablet: UI-Runde 2', () => {
+  // test-setup.ts ersetzt localStorage durch leere jest.fn() - hier ein
+  // echter kleiner Speicher, damit „je Gerät gemerkt“ prüfbar ist.
+  const storage = window.localStorage as unknown as Record<
+    'getItem' | 'setItem',
+    jest.Mock
+  >
+  let store: Record<string, string> = {}
+  beforeEach(() => {
+    jest.clearAllMocks()
+    store = {}
+    storage.getItem.mockImplementation((k: string) => store[k] ?? null)
+    storage.setItem.mockImplementation((k: string, v: string) => {
+      store[k] = String(v)
+    })
+    mocked.fetchBackzettelConfig.mockResolvedValue(CONFIG_RESPONSE)
+    mocked.fetchBackzettelDay.mockResolvedValue(saturdayConfirmed())
+  })
+  afterEach(() => {
+    jest.useRealTimers()
+    storage.getItem.mockReset()
+    storage.setItem.mockReset()
+  })
+
+  /** Testweck abgehakt (ohne Nachtrag danach). */
+  function weckDone(): api.BackzettelDay {
+    const base = saturdayConfirmed()
+    return {
+      ...base,
+      sections: base.sections.map((s) => ({
+        ...s,
+        lines: s.lines.map((l) =>
+          l.key === WECK
+            ? {
+                ...l,
+                doneAt: '2026-11-28T03:00:00.000Z',
+                doneBy: { id: 2, displayName: 'Test Backstube' },
+              }
+            : l
+        ),
+      })),
+    }
+  }
+
+  it('Erledigte stehen zugeklappt als „n erledigt“, ein Tipp klappt sie auf', async () => {
+    mocked.fetchBackzettelDay.mockResolvedValue(weckDone())
+    renderTablet()
+    const row = await screen.findByTestId('bs-done-broetchen')
+    expect(row).toHaveTextContent('1 erledigt')
+    expect(row).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByTestId(`bs-line-${WECK}`)).not.toBeInTheDocument()
+    // Der Überblick zählt weiter alles.
+    expect(screen.getByTestId('bs-progress')).toHaveTextContent(
+      '1 von 4 erledigt'
+    )
+
+    fireEvent.click(row)
+    expect(row).toHaveAttribute('aria-expanded', 'true')
+    // Aufgeklappt lässt sich der Haken zurücknehmen.
+    expect(
+      screen.getByRole('checkbox', { name: 'Testweck erledigt' })
+    ).toBeInTheDocument()
+  })
+
+  it('Drucken zeigt auch zugeklappte Zeilen, danach wieder zugeklappt', async () => {
+    mocked.fetchBackzettelDay.mockResolvedValue(weckDone())
+    renderTablet()
+    await screen.findByTestId('bs-done-broetchen')
+    expect(screen.queryByTestId(`bs-line-${WECK}`)).not.toBeInTheDocument()
+
+    act(() => {
+      window.dispatchEvent(new Event('beforeprint'))
+    })
+    expect(screen.getByTestId(`bs-line-${WECK}`)).toBeInTheDocument()
+    expect(screen.queryByTestId('bs-done-broetchen')).not.toBeInTheDocument()
+
+    act(() => {
+      window.dispatchEvent(new Event('afterprint'))
+    })
+    expect(screen.queryByTestId(`bs-line-${WECK}`)).not.toBeInTheDocument()
+    expect(screen.getByTestId('bs-done-broetchen')).toBeInTheDocument()
+  })
+
+  it('„Erledigte ausblenden“ abschalten zeigt alles und wird je Gerät gemerkt', async () => {
+    mocked.fetchBackzettelDay.mockResolvedValue(weckDone())
+    const { unmount } = renderTablet()
+    const toggle = await screen.findByRole('switch', {
+      name: 'Erledigte ausblenden',
+    })
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+    expect(screen.getByTestId(`bs-line-${WECK}`)).toBeInTheDocument()
+    expect(screen.queryByTestId('bs-done-broetchen')).not.toBeInTheDocument()
+    expect(store['bakery-backstube-hide-done']).toBe('0')
+
+    unmount()
+    renderTablet()
+    expect(
+      await screen.findByRole('switch', { name: 'Erledigte ausblenden' })
+    ).toHaveAttribute('aria-checked', 'false')
+    expect(screen.getByTestId(`bs-line-${WECK}`)).toBeInTheDocument()
+  })
+
+  it('gesperrter Speicher: Vorgabe „ausblenden“, kein Fehler', async () => {
+    const blocked = () => {
+      throw new Error('SecurityError')
+    }
+    storage.getItem.mockImplementation(blocked)
+    storage.setItem.mockImplementation(blocked)
+    mocked.fetchBackzettelDay.mockResolvedValue(weckDone())
+    renderTablet()
+    const toggle = await screen.findByRole('switch', {
+      name: 'Erledigte ausblenden',
+    })
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+    expect(screen.getByTestId(`bs-line-${WECK}`)).toBeInTheDocument()
+  })
+
+  it('eine gerade abgehakte Zeile bleibt ein paar Sekunden stehen', async () => {
+    jest.useFakeTimers()
+    mocked.setLineDone.mockResolvedValue({
+      doneAt: '2026-11-28T02:00:00.000Z',
+      doneBy: { id: 2, displayName: 'Test Backstube' },
+    } as never)
+    renderTablet()
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: 'Testweck abhaken' })
+    )
+    await waitFor(() => expect(mocked.setLineDone).toHaveBeenCalled())
+    // Steht noch da - ein Fehltipp lässt sich sofort zurücknehmen.
+    expect(
+      screen.getByRole('checkbox', { name: 'Testweck erledigt' })
+    ).toBeInTheDocument()
+    act(() => {
+      jest.advanceTimersByTime(5000)
+    })
+    expect(screen.queryByTestId(`bs-line-${WECK}`)).not.toBeInTheDocument()
+    expect(screen.getByTestId('bs-done-broetchen')).toHaveTextContent(
+      '1 erledigt'
+    )
+  })
+
+  it('Bäcker-Ansicht: ein Abschnitt, beginnt beim ersten offenen, blättert und führt zurück', async () => {
+    mocked.fetchBackzettelDay.mockResolvedValue(weckDone())
+    renderTablet()
+    fireEvent.click(await screen.findByTestId('bs-focus-start'))
+    const focus = await screen.findByTestId('bs-focus')
+    // Samstag: zuerst die Hefeteig-Karte (nur Ansicht), dann Brot - der
+    // erste Abschnitt mit offenen Zeilen.
+    expect(focus).toHaveTextContent('Abschnitt 2 von 4')
+    expect(screen.getByTestId('bs-section-brot')).toBeInTheDocument()
+    expect(screen.queryByTestId('bs-section-broetchen')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('bs-overview')).not.toBeInTheDocument()
+    expect(screen.getByTestId('bs-focus-count')).toHaveTextContent(
+      '0 von 1 erledigt'
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter: Brötchen' }))
+    expect(screen.getByTestId('bs-section-broetchen')).toBeInTheDocument()
+    expect(screen.queryByTestId('bs-section-brot')).not.toBeInTheDocument()
+    expect(screen.getByTestId('bs-focus-count')).toHaveTextContent(
+      '1 von 1 erledigt'
+    )
+
+    // Pfeiltaste zurück (Rechner), Wischen nach links weiter (Tablet).
+    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    expect(screen.getByTestId('bs-section-brot')).toBeInTheDocument()
+    const frame = screen.getByTestId('bs-focus')
+    fireEvent.touchStart(frame, { touches: [{ clientX: 600, clientY: 300 }] })
+    fireEvent.touchEnd(frame, {
+      changedTouches: [{ clientX: 300, clientY: 320 }],
+    })
+    expect(screen.getByTestId('bs-section-broetchen')).toBeInTheDocument()
+
+    // Ein Tipp zurück zur ganzen Liste. Der Kopf-Knopf (nur quer sichtbar,
+    // jsdom kennt keine Breite) wechselt mit.
+    expect(screen.getByTestId('bs-focus-open')).toHaveAttribute(
+      'aria-label',
+      'Ganze Liste'
+    )
+    fireEvent.click(screen.getByTestId('bs-focus-close'))
+    expect(screen.queryByTestId('bs-focus')).not.toBeInTheDocument()
+    expect(screen.getByTestId('bs-overview')).toBeInTheDocument()
+    expect(screen.getByTestId('bs-focus-open')).toHaveAttribute(
+      'aria-label',
+      'Bäcker-Ansicht'
+    )
+  })
+
+  it('Bäcker-Ansicht: offene Nachträge melden sich und führen zur Liste mit „Gesehen“', async () => {
+    const scrollIntoView = jest.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    renderTablet()
+    fireEvent.click(await screen.findByTestId('bs-focus-open'))
+    const banner = await screen.findByTestId('bs-focus-deltas')
+    fireEvent.click(banner)
+    expect(screen.queryByTestId('bs-focus')).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(scrollIntoView.mock.contexts[0]).toBe(
+        screen.getByTestId('bs-deltas')
+      )
+    )
+  })
+
+  it('der Kopf behält im Reiter Vorbereitung den Platz des Tag-Umschalters', async () => {
+    renderTablet()
+    await screen.findByTestId('bs-overview')
+    expect(screen.getByTestId('bs-day-choice')).toBeVisible()
+    fireEvent.click(screen.getByRole('tab', { name: 'Vorbereitung' }))
+    const choice = screen.getByTestId('bs-day-choice')
+    expect(choice).toHaveStyle({ visibility: 'hidden' })
+    expect(choice).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.queryByTestId('bs-choice-heute')).not.toBeInTheDocument()
+    // Keine Bäcker-Ansicht in der Vorbereitung.
+    expect(screen.queryByTestId('bs-focus-open')).not.toBeInTheDocument()
   })
 })

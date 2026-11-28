@@ -1,5 +1,5 @@
 'use client'
-import React from 'react'
+import React, { useRef } from 'react'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted'
@@ -9,9 +9,18 @@ import Button from '@mui/material/Button'
 import ButtonBase from '@mui/material/ButtonBase'
 import IconButton from '@mui/material/IconButton'
 import Paper from '@mui/material/Paper'
+import { unstable_useEnhancedEffect as useEnhancedEffect } from '@mui/material/utils'
 import type { BlickpunktKurz } from '../config/raeume'
 import Quellen from './Quellen'
-import { EBENE, LEISTE_EINZEILIG, TOUCH_TARGET, rand } from './theme'
+import RaumWechsel, { type RaumZiel } from './RaumWechsel'
+import {
+  EBENE,
+  LEISTE_EINZEILIG,
+  LEISTE_HOEHE_VAR,
+  LEISTE_UNTEN,
+  TOUCH_TARGET,
+  rand,
+} from './theme'
 
 export const ALLES_HIER_TEXT = 'Alles hier'
 
@@ -24,12 +33,56 @@ export interface BlickpunktLeisteProps {
   onAllesHier?: () => void
   /** Den Flug zum Start noch einmal zeigen (Knopf unter „Quellen“). */
   onIntroNochmal?: () => void
+  /**
+   * Die anderen Räume, in die man von hier wechseln kann. Leer oder ohne
+   * Angabe (es gibt nur einen Raum): kein Knopf.
+   */
+  raumZiele?: readonly RaumZiel[]
+  onRaumWechsel?: (id: string) => void
+}
+
+/**
+ * Schreibt die Höhe der Leiste nach `LEISTE_HOEHE_VAR` an `<html>`, solange
+ * sie steht - Karte und Hinweis richten sich danach. Ohne ResizeObserver
+ * (jsdom) bleibt es beim Ersatzwert aus `theme.ts`.
+ */
+function useLeistenHoehe(leiste: React.RefObject<HTMLElement>) {
+  useEnhancedEffect(() => {
+    const knoten = leiste.current
+    if (!knoten) return undefined
+    const wurzel = document.documentElement
+    const setze = (hoehe: number) => {
+      // 0 = nicht ausgelegt (z. B. ausgeblendet): den letzten Wert behalten.
+      if (hoehe > 0) {
+        wurzel.style.setProperty(LEISTE_HOEHE_VAR, `${Math.ceil(hoehe)}px`)
+      }
+    }
+    // Gleich messen, damit schon das erste Bild stimmt.
+    setze(knoten.getBoundingClientRect().height)
+    const beobachter =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver((eintraege) => {
+            const eintrag = eintraege[eintraege.length - 1]
+            setze(
+              eintrag?.borderBoxSize?.[0]?.blockSize ??
+                knoten.getBoundingClientRect().height
+            )
+          })
+    beobachter?.observe(knoten)
+    return () => {
+      beobachter?.disconnect()
+      wurzel.style.removeProperty(LEISTE_HOEHE_VAR)
+    }
+  }, [leiste])
 }
 
 /**
  * Die Bedienung unten in Daumenreichweite: ein Chip je Blickpunkt, „Alles
- * hier“ und „Quellen“; dazu Pfeile am linken und rechten Rand. Die Pfeile
+ * hier“, der Wechsel in einen anderen Raum (nur wenn es einen gibt) und
+ * „Quellen“; dazu Pfeile am linken und rechten Rand. Die Pfeile
  * laufen im Kreis (nach dem letzten Blickpunkt kommt wieder der erste).
+ * Ihre Höhe steht in `LEISTE_HOEHE_VAR`.
  */
 export default function BlickpunktLeiste({
   blickpunkte,
@@ -37,6 +90,8 @@ export default function BlickpunktLeiste({
   onWechsel,
   onAllesHier,
   onIntroNochmal,
+  raumZiele = [],
+  onRaumWechsel,
 }: BlickpunktLeisteProps) {
   const index = blickpunkte.findIndex((b) => b.id === aktiv)
   const n = blickpunkte.length
@@ -44,6 +99,8 @@ export default function BlickpunktLeiste({
     n > 1 && index >= 0 ? blickpunkte[(index + schritt + n) % n] : undefined
   const davor = nachbar(-1)
   const danach = nachbar(1)
+  const leiste = useRef<HTMLDivElement>(null)
+  useLeistenHoehe(leiste)
 
   return (
     <>
@@ -63,6 +120,7 @@ export default function BlickpunktLeiste({
       )}
 
       <Paper
+        ref={leiste}
         elevation={4}
         data-testid="blickpunkt-leiste"
         sx={{
@@ -70,7 +128,7 @@ export default function BlickpunktLeiste({
           zIndex: EBENE.leiste,
           left: rand('left', 8),
           right: rand('right', 8),
-          bottom: rand('bottom', 8),
+          bottom: LEISTE_UNTEN,
           p: 0.75,
           display: 'flex',
           flexDirection: 'column',
@@ -141,8 +199,10 @@ export default function BlickpunktLeiste({
           sx={{
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
             gap: 0.5,
+            // Wird die Zeile zu lang: umbrechen statt Beschriftungen
+            // abzuschneiden.
+            flexWrap: 'wrap',
           }}
         >
           {onAllesHier && (
@@ -155,6 +215,21 @@ export default function BlickpunktLeiste({
             >
               {ALLES_HIER_TEXT}
             </Button>
+          )}
+          {onRaumWechsel && raumZiele.length > 0 && (
+            <Box
+              sx={{
+                // Hochkant in einer eigenen Zeile darunter: „Alles hier“ und
+                // „Quellen“ bleiben nebeneinander, die Leiste hat drei Zeilen.
+                order: 1,
+                flexBasis: '100%',
+                display: 'flex',
+                minWidth: 0,
+                [LEISTE_EINZEILIG]: { order: 0, flexBasis: 'auto' },
+              }}
+            >
+              <RaumWechsel ziele={raumZiele} onWechsel={onRaumWechsel} />
+            </Box>
           )}
           <Box sx={{ ml: 'auto' }}>
             <Quellen onIntroNochmal={onIntroNochmal} />

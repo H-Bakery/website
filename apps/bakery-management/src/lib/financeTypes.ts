@@ -183,6 +183,25 @@ export interface FinanceKasse {
   unpaid: number
 }
 
+/**
+ * Kasse eines Monats mit Abdeckung: Öffnungstage (Wochenplan + hq-Kalender)
+ * gegen Tage mit Kassenbericht, gezählt bis gestern (heute nur mit Bericht).
+ * Nur ein vollständiger Monat (`complete`) geht in den Kassenabgleich.
+ */
+export interface FinanceKasseMonth extends FinanceKasse {
+  /** Öffnungstage; `null` = ohne Wochenplan/Kalender nicht prüfbar. */
+  open_days: number | null
+  /** Tage mit Kassenbericht. */
+  report_days: number
+  /** An jedem Öffnungstag ein Bericht und der Monat ist vorbei. */
+  complete: boolean
+  /**
+   * Kurzer Hinweis vom Server, z. B. „Kasse unvollständig: 8 von 26
+   * Öffnungstagen“ (`null`, wenn vollständig).
+   */
+  note: string | null
+}
+
 /** Kasse gegen Konto (bar und Karte). */
 export interface FinanceReconciliation {
   kasse_revenue: number
@@ -198,7 +217,10 @@ export interface FinanceReconciliation {
   kasse_total: number
   /** Konto bar + Karte */
   bank_total: number
-  /** Nur im Jahresabschluss: über welche vollständigen Monate verglichen wurde. */
+  /**
+   * Nur im Jahresabschluss: über welche Monate verglichen wurde - nur solche,
+   * in denen Bank und Kasse vollständig sind.
+   */
   months?: number
   from?: string
   to?: string
@@ -229,7 +251,7 @@ export interface FinanceYearMonthRow {
   has_data: boolean
   /** Ergebnis seit Jahres- bzw. Datenbeginn bis Ende dieses Monats (`null` ohne Daten). */
   cumulative_result: number | null
-  kasse: FinanceKasse | null
+  kasse: FinanceKasseMonth | null
 }
 
 /** Ein Monat der Hochrechnung: ganzer Monat (Ist + geschätzter Rest). */
@@ -374,9 +396,12 @@ export interface FinanceMonthReport {
   net_change: number
   transactions: number
   statement: FinanceStatement
-  kasse: FinanceKasse | null
-  kasse_previous_year: FinanceKasse | null
-  /** Nur für vollständige Monate. */
+  kasse: FinanceKasseMonth | null
+  kasse_previous_year: FinanceKasseMonth | null
+  /**
+   * Nur, wenn Bank und Kasse den Monat vollständig haben; sonst steht der
+   * Grund in `notes` (`kasse_incomplete`).
+   */
   reconciliation: FinanceReconciliation | null
   /** Bei angebrochenen Monaten alle drei `null`. */
   comparison: {
@@ -395,4 +420,85 @@ export interface FinanceMonthReport {
   next_month: string | null
   /** Monate mit Bankdaten, jüngster zuerst. */
   months: string[]
+}
+
+// ---------------------------------------------------------------------------
+// Einzelbuchungen (`GET /api/finance/transactions[/:id]`)
+// ---------------------------------------------------------------------------
+
+export type FinanceKind = 'einnahme' | 'ausgabe' | 'neutral' | 'offen'
+
+/** Eine Buchung, wie der Server sie bereinigt (IBAN maskiert, ohne Referenzen). */
+export interface FinanceTransaction {
+  id: string
+  booking_date: string
+  value_date: string | null
+  amount: number
+  currency: string
+  status: 'gebucht' | 'vorgemerkt'
+  booking_text: string | null
+  counterparty: string | null
+  /** „DE•• •••• 1234“ oder `null` */
+  counterparty_iban: string | null
+  purpose: string | null
+  /** Lastschrift mit Mandat */
+  direct_debit: boolean
+  category: string
+  category_label: string
+  kind: FinanceKind
+  subcategory: string | null
+  subcategory_label: string | null
+  flow: string | null
+  note: string | null
+}
+
+export interface FinanceTransactionTotals {
+  count: number
+  income: number
+  /** negativ */
+  expense: number
+  net: number
+}
+
+export interface FinanceTransactionFilters {
+  category: string | null
+  kind: FinanceKind | null
+  direction: 'in' | 'out' | null
+  q: string | null
+}
+
+export interface FinanceTransactionsList {
+  month: string
+  /** `false`: für diesen Monat gibt es keine Bankdaten. */
+  available: boolean
+  /** neueste zuerst */
+  months: string[]
+  previous_month: string | null
+  next_month: string | null
+  filters: FinanceTransactionFilters
+  month_totals: FinanceTransactionTotals
+  totals: FinanceTransactionTotals
+  categories: Array<{
+    category: string
+    label: string
+    kind: FinanceKind
+    count: number
+  }>
+  /** Zeilen, die der Server verworfen hat (ohne ID, Datum oder Betrag). */
+  skipped: number
+  transactions: FinanceTransaction[]
+}
+
+export interface FinanceTransactionDetail {
+  transaction: FinanceTransaction
+  month: string
+  related_count: number
+  related_totals: FinanceTransactionTotals
+  related: Array<{
+    id: string
+    booking_date: string
+    amount: number
+    purpose: string | null
+    category_label: string
+  }>
 }

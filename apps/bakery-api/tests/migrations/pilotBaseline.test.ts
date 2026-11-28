@@ -7,7 +7,7 @@
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
-import { Model, ModelStatic, QueryTypes, Sequelize } from 'sequelize'
+import { DataTypes, Model, ModelStatic, QueryTypes, Sequelize } from 'sequelize'
 
 import { openDatabase } from '../../src/db/database'
 import { runMigrations } from '../../src/db/migrate'
@@ -22,8 +22,17 @@ const restMigration = require('../../migrations/20261201000000-rest-am-abend.js'
 const doughDayMigration = require('../../migrations/20270201000000-backzettel-dough-day.js')
 const bakedMigration = require('../../migrations/20270210000000-backzettel-baked.js')
 const dienstplanMigration = require('../../migrations/20270301000000-dienstplan.js')
+const invoicesMigration = require('../../migrations/20270320000000-invoices.js')
+const invoicesPdfMigration = require('../../migrations/20270325000000-invoices-pdf-paid.js')
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const noneTodayMigration = require('../../migrations/20270310000000-backzettel-none-today.js')
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const hourlyWageMigration = require('../../migrations/20270401000000-dienstplan-hourly-wage.js')
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const receiptsMigration = require('../../migrations/20270403000000-receipts.js')
+const paymentMigration = require('../../migrations/20270402000000-preorders-external-payment.js')
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const voiceMigration = require('../../migrations/20270410000000-voice-usage.js')
 
 /** The 17 migrations the server ran before B2, now in migrations/archive/. */
 const LEGACY_NAMES = [
@@ -100,6 +109,12 @@ describe('pilot baseline on a fresh database', () => {
       '20270210000000-backzettel-baked.js',
       '20270301000000-dienstplan.js',
       '20270310000000-backzettel-none-today.js',
+      '20270320000000-invoices.js',
+      '20270325000000-invoices-pdf-paid.js',
+      '20270401000000-dienstplan-hourly-wage.js',
+      '20270402000000-preorders-external-payment.js',
+      '20270403000000-receipts.js',
+      '20270410000000-voice-usage.js',
     ])
   })
 
@@ -112,6 +127,9 @@ describe('pilot baseline on a fresh database', () => {
         ...deliveriesMigration.TABLES,
         ...restMigration.TABLES,
         ...dienstplanMigration.TABLES,
+        ...invoicesMigration.TABLES,
+        ...receiptsMigration.TABLES,
+        'voice_usage',
         'SequelizeMeta',
       ].sort()
     )
@@ -643,6 +661,9 @@ describe('pilot baseline down()', () => {
   it('drops every baseline table (after B7 and B3 auth are undone)', async () => {
     const sequelize = await freshDb()
     await runMigrations(sequelize, quiet)
+    await voiceMigration.down(sequelize.getQueryInterface())
+    await receiptsMigration.down(sequelize.getQueryInterface(), Sequelize)
+    await invoicesMigration.down(sequelize.getQueryInterface(), Sequelize)
     await dienstplanMigration.down(sequelize.getQueryInterface(), Sequelize)
     await deliveriesMigration.down(sequelize.getQueryInterface(), Sequelize)
     await restMigration.down(sequelize.getQueryInterface(), Sequelize)
@@ -1369,6 +1390,98 @@ describe('„Heute keine“ migration (backzettel_lines.none_today)', () => {
   })
 })
 
+describe('Stundenlohn migration (employees.hourly_wage_cents)', () => {
+  const HOURLY_WAGE = '20270401000000-dienstplan-hourly-wage.js'
+
+  async function schema(sequelize: Sequelize) {
+    return {
+      fk: await sequelize.query('PRAGMA foreign_key_list(employees)', {
+        type: QueryTypes.SELECT,
+      }),
+      indexes: await sequelize.getQueryInterface().showIndex('employees'),
+      columns: await columns(sequelize, 'employees'),
+    }
+  }
+
+  it('adds hourly_wage_cents NULL; existing employees keep everything and read "offen"; idempotent; down() restores the schema', async () => {
+    const sequelize = await freshDb()
+    await runMigrations(sequelize, {
+      ...quiet,
+      migrations: MIGRATIONS.filter((m) => m.name !== HOURLY_WAGE),
+    })
+    const before = await schema(sequelize)
+    expect(before.columns).not.toContain('hourly_wage_cents')
+    // A box database from before: a login, an employee linked to it, a shift.
+    await sequelize.query(
+      `INSERT INTO users (id, username, display_name, role, password_hash, active, created_at, updated_at)
+       VALUES (7, 'test.verkauf', 'Test Verkauf', 'verkauf', 'x', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+    )
+    await sequelize.query(
+      `INSERT INTO employees (id, display_name, area, weekly_hours, user_id, note, active, created_at, updated_at)
+       VALUES (1, 'Erika Beispiel', 'verkauf', 30, 7, 'Testnotiz', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+              (2, 'Max Muster', 'backstube', NULL, NULL, NULL, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+    )
+    await sequelize.query(
+      `INSERT INTO shifts (employee_id, date, start_time, end_time, break_minutes, created_at, updated_at)
+       VALUES (1, '2026-11-10', '06:00', '12:00', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+    )
+    const result = await runMigrations(sequelize, quiet)
+    expect(result.executed).toEqual([HOURLY_WAGE])
+    const described = await sequelize
+      .getQueryInterface()
+      .describeTable('employees')
+    expect(described['hourly_wage_cents']).toMatchObject({ allowNull: true })
+    expect(
+      await sequelize.query(
+        'SELECT id, display_name, area, weekly_hours, user_id, note, active, hourly_wage_cents FROM employees ORDER BY id',
+        { type: QueryTypes.SELECT }
+      )
+    ).toEqual([
+      {
+        id: 1,
+        display_name: 'Erika Beispiel',
+        area: 'verkauf',
+        weekly_hours: 30,
+        user_id: 7,
+        note: 'Testnotiz',
+        active: 1,
+        hourly_wage_cents: null,
+      },
+      {
+        id: 2,
+        display_name: 'Max Muster',
+        area: 'backstube',
+        weekly_hours: null,
+        user_id: null,
+        note: null,
+        active: 0,
+        hourly_wage_cents: null,
+      },
+    ])
+    expect(
+      await sequelize.query('SELECT employee_id, date FROM shifts', {
+        type: QueryTypes.SELECT,
+      })
+    ).toEqual([{ employee_id: 1, date: '2026-11-10' }])
+    const qi = sequelize.getQueryInterface()
+    const after = await schema(sequelize)
+    // foreign key and indexes survive (no table rebuild)
+    expect(after.fk).toEqual(before.fk)
+    expect(after.indexes).toEqual(before.indexes)
+    await hourlyWageMigration.up(qi, Sequelize)
+    expect(await schema(sequelize)).toEqual(after)
+    await hourlyWageMigration.down(qi, Sequelize)
+    expect(await schema(sequelize)).toEqual(before)
+    expect(await foreignKeyViolations(sequelize)).toEqual([])
+    // without the Dienstplan tables both directions do nothing
+    await dienstplanMigration.down(qi, Sequelize)
+    await hourlyWageMigration.up(qi, Sequelize)
+    await hourlyWageMigration.down(qi, Sequelize)
+    expect(await tableNames(sequelize)).not.toContain('employees')
+    await sequelize.close()
+  })
+})
+
 describe('TASK-042 Dienstplan migration', () => {
   it('creates the Dienstplan tables, idempotently, and drops them again', async () => {
     const sequelize = await freshDb()
@@ -1386,6 +1499,7 @@ describe('TASK-042 Dienstplan migration', () => {
         'employment_type',
         'entry_date',
         'exit_date',
+        'hourly_wage_cents',
         'id',
         'note',
         'updated_at',
@@ -1425,4 +1539,213 @@ describe('TASK-042 Dienstplan migration', () => {
     }
     await sequelize.close()
   })
+})
+
+describe('Rechnungen migration (invoices, invoice_lines)', () => {
+  it('is idempotent, keeps numbers unique and lets drafts go without one', async () => {
+    const sequelize = await freshDb()
+    await runMigrations(sequelize, quiet)
+    const qi = sequelize.getQueryInterface()
+    // a second run changes nothing
+    await invoicesMigration.up(qi, Sequelize)
+    const tables = await tableNames(sequelize)
+    for (const table of invoicesMigration.TABLES) {
+      expect(tables).toContain(table)
+    }
+
+    const insert = (number: string | null) =>
+      sequelize.query(
+        `INSERT INTO invoices (number, created_at, updated_at)
+         VALUES (?, '2026-11-15', '2026-11-15')`,
+        { replacements: [number] }
+      )
+    await insert(null)
+    await insert(null)
+    await insert('TEST-1')
+    await expect(insert('TEST-1')).rejects.toMatchObject({
+      name: 'SequelizeUniqueConstraintError',
+    })
+    const rows = await sequelize.query(
+      'SELECT status, buyer_country, payment_term_days FROM invoices',
+      { type: QueryTypes.SELECT }
+    )
+    expect(rows).toHaveLength(3)
+    expect(rows[0]).toEqual({
+      status: 'entwurf',
+      buyer_country: 'DE',
+      payment_term_days: 14,
+    })
+
+    await invoicesMigration.down(qi, Sequelize)
+    const after = await tableNames(sequelize)
+    for (const table of invoicesMigration.TABLES) {
+      expect(after).not.toContain(table)
+    }
+    await sequelize.close()
+  })
+})
+
+describe('Rechnungen: down() verwirft keine ausgestellten Rechnungen', () => {
+  const insert = (sequelize: Sequelize, number: string, status: string) =>
+    sequelize.query(
+      `INSERT INTO invoices (number, status, created_at, updated_at)
+       VALUES (?, ?, '2026-11-15', '2026-11-15')`,
+      { replacements: [number, status] }
+    )
+
+  it('bricht ab, sobald es eine ausgestellte oder stornierte Rechnung gibt', async () => {
+    const sequelize = await freshDb()
+    await runMigrations(sequelize, quiet)
+    const qi = sequelize.getQueryInterface()
+    await insert(sequelize, 'TEST-ENTWURF', 'entwurf')
+    await insert(sequelize, 'TEST-AUSGESTELLT', 'ausgestellt')
+
+    await expect(invoicesMigration.down(qi, Sequelize)).rejects.toThrow(
+      /1 ausgestellte oder stornierte Rechnung/
+    )
+    expect(await tableNames(sequelize)).toEqual(
+      expect.arrayContaining(['invoices', 'invoice_lines'])
+    )
+    const rows = await sequelize.query('SELECT number FROM invoices', {
+      type: QueryTypes.SELECT,
+    })
+    expect(rows).toHaveLength(2)
+
+    // nur mit ausdrücklicher Freigabe
+    process.env.INVOICES_ALLOW_DROP = '1'
+    try {
+      await invoicesMigration.down(qi, Sequelize)
+    } finally {
+      delete process.env.INVOICES_ALLOW_DROP
+    }
+    expect(await tableNames(sequelize)).not.toContain('invoices')
+    await sequelize.close()
+  })
+
+  it('löscht Tabellen, in denen nur Entwürfe liegen', async () => {
+    const sequelize = await freshDb()
+    await runMigrations(sequelize, quiet)
+    await insert(sequelize, 'TEST-ENTWURF', 'entwurf')
+    await invoicesMigration.down(sequelize.getQueryInterface(), Sequelize)
+    expect(await tableNames(sequelize)).not.toContain('invoices')
+    await sequelize.close()
+  })
+})
+
+describe('Rechnungen: PDF, bezahlt, number_key (Migration 20270325)', () => {
+  it('trägt number_key für vorhandene Rechnungen nach und ist idempotent', async () => {
+    const sequelize = await freshDb()
+    const qi = sequelize.getQueryInterface()
+    const before = MIGRATIONS.filter(
+      (m) => m.name < '20270325000000-invoices-pdf-paid.js'
+    )
+    await runMigrations(sequelize, { ...quiet, migrations: before })
+    expect(Object.keys(await qi.describeTable('invoices'))).not.toContain('pdf')
+    await sequelize.query(
+      `INSERT INTO invoices (number, status, created_at, updated_at)
+       VALUES ('  Test 2026/7', 'ausgestellt', '2026-11-15', '2026-11-15'),
+              (NULL, 'entwurf', '2026-11-15', '2026-11-15')`
+    )
+
+    await invoicesPdfMigration.up(qi, Sequelize)
+    await invoicesPdfMigration.up(qi, Sequelize)
+    const columns = Object.keys(await qi.describeTable('invoices'))
+    for (const column of invoicesPdfMigration.COLUMNS) {
+      expect(columns).toContain(column)
+    }
+    const rows = await sequelize.query(
+      'SELECT number, number_key, paid, paid_method, pdf FROM invoices ORDER BY id',
+      { type: QueryTypes.SELECT }
+    )
+    expect(rows).toEqual([
+      {
+        number: '  Test 2026/7',
+        number_key: 'test 2026/7',
+        paid: 0,
+        paid_method: '',
+        pdf: null,
+      },
+      { number: null, number_key: null, paid: 0, paid_method: '', pdf: null },
+    ])
+    // die Vergleichsform ist eindeutig
+    await expect(
+      sequelize.query(
+        `INSERT INTO invoices (number, number_key, created_at, updated_at)
+         VALUES ('TEST 2026/7', 'test 2026/7', '2026-11-15', '2026-11-15')`
+      )
+    ).rejects.toMatchObject({ name: 'SequelizeUniqueConstraintError' })
+
+    await invoicesPdfMigration.down(qi, Sequelize)
+    expect(Object.keys(await qi.describeTable('invoices'))).not.toContain(
+      'number_key'
+    )
+    await sequelize.close()
+  })
+})
+
+describe('Zahlungsweg und Mischzahlung bei Vorbestellungen', () => {
+  it.each([false, true])(
+    'ergänzt beide Spalten idempotent und erfasst vorhandene Bestellungen mit Standardwert (externe Spalte vorhanden: %s)',
+    async (hasExternalPayment) => {
+      const sequelize = await freshDb()
+      try {
+        const qi = sequelize.getQueryInterface()
+        const name = '20270402000000-preorders-external-payment.js'
+        await runMigrations(sequelize, {
+          ...quiet,
+          migrations: MIGRATIONS.filter((m) => m.name !== name),
+        })
+        await sequelize.query(
+          `INSERT INTO preorders (id, code, channel, pickup_date, created_at, updated_at)
+             VALUES (1, 'TEST-ABHOLUNG', 'laden', '2026-11-19', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+        )
+        await sequelize.query(
+          `INSERT INTO preorder_items (preorder_id, product_id, product_name, unit_price, quantity, created_at, updated_at)
+           VALUES (1, 'test-brot', 'Testbrot', 2.5, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+        )
+        if (hasExternalPayment) {
+          await qi.addColumn('preorders', 'external_payment', {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
+          })
+          await sequelize.query('UPDATE preorders SET external_payment = 1')
+        }
+        expect((await runMigrations(sequelize, quiet)).executed).toEqual([name])
+        const described = await qi.describeTable('preorders')
+        expect(described.mixed_payment).toMatchObject({ allowNull: false })
+        const readFlags = () =>
+          sequelize.query(
+            'SELECT external_payment, mixed_payment FROM preorders',
+            {
+              type: QueryTypes.SELECT,
+            }
+          )
+        const original = {
+          external_payment: Number(hasExternalPayment),
+          mixed_payment: 0,
+        }
+        expect(await readFlags()).toEqual([original])
+        await expect(
+          sequelize.query('UPDATE preorders SET mixed_payment = NULL')
+        ).rejects.toThrow()
+        await sequelize.query('UPDATE preorders SET mixed_payment = 1')
+        await paymentMigration.up(qi, Sequelize)
+        expect(await readFlags()).toEqual([{ ...original, mixed_payment: 1 }])
+        await paymentMigration.down(qi, Sequelize)
+        await paymentMigration.down(qi, Sequelize)
+        const remaining = await columns(sequelize, 'preorders')
+        expect(remaining).not.toContain('mixed_payment')
+        expect(remaining).not.toContain('external_payment')
+        expect(
+          await sequelize.query('SELECT preorder_id FROM preorder_items', {
+            type: QueryTypes.SELECT,
+          })
+        ).toEqual([{ preorder_id: 1 }])
+        expect(await foreignKeyViolations(sequelize)).toEqual([])
+      } finally {
+        await sequelize.close()
+      }
+    }
+  )
 })

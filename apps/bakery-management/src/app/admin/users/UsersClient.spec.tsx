@@ -6,6 +6,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
+import { ApiError } from '@bakery/shared/data-access'
 import UsersClient from './UsersClient'
 import { fakeSession, WithSession } from '../../../lib/testing/fakeSession'
 import * as authApi from '../../../lib/authApi'
@@ -238,6 +239,36 @@ describe('Benutzerverwaltung', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }))
     expect(await screen.findByText('Konten (2)')).toBeInTheDocument()
     expect(screen.queryByText('Interner Testfehler.')).toBeNull()
+  })
+
+  it('Widerrufen ohne WLAN: deutscher Satz statt „Failed to fetch“', async () => {
+    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(true)
+    api.revokeStation.mockRejectedValue(new TypeError('Failed to fetch'))
+    renderUsers()
+    fireEvent.click(await screen.findByRole('button', { name: 'Widerrufen' }))
+    expect(
+      await screen.findByText(
+        'Keine Verbindung zum Server – bitte WLAN prüfen.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Failed to fetch/)).toBeNull()
+    confirm.mockRestore()
+  })
+
+  it('Dialog: Caddy meldet 502 - deutscher Text, nie „HTTP 502“', async () => {
+    api.updateUser.mockRejectedValue(new ApiError('HTTP 502: Bad Gateway', 502))
+    renderUsers()
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Test Verkauf bearbeiten' })
+    )
+    fireEvent.click(dialog().getByRole('checkbox'))
+    fireEvent.click(dialog().getByRole('button', { name: 'Speichern' }))
+    expect(
+      await dialog().findByText(
+        'Keine Verbindung zum Server – bitte WLAN prüfen.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/HTTP 502|Bad Gateway/)).toBeNull()
   })
 
   it('zeigt einen Ladefehler (z. B. PIN-Sitzung) als Meldung', async () => {

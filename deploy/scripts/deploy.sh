@@ -78,7 +78,7 @@ MGMT_BUILD_ID="dist/apps/bakery-management/.next/BUILD_ID"
 MARKER=".bakery-release"
 
 usage() {
-  sed -n '2,44p' "$0"
+  sed -n '2,44p' "$SCRIPT_DIR/deploy.sh"
 }
 
 switches_user() {

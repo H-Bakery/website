@@ -9,6 +9,7 @@ import {
   JS_WEEKDAY_LABELS,
   LADEN_PICKUP,
   canWritePreorders,
+  formatShortDate,
   isBusinessDate,
   owesRefund,
   isProductionDay,
@@ -16,8 +17,20 @@ import {
   shiftDate,
   type PickupPoint,
   type Preorder,
+  type PreorderQuery,
   type PreorderStatusChange,
 } from './preordersTypes'
+
+// Wie ein Code entsteht (`LA-…` Laden, `MO-…` aus der Kennung der
+// Sammelstelle), steht einmal im API-Projekt; hier wird es nur gelesen, um
+// einen abgetippten Code seiner Abholliste zuzuordnen. Der Querverweis ist
+// für Nx und die Modulgrenzen-Regel ausgeblendet (wie in `lib/invoicesApi.ts`).
+interface PreorderCodeCore {
+  LADEN_CODE_PREFIX: string
+  codePrefixFor: (pickupPointId: string | null) => string
+}
+// nx-ignore-next-line
+const codeCore: PreorderCodeCore = require('../../../bakery-api/src/services/delivery-preorders.core') // eslint-disable-line @typescript-eslint/no-var-requires, @nx/enforce-module-boundaries
 
 export const ABHOLLISTE_PATH = '/admin/preorders/abholliste'
 
@@ -144,6 +157,20 @@ export function matchesSearch(preorder: Preorder, query: string): boolean {
   }
   if (normalize(preorder.customerName ?? '').includes(q)) return true
   if (normalize(preorder.code).includes(q)) return true
+  // Ein ganzer Code ohne führende Null (`la-2026-11-17-3`): „Zur Abholliste
+  // dieses Tages“ nimmt ihn so mit - dort muss er die Bestellung finden.
+  const typed = parsePreorderCode(query)
+  if (typed) {
+    const own = parsePreorderCode(preorder.code)
+    if (
+      own &&
+      own.prefix === typed.prefix &&
+      own.date === typed.date &&
+      own.number === typed.number
+    ) {
+      return true
+    }
+  }
   const digits = q.replace(/\D/g, '')
   if (
     digits.length >= 3 &&
@@ -378,13 +405,223 @@ export function formatClock(iso: string | null | undefined): string {
   return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
 }
 
-/** Seiten-URL der Abholliste. */
-export function abhollisteHref(date?: string, place?: string): string {
+/** Längster Suchbegriff in der URL - wie die Vorbestellungsliste und die API. */
+export const MAX_SEARCH_LENGTH = 100
+
+/** Ort in der URL: `laden` oder die Kennung einer Sammelstelle. */
+const PLACE_PARAM = /^[a-z0-9-]{1,64}$/
+
+function searchParamOf(value: string | null | undefined): string | undefined {
+  const q = (value ?? '').trim().slice(0, MAX_SEARCH_LENGTH).trim()
+  return q || undefined
+}
+
+function firstOf(query: PreorderQuery, key: string): string | undefined {
+  const raw = query[key]
+  return Array.isArray(raw) ? raw[0] : raw
+}
+
+/**
+ * Seiten-URL der Abholliste. `q` ist die Suche - sie steht in der Adresse,
+ * damit Neuladen und der Rückweg aus einer Bestellung sie behalten.
+ */
+export function abhollisteHref(
+  date?: string,
+  place?: string,
+  q?: string
+): string {
   const params = new URLSearchParams()
   if (date && isBusinessDate(date)) params.set('date', date)
   if (place) params.set('point', place)
+  const search = searchParamOf(q)
+  if (search) params.set('q', search)
   const query = params.toString()
   return query ? `${ABHOLLISTE_PATH}?${query}` : ABHOLLISTE_PATH
+}
+
+export interface AbhollisteParams {
+  date?: string
+  /** `laden` oder die Kennung einer Sammelstelle (geprüft wird im Client). */
+  place?: string
+  q?: string
+}
+
+/** Tag, Ort und Suche aus der URL der Abholliste; Ungültiges fällt weg. */
+export function abhollisteParamsFromQuery(
+  query: PreorderQuery
+): AbhollisteParams {
+  const date = firstOf(query, 'date')
+  const point = firstOf(query, 'point')
+  const q = searchParamOf(firstOf(query, 'q'))
+  return {
+    ...(isBusinessDate(date) ? { date } : {}),
+    ...(point && PLACE_PARAM.test(point) ? { place: point } : {}),
+    ...(q ? { q } : {}),
+  }
+}
+
+/** `von=abholliste` an einer Bestellung: der Rückweg führt auf die Liste. */
+export const ABHOLLISTE_ORIGIN = 'abholliste'
+export const ABHOLLISTE_BACK_LABEL = 'Zurück zur Abholliste'
+
+/**
+ * „Bestellung öffnen“ aus der Abholliste: die Bestellung mit Herkunft (Tag,
+ * Ort, Suche). Die App läuft am iPad ohne Browserleiste - ohne diesen
+ * Rückweg führte „Zurück“ auf alle Vorbestellungen und die Suche war weg.
+ */
+export function preorderHrefFromAbholliste(
+  id: number,
+  { date, place, q }: { date: string; place: string; q?: string }
+): string {
+  const params = new URLSearchParams({ von: ABHOLLISTE_ORIGIN })
+  if (isBusinessDate(date)) params.set('date', date)
+  if (place) params.set('point', place)
+  const search = searchParamOf(q)
+  if (search) params.set('q', search)
+  return `/admin/preorders/${id}?${params.toString()}`
+}
+
+/**
+ * Rückweg der Bestellansicht aus ihrer URL: mit gültiger Herkunft
+ * (`von=abholliste`, Tag, Ort) zurück auf dieselbe Liste mit derselben
+ * Suche, sonst `null` (dann „Alle Vorbestellungen“).
+ */
+export function abhollisteBackFromQuery(
+  query: PreorderQuery
+): { href: string; label: string } | null {
+  if (firstOf(query, 'von') !== ABHOLLISTE_ORIGIN) return null
+  const date = firstOf(query, 'date')
+  const point = firstOf(query, 'point')
+  if (!isBusinessDate(date) || !point || !PLACE_PARAM.test(point)) return null
+  return {
+    href: abhollisteHref(date, point, firstOf(query, 'q')),
+    label: ABHOLLISTE_BACK_LABEL,
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Suche über den Tag hinaus
+ * ------------------------------------------------------------------ */
+
+export interface PreorderCodeParts {
+  /** `LA` (Laden) oder das Kürzel einer Sammelstelle, groß geschrieben. */
+  prefix: string
+  date: string
+  number: number
+}
+
+const CODE_PATTERN = /^([a-z]{1,2})-(\d{4}-\d{2}-\d{2})-(\d{1,4})$/i
+
+/**
+ * Ein vollständiger Code vom Abholzettel (`LA-2026-11-17-03`, auch klein
+ * getippt), sonst `null` - auch bei einem Tag, den es nicht gibt.
+ */
+export function parsePreorderCode(text: string): PreorderCodeParts | null {
+  const match = CODE_PATTERN.exec(text.trim())
+  if (!match || !isBusinessDate(match[2])) return null
+  return {
+    prefix: match[1].toUpperCase(),
+    date: match[2],
+    number: Number(match[3]),
+  }
+}
+
+export interface AbholTarget {
+  date: string
+  /** `laden` oder die Kennung einer Sammelstelle. */
+  place: string
+}
+
+/**
+ * Auf welche Abholliste ein Code gehört - so zugeordnet, wie die API den
+ * Code vergibt (`codePrefixFor`): `LA` ist der Laden, sonst die
+ * Sammelstelle(n) mit diesem Kürzel. Teilen sich mehrere ein Kürzel, gehen
+ * die vor, die an dem Tag beliefert werden. `null`: kein Code; leer: kein
+ * bekannter Ort.
+ */
+export function codeTargets(
+  text: string,
+  points: readonly Pick<PickupPoint, 'id' | 'weekday'>[]
+): AbholTarget[] | null {
+  const code = parsePreorderCode(text)
+  if (!code) return null
+  const places: string[] = []
+  if (code.prefix === codeCore.LADEN_CODE_PREFIX) places.push(LADEN_PICKUP)
+  const matching = points.filter(
+    (p) => codeCore.codePrefixFor(p.id) === code.prefix
+  )
+  const weekday = jsWeekdayOf(code.date)
+  const served = matching.filter((p) => p.weekday === weekday)
+  for (const p of served.length > 0 ? served : matching) places.push(p.id)
+  return places.map((place) => ({ date: code.date, place }))
+}
+
+/** Wie weit die Suche über den Tag hinaus reicht (Tage zurück / voraus). */
+export const REMOTE_SEARCH_DAYS_BACK = 14
+export const REMOTE_SEARCH_DAYS_AHEAD = 30
+
+/** Zeitraum der Suche über alle Tage: zwei Wochen zurück, 30 Tage voraus. */
+export function remoteSearchRange(today: string): { from: string; to: string } {
+  return {
+    from: shiftDate(today, -REMOTE_SEARCH_DAYS_BACK),
+    to: shiftDate(today, REMOTE_SEARCH_DAYS_AHEAD),
+  }
+}
+
+/**
+ * Lohnt die Suche an anderen Tagen? Nicht für eine laufende Nummer (`3`,
+ * `03` - die gilt nur auf dieser Liste) und nicht für einen Buchstaben.
+ */
+export function wantsRemoteSearch(query: string): boolean {
+  const q = query.trim()
+  return q.length >= 2 && !/^\d{1,2}$/.test(q)
+}
+
+/** „nicht abgeholt“, „offen“, „bereit“, „abgeholt“, „storniert“. */
+export function statusWord(
+  preorder: Pick<Preorder, 'status' | 'notCollected'>
+): string {
+  if (preorder.status === 'bereit' && preorder.notCollected) {
+    return 'nicht abgeholt'
+  }
+  return preorder.status
+}
+
+/** Ort der Abholliste einer Bestellung: `laden` oder die Sammelstelle. */
+export function preorderPlace(
+  preorder: Pick<Preorder, 'pickupPointId' | 'pickupPoint'>
+): string {
+  return preorder.pickupPointId ?? LADEN_PICKUP
+}
+
+/** „Di 17.11. · Laden“ - Tag und Ort einer anderen Abholliste. */
+export function targetLabel(
+  target: AbholTarget,
+  points: readonly Pick<PickupPoint, 'id' | 'name'>[]
+): string {
+  return `${formatShortDate(target.date)} · ${placeLabel(target.place, points)}`
+}
+
+/** „Di 17.11. · Laden · Erika Beispiel (nicht abgeholt)“ - ein Treffer anderswo. */
+export function searchHitLabel(
+  preorder: Pick<
+    Preorder,
+    | 'pickupDate'
+    | 'pickupPointId'
+    | 'pickupPoint'
+    | 'customerName'
+    | 'code'
+    | 'status'
+    | 'notCollected'
+  >,
+  points: readonly Pick<PickupPoint, 'id' | 'name'>[]
+): string {
+  const place = preorder.pickupPointId
+    ? preorder.pickupPoint?.name ?? placeLabel(preorder.pickupPointId, points)
+    : 'Laden'
+  return `${formatShortDate(preorder.pickupDate)} · ${place} · ${
+    preorder.customerName || preorder.code
+  } (${statusWord(preorder)})`
 }
 
 /* ------------------------------------------------------------------ *
@@ -519,6 +756,13 @@ export function changeAlreadyApplied(
   if (change.paid !== undefined && Boolean(preorder.paid) !== change.paid) {
     return false
   }
+  if (
+    change.externalPayment !== undefined &&
+    Boolean(preorder.externalPayment) !== change.externalPayment
+  ) {
+    return false
+  }
+  if (change.cashTopUp && !preorder.mixedPayment) return false
   // `paid: true` auf einer bezahlten Bestellung heißt „Rest kassiert“ bzw.
   // „erstattet“ - erledigt erst, wenn kein Betrag mehr offen ist.
   if (change.paid === true && (preorder.paymentBalance ?? 0) !== 0) {
@@ -553,6 +797,8 @@ export function handoverStillMatches(
     n === null || n === undefined ? null : Math.round(n * 100)
   if (cents(before.total) !== cents(fresh.total)) return false
   if (Boolean(before.paid) !== Boolean(fresh.paid)) return false
+  if (Boolean(before.externalPayment) !== Boolean(fresh.externalPayment))
+    return false
   if (cents(before.paidAmount) !== cents(fresh.paidAmount)) return false
   if (cents(before.paymentBalance) !== cents(fresh.paymentBalance)) {
     return false

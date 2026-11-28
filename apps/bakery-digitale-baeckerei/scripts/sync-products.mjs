@@ -15,6 +15,9 @@
  *   den synthetischen Snapshot src/test/fixtures/products.snapshot.fixture.json
  *   Byte für Byte.
  * - Ohne die Belegung bricht das Skript ab (zuerst sync-model).
+ * - DIGITALE_BAECKEREI_EINRICHTEN=1 (Einrichten-Modus, nur lokal): alle
+ *   verfügbaren Produkte, nicht nur die im Modell - der Inhaber wählt daraus.
+ *   Der Export-Wächter ließe so einen Snapshot nicht durch.
  * - Meldet (als Warnung, der Build läuft weiter), welche Produkte die Belegung
  *   zeigt, die es in hq nicht gibt.
  *
@@ -25,6 +28,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import hqProducts from '../../../libs/shared/hq-products/src/index.js'
+import belegungLib from './belegung.js'
 import productSnapshot from './product-snapshot.js'
 
 const { readHqProducts } = hqProducts
@@ -57,7 +61,11 @@ function writeJson(file, value) {
   fs.renameSync(tmp, file)
 }
 
-/** Die Belegung aus dem Modell (sync-model) - ohne sie geht es nicht weiter. */
+/**
+ * Die Belegung aus den Modellen (sync-model), alle Räume zusammen: Der
+ * Snapshot kennt ein Produkt, sobald es in irgendeinem Raum liegt. Ohne sie
+ * geht es nicht weiter.
+ */
 function leseBelegung() {
   if (!fs.existsSync(belegungPath)) {
     fail(
@@ -65,9 +73,9 @@ function leseBelegung() {
     )
   }
   try {
-    const belegung = JSON.parse(fs.readFileSync(belegungPath, 'utf8'))
-    if (!Array.isArray(belegung.slots)) throw new Error('slots fehlt')
-    return belegung
+    return belegungLib.alleSlots(
+      JSON.parse(fs.readFileSync(belegungPath, 'utf8'))
+    )
   } catch (err) {
     return fail(
       `public/data/belegung.json lässt sich nicht lesen (${
@@ -126,7 +134,10 @@ if (fixtureMode) {
   }
   // Nur was im Modell auf einem Platz liegt: Den Rest könnte die App nie
   // zeigen, er läge nur als Text zum Herunterladen im Export.
-  const gefiltert = nurBelegte(built.snapshot, belegung)
+  const gefiltert =
+    process.env.DIGITALE_BAECKEREI_EINRICHTEN === '1'
+      ? { snapshot: built.snapshot, entfernt: 0 }
+      : nurBelegte(built.snapshot, belegung)
   try {
     snapshot = pruefeSnapshot(gefiltert.snapshot)
   } catch (err) {

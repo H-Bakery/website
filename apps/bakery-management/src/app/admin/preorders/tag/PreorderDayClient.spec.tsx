@@ -1,5 +1,5 @@
 import React from 'react'
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import PreorderDayClient from './PreorderDayClient'
@@ -22,6 +22,24 @@ jest.mock('../../../../lib/preordersApi', () => ({
 }))
 
 const mockDay = fetchPreorderDay as jest.MockedFunction<typeof fetchPreorderDay>
+
+const originalMatchMedia = window.matchMedia
+/** `matchMedia` wie ein Fenster mit `width` px (nur `min-width`-Abfragen). */
+function viewport(width: number) {
+  window.matchMedia = jest.fn().mockImplementation((query: string) => {
+    const min = /min-width:\s*([\d.]+)px/.exec(query)
+    return {
+      matches: min ? width >= Number(min[1]) : false,
+      media: query,
+      onchange: null,
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      dispatchEvent: jest.fn(),
+    }
+  }) as unknown as typeof window.matchMedia
+}
 
 beforeEach(() => {
   jest.useFakeTimers({ now: new Date(2026, 10, 12, 10), doNotFake: ONLY_DATE })
@@ -145,33 +163,211 @@ describe('PreorderDayClient (P3)', () => {
     })
   })
 
-  it('streicht eine stornierte Bestellung durch, aber nicht die Erstattung (W4-verify r4)', async () => {
-    mockDay.mockResolvedValue(
-      day({
-        preorders: [
-          preorder({
-            id: 9,
-            code: 'LA-2026-11-14-03',
-            customerName: 'Stefan Storno',
-            pickupDate: '2026-11-14',
-            status: 'storniert',
-            paid: true,
-            paymentBalance: -4.8,
-          } as Partial<ReturnType<typeof preorder>>),
-        ],
-      })
+  describe('streicht eine stornierte Bestellung durch, aber nicht die Erstattung (W4-verify r4)', () => {
+    beforeEach(() =>
+      mockDay.mockResolvedValue(
+        day({
+          preorders: [
+            preorder({
+              id: 9,
+              code: 'LA-2026-11-14-03',
+              customerName: 'Stefan Storno',
+              pickupDate: '2026-11-14',
+              status: 'storniert',
+              paid: true,
+              paymentBalance: -4.8,
+            } as Partial<ReturnType<typeof preorder>>),
+          ],
+        })
+      )
     )
-    renderWithTheme(<PreorderDayClient initialDate="2026-11-14" />)
-    const note = await screen.findByText(/4,80\s€ erstatten/)
+    afterEach(() => {
+      window.matchMedia = originalMatchMedia
+    })
     const struck = (el: Element | null) =>
       el ? getComputedStyle(el).textDecoration.includes('line-through') : false
-    const moneyCell = note.closest('td')
-    expect(struck(moneyCell)).toBe(false)
-    expect(struck(note)).toBe(false)
-    expect(struck(moneyCell?.querySelector('.preorder-total') ?? null)).toBe(
-      true
-    )
-    expect(struck(screen.getByText('Stefan Storno').closest('td'))).toBe(true)
+
+    it('in der Tabelle (PC)', async () => {
+      viewport(1440)
+      renderWithTheme(<PreorderDayClient initialDate="2026-11-14" />)
+      const note = await screen.findByText(/4,80\s€ erstatten/)
+      const moneyCell = note.closest('td')
+      expect(struck(moneyCell)).toBe(false)
+      expect(struck(note)).toBe(false)
+      expect(struck(moneyCell?.querySelector('.preorder-total') ?? null)).toBe(
+        true
+      )
+      expect(struck(screen.getByText('Stefan Storno').closest('td'))).toBe(true)
+    })
+
+    it('auf der Karte (Handy, Tablet quer)', async () => {
+      viewport(1024)
+      renderWithTheme(<PreorderDayClient initialDate="2026-11-14" />)
+      const note = await screen.findByText(/4,80\s€ erstatten/)
+      const card = note.closest('[data-testid="preorder-day-card"]')
+      expect(card).not.toBeNull()
+      const money = note.closest('.preorder-money')
+      expect(struck(money)).toBe(false)
+      expect(struck(note)).toBe(false)
+      expect(struck(money?.querySelector('.preorder-total') ?? null)).toBe(true)
+      expect(struck(screen.getByText('Stefan Storno'))).toBe(true)
+    })
+  })
+
+  describe('Bestellungen passen aufs Tablet (Breite des Inhalts)', () => {
+    afterEach(() => {
+      window.matchMedia = originalMatchMedia
+    })
+
+    it('quer am Tablet (1024 px, Seitenleiste daneben): Karten mit Status und Summe', async () => {
+      viewport(1024)
+      renderWithTheme(<PreorderDayClient initialDate="2026-11-14" />)
+      const cards = await screen.findAllByTestId('preorder-day-card')
+      expect(
+        screen.queryByRole('table', { name: 'Bestellungen des Tages' })
+      ).toBeNull()
+      // ab md aufgeklappt - die Liste steht gleich da
+      expect(
+        screen.getByRole('button', { name: 'Ausblenden' })
+      ).toHaveAttribute('aria-expanded', 'true')
+      expect(cards).toHaveLength(2)
+      const first = within(cards[0])
+      expect(first.getByText('Erika Beispiel')).toBeInTheDocument()
+      expect(first.getByText('Offen')).toBeInTheDocument()
+      expect(first.getByText('4,80 €')).toBeInTheDocument()
+      expect(first.getByText('nicht bezahlt')).toBeInTheDocument()
+      expect(first.getByText('LA-2026-11-14-01')).toBeInTheDocument()
+      expect(first.getByRole('link')).toHaveAttribute(
+        'href',
+        '/admin/preorders/7'
+      )
+      // der Hinweis zu ✓ gilt auch für die Karten
+      expect(screen.getByText(/✓ = bezahlt, Betrag stimmt/)).toBeInTheDocument()
+    })
+
+    it('am PC (1440 px): die Tabelle bis „Summe“', async () => {
+      viewport(1440)
+      renderWithTheme(<PreorderDayClient initialDate="2026-11-14" />)
+      const table = await screen.findByRole('table', {
+        name: 'Bestellungen des Tages',
+      })
+      expect(
+        within(table)
+          .getAllByRole('columnheader')
+          .map((th) => th.textContent)
+      ).toEqual(['Code', 'Status', 'Kunde', 'Abholung', 'Artikel', 'Summe'])
+      expect(screen.queryAllByTestId('preorder-day-card')).toHaveLength(0)
+    })
+
+    it('gedruckt wird immer die Tabelle, auch vom Tablet', async () => {
+      viewport(1024)
+      renderWithTheme(<PreorderDayClient initialDate="2026-11-14" />)
+      await screen.findAllByTestId('preorder-day-card')
+      act(() => {
+        window.dispatchEvent(new Event('beforeprint'))
+      })
+      expect(
+        screen.getByRole('table', { name: 'Bestellungen des Tages' })
+      ).toBeInTheDocument()
+      expect(screen.queryAllByTestId('preorder-day-card')).toHaveLength(0)
+      act(() => {
+        window.dispatchEvent(new Event('afterprint'))
+      })
+      expect(screen.getAllByTestId('preorder-day-card')).toHaveLength(2)
+    })
+  })
+
+  describe('Tageswechsel: nur die letzte Antwort zählt', () => {
+    /** Fr 13. → Sa 14. → So 15.11.: je Tag eine eigene, erfundene Bestellung. */
+    const dayOf = (date: string) =>
+      day({
+        date,
+        preorders: [
+          preorder({
+            id: Number(date.slice(-2)),
+            code: `LA-${date}-01`,
+            customerName: `Testkundschaft ${date.slice(-2)}`,
+            pickupDate: date,
+          }),
+        ],
+      })
+
+    function deferred<T>() {
+      let resolve!: (value: T) => void
+      let reject!: (reason: unknown) => void
+      const promise = new Promise<T>((res, rej) => {
+        resolve = res
+        reject = rej
+      })
+      return { promise, resolve, reject }
+    }
+
+    /** Startet am Freitag und blättert zweimal weiter - beide Antworten offen. */
+    async function flipTwice() {
+      const sat = deferred<ReturnType<typeof day>>()
+      const sun = deferred<ReturnType<typeof day>>()
+      mockDay.mockImplementation((date: string) =>
+        date === '2026-11-14'
+          ? sat.promise
+          : date === '2026-11-15'
+          ? sun.promise
+          : Promise.resolve(dayOf(date))
+      )
+      const user = userEvent.setup()
+      renderWithTheme(<PreorderDayClient initialDate="2026-11-13" />)
+      expect(await screen.findByText('LA-2026-11-13-01')).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Nächster Backtag' }))
+      await user.click(screen.getByRole('button', { name: 'Nächster Backtag' }))
+      await waitFor(() =>
+        expect(mockDay).toHaveBeenLastCalledWith('2026-11-15')
+      )
+      return { sat, sun }
+    }
+
+    const title = () =>
+      screen.getByRole('heading', { level: 1 }).textContent ?? ''
+
+    it('die ältere Antwort kommt zuletzt: der neue Tag bleibt stehen, Titel und Liste passen', async () => {
+      const { sat, sun } = await flipTwice()
+      // bis zur Antwort kein alter Tag unter dem neuen Titel
+      expect(screen.queryByText('LA-2026-11-13-01')).toBeNull()
+      expect(screen.getByRole('button', { name: 'Drucken' })).toBeDisabled()
+      await act(async () => sun.resolve(dayOf('2026-11-15')))
+      expect(await screen.findByText('LA-2026-11-15-01')).toBeInTheDocument()
+      await act(async () => sat.resolve(dayOf('2026-11-14')))
+      expect(screen.queryByText('LA-2026-11-14-01')).toBeNull()
+      expect(screen.getByText('LA-2026-11-15-01')).toBeInTheDocument()
+      expect(title()).toBe('Vorbestellungen So, 15.11.2026')
+      expect(screen.getByLabelText('Abholtag')).toHaveValue('2026-11-15')
+      expect(screen.getByRole('button', { name: 'Drucken' })).toBeEnabled()
+    })
+
+    it('scheitert die ältere Anfrage danach, steht kein Fehler da', async () => {
+      const { sat, sun } = await flipTwice()
+      await act(async () => sun.resolve(dayOf('2026-11-15')))
+      expect(await screen.findByText('LA-2026-11-15-01')).toBeInTheDocument()
+      await act(async () => sat.reject(new Error('Zeitüberschreitung')))
+      expect(screen.queryByText('Zeitüberschreitung')).toBeNull()
+      expect(
+        screen.queryByRole('button', { name: 'Erneut versuchen' })
+      ).toBeNull()
+      expect(screen.getByText('LA-2026-11-15-01')).toBeInTheDocument()
+    })
+
+    it('eine veraltete Antwort beendet das Laden nicht', async () => {
+      const { sat, sun } = await flipTwice()
+      expect(
+        screen.getByText('Tagesübersicht wird geladen …')
+      ).toBeInTheDocument()
+      await act(async () => sat.resolve(dayOf('2026-11-14')))
+      expect(
+        screen.getByText('Tagesübersicht wird geladen …')
+      ).toBeInTheDocument()
+      expect(screen.queryByText('LA-2026-11-14-01')).toBeNull()
+      await act(async () => sun.resolve(dayOf('2026-11-15')))
+      expect(await screen.findByText('LA-2026-11-15-01')).toBeInTheDocument()
+      expect(screen.queryByText('Tagesübersicht wird geladen …')).toBeNull()
+    })
   })
 
   it('ein leerer Tag ist ein Leerzustand, keine Flächen voller Nullen (UI-Runde 2)', async () => {

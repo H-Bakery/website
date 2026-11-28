@@ -928,7 +928,7 @@ function statusFields(base, status, notCollected, now) {
  * Prueft einen Statuswechsel (`POST /api/preorders/:id/status`).
  *
  * @param {object} existing bisherige Vorbestellung
- * @param {object} body `{ status, notCollected?, paid? }`
+ * @param {object} body `{ status, notCollected?, paid?, externalPayment?, cashTopUp? }`
  * @param {object} [options] `{ allowedTargets?: string[], now? }` - der Fahrer
  *   darf nur `abgeholt` und "nicht abgeholt" setzen; `notCollectedFrom`
  *   (heute, JJJJ-MM-TT) verbietet "nicht abgeholt" vor dem Abholtag (409).
@@ -963,6 +963,52 @@ function normalizeStatusChange(existing, body, options) {
   }
   if (source.paid !== undefined && typeof source.paid !== 'boolean') {
     return fail('invalid_paid', '„Bezahlt" muss ja oder nein sein.')
+  }
+  if (
+    source.externalPayment !== undefined &&
+    typeof source.externalPayment !== 'boolean'
+  ) {
+    return fail(
+      'invalid_external_payment',
+      '„Zahlung per Überweisung oder Rechnung“ muss ja oder nein sein.'
+    )
+  }
+  if (
+    (source.externalPayment !== undefined || source.cashTopUp !== undefined) &&
+    Array.isArray(opts.allowedTargets)
+  ) {
+    return fail(
+      'forbidden',
+      'Den Zahlungsweg kann nur der Verkauf ändern.',
+      403
+    )
+  }
+  if (
+    source.cashTopUp !== undefined ||
+    (source.paid === true && source.externalPayment === false)
+  ) {
+    const externalBalance =
+      base.externalPayment && base.paidAmount > 0 && paymentBalance(base) > 0
+    if (
+      source.cashTopUp !== undefined &&
+      (source.cashTopUp !== true ||
+        source.paid !== true ||
+        source.externalPayment === false ||
+        !externalBalance ||
+        status === 'storniert')
+    ) {
+      return fail(
+        'invalid_cash_top_up',
+        'Eine Kassennachzahlung setzt eine externe Teilzahlung und einen offenen Rest voraus.'
+      )
+    }
+    if (externalBalance && source.externalPayment === false) {
+      return fail(
+        'cash_top_up_required',
+        'Bitte die Kassennachzahlung separat erfassen.',
+        409
+      )
+    }
   }
   // „Nicht abgeholt" erst ab dem Abholtag (W4): vorher kann die Kundschaft
   // noch kommen, und ein vorschnelles Markieren sieht in der Liste aus wie
@@ -1025,6 +1071,9 @@ function normalizeStatusChange(existing, body, options) {
 
   const changes = statusFields(base, status, notCollected, opts.now)
   if (source.paid !== undefined) changes.paid = source.paid
+  if (source.externalPayment !== undefined)
+    changes.externalPayment = source.externalPayment
+  if (source.cashTopUp === true) changes.cashTopUp = true
   return { changes }
 }
 
@@ -1315,6 +1364,7 @@ function normalizeOrderInput(body, existing, options) {
     return fail('invalid_paid', '„Bezahlt" muss ja oder nein sein.')
   }
   const paid = source.paid === undefined ? !!base.paid : source.paid
+  const externalPayment = pick('externalPayment') === true
 
   // --- Status
   const statusResult = normalizeStatusChange(
@@ -1322,6 +1372,7 @@ function normalizeOrderInput(body, existing, options) {
     {
       status: source.status === undefined ? undefined : source.status,
       notCollected: source.notCollected,
+      externalPayment: source.externalPayment,
     },
     // `notCollectedFrom` (heute): „nicht abgeholt“ auch beim Anlegen und
     // Bearbeiten erst ab dem Abholtag - wie bei `POST /:id/status`.
@@ -1563,6 +1614,7 @@ function normalizeOrderInput(body, existing, options) {
       pickupTime,
       pickupPointId: pickupPoint ? pickupPoint.id : null,
       paid,
+      externalPayment,
       note,
       ...statusResult.changes,
       items,
@@ -1946,6 +1998,13 @@ function variantLabel(variant) {
     .join('-')
 }
 
+/** Position zum Lesen: „Zopf gefüllt (Nuss)“ bzw. nur der Name ohne Sorte
+ * (wie `itemName` der Verwaltung; Abholliste des Alias, Bestellschein). */
+function itemLabel(item) {
+  const name = String((item && item.name) || '')
+  return item && item.variant ? `${name} (${variantLabel(item.variant)})` : name
+}
+
 function isoOrNull(value) {
   if (value === null || value === undefined) return null
   const d = value instanceof Date ? value : new Date(value)
@@ -1970,9 +2029,7 @@ function toLegacyPreorder(preorder, pickupPoint, now) {
     items: (p.items || []).map((item) => {
       const out = {
         productId: item.productId,
-        name: item.variant
-          ? `${item.name} (${variantLabel(item.variant)})`
-          : item.name,
+        name: itemLabel(item),
         qty: item.quantity,
         unit: item.unit,
         unitPrice: Number(item.unitPrice),
@@ -2153,6 +2210,7 @@ module.exports = {
   fromLegacyStatus,
   fromLegacyInput,
   legacyItemsLoseVariants,
+  itemLabel,
   toLegacyPreorder,
   legacyPreorderToRecord,
   anonymizeCutoff,

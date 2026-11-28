@@ -52,7 +52,7 @@
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "same-origin"
-		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Permissions-Policy "camera=(), microphone=(self), geolocation=(), payment=(), usb=()"
 		Cross-Origin-Opener-Policy "same-origin"
 		# Bewusst nur die Teile einer CSP, die Next.js/MUI (Inline-Skripte und
 		# -Styles) nicht brechen. Eine volle CSP braucht Nonces in der App.
@@ -62,7 +62,20 @@
 	}
 	encode zstd gzip
 
-	request_body {
+	@receipt_upload {
+		method POST
+		path_regexp receipt_upload ^/api/receipts(/[0-9]+/files)?/?$
+	}
+	request_body @receipt_upload {
+		max_size 15MB
+	}
+	@other_body {
+		not {
+			method POST
+			path_regexp other_receipt_upload ^/api/receipts(/[0-9]+/files)?/?$
+		}
+	}
+	request_body @other_body {
 		max_size 5MB
 	}
 

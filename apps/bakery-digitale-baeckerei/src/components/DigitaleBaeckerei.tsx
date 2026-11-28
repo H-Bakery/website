@@ -2,21 +2,36 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
+import Link from '@mui/material/Link'
 import Paper from '@mui/material/Paper'
 import Typography from '@mui/material/Typography'
-import lock from '../../model.lock.json'
 import {
-  START_BLICKPUNKT_ID,
+  INTRO_ANSAGE_LADEN,
+  INTRO_LABEL_LADEN,
   START_RAUM_ID,
   findeBlickpunkt,
   findeRaum,
+  type Raum,
 } from '../config/raeume'
 import { BASE_PATH, modelUrl } from '../lib/basePath'
+import type { Karte, ListenZeile } from '../lib/karte'
+import { holeModell } from '../lib/modell/holeModell'
 import type {
   Belegung,
-  ProduktInfo,
+  BelegungDatei,
   ProduktSnapshot,
 } from '../lib/produkte/types'
+import { raumAusAdresse, sucheFuerRaum } from '../lib/raeume/adresse'
+import {
+  findeFuerKnoten,
+  infoEintraegeFuer,
+  infopunkteVon,
+  istInfoKarte,
+  karteVon,
+  ladeRauminfos,
+  type Rauminfos,
+} from '../lib/raeume/rauminfos'
+import { VERFUEGBARE_RAEUME, modellBytes } from '../lib/raeume/verfuegbar'
 import {
   LEERER_MODELL_INDEX,
   ladeModellIndex,
@@ -31,34 +46,87 @@ import {
   zaehleEntdeckt,
 } from '../lib/produkte/entdeckt'
 import {
+  belegungVon,
   eintraegeFuer,
   ladeProduktdaten,
-  type ListenEintrag,
 } from '../lib/produkte/zuordnung'
-import type { Treffer, ViewerReadyInfo } from '../lib/scene/createViewer'
+import type {
+  SzenenEinrichtung,
+  Treffer,
+  ViewerReadyInfo,
+} from '../lib/scene/createViewer'
 import AllesHierListe from './AllesHierListe'
 import BlickpunktLeiste from './BlickpunktLeiste'
 import Hinweis from './Hinweis'
 import IntroKnopf from './IntroKnopf'
 import Ladebild from './Ladebild'
-import { ladeViewer, type ViewerKomponente } from './ladeViewer'
+import { hatWebGL2, ladeViewer, type ViewerKomponente } from './ladeViewer'
 import Nahansicht from './Nahansicht'
-import OhneWebGL, { OHNE_WEBGL_TEXT, OHNE_WEBGL_ZUSATZ } from './OhneWebGL'
+import OhneWebGL, {
+  OHNE_WEBGL_TEXT,
+  OHNE_WEBGL_ZUSATZ,
+  type RaumListen,
+} from './OhneWebGL'
+import { KEINE_INFOS_TEXT } from './produktliste'
 import ProduktSheet from './ProduktSheet'
 import { SCENE_BACKDROP } from './theme'
 
+/**
+ * Einrichten-Modus (DB12): das lokale Werkzeug des Inhabers. Es steckt nur in
+ * einem Build, der dafür gestartet wurde (`nx run
+ * bakery-digitale-baeckerei:einrichten`), und - zum Testen, erst mit
+ * `?einrichten=1` - im Fixture-Build. Die Bedingung steht wörtlich hier: Nur
+ * so rechnet webpack sie beim Bauen aus und lässt im öffentlichen Export das
+ * Werkzeug samt `require` weg (der Export-Wächter prüft das nach).
+ */
+const Einrichten: React.ComponentType<
+  import('./einrichten/Einrichten').EinrichtenProps
+> | null =
+  process.env.NEXT_PUBLIC_DIGITALE_BAECKEREI_EINRICHTEN === '1' ||
+  process.env.NEXT_PUBLIC_DIGITALE_BAECKEREI_FIXTURE === '1'
+    ? // eslint-disable-next-line @typescript-eslint/no-var-requires
+      (
+        require('./einrichten/Einrichten') as {
+          default: React.ComponentType<
+            import('./einrichten/Einrichten').EinrichtenProps
+          >
+        }
+      ).default
+    : null
+/** Im Einrichten-Build ist das Werkzeug immer an, im Fixture-Build auf Wunsch. */
+const EINRICHTEN_IMMER =
+  process.env.NEXT_PUBLIC_DIGITALE_BAECKEREI_EINRICHTEN === '1'
+
 export const TITEL = 'Digitale Bäckerei'
+/** Zweite Zeile der Titelkarte: Wessen Laden das ist - und der Weg zur Website. */
+export const BAECKEREI_NAME = 'Bäckerei Heusser'
+/**
+ * Die Startseite der Landingpage. Bewusst ohne den Unterpfad der App
+ * (`/digitale-baeckerei`): ein einfacher Link, nicht `next/link`.
+ */
+export const STARTSEITE = '/'
 export const FEHLER_TEXT =
   'Der Laden konnte nicht geladen werden. Prüf deine Verbindung und versuch es noch einmal.'
 export const UNTERBROCHEN_TEXT =
   'Die 3D-Ansicht wurde unterbrochen. Du kannst sie neu laden.'
+/** Ein anderer Raum als der Laden ließ sich nicht laden. */
+export const RAUM_FEHLER_TEXT =
+  'Der Raum konnte nicht geladen werden. Prüf deine Verbindung und versuch es noch einmal.'
 export const BEREIT_TEXT = 'Der Laden ist geladen. Du stehst an der Theke.'
+/** Ansage, wenn ein anderer Raum als der Laden geladen ist. */
+export const raumBereitText = (raum: string, blickpunkt: string) =>
+  `${raum} ist geladen. Blickpunkt ${blickpunkt}.`
 export const DATEN_LADEN_TEXT = 'Die Produktinfos werden geladen …'
 export const DATEN_FEHLER_TEXT =
   'Die Produktinfos konnten nicht geladen werden.'
+/** Der Hinweis beim Start, solange die Produktinfos fehlen: kein „Tippen für Infos“. */
+export const DATEN_FEHLER_HINWEIS = 'Ziehen zum Umschauen · Infos fehlen gerade'
 /** An einem Blickpunkt ohne Produktinfos: einmal sagen, dass Tippen hier nichts öffnet. */
 export const KEINE_INFOS_HINWEIS =
   'Hier gibt es noch keine Infos zum Antippen – schau dich einfach um.'
+/** Der Hinweis beim Start im Einrichten-Modus (dort öffnet ein Tipp keine Infos). */
+export const EINRICHTEN_HINWEIS =
+  'Ziehen zum Umschauen · Platz antippen zum Einrichten'
 /**
  * Das gewählte Produkt lässt sich von diesem Blickpunkt aus nicht ins Bild
  * drehen. Bewusst ohne Richtung: Die Grenze des Umschauens ist dann schon
@@ -66,12 +134,16 @@ export const KEINE_INFOS_HINWEIS =
  */
 export const NICHT_IM_BILD_TEXT = 'Von hier aus gerade nicht im Bild.'
 export const NOCHMAL_TEXT = 'Noch einmal versuchen'
-/** Ansage für Screenreader, solange der Flug zum Start läuft. */
-export const INTRO_ANSAGE =
-  'Kurzer Flug von der Straße zur Theke. Überspringen möglich.'
-/** Name des Canvas während des Flugs (danach: „Blickpunkt Theke“). */
-export const INTRO_LABEL =
-  '3D-Ansicht der Bäckerei, Flug von der Straße zur Theke'
+/**
+ * Ansage für Screenreader und Name des Canvas, solange der Flug zum Start des
+ * Ladens läuft (danach: „Blickpunkt Theke“). Die Texte stehen am Flug in
+ * raeume.ts; ein Flug ohne eigene bekommt die allgemeinen.
+ */
+export const INTRO_ANSAGE = INTRO_ANSAGE_LADEN
+export const INTRO_LABEL = INTRO_LABEL_LADEN
+export const INTRO_ANSAGE_ALLGEMEIN =
+  'Kurzer Flug zum Start. Überspringen möglich.'
+export const INTRO_LABEL_ALLGEMEIN = '3D-Ansicht der Bäckerei, Flug zum Start'
 
 /** Ansage für Screenreader nach einem Wechsel. */
 export const blickpunktAnsage = (name: string) => `Blickpunkt ${name}.`
@@ -81,17 +153,30 @@ export const kartenAnsage = (name: string) => `Infos zu ${name} geöffnet.`
 /** So lange steht der Hinweis an einem Blickpunkt ohne Produktinfos. */
 export const KEINE_INFOS_MS = 7000
 
+/**
+ * Anteil des Abrufs am Fortschritt: Bis das Modell da ist, steht der Balken
+ * bei höchstens 90 %; Entpacken und erstes Bild machen den Rest.
+ */
+export const MODELL_ANTEIL = 0.9
+
 type Zustand = 'laden' | 'bereit' | 'kein-webgl' | 'fehler' | 'unterbrochen'
 
 interface Produktdaten {
   snapshot: ProduktSnapshot
-  belegung: Belegung
+  /** Belegung aller Räume; je Raum: `belegungVon`. */
+  belegung: BelegungDatei
 }
 
-/** Das gewählte Produkt und der Platz, auf dem es im Bild liegt. */
+/**
+ * Was gerade gewählt ist: ein Produkt und der Platz, auf dem es im Bild
+ * liegt - oder ein Infopunkt und sein Knoten im Modell.
+ */
 interface Auswahl {
+  /** Platz des Produkts bzw. Knoten des Infopunkts: wird im Bild hervorgehoben. */
   slot: string
-  produkt: ProduktInfo
+  /** Inhalt der Karte. */
+  produkt: Karte
+  art: 'produkt' | 'info'
   /** `tipp`: ins Bild getippt - der Fokus bleibt in der Szene. */
   quelle: 'tipp' | 'liste'
 }
@@ -101,17 +186,6 @@ interface OffeneNahansicht {
   name: string
   url: string
   bytes: number
-}
-
-/** Größe der ausgelieferten (bereinigten) Datei - die lädt der Browser. */
-const modelBytes = (file: string): number | undefined => {
-  const entry = (
-    lock.files as Record<
-      string,
-      { bytes: number; ausgeliefert?: { bytes: number } } | undefined
-    >
-  )[file]
-  return entry?.ausgeliefert?.bytes ?? entry?.bytes
 }
 
 const UNSICHTBAR = {
@@ -127,8 +201,31 @@ const UNSICHTBAR = {
 const produktKarte = (): Element | null =>
   document.querySelector('[data-testid="produkt-sheet"]')
 
-export default function DigitaleBaeckerei() {
-  const raum = findeRaum(START_RAUM_ID)
+export interface DigitaleBaeckereiProps {
+  /** Die Räume, die es gibt (Standard: die dieses Builds). Für Tests. */
+  raeume?: readonly Raum[]
+}
+
+export default function DigitaleBaeckerei({
+  raeume = VERFUEGBARE_RAEUME,
+}: DigitaleBaeckereiProps = {}) {
+  const startRaum = raumAusAdresse('', raeume, START_RAUM_ID)
+  /**
+   * Der Raum, in dem man steht. Die erste Ausgabe zeigt immer den Start-Raum
+   * (so steht sie auch im HTML); `?raum=<id>` wird gleich danach gelesen.
+   */
+  const [raumId, setRaumId] = useState(startRaum?.id ?? START_RAUM_ID)
+  const raum = findeRaum(raumId, raeume) ?? startRaum
+  const raumRef = useRef(raumId)
+  raumRef.current = raumId
+  /**
+   * Erst wenn `?raum=<id>` gelesen ist, steht fest, welches Modell gebraucht
+   * wird - vorher holt die App keins (sonst ginge mit einem Link in einen
+   * anderen Raum das Modell des Ladens mit über die Leitung).
+   */
+  const [adresseGelesen, setAdresseGelesen] = useState(false)
+  /** Beim Raumwechsel stand der Fokus auf einem Bedienelement, das dabei verschwindet. */
+  const fokusNachWechsel = useRef(false)
 
   const [zustand, setZustand] = useState<Zustand>('laden')
   const [fortschritt, setFortschritt] = useState(0)
@@ -136,14 +233,53 @@ export default function DigitaleBaeckerei() {
   const [versuch, setVersuch] = useState(0)
   /** Die nachgeladene 3D-Komponente (three.js) - nie im ersten Bundle. */
   const [Viewer3D, setViewer3D] = useState<ViewerKomponente | null>(null)
-  const [aktivId, setAktivId] = useState(START_BLICKPUNKT_ID)
+  const [aktivId, setAktivId] = useState(startRaum?.start ?? '')
   /** Erst nach einem Wechsel sagt die Status-Region den Blickpunkt an. */
   const [gewechselt, setGewechselt] = useState(false)
   const [daten, setDaten] = useState<Produktdaten | null>(null)
   const [datenFehler, setDatenFehler] = useState(false)
+  /** Infopunkte der Räume; `null`, solange sie laden (danach nie ein Fehler). */
+  const [rauminfos, setRauminfos] = useState<Rauminfos | null>(null)
   /** 3D-Modelle einzelner Produkte; leer = keine Nahansicht (kein Fehler). */
   const [modelle, setModelle] =
     useState<ProduktModellIndex>(LEERER_MODELL_INDEX)
+  /** Neuer Wert = Produktdaten noch einmal laden („Noch einmal versuchen“). */
+  const [datenVersuch, setDatenVersuch] = useState(0)
+  /**
+   * Produktdaten und Modell-Index als ein Versprechen: Die Szene wartet
+   * darauf (höchstens `EINRICHTUNG_FRIST_MS`), bevor sie das erste Bild zeigt
+   * - sie legt damit die Regal-Modelle auf die Plätze (DB12). Scheitern die
+   * Produktdaten, bleibt es offen, bis ein neuer Versuch sie bringt: Die
+   * Szene steht dann erst mit der Ware ihres Modells da und richtet sich
+   * nachträglich ein.
+   */
+  const [ladung, setLadung] = useState<Promise<
+    [Produktdaten, ProduktModellIndex]
+  > | null>(null)
+  /** Erfüllt `ladung` mit den ersten Produktdaten - aus welchem Versuch auch immer. */
+  const datenFuerSzene = useRef<((geladen: Produktdaten) => void) | null>(null)
+  /**
+   * Das Modell des Raums als Bytes - geholt ohne three (`holeModell`), gleich
+   * beim Start, je Raum und je Versuch. Die Szene entpackt nur noch.
+   */
+  const [modell, setModell] = useState<{
+    url: string
+    versuch: number
+    daten: Promise<ArrayBuffer>
+  } | null>(null)
+  /**
+   * WebGL 2 da? three.js braucht es. Einmal geprüft, erst im Browser (nie
+   * beim Vorab-Rendern); ohne gibt es weder three-Chunk noch Modell.
+   */
+  const webgl2 = useRef<boolean | null>(null)
+  const kann3D = useCallback(() => {
+    if (webgl2.current === null) webgl2.current = hatWebGL2()
+    return webgl2.current
+  }, [])
+  /** Einrichten-Modus: an? Der Entwurf je Raum, der gewählte Platz. */
+  const [einrichtenAn, setEinrichtenAn] = useState(false)
+  const [entwurf, setEntwurf] = useState<Record<string, Belegung> | null>(null)
+  const [einrichtenPlatz, setEinrichtenPlatz] = useState<string | null>(null)
   const [auswahl, setAuswahl] = useState<Auswahl | null>(null)
   const [nahansicht, setNahansicht] = useState<OffeneNahansicht | null>(null)
   /** Platz, der sich von hier nicht ins freie Bild drehen lässt. */
@@ -156,8 +292,11 @@ export default function DigitaleBaeckerei() {
   const keineInfosGezeigt = useRef(new Set<string>())
   /** Der Flug zum Start läuft: Solange gibt es nur „Überspringen“. */
   const [introLaeuft, setIntroLaeuft] = useState(false)
-  /** Das Modell hat einen Flug (und das Gerät erlaubt Bewegung): „noch einmal ansehen“. */
-  const [introDa, setIntroDa] = useState(false)
+  /** id des Flugs, den das Modell hat (und das Gerät erlaubt Bewegung): „noch einmal ansehen“. */
+  const [introId, setIntroId] = useState<string | null>(null)
+  const introDa = introId !== null
+  /** Räume, deren Flug in diesem Besuch schon lief - er läuft je Raum einmal. */
+  const introGespielt = useRef(new Set<string>())
   /** Nach einem Flug sagt die Status-Region den Blickpunkt an. */
   const [introGesehen, setIntroGesehen] = useState(false)
   /** Zähler als Auftrag an die Szene: noch einmal zeigen / überspringen. */
@@ -173,10 +312,14 @@ export default function DigitaleBaeckerei() {
 
   // Die Szene nachladen. Scheitert das (wackliges Netz: HTML da, der
   // three-Chunk nicht), ist das ein Ladefehler mit „Noch einmal versuchen“ -
-  // keine englische Fehlerseite.
+  // keine englische Fehlerseite. Ohne WebGL 2 gar nicht: gleich die Liste.
   const hatViewer = Viewer3D !== null
   useEffect(() => {
     if (hatViewer) return undefined
+    if (!kann3D()) {
+      setZustand('kein-webgl')
+      return undefined
+    }
     let aktuell = true
     ladeViewer()
       .then((komponente) => {
@@ -188,30 +331,59 @@ export default function DigitaleBaeckerei() {
     return () => {
       aktuell = false
     }
-  }, [hatViewer, versuch])
+  }, [hatViewer, versuch, kann3D])
 
-  // Snapshot aus hq und Belegung aus dem Modell - unabhängig von der Szene,
-  // auch der Ersatz ohne WebGL braucht sie.
+  // Welche Produkte ein 3D-Modell haben (Nahansicht, Regal-Modelle). Fehlt
+  // der Index oder ist er leer, gibt es beides einfach nicht. Dazu das
+  // Versprechen für die Szene; die Produktdaten erfüllen es (unten).
   useEffect(() => {
     let aktuell = true
-    ladeProduktdaten(BASE_PATH)
-      .then((geladen) => {
-        if (aktuell) setDaten(geladen)
-      })
-      .catch(() => {
-        if (aktuell) setDatenFehler(true)
-      })
+    const index = ladeModellIndex(BASE_PATH)
+    const produktdaten = new Promise<Produktdaten>((fertig) => {
+      datenFuerSzene.current = fertig
+    })
+    setLadung(Promise.all([produktdaten, index]))
+    index.then((geladen) => {
+      if (aktuell) setModelle(geladen)
+    })
     return () => {
       aktuell = false
     }
   }, [])
 
-  // Welche Produkte ein 3D-Modell für die Nahansicht haben. Fehlt der Index
-  // oder ist er leer, gibt es den Knopf „In 3D ansehen“ einfach nicht.
+  // Snapshot aus hq und Belegung aus dem Modell - unabhängig von der Szene,
+  // auch der Ersatz ohne WebGL braucht sie. Ein neuer `datenVersuch` lädt sie
+  // noch einmal (nach einem Fehler).
   useEffect(() => {
     let aktuell = true
-    ladeModellIndex(BASE_PATH).then((index) => {
-      if (aktuell) setModelle(index)
+    ladeProduktdaten(BASE_PATH).then(
+      (geladen) => {
+        if (!aktuell) return
+        setDaten(geladen)
+        setDatenFehler(false)
+        datenFuerSzene.current?.(geladen)
+      },
+      () => {
+        if (aktuell) setDatenFehler(true)
+      }
+    )
+    return () => {
+      aktuell = false
+    }
+  }, [datenVersuch])
+
+  /** Produktdaten noch einmal laden; bis dahin „werden geladen“. */
+  const ladeDatenNochmal = useCallback(() => {
+    setDatenFehler(false)
+    setDatenVersuch((n) => n + 1)
+  }, [])
+
+  // Infopunkte der Räume (Stationen der Backstube). Fehlt die Datei, gibt es
+  // keine - das ist kein Fehler.
+  useEffect(() => {
+    let aktuell = true
+    ladeRauminfos(BASE_PATH).then((geladen) => {
+      if (aktuell) setRauminfos(geladen)
     })
     return () => {
       aktuell = false
@@ -239,24 +411,161 @@ export default function DigitaleBaeckerei() {
     }
   }, [zustand, modelle, daten])
 
+  /**
+   * Die Einrichtung des Raums für die Szene (DB12): seine Belegung mit den
+   * Rahmen der Plätze und die Regal-Modelle. In einem Raum ohne Produkte:
+   * gleich `null` - der Raum bleibt, wie er im Modell ist. Fehlen die
+   * Produktdaten, bleibt das Versprechen offen (siehe `ladung`).
+   */
+  const einrichtung = useMemo(
+    (): Promise<SzenenEinrichtung | null> | undefined =>
+      !ladung || !raum
+        ? undefined
+        : !raum.produkte
+        ? // Ein Raum ohne Produkte wartet auf nichts.
+          Promise.resolve(null)
+        : ladung.then(([geladen, index]) => ({
+            belegung: belegungVon(geladen.belegung, raum.id),
+            regal: index.regal
+              ? {
+                  url: `${BASE_PATH}/${index.regal.datei}`,
+                  modelle: index.regal.modelle,
+                }
+              : undefined,
+            blickpunkte: raum.blickpunkte,
+          })),
+    [ladung, raum]
+  )
+
+  useEffect(() => {
+    if (!Einrichten) return
+    if (EINRICHTEN_IMMER) setEinrichtenAn(true)
+    else {
+      try {
+        const parameter = new URLSearchParams(window.location.search)
+        setEinrichtenAn(parameter.get('einrichten') === '1')
+      } catch {
+        /* ohne Werkzeug */
+      }
+    }
+  }, [])
+  const einrichten = Einrichten !== null && einrichtenAn
+  /** Die Belegung eines Raums, wie sie gilt - im Einrichten-Modus der Entwurf. */
+  const belegungFuer = useCallback(
+    (id: string): Belegung | null =>
+      (einrichten && entwurf?.[id]) ||
+      (daten ? belegungVon(daten.belegung, id) : null),
+    [einrichten, entwurf, daten]
+  )
+
   const blickpunkte = useMemo(() => raum?.blickpunkte ?? [], [raum])
   const blickpunkt = raum && findeBlickpunkt(raum, aktivId)
 
-  /** Was an welchem Blickpunkt liegt - nur Produkte, die der Snapshot kennt. */
-  const eintraegeJe = useMemo(() => {
-    const je: Record<string, ListenEintrag[]> = {}
-    if (!daten) return je
-    for (const b of blickpunkte) {
-      je[b.id] = eintraegeFuer(daten.belegung, daten.snapshot, [...b.moebel])
-    }
-    return je
-  }, [daten, blickpunkte])
+  /**
+   * Die Listen aller Räume - der eine Weg der Daten je Raum: je Blickpunkt
+   * erst die Produkte (nur in Räumen mit `produkte`: Belegung des Raums +
+   * Snapshot, nur was der Snapshot kennt), dann die Infopunkte des Raums.
+   * Daraus leben „Alles hier“, der Ersatz ohne WebGL und die Liste für
+   * Screenreader.
+   */
+  const listen = useMemo<RaumListen[]>(
+    () =>
+      raeume.map((r) => {
+        const infopunkte = rauminfos ? infopunkteVon(rauminfos, r.id) : []
+        const eintraegeJe: Record<string, ListenZeile[]> = {}
+        for (const b of r.blickpunkte) {
+          const belegung = r.produkte ? belegungFuer(r.id) : null
+          eintraegeJe[b.id] = [
+            ...(belegung && daten
+              ? eintraegeFuer(belegung, daten.snapshot, b.moebel)
+              : []),
+            ...infoEintraegeFuer(infopunkte, b.moebel),
+          ]
+        }
+        return {
+          id: r.id,
+          name: r.name,
+          blickpunkte: r.blickpunkte,
+          eintraegeJe,
+          leerText: r.produkte ? undefined : KEINE_INFOS_TEXT,
+        }
+      }),
+    [raeume, daten, rauminfos, belegungFuer]
+  )
+  /** Die Liste des Raums, in dem man steht. */
+  const raumListe = useMemo(
+    () => listen.filter((liste) => liste.id === raum?.id),
+    [listen, raum]
+  )
+  const eintraegeJe = raumListe[0]?.eintraegeJe
 
   const waehle = useCallback((neu: Auswahl | null) => {
     setAuswahl(neu)
     setNichtImBild(null)
-    if (neu) setEntdeckt((vorher) => merkeEntdeckt(vorher, neu.produkt.id))
+    if (neu?.art === 'produkt') {
+      setEntdeckt((vorher) => merkeEntdeckt(vorher, neu.produkt.id))
+    }
   }, [])
+
+  /**
+   * In einen anderen Raum gehen: Die Szene wird mit dessen Modell neu gebaut
+   * (die alte gibt dabei alles frei), man steht an seinem Start-Blickpunkt,
+   * Karte, Liste und Nahansicht des alten Raums gehen zu. `neu`: als eigener
+   * Schritt im Verlauf des Browsers (`?raum=<id>`), damit „Zurück“
+   * zurückführt; `keiner`: die Adresse stimmt schon (Link, „Zurück“).
+   */
+  const betrete = useCallback(
+    (id: string, verlauf: 'neu' | 'keiner') => {
+      const ziel = findeRaum(id, raeume)
+      if (!ziel || id === raumRef.current) return
+      // Der Knopf, auf dem der Fokus steht, verschwindet mit der Leiste: Ist
+      // der neue Raum da, bekommt ihn der Raumwechsel wieder.
+      fokusNachWechsel.current =
+        document.activeElement !== null &&
+        document.activeElement !== document.body
+      if (verlauf === 'neu') {
+        try {
+          const { pathname, search, hash } = window.location
+          window.history.pushState(
+            null,
+            '',
+            `${pathname}${sucheFuerRaum(search, id, START_RAUM_ID)}${hash}`
+          )
+        } catch {
+          /* ohne Verlauf: der Wechsel gilt trotzdem */
+        }
+      }
+      raumRef.current = id
+      setRaumId(id)
+      setAktivId(ziel.start)
+      setGewechselt(false)
+      setIntroGesehen(false)
+      setIntroLaeuft(false)
+      setIntroId(null)
+      waehle(null)
+      setListeOffen(false)
+      setNahansicht(null)
+      setKeineInfosAn(null)
+      setFortschritt(0)
+      // Ohne WebGL gibt es keine Szene zu laden - die Liste zeigt alle Räume.
+      setZustand((vorher) => (vorher === 'kein-webgl' ? vorher : 'laden'))
+      setVersuch((n) => n + 1)
+    },
+    [raeume, waehle]
+  )
+
+  // Der Raum aus der Adresse: beim Start (`?raum=<id>`) und bei „Zurück“ /
+  // „Vor“ im Browser. Nichts davon wird auf dem Gerät gespeichert.
+  useEffect(() => {
+    const ausAdresse = () => {
+      const ziel = raumAusAdresse(window.location.search, raeume, START_RAUM_ID)
+      if (ziel) betrete(ziel.id, 'keiner')
+    }
+    ausAdresse()
+    setAdresseGelesen(true)
+    window.addEventListener('popstate', ausAdresse)
+    return () => window.removeEventListener('popstate', ausAdresse)
+  }, [raeume, betrete])
 
   const aktivRef = useRef(aktivId)
   aktivRef.current = aktivId
@@ -284,10 +593,55 @@ export default function DigitaleBaeckerei() {
     [blickpunkte, wechsleZu]
   )
 
-  const onProgress = useCallback((f: number) => setFortschritt(f), [])
+  /**
+   * Fortschritt in ganzen Prozent und nie rückwärts - ein Render je Prozent,
+   * nicht je Datenpaket. Zurück auf 0 nur bei einem neuen Raum oder Versuch.
+   */
+  const onProgress = useCallback((anteil: number) => {
+    const prozent =
+      Math.floor(Math.min(Math.max(anteil, 0), 1) * 100 + 1e-9) / 100
+    setFortschritt((vorher) => (prozent > vorher ? prozent : vorher))
+  }, [])
+
+  // Das Modell holen - vom ersten Moment an, parallel zum three-Chunk, mit
+  // Fortschritt (0…90 %). Je Raum und je Versuch; ein neuer Raum, ein neuer
+  // Versuch und das Abbauen brechen den alten Abruf ab.
+  const raumModellUrl = raum ? modelUrl(raum.modell) : null
+  const raumModellBytes = raum ? modellBytes(raum) : undefined
+  useEffect(() => {
+    if (!raumModellUrl || !adresseGelesen || !kann3D()) return undefined
+    let aktuell = true
+    const abbruch = new AbortController()
+    const daten = holeModell(raumModellUrl, {
+      signal: abbruch.signal,
+      bytes: raumModellBytes,
+      onFortschritt: (anteil) => {
+        if (aktuell) onProgress(MODELL_ANTEIL * anteil)
+      },
+    })
+    // Scheitert der Abruf, ist das gleich ein Ladefehler - nicht erst, wenn
+    // auch three da ist. (Die Szene meldet ihn sonst noch einmal.)
+    daten.catch(() => {
+      if (aktuell) setZustand((z) => (z === 'laden' ? 'fehler' : z))
+    })
+    setModell({ url: raumModellUrl, versuch, daten })
+    return () => {
+      aktuell = false
+      abbruch.abort()
+    }
+  }, [
+    raumModellUrl,
+    raumModellBytes,
+    versuch,
+    adresseGelesen,
+    kann3D,
+    onProgress,
+  ])
   const onReady = useCallback((info?: ViewerReadyInfo) => {
     setZustand('bereit')
-    setIntroDa(Boolean(info?.intro))
+    setIntroId(info?.intro?.id ?? null)
+    // Der Flug läuft je Raum einmal: Wer zurückkommt, steht gleich am Blickpunkt.
+    if (info?.intro?.laeuft) introGespielt.current.add(raumRef.current)
   }, [])
   const onIntro = useCallback((laeuft: boolean) => {
     setIntroLaeuft(laeuft)
@@ -312,27 +666,65 @@ export default function DigitaleBaeckerei() {
   )
 
   /**
-   * Tipp ins Bild. Eine Karte gibt es nur für ein Produkt, das der Snapshot
-   * kennt; alles andere (neutrale Ware, Möbel, Wand, unbekanntes Produkt)
-   * schließt die Karte und nimmt die Hervorhebung weg.
+   * Tipp ins Bild. Eine Karte gibt es für ein Produkt, das der Snapshot kennt
+   * (in Räumen mit Produkten), und für ein Stück des Modells mit Infopunkt.
+   * Eine Tür führt in ihren Raum. Alles andere (neutrale Ware, Möbel, Wand,
+   * unbekanntes Produkt) schließt die Karte und nimmt die Hervorhebung weg.
    */
   const onTreffer = useCallback(
     (treffer: Treffer | null) => {
-      const id = treffer?.produkt
+      setKeineInfosAn(null)
+      // Einrichten-Modus: Ein Tipp wählt den Platz, keine Karte.
+      if (einrichten) {
+        const plaetze = raum ? belegungFuer(raum.id)?.plaetze : undefined
+        if (
+          treffer &&
+          plaetze &&
+          Object.prototype.hasOwnProperty.call(plaetze, treffer.slot)
+        ) {
+          setBedient(true)
+          setEinrichtenPlatz(treffer.slot)
+        }
+        return
+      }
+      if (!treffer || !raum) {
+        waehle(null)
+        return
+      }
+      const id = treffer.produkt
       const produkt =
+        raum.produkte &&
         id &&
         daten &&
         Object.prototype.hasOwnProperty.call(daten.snapshot.produkte, id)
           ? daten.snapshot.produkte[id]
           : undefined
+      if (produkt) {
+        waehle({ slot: treffer.slot, produkt, quelle: 'tipp', art: 'produkt' })
+        return
+      }
+      const tuer = findeFuerKnoten(raum.tueren ?? [], treffer.slot)
+      if (tuer && findeRaum(tuer.ziel, raeume)) {
+        setBedient(true)
+        betrete(tuer.ziel, 'neu')
+        return
+      }
+      const punkt = rauminfos
+        ? findeFuerKnoten(infopunkteVon(rauminfos, raum.id), treffer.slot)
+        : undefined
       waehle(
-        treffer && produkt
-          ? { slot: treffer.slot, produkt, quelle: 'tipp' }
+        punkt
+          ? {
+              // Der ganze Infopunkt wird hervorgehoben, nicht nur das getroffene Stück.
+              slot: punkt.knoten,
+              produkt: karteVon(punkt),
+              quelle: 'tipp',
+              art: 'info',
+            }
           : null
       )
-      setKeineInfosAn(null)
     },
-    [daten, waehle]
+    [daten, rauminfos, raum, raeume, waehle, betrete, einrichten, belegungFuer]
   )
 
   // Solange die Nahansicht offen ist, gehört Escape ihr - die Karte bleibt.
@@ -348,56 +740,102 @@ export default function DigitaleBaeckerei() {
     waehle(null)
     setListeOffen(false)
     setIntroLaeuft(false)
+    // Wie beim ersten Laden: mit Flug, wenn der Raum einen hat.
+    introGespielt.current.delete(raumId)
     setZustand('laden')
     setVersuch((n) => n + 1)
+    // Fehlten auch die Produktdaten: die gleich mit.
+    if (datenFehler) ladeDatenNochmal()
   }
+
+  /** Der Flug zum Start, den das geladene Modell dieses Raums hergibt. */
+  const flug = raum?.intros?.find((intro) => intro.id === introId)
 
   /** „Flug noch einmal ansehen“: zurück an sein Ziel, dann fliegt die Szene. */
   const zeigeIntroNochmal = () => {
-    wechsleZu(START_BLICKPUNKT_ID)
+    if (!raum) return
+    wechsleZu(flug?.ziel ?? raum.start)
     setIntroNochmal((n) => n + 1)
   }
 
-  const entdecktZeile = useMemo(
-    () =>
-      daten
-        ? entdecktText(
-            zaehleEntdeckt(
-              entdeckt,
-              entdeckbare(daten.belegung, daten.snapshot)
-            )
-          )
-        : null,
-    [daten, entdeckt]
-  )
+  // „Entdeckt x von y“ zählt die Produkte des Raums, in dem man steht.
+  const entdecktZeile = useMemo(() => {
+    const belegung = raum?.produkte ? belegungFuer(raum.id) : null
+    return daten && belegung
+      ? entdecktText(
+          zaehleEntdeckt(entdeckt, entdeckbare(belegung, daten.snapshot))
+        )
+      : null
+  }, [daten, entdeckt, raum, belegungFuer])
 
   const bereit = zustand === 'bereit'
   const eintraege = useMemo(
-    () => (blickpunkt ? eintraegeJe[blickpunkt.id] ?? [] : []),
+    () => (blickpunkt ? eintraegeJe?.[blickpunkt.id] ?? [] : []),
     [blickpunkt, eintraegeJe]
   )
 
-  // An einem Blickpunkt ohne Produktinfos (heute: Regale) reagiert kein Tipp
-  // mit einer Karte. Das einmal sagen, statt den Besucher raten zu lassen.
-  const ohneInfos = bereit && daten !== null && eintraege.length === 0
+  // An einem Blickpunkt ohne Infos (heute: Regale) reagiert kein Tipp mit
+  // einer Karte. Das einmal sagen, statt den Besucher raten zu lassen - aber
+  // erst, wenn feststeht, dass es wirklich keine gibt (alles geladen).
+  const ortId = `${raumId}/${aktivId}`
+  const ohneInfos =
+    bereit &&
+    rauminfos !== null &&
+    (daten !== null || raum?.produkte === false) &&
+    eintraege.length === 0
   useEffect(() => {
-    if (!ohneInfos || keineInfosGezeigt.current.has(aktivId)) return undefined
-    keineInfosGezeigt.current.add(aktivId)
-    setKeineInfosAn(aktivId)
+    if (!ohneInfos || keineInfosGezeigt.current.has(ortId)) return undefined
+    keineInfosGezeigt.current.add(ortId)
+    setKeineInfosAn(ortId)
     const timer = setTimeout(() => setKeineInfosAn(null), KEINE_INFOS_MS)
     return () => clearTimeout(timer)
-  }, [ohneInfos, aktivId])
+  }, [ohneInfos, ortId])
+
+  // Nach einem Raumwechsel stünde der Fokus im Nichts (BODY) - Tastatur und
+  // Screenreader fingen oben auf der Seite neu an.
+  const leisteDa = bereit && !introLaeuft
+  useEffect(() => {
+    if (!leisteDa || !fokusNachWechsel.current) return
+    fokusNachWechsel.current = false
+    const aktiv = document.activeElement
+    if (aktiv && aktiv !== document.body) return
+    document
+      .querySelector<HTMLElement>('[data-testid="raum-wechsel"]')
+      ?.focus({ preventScroll: true })
+  }, [leisteDa, raumId])
+
+  const raumZiele = useMemo(
+    () =>
+      raeume
+        .filter((r) => r.id !== raumId)
+        .map(({ id, wechsel }) => ({ id, wechsel })),
+    [raeume, raumId]
+  )
+
+  // Die Liste für Screenreader ändert sich nicht mit dem Fortschritt: nicht
+  // bei jedem Prozent neu zeichnen.
+  const screenreaderListe = useMemo(
+    () => <OhneWebGL variante="screenreader" raeume={raumListe} />,
+    [raumListe]
+  )
 
   if (!raum || !blickpunkt) return null
 
   const zeigtSzene = zustand === 'laden' || bereit
+  /** Der Abruf, der zu diesem Raum und diesem Versuch gehört - kein alter. */
+  const modellDa =
+    modell && modell.url === raumModellUrl && modell.versuch === versuch
+      ? modell
+      : null
   /** Mit Produktdaten bleibt bei einem Ladefehler die Liste benutzbar. */
   const fehlerMitListe = zustand === 'fehler' && daten !== null
+  const imStartRaum = raum.id === START_RAUM_ID
+  const fehlerText = imStartRaum ? FEHLER_TEXT : RAUM_FEHLER_TEXT
 
   const meldung = fehlerMitListe
     ? ''
     : zustand === 'fehler'
-    ? FEHLER_TEXT
+    ? fehlerText
     : zustand === 'unterbrochen'
     ? UNTERBROCHEN_TEXT
     : zustand === 'kein-webgl' && !daten
@@ -407,23 +845,36 @@ export default function DigitaleBaeckerei() {
   const ansage = !bereit
     ? ''
     : fliegt
-    ? INTRO_ANSAGE
+    ? flug?.ansage ?? INTRO_ANSAGE_ALLGEMEIN
     : auswahl?.quelle === 'tipp'
     ? kartenAnsage(auswahl.produkt.name)
     : gewechselt || introGesehen
     ? blickpunktAnsage(blickpunkt.name)
-    : BEREIT_TEXT
+    : imStartRaum
+    ? BEREIT_TEXT
+    : raumBereitText(raum.name, blickpunkt.name)
 
   const waehleAusListe = (slot: string) => {
     const eintrag = eintraege.find((e) => e.slot === slot)
     setListeOffen(false)
-    waehle(eintrag ? { slot, produkt: eintrag.produkt, quelle: 'liste' } : null)
+    waehle(
+      eintrag
+        ? {
+            slot,
+            produkt: eintrag.produkt,
+            quelle: 'liste',
+            art: istInfoKarte(eintrag.produkt) ? 'info' : 'produkt',
+          }
+        : null
+    )
   }
 
-  const keineInfos = keineInfosAn === blickpunkt.id && !auswahl
-  const auswahlModell = auswahl
-    ? modellFuer(modelle, auswahl.produkt.id)
-    : undefined
+  const keineInfos = keineInfosAn === ortId && !auswahl
+  // Die Nahansicht gibt es nur für Produkte.
+  const auswahlModell =
+    auswahl?.art === 'produkt'
+      ? modellFuer(modelle, auswahl.produkt.id)
+      : undefined
 
   return (
     <Box
@@ -442,23 +893,26 @@ export default function DigitaleBaeckerei() {
         backgroundColor: SCENE_BACKDROP,
       }}
     >
-      {zeigtSzene && Viewer3D && (
+      {zeigtSzene && Viewer3D && einrichtung && modellDa && (
         <Viewer3D
           key={versuch}
-          modelUrl={modelUrl(raum.modell)}
-          modelBytes={modelBytes(raum.modell)}
+          einrichtung={einrichtung}
+          belegung={(einrichten && entwurf?.[raum.id]) || undefined}
+          modelUrl={modellDa.url}
+          modell={modellDa.daten}
           blickpunkt={blickpunkt}
           fuellung={raum.fuellung}
           label={
             fliegt
-              ? INTRO_LABEL
+              ? flug?.label ?? INTRO_LABEL_ALLGEMEIN
               : `3D-Ansicht der Bäckerei, Blickpunkt ${blickpunkt.name}`
           }
           intros={raum.intros}
+          introSpielen={!introGespielt.current.has(raum.id)}
           introNochmal={introNochmal}
           introSchluss={introSchluss}
           onIntro={onIntro}
-          auswahl={auswahl?.slot ?? null}
+          auswahl={einrichten ? einrichtenPlatz : auswahl?.slot ?? null}
           verdecktVon={produktKarte}
           onProgress={onProgress}
           onReady={onReady}
@@ -472,15 +926,13 @@ export default function DigitaleBaeckerei() {
         />
       )}
 
-      {zustand === 'kein-webgl' && daten && (
-        <OhneWebGL blickpunkte={[...blickpunkte]} eintraegeJe={eintraegeJe} />
-      )}
+      {/* Ohne 3D: alle Räume untereinander - einen Wechsel gibt es dann nicht. */}
+      {zustand === 'kein-webgl' && daten && <OhneWebGL raeume={listen} />}
 
       {fehlerMitListe && (
         <OhneWebGL
-          blickpunkte={[...blickpunkte]}
-          eintraegeJe={eintraegeJe}
-          meldung={`${FEHLER_TEXT} ${OHNE_WEBGL_ZUSATZ}`}
+          raeume={listen}
+          meldung={`${fehlerText} ${OHNE_WEBGL_ZUSATZ}`}
           aktion={
             <Button variant="contained" onClick={nochmal}>
               {NOCHMAL_TEXT}
@@ -497,11 +949,37 @@ export default function DigitaleBaeckerei() {
           top: 'max(12px, env(safe-area-inset-top))',
           left: 'max(12px, env(safe-area-inset-left))',
           px: 1.5,
-          py: 1,
+          py: 0.75,
           maxWidth: 'calc(100% - 24px)',
         }}
       >
         <Typography variant="h1">{TITEL}</Typography>
+        {/* Wessen Laden das ist - und der Weg zur Website. Die Karte endet
+            höchstens 76 px unter dem oberen Rand: Darunter hält die Szene
+            gewählte Produkte frei. Die Zeile ist darum nur 24 px hoch, ihre
+            Tippfläche trotzdem 44 px - sie reicht nach oben in die
+            Überschrift, nach unten bis an den Rand der Karte, nie darüber
+            hinaus. */}
+        <Link
+          href={STARTSEITE}
+          underline="always"
+          sx={{
+            position: 'relative',
+            display: 'block',
+            width: 'fit-content',
+            fontSize: '0.875rem',
+            fontWeight: 600,
+            lineHeight: '24px',
+            textUnderlineOffset: '3px',
+            '&::after': {
+              content: '""',
+              position: 'absolute',
+              inset: '-14px -12px -6px',
+            },
+          }}
+        >
+          {BAECKEREI_NAME}
+        </Link>
       </Paper>
 
       {fliegt && <IntroKnopf onClick={() => setIntroSchluss((n) => n + 1)} />}
@@ -509,8 +987,23 @@ export default function DigitaleBaeckerei() {
       {bereit && !fliegt && (
         <>
           <Hinweis
-            sichtbar={keineInfos || (!bedient && !auswahl)}
-            text={keineInfos ? KEINE_INFOS_HINWEIS : undefined}
+            // Im Einrichten-Modus öffnet ein Tipp keine Infos: eigener Text,
+            // und nie der Hinweis „keine Infos zum Antippen“.
+            sichtbar={
+              einrichten
+                ? !bedient && !einrichtenPlatz
+                : keineInfos || (!bedient && !auswahl)
+            }
+            text={
+              einrichten
+                ? EINRICHTEN_HINWEIS
+                : keineInfos
+                ? KEINE_INFOS_HINWEIS
+                : datenFehler && raum.produkte
+                ? // Ohne Produktinfos öffnet ein Tipp keine Karte.
+                  DATEN_FEHLER_HINWEIS
+                : undefined
+            }
           />
           <BlickpunktLeiste
             blickpunkte={[...blickpunkte]}
@@ -521,6 +1014,15 @@ export default function DigitaleBaeckerei() {
               setListeOffen(true)
             }}
             onIntroNochmal={introDa ? zeigeIntroNochmal : undefined}
+            raumZiele={raumZiele}
+            onRaumWechsel={
+              raumZiele.length > 0
+                ? (id) => {
+                    setBedient(true)
+                    betrete(id, 'neu')
+                  }
+                : undefined
+            }
           />
           <ProduktSheet
             produkt={auswahl?.produkt ?? null}
@@ -556,11 +1058,20 @@ export default function DigitaleBaeckerei() {
             entdeckt={entdeckt}
             entdecktText={entdecktZeile}
             leerText={
-              daten
+              !raum.produkte
+                ? KEINE_INFOS_TEXT
+                : daten
                 ? undefined
                 : datenFehler
                 ? DATEN_FEHLER_TEXT
                 : DATEN_LADEN_TEXT
+            }
+            leerAktion={
+              raum.produkte && !daten && datenFehler ? (
+                <Button variant="contained" onClick={ladeDatenNochmal}>
+                  {NOCHMAL_TEXT}
+                </Button>
+              ) : undefined
             }
           />
         </>
@@ -568,13 +1079,7 @@ export default function DigitaleBaeckerei() {
 
       {/* Derselbe Inhalt als Text neben der laufenden 3D-Ansicht: der Weg
           für Screenreader. */}
-      {zeigtSzene && daten && (
-        <OhneWebGL
-          variante="screenreader"
-          blickpunkte={[...blickpunkte]}
-          eintraegeJe={eintraegeJe}
-        />
-      )}
+      {zeigtSzene && daten && screenreaderListe}
 
       {nahansicht && (
         <Nahansicht
@@ -610,16 +1115,40 @@ export default function DigitaleBaeckerei() {
             sx={{ width: 'min(100%, 360px)', p: 2.5, textAlign: 'center' }}
           >
             <Typography component="p">{meldung}</Typography>
-            {zustand !== 'kein-webgl' && (
+            {zustand !== 'kein-webgl' ? (
               <Button variant="contained" onClick={nochmal} sx={{ mt: 2 }}>
                 {zustand === 'fehler' ? NOCHMAL_TEXT : 'Neu laden'}
               </Button>
-            )}
+            ) : datenFehler ? (
+              // Ohne 3D fehlt nur die Liste: die Produktdaten neu laden.
+              <Button
+                variant="contained"
+                onClick={ladeDatenNochmal}
+                sx={{ mt: 2 }}
+              >
+                {NOCHMAL_TEXT}
+              </Button>
+            ) : null}
           </Paper>
         ) : (
           ansage
         )}
       </Box>
+
+      {/* Einrichten-Modus (nur lokal): als letztes Kind - im normalen Build
+          bleibt das HTML davor genau, wie es war (auch die ids von React). */}
+      {Einrichten && einrichten && bereit && !fliegt && daten && (
+        <Einrichten
+          basePath={BASE_PATH}
+          raum={raum}
+          gebaut={daten.belegung}
+          snapshot={daten.snapshot}
+          regal={modelle.regal?.modelle}
+          platz={einrichtenPlatz}
+          onPlatz={setEinrichtenPlatz}
+          onEntwurf={setEntwurf}
+        />
+      )}
     </Box>
   )
 }

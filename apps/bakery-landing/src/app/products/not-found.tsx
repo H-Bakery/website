@@ -4,6 +4,7 @@ import SearchOffIcon from '@mui/icons-material/SearchOff'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import HomeIcon from '@mui/icons-material/Home'
 import Link from 'next/link'
+import { LEGAL } from '../../config/legal'
 
 export default function ProductNotFound() {
   return (
@@ -96,14 +97,14 @@ export default function ProductNotFound() {
           <Typography variant="body2" color="text.secondary">
             Haben Sie Fragen zu unseren Produkten?{' '}
             <Link
-              href="tel:068412229"
+              href={LEGAL.phoneHref}
               style={{
                 color: 'inherit',
                 textDecoration: 'underline',
                 fontWeight: 'bold',
               }}
             >
-              Rufen Sie uns an: 06841 2229
+              Rufen Sie uns an: {LEGAL.phone}
             </Link>
           </Typography>
         </Box>

@@ -385,6 +385,28 @@ describe('highlight', () => {
     expect(kruste.children).toHaveLength(0)
   })
 
+  it('hebt zu einem Anfang der Kennung alle Stücke darunter hervor (Station mit Infopunkt)', () => {
+    const { picker, brezel, regal, kruste, korb } = aufbau()
+    // `testtheke` ist selbst kein Knoten: alles unter `testtheke/…` zusammen.
+    picker.highlight('testtheke')
+    expect(picker.hervorgehoben.slot).toBe('testtheke')
+    expect(ueberzuege(brezel)).toHaveLength(3)
+    expect(ueberzuege(kruste)).toHaveLength(0)
+    // `testregal` ist ein Möbel mit Kennung: es selbst und alles darunter.
+    picker.highlight('testregal')
+    expect(ueberzuege(regal.children[0] as Mesh)).toHaveLength(3)
+    expect(ueberzuege(kruste)).toHaveLength(3)
+    expect(ueberzuege(korb)).toHaveLength(3)
+    expect(ueberzuege(brezel)).toHaveLength(0)
+    // Der Anfang gilt abschnittsweise: `testreg` trifft nichts.
+    picker.highlight('testreg')
+    expect(picker.hervorgehoben).toEqual({ slot: null, ueberzuege: 0 })
+    // Ein belegter Platz bleibt für sich.
+    picker.highlight('testregal/ebene-1/platz-01')
+    expect(ueberzuege(kruste)).toHaveLength(3)
+    expect(ueberzuege(regal.children[0] as Mesh)).toHaveLength(0)
+  })
+
   it('meldet, was wirklich hervorgehoben ist - nicht, was verlangt wurde', () => {
     const { picker, brot, kruste } = aufbau()
     expect(picker.hervorgehoben).toEqual({ slot: null, ueberzuege: 0 })

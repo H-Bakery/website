@@ -17,7 +17,7 @@ const FILL = 'morgens'
 const PREFIX = 'produkt/'
 
 /**
- * @typedef {{ slot: string, produkt: string, anzahl?: number }} BelegungEintrag
+ * @typedef {{ slot: string, produkt: string, anzahl?: number, quelle?: 'einrichtung' }} BelegungEintrag
  * @typedef {{ version: 1, quelle: { commit: string }, slots: BelegungEintrag[] }} Belegung
  */
 
@@ -103,4 +103,78 @@ function belegungAusGlb(glb, commit) {
   return belegungAusGltf(parseGlbJson(glb), commit)
 }
 
-module.exports = { parseGlbJson, belegungAusGltf, belegungAusGlb }
+/**
+ * Der Platz eines Knotens, wenn er im Zustand „Morgens“ zu sehen ist - auch
+ * mit neutraler Ware (`extras.ware`): Die Einrichtung (DB12) darf jeden
+ * dieser Plätze neu belegen. Sonst `null`.
+ * @param {unknown} name
+ * @param {unknown} extras
+ * @returns {string | null}
+ */
+function morgensPlatz(name, extras) {
+  if (typeof name !== 'string' || !name.startsWith(PREFIX)) return null
+  if (!isRecord(extras)) return null
+  if (!Array.isArray(extras.fills) || !extras.fills.includes(FILL)) return null
+  return slotVon(name, extras.id)
+}
+
+/**
+ * `public/data/belegung.json`: die Belegung aller gebauten Räume in einer
+ * Datei, Schlüssel = id des Raums (src/config/raeume.ts). Ein Raum ohne
+ * Produkte (Backstube) steht mit leeren `slots` darin.
+ *
+ * Version 3 (DB12, „einrichtbar“): `slots` ist die Belegung, wie sie gilt -
+ * das Modell, darüber die Einrichtung aus hq (einrichtung.js; solche Einträge
+ * tragen `quelle: 'einrichtung'`). `leer`: Plätze, die die Einrichtung
+ * ausdrücklich leert. `plaetze`: der Rahmen jedes Platzes des Modells
+ * (plaetze.js) - darauf legt die App die Regal-Modelle.
+ * @typedef {import('./plaetze').Platz} Platz
+ * @typedef {{ quelle: { commit: string }, slots: BelegungEintrag[], leer: string[], plaetze: Record<string, Platz> }} BelegungRaum
+ * @typedef {{ version: 3, raeume: Record<string, BelegungRaum> }} BelegungDatei
+ * @param {Record<string, { quelle: { commit: string }, slots: BelegungEintrag[], leer?: string[], plaetze?: Record<string, Platz> }>} jeRaum
+ * @returns {BelegungDatei}
+ */
+function fasseZusammen(jeRaum) {
+  /** @type {BelegungDatei['raeume']} */
+  const raeume = {}
+  for (const [raum, belegung] of Object.entries(jeRaum)) {
+    raeume[raum] = {
+      quelle: belegung.quelle,
+      slots: belegung.slots,
+      leer: belegung.leer ?? [],
+      plaetze: belegung.plaetze ?? {},
+    }
+  }
+  return { version: 3, raeume }
+}
+
+/**
+ * Alle belegten Plätze aller Räume hintereinander - für alles, was nur
+ * wissen will, welche Produkte irgendwo liegen (Snapshot, Export-Wächter).
+ * Wirft, wenn die Datei nicht die Form `BelegungDatei` hat.
+ * @param {unknown} datei
+ * @returns {{ slots: BelegungEintrag[] }}
+ */
+function alleSlots(datei) {
+  if (!isRecord(datei) || datei.version !== 3 || !isRecord(datei.raeume)) {
+    throw new Error('belegung.json hat nicht die erwartete Form (version 3)')
+  }
+  /** @type {BelegungEintrag[]} */
+  const slots = []
+  for (const [raum, eintrag] of Object.entries(datei.raeume)) {
+    if (!isRecord(eintrag) || !Array.isArray(eintrag.slots)) {
+      throw new Error(`belegung.json: slots für Raum ${raum} fehlt`)
+    }
+    slots.push(...eintrag.slots)
+  }
+  return { slots }
+}
+
+module.exports = {
+  alleSlots,
+  belegungAusGlb,
+  belegungAusGltf,
+  fasseZusammen,
+  morgensPlatz,
+  parseGlbJson,
+}

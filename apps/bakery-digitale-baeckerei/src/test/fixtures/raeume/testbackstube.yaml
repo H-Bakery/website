@@ -1,0 +1,16 @@
+# Synthetische Infopunkte der „Testbackstube“ - alles erfunden, nur für Tests.
+# Die echten Texte stehen in hq: config/digitale-baeckerei/raeume/<raum>.yaml.
+infopunkte:
+  - knoten: ofen
+    titel: Testofen
+    kurz: Ein erfundener Ofen aus zwei Kisten. Er backt nichts.
+    text: |
+      Der Testofen steht nur in den Tests.
+
+      Sein langer Text hat zwei Absätze, damit „Mehr lesen“ etwas zu zeigen hat.
+  - knoten: kneter/
+    titel: Testkneter
+    kurz: Ein erfundener Kneter mit Kessel.
+  - knoten: arbeitstisch
+    titel: Testtisch
+    kurz: Ein erfundener Arbeitstisch aus Platte und Gestell.

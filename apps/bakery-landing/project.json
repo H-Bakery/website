@@ -8,6 +8,7 @@
   "targets": {
     "serve": {
       "executor": "@nx/next:server",
+      "dependsOn": ["sync-produktbilder"],
       "defaultConfiguration": "development",
       "options": {
         "buildTarget": "bakery-landing:build",
@@ -25,15 +26,27 @@
         }
       }
     },
+    "sync-produktbilder": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "cwd": "apps/bakery-landing",
+        "command": "node scripts/sync-produktbilder.js"
+      },
+      "metadata": {
+        "description": "Copies the product images rendered from the 3D models (DB13) at the commit pinned in produkte-3d-bilder.lock.json from the local-only data repo ../produkte-3d (PRODUKTE_3D_DIR) into public/produkte-3d/ and writes produkte-3d-bilder.json (both git-ignored); checks WebP size, alpha and that each image was rendered from the model of that commit. No data repo (CI, deploy, other machines) or no commit in the lock: empty index, no folder, exit 0 - the export is the same as without images. LANDING_PRODUKTBILDER_FIXTURE=1: the synthetic images in src/test/fixtures/produktbilder. The build targets run the script themselves; `serve` depends on this target."
+      }
+    },
     "build": {
       "executor": "nx:run-commands",
+      "cache": false,
       "outputs": ["{projectRoot}/out"],
       "options": {
         "cwd": "apps/bakery-landing",
-        "command": "node scripts/generate-sitemap.js && NX_STANDALONE_BUILD=1 npx next build"
+        "command": "node scripts/sync-produktbilder.js && node scripts/generate-sitemap.js && NX_STANDALONE_BUILD=1 npx next build"
       },
       "metadata": {
-        "description": "Static export to apps/bakery-landing/out. Uses the standalone path: withNx() builds a nested Nx project graph inside `next build`, which fails on CI, and the landing app imports no workspace libs at build time, so it needs nothing withNx provides."
+        "description": "Static export to apps/bakery-landing/out. Never cached: what goes into out/ depends on things Nx cannot hash - hq outside the workspace, the git-ignored product images (sync-produktbilder) and the fixture flag; a cached build could put real images into a fixture build or the other way round. Uses the standalone path: withNx() builds a nested Nx project graph inside `next build`, which fails on CI, and the landing app imports no workspace libs at build time, so it needs nothing withNx provides."
       }
     },
     "test": {
@@ -60,9 +73,10 @@
     },
     "build-static-standalone": {
       "executor": "nx:run-commands",
+      "cache": false,
       "options": {
         "cwd": "apps/bakery-landing",
-        "command": "node scripts/generate-sitemap.js && NX_STANDALONE_BUILD=1 npx next build"
+        "command": "node scripts/sync-produktbilder.js && node scripts/generate-sitemap.js && NX_STANDALONE_BUILD=1 npx next build"
       },
       "outputs": ["{projectRoot}/out"],
       "metadata": {

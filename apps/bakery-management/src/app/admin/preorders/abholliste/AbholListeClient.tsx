@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import NextLink from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Alert,
   AlertTitle,
@@ -77,7 +77,9 @@ import {
   fetchPickupPoints,
   fetchPreorderDay,
   isPreorderConflict,
+  listPreorders,
   preorderErrorMessage,
+  preorderPageQuery,
   requestFailureKind,
   type RequestFailureKind,
 } from '../../../../lib/preordersApi'
@@ -87,6 +89,7 @@ import {
   formatCurrency,
   formatDate,
   formatDateWithWeekday,
+  formatShortDate,
   isBusinessDate,
   isProductionDay,
   itemName,
@@ -102,7 +105,16 @@ import {
   CANCELLED_GROUP,
   abholActions,
   abhollisteHref,
+  abhollisteParamsFromQuery,
   bulkRequestFailedMessage,
+  codeTargets,
+  preorderHrefFromAbholliste,
+  preorderPlace,
+  remoteSearchRange,
+  searchHitLabel,
+  targetLabel,
+  wantsRemoteSearch,
+  type AbholTarget,
   changeAlreadyApplied,
   singleRequestFailedMessage,
   defaultPickupDate,
@@ -126,6 +138,18 @@ import {
 
 /** Alle so oft still neu laden, solange niemand gerade etwas tut. */
 const REFRESH_MS = 60_000
+
+/** Erst suchen, wenn so lange nicht mehr getippt wurde (andere Tage, API). */
+const REMOTE_SEARCH_DELAY_MS = 300
+/** So viele Treffer anderer Tage stehen unter der leeren Liste. */
+const REMOTE_HITS_SHOWN = 6
+
+/** Suche über den Tag hinaus (`GET /api/preorders?q=&from=&to=`). */
+type RemoteSearch =
+  | { phase: 'idle' }
+  | { phase: 'loading'; query: string }
+  | { phase: 'done'; query: string; hits: Preorder[]; from: string; to: string }
+  | { phase: 'failed'; query: string }
 
 /**
  * Spaltenbreiten des Ausdrucks in mm (W4-verify r4). A4 hoch mit 12 mm Rand
@@ -268,6 +292,19 @@ function describeChange(change: PreorderStatusChange): string {
   return 'Die Änderung'
 }
 
+function cashPaymentMissing(preorder: Preorder, change: PreorderStatusChange) {
+  return (
+    (change.externalPayment === false && preorder.externalPayment) ||
+    (change.cashTopUp && !preorder.mixedPayment)
+  )
+}
+
+function cashPaymentChange(preorder: Preorder): PreorderStatusChange {
+  return owesRest(preorder) && (preorder.paidAmount ?? 0) > 0
+    ? { paid: true, cashTopUp: true }
+    : { paid: true, externalPayment: false }
+}
+
 /**
  * Eine Übergabe scheiterte am Versionsabgleich, weil die Bestellung
  * inzwischen storniert oder ihr Betrag geändert wurde (W4-Verifikation
@@ -300,7 +337,13 @@ export function handoverConflictAdvice(
   const diff = (cents(fresh.total) - cents(before.total)) / 100
   const pay = paymentState(fresh)
   let money: string
-  if (pay.kind === 'unpaid') {
+  if (
+    fresh.externalPayment &&
+    !tookMoney &&
+    (pay.kind === 'unpaid' || pay.kind === 'rest')
+  ) {
+    money = 'Zahlungsweg und offenen Betrag prüfen'
+  } else if (pay.kind === 'unpaid') {
     money = !tookMoney
       ? `${formatCurrency(fresh.total)} kassieren`
       : diff > 0
@@ -340,6 +383,9 @@ export function lostActionText(
 ): string {
   const back = 'Die Verbindung ist wieder da -'
   if (change.status === 'abgeholt' && fresh.status === 'abgeholt') {
+    if (cashPaymentMissing(fresh, change)) {
+      return `${code}: ${back} wurde inzwischen schon übergeben. Die Kassenzahlung ist nicht erfasst. Bitte den Zahlungsweg prüfen.`
+    }
     if (change.paid === true && !fresh.paid) {
       return `${code}: ${back} wurde inzwischen schon an anderer Stelle übergeben, Ihre Zahlung ist NICHT erfasst. Wenn Sie das Geld genommen haben: jetzt bei der Bestellung „Bezahlt“ tippen.`
     }
@@ -477,6 +523,8 @@ export interface AbholListeClientProps {
   initialDate?: string
   /** `laden` oder die ID einer Sammelstelle. */
   initialPlace?: string
+  /** Suche aus der URL (`?q=`) - z. B. zurück aus einer Bestellung. */
+  initialQuery?: string
 }
 
 /**
@@ -489,6 +537,7 @@ export interface AbholListeClientProps {
 export default function AbholListeClient({
   initialDate,
   initialPlace,
+  initialQuery,
 }: AbholListeClientProps) {
   const router = useRouter()
   const session = useOptionalSession()
@@ -511,7 +560,16 @@ export default function AbholListeClient({
   const [printedAt, setPrintedAt] = useState('')
   const [loadedAt, setLoadedAt] = useState('')
 
-  const [query, setQuery] = useState('')
+  // Die Adresse geht vor: mit Browser-Zurück zeigt Next die Seite aus seinem
+  // Cache, mit den Props von damals (ohne `q`) - in der Adresse steht die
+  // Suche aber noch. Ohne das hier löschte der Effekt unten sie dort.
+  const searchParams = useSearchParams()
+  const [query, setQuery] = useState(
+    () =>
+      abhollisteParamsFromQuery({ q: searchParams?.get('q') ?? undefined }).q ??
+      initialQuery ??
+      ''
+  )
   const [sort, setSort] = useState<AbholSort | null>(null)
   const [hideDone, setHideDone] = useState(false)
 
@@ -743,11 +801,32 @@ export default function AbholListeClient({
     load()
   }, [load])
 
-  // URL mitführen: Neuladen und „Zurück“ landen auf demselben Tag und Ort.
+  // URL mitführen: Neuladen und „Zurück“ landen auf demselben Tag, Ort und
+  // derselben Suche. Tippt nur jemand, ersetzt `replaceState` die Adresse -
+  // `router.replace` fragte sonst je Tastendruck den Server nach der Seite.
+  // Schließt Next ein `router.replace` erst ab, nachdem schon getippt wurde,
+  // schreibt es seine Adresse ohne `q` - die geänderte Adresse
+  // (`useSearchParams`) lässt den Effekt die Suche wieder eintragen.
+  const searchParam = query.trim()
+  const urlPlaceRef = useRef('')
+  const urlSearch = searchParams?.toString() ?? ''
   useEffect(() => {
     if (!isBusinessDate(date) || !place) return
-    router.replace(abhollisteHref(date, place), { scroll: false })
-  }, [date, place, router])
+    const href = abhollisteHref(date, place, searchParam)
+    const current = window.location.pathname + window.location.search
+    const listKey = `${date}|${place}`
+    if (urlPlaceRef.current !== listKey) {
+      urlPlaceRef.current = listKey
+      if (current !== href) router.replace(href, { scroll: false })
+      return
+    }
+    if (current === href) return
+    try {
+      window.history.replaceState(window.history.state, '', href)
+    } catch {
+      // Safari begrenzt `replaceState` je Sekunde - die Liste geht vor.
+    }
+  }, [date, place, searchParam, router, urlSearch])
 
   // Still nachladen (zweites Gerät, Fahrer), aber nicht mitten in einer Aktion.
   const quietRef = useRef(true)
@@ -829,6 +908,16 @@ export default function AbholListeClient({
       const text = `${preorder.code}: Das ist bereits gespeichert - nichts zu tun.`
       setConflict(text)
       setToast({ text, severity: 'info' })
+      return
+    }
+    if (
+      fresh?.status === 'abgeholt' &&
+      change?.status === 'abgeholt' &&
+      cashPaymentMissing(fresh, change)
+    ) {
+      const text = `${preorder.code}: Wurde inzwischen schon übergeben. Die Kassenzahlung ist nicht erfasst. Bitte den Zahlungsweg prüfen.`
+      keepFailure(preorder.code, text)
+      setToast({ text, severity: 'warning' })
       return
     }
     // W4-verify r2: Übergabe mit Geld, aber jemand anders hat schon ohne
@@ -1028,13 +1117,18 @@ export default function AbholListeClient({
     notCollected: p.notCollected,
   })
 
-  const handOver = (preorder: Preorder, paid?: boolean) => {
+  const handOver = (
+    preorder: Preorder,
+    paidChange: Pick<
+      PreorderStatusChange,
+      'paid' | 'externalPayment' | 'cashTopUp'
+    > = {}
+  ) => {
     setHandover(null)
-    const change: PreorderStatusChange = { status: 'abgeholt' }
-    if (paid !== undefined) change.paid = paid
+    const change: PreorderStatusChange = { status: 'abgeholt', ...paidChange }
     const payment = paymentState(preorder)
     const what =
-      paid !== true
+      change.paid !== true
         ? ''
         : payment.kind === 'refund'
         ? `, ${formatCurrency(payment.amount)} erstattet`
@@ -1100,22 +1194,37 @@ export default function AbholListeClient({
     // Bezahlt, Betrag stimmt, Verkauf: ein Tipp genügt (Rückgängig im
     // Hinweis). Sonst fragen - nach dem Geld (auch nach einer Erstattung,
     // W4-Verifikation Runde 3), und Fahrer können nicht zurücknehmen.
-    if (paymentState(preorder).kind === 'paid' && canWrite) handOver(preorder)
+    if (
+      paymentState(preorder).kind === 'paid' &&
+      canWrite &&
+      !preorder.externalPayment
+    )
+      handOver(preorder)
     else setHandover(preorder)
   }
 
   /** „Erstattet“: storniert → nicht mehr bezahlt, sonst Betrag stimmt wieder. */
-  const markPaid = (preorder: Preorder) => {
+  const markPaid = (preorder: Preorder, atRegister = false) => {
     const name = preorder.customerName ?? preorder.code
     act(
       preorder,
-      { paid: true },
-      owesRest(preorder) ? `${name}: Rest kassiert.` : `${name}: bezahlt.`,
+      atRegister ? cashPaymentChange(preorder) : { paid: true },
+      owesRest(preorder) && (!preorder.externalPayment || atRegister)
+        ? `${name}: Rest kassiert.`
+        : `${name}: bezahlt.`,
       // Rückgängig nur für den Verkauf - eine erfasste Zahlung zurücknehmen
       // darf der Fahrer nicht (API 403 paid_undo_forbidden, W4-Verifikation
       // Runde 2). Deshalb fragt die Seite ihn vorher (UI-Runde 1).
-      canWrite && !preorder.paid ? { paid: false } : undefined
+      canWrite && !preorder.paid
+        ? { paid: false, ...(atRegister ? { externalPayment: true } : {}) }
+        : undefined
     )
+  }
+
+  const recordConfirmedPayment = (atRegister = false) => {
+    if (!payConfirm) return
+    setPayConfirm(null)
+    markPaid(payConfirm, atRegister)
   }
 
   const markRefunded = (preorder: Preorder) => {
@@ -1201,6 +1310,73 @@ export default function AbholListeClient({
       groupPreorders(visible, effectiveSort, { window: point?.window ?? null }),
     [visible, effectiveSort, point]
   )
+
+  // Nichts auf dieser Liste: die Kundin kommt einen Tag zu spät, oder der
+  // Code vom Zettel gehört zu einem anderen Tag oder Ort. Ein Code zeigt
+  // ohne Anfrage auf seine Liste; sonst fragt die API über die Tage hinaus.
+  const searchMissed = Boolean(day) && searching && visible.length === 0
+  const codeTargetList = useMemo(
+    () => (searchMissed ? codeTargets(query, points) : null),
+    [searchMissed, query, points]
+  )
+  const otherCodeTargets = (codeTargetList ?? []).filter(
+    (t) => !(t.date === date && t.place === place)
+  )
+  const remoteQuery =
+    searchMissed &&
+    !(codeTargetList && codeTargetList.length > 0) &&
+    wantsRemoteSearch(searchParam)
+      ? searchParam
+      : null
+  const [remote, setRemote] = useState<RemoteSearch>({ phase: 'idle' })
+  const remoteRequestRef = useRef(0)
+  /** Die API lässt diese Rolle nicht suchen (403) - dann nicht mehr fragen. */
+  const remoteRefusedRef = useRef(false)
+  useEffect(() => {
+    // Jede neue Eingabe macht ältere Antworten ungültig (Reihenfolge im WLAN).
+    const request = ++remoteRequestRef.current
+    if (!remoteQuery || !isBusinessDate(today) || remoteRefusedRef.current) {
+      setRemote({ phase: 'idle' })
+      return undefined
+    }
+    setRemote({ phase: 'loading', query: remoteQuery })
+    const range = remoteSearchRange(today)
+    const timer = window.setTimeout(() => {
+      listPreorders({ q: remoteQuery, ...range })
+        .then((hits) => {
+          if (request !== remoteRequestRef.current) return
+          setRemote({ phase: 'done', query: remoteQuery, hits, ...range })
+        })
+        .catch((err) => {
+          if (request !== remoteRequestRef.current) return
+          const status = (err as { status?: unknown } | null)?.status
+          if (status === 401 || status === 403) {
+            // Keine Leserechte (oder Sitzung abgelaufen - darum kümmert
+            // sich die Anmeldung): still weglassen, keine Fehlermeldung.
+            if (status === 403) remoteRefusedRef.current = true
+            setRemote({ phase: 'idle' })
+            return
+          }
+          setRemote({ phase: 'failed', query: remoteQuery })
+        })
+    }, REMOTE_SEARCH_DELAY_MS)
+    return () => window.clearTimeout(timer)
+  }, [remoteQuery, today])
+  const remoteHits = useMemo(
+    () =>
+      remote.phase === 'done' && remote.query === remoteQuery
+        ? remote.hits
+            .filter(
+              (p) => !(p.pickupDate === date && preorderPlace(p) === place)
+            )
+            .sort(
+              (a, b) =>
+                a.pickupDate.localeCompare(b.pickupDate) ||
+                a.code.localeCompare(b.code)
+            )
+        : [],
+    [remote, remoteQuery, date, place]
+  )
   // Stornierte stehen nicht auf dem Blatt - außer schon bezahlte: deren Geld
   // muss zurück, und das Blatt ist der Ersatz bei Ausfall (W4-verify r3).
   const printRefundCancelled = useMemo(
@@ -1244,6 +1420,32 @@ export default function AbholListeClient({
   const changeDate = (next: string) => {
     setQuery('')
     setDate(next)
+  }
+
+  /**
+   * Zur Liste eines anderen Tages/Orts, die Suche bleibt - dort steht dann
+   * gleich die gesuchte Bestellung. Ohne Seitenwechsel: ein Link auf
+   * dieselbe Seite änderte nur die Adresse, nicht Tag und Ort der Liste.
+   */
+  const openOtherList = (
+    event: React.MouseEvent,
+    target: AbholTarget,
+    nextQuery: string
+  ) => {
+    if (
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return
+    }
+    event.preventDefault()
+    setDay(null)
+    setPlace(target.place)
+    setDate(target.date)
+    setQuery(nextQuery)
   }
 
   const changePlace = (next: string) => {
@@ -1458,7 +1660,11 @@ export default function AbholListeClient({
                     variant="outlined"
                     size="large"
                     startIcon={<PaidIcon />}
-                    onClick={() => (canWrite ? markPaid(p) : setPayConfirm(p))}
+                    onClick={() =>
+                      canWrite && !p.externalPayment
+                        ? markPaid(p)
+                        : setPayConfirm(p)
+                    }
                     disabled={busy}
                     aria-label={`${name}: als bezahlt markieren`}
                     sx={{
@@ -1527,12 +1733,21 @@ export default function AbholListeClient({
   }
 
   const handoverPayment = handover ? paymentState(handover) : null
+  const externalAmountOpen =
+    handover?.externalPayment &&
+    (handoverPayment?.kind === 'unpaid' || handoverPayment?.kind === 'rest')
   const menuPreorder = menu?.preorder ?? null
   const menuActions = menuPreorder
     ? abholActions(menuPreorder, role, today)
     : null
   const menuName = menuPreorder?.customerName ?? menuPreorder?.code ?? ''
   const closeMenu = () => setMenu(null)
+  const openPaymentsLabel = preorders.some(
+    (p) =>
+      p.externalPayment && p.status !== 'storniert' && (!p.paid || owesRest(p))
+  )
+    ? 'Noch offen'
+    : 'Noch zu kassieren'
 
   const address =
     point && point.street
@@ -1556,7 +1771,7 @@ export default function AbholListeClient({
               : undefined,
         },
         {
-          label: 'Noch zu kassieren',
+          label: openPaymentsLabel,
           value: formatCurrency(summary.unpaidTotal),
           tone: summary.unpaidTotal > 0 ? 'warning' : 'default',
           hint: handedOverUnpaidNote(summary) ?? undefined,
@@ -1582,6 +1797,181 @@ export default function AbholListeClient({
 
   /** Am Handy nur bei offenem „Filter“, ab `sm` immer. */
   const filterDisplay = { xs: filtersOpen ? 'flex' : 'none', sm: 'flex' }
+
+  /** Ein Treffer auf einer anderen Liste, mit dem Weg dorthin. */
+  const renderElsewhere = (
+    key: string,
+    target: AbholTarget,
+    label: string,
+    code: string,
+    nextQuery: string
+  ) => (
+    <Box
+      key={key}
+      component="li"
+      data-testid={`abhol-elsewhere-${code}`}
+      sx={{
+        listStyle: 'none',
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        columnGap: 2,
+        rowGap: 1,
+        py: 1.25,
+        '&:not(:first-of-type)': { borderTop: 1, borderColor: 'divider' },
+      }}
+    >
+      <Box sx={{ flex: '1 1 240px', minWidth: 0 }}>
+        <Typography sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>
+          {label}
+        </Typography>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ fontFamily: 'monospace' }}
+        >
+          {code}
+        </Typography>
+      </Box>
+      <Button
+        component={NextLink}
+        href={abhollisteHref(target.date, target.place, nextQuery)}
+        onClick={(event: React.MouseEvent) =>
+          openOtherList(event, target, nextQuery)
+        }
+        variant="outlined"
+        endIcon={<NextIcon />}
+        aria-label={`Zur Abholliste dieses Tages: ${targetLabel(
+          target,
+          points
+        )}`}
+        sx={{ ...TOUCH, flex: { xs: '1 1 100%', sm: '0 0 auto' } }}
+      >
+        Zur Abholliste dieses Tages
+      </Button>
+    </Box>
+  )
+
+  /**
+   * Suche ohne Treffer auf dieser Liste: (a) ein Code zeigt auf seinen Tag
+   * und Ort, (b) sonst die Treffer anderer Tage aus der API, (c) immer der
+   * Weg in die Suche über alle Vorbestellungen.
+   */
+  const renderSearchMiss = () => {
+    const code = searchParam.toUpperCase()
+    const elsewhereList = { m: 0, p: 0, width: '100%' } as const
+    return (
+      <EmptyState
+        data-testid="abhol-search-miss"
+        title={`Keine Bestellung zu „${searchParam}“ auf dieser Liste.`}
+        action={
+          <Stack
+            spacing={2}
+            alignItems="center"
+            sx={{ width: '100%', maxWidth: 640, mx: 'auto' }}
+          >
+            {otherCodeTargets.length > 0 && (
+              <Box
+                component="section"
+                aria-label="Abholliste dieses Codes"
+                sx={{ width: '100%', textAlign: 'left' }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  Der Code gehört zu einem anderen Tag oder Ort:
+                </Typography>
+                <Box component="ul" sx={elsewhereList}>
+                  {otherCodeTargets.map((target) =>
+                    renderElsewhere(
+                      `${target.date}|${target.place}`,
+                      target,
+                      targetLabel(target, points),
+                      code,
+                      code
+                    )
+                  )}
+                </Box>
+              </Box>
+            )}
+            {remoteQuery && remote.phase === 'loading' && (
+              <Stack
+                direction="row"
+                spacing={1}
+                alignItems="center"
+                data-testid="abhol-remote-loading"
+              >
+                <CircularProgress size={16} />
+                <Typography variant="body2" color="text.secondary">
+                  Suche an anderen Tagen …
+                </Typography>
+              </Stack>
+            )}
+            {remoteQuery && remote.phase === 'failed' && (
+              <Typography variant="body2" color="text.secondary">
+                Andere Tage konnten gerade nicht durchsucht werden.
+              </Typography>
+            )}
+            {remoteQuery &&
+              remote.phase === 'done' &&
+              remoteHits.length === 0 && (
+                <Typography variant="body2" color="text.secondary">
+                  Auch an anderen Tagen ({formatShortDate(remote.from)} bis{' '}
+                  {formatShortDate(remote.to)}) nichts gefunden.
+                </Typography>
+              )}
+            {remoteHits.length > 0 && (
+              <Box
+                component="section"
+                aria-label="An einem anderen Tag oder Ort gefunden"
+                data-testid="abhol-remote-hits"
+                sx={{ width: '100%', textAlign: 'left' }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  An einem anderen Tag/Ort gefunden:
+                </Typography>
+                <Box component="ul" sx={elsewhereList}>
+                  {remoteHits
+                    .slice(0, REMOTE_HITS_SHOWN)
+                    .map((hit) =>
+                      renderElsewhere(
+                        String(hit.id),
+                        { date: hit.pickupDate, place: preorderPlace(hit) },
+                        searchHitLabel(hit, points),
+                        hit.code,
+                        searchParam
+                      )
+                    )}
+                </Box>
+                {remoteHits.length > REMOTE_HITS_SHOWN && (
+                  <Typography variant="body2" color="text.secondary">
+                    … und {remoteHits.length - REMOTE_HITS_SHOWN} weitere.
+                  </Typography>
+                )}
+              </Box>
+            )}
+            <Button
+              component={NextLink}
+              href={`/admin/preorders?${preorderPageQuery({
+                q: searchParam,
+              })}`}
+              variant="outlined"
+              startIcon={<SearchIcon />}
+              sx={{
+                ...TOUCH,
+                width: { xs: '100%', sm: 'auto' },
+                // Am Handy ohne Symbol in einer Zeile.
+                px: { xs: 1, sm: 2 },
+                '& .MuiButton-startIcon': {
+                  display: { xs: 'none', sm: 'inherit' },
+                },
+              }}
+            >
+              In allen Vorbestellungen suchen
+            </Button>
+          </Stack>
+        }
+      />
+    )
+  }
 
   return (
     <Box>
@@ -1931,7 +2321,7 @@ export default function AbholListeClient({
             <LoadingState label="Abholliste wird geladen …" />
           ) : (
             day &&
-            (preorders.length === 0 ? (
+            (preorders.length === 0 && !searching ? (
               <EmptyState
                 title="Für diesen Tag ist hier nichts vorbestellt."
                 action={
@@ -1949,13 +2339,11 @@ export default function AbholListeClient({
                 }
               />
             ) : groups.length === 0 ? (
-              <EmptyState
-                title={
-                  searching
-                    ? `Keine Bestellung zu „${query.trim()}“.`
-                    : 'Alles abgeholt.'
-                }
-              />
+              searching ? (
+                renderSearchMiss()
+              ) : (
+                <EmptyState title="Alles abgeholt." />
+              )
             ) : (
               <Box>
                 {groups.map((group) => (
@@ -2070,7 +2458,9 @@ export default function AbholListeClient({
             {summary?.count === 1 ? 'Bestellung' : 'Bestellungen'}
             {point?.window ? ` · Übergabe ${point.window} Uhr` : ''}
             {summary
-              ? ` · noch zu kassieren ${formatCurrency(summary.unpaidTotal)}`
+              ? ` · ${openPaymentsLabel.toLowerCase()} ${formatCurrency(
+                  summary.unpaidTotal
+                )}`
               : ''}
             {handedOverUnpaidNote(summary)
               ? ` (${handedOverUnpaidNote(summary)})`
@@ -2236,7 +2626,11 @@ export default function AbholListeClient({
           <MenuItem
             sx={TOUCH}
             component={NextLink}
-            href={`/admin/preorders/${menuPreorder.id}`}
+            href={preorderHrefFromAbholliste(menuPreorder.id, {
+              date,
+              place,
+              q: query,
+            })}
             onClick={closeMenu}
           >
             <ListItemIcon>
@@ -2286,7 +2680,14 @@ export default function AbholListeClient({
                 sx={{ mt: 2 }}
                 data-testid="handover-payment"
               >
-                {handoverPayment?.kind === 'rest'
+                {handover.externalPayment && (
+                  <Typography variant="body2" fontWeight={600}>
+                    Zahlung per Überweisung oder Rechnung
+                  </Typography>
+                )}
+                {externalAmountOpen && handoverPayment
+                  ? `${formatCurrency(handoverPayment.amount)} noch offen.`
+                  : handoverPayment?.kind === 'rest'
                   ? `Bezahlt waren ${formatCurrency(
                       handover.paidAmount ?? 0
                     )}, die Bestellung kostet jetzt ${formatCurrency(
@@ -2347,16 +2748,16 @@ export default function AbholListeClient({
           <Button onClick={() => setHandover(null)} sx={TOUCH}>
             Abbrechen
           </Button>
-          {handover && !handover.paid && (
+          {handover && !handover.paid && !externalAmountOpen && (
             <Button
               variant="outlined"
-              onClick={() => handOver(handover, false)}
+              onClick={() => handOver(handover, { paid: false })}
               sx={TOUCH}
             >
               Ohne Zahlung übergeben
             </Button>
           )}
-          {handover && owesRest(handover) && (
+          {handover && owesRest(handover) && !externalAmountOpen && (
             <Button
               variant="outlined"
               onClick={() => handOver(handover)}
@@ -2374,6 +2775,17 @@ export default function AbholListeClient({
               Ohne Erstattung übergeben
             </Button>
           )}
+          {handover && externalAmountOpen && canWrite && (
+            <Button
+              variant="outlined"
+              onClick={() => handOver(handover, cashPaymentChange(handover))}
+              sx={TOUCH}
+            >
+              {handoverPayment?.kind === 'rest'
+                ? 'Rest an der Kasse bezahlt und übergeben'
+                : 'An der Kasse bezahlt und übergeben'}
+            </Button>
+          )}
           {handover && (
             <Button
               variant="contained"
@@ -2383,12 +2795,16 @@ export default function AbholListeClient({
               onClick={() =>
                 handOver(
                   handover,
-                  handoverPayment?.kind === 'paid' ? undefined : true
+                  externalAmountOpen || handoverPayment?.kind === 'paid'
+                    ? undefined
+                    : { paid: true }
                 )
               }
               sx={TOUCH}
             >
-              {handoverPayment?.kind === 'rest'
+              {externalAmountOpen
+                ? 'Mit offener Zahlung übergeben'
+                : handoverPayment?.kind === 'rest'
                 ? 'Rest kassiert und übergeben'
                 : handoverPayment?.kind === 'refund'
                 ? 'Erstattet und übergeben'
@@ -2418,9 +2834,20 @@ export default function AbholListeClient({
                 </strong>{' '}
                 von {payConfirm.customerName ?? payConfirm.code} erhalten?
               </DialogContentText>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Zurücknehmen kann danach nur der Verkauf.
-              </Typography>
+              {payConfirm.externalPayment && (
+                <Typography variant="body2" sx={{ mt: 1 }}>
+                  Zahlung per Überweisung oder Rechnung
+                </Typography>
+              )}
+              {!canWrite && (
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ mt: 1 }}
+                >
+                  Zurücknehmen kann danach nur der Verkauf.
+                </Typography>
+              )}
             </>
           )}
         </DialogContent>
@@ -2437,20 +2864,29 @@ export default function AbholListeClient({
           <Button onClick={() => setPayConfirm(null)} sx={TOUCH}>
             Abbrechen
           </Button>
+          {payConfirm?.externalPayment && canWrite && (
+            <Button
+              variant="outlined"
+              onClick={() => recordConfirmedPayment(true)}
+              sx={TOUCH}
+            >
+              {owesRest(payConfirm)
+                ? 'Rest an der Kasse bezahlt'
+                : 'An der Kasse bezahlt'}
+            </Button>
+          )}
           {payConfirm && (
             <Button
               variant="contained"
               color="success"
               autoFocus
               startIcon={<PaidIcon />}
-              onClick={() => {
-                const target = payConfirm
-                setPayConfirm(null)
-                markPaid(target)
-              }}
+              onClick={() => recordConfirmedPayment()}
               sx={TOUCH}
             >
-              {formatCurrency(paymentState(payConfirm).amount)} kassiert
+              {payConfirm.externalPayment
+                ? 'Externe Zahlung erfasst'
+                : `${formatCurrency(paymentState(payConfirm).amount)} kassiert`}
             </Button>
           )}
         </DialogActions>

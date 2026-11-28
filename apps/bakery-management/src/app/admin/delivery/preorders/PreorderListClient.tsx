@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import NextLink from 'next/link'
 import {
   Alert,
@@ -26,8 +26,6 @@ import {
   TextField,
   Tooltip,
   Typography,
-  useMediaQuery,
-  useTheme,
 } from '@mui/material'
 import {
   AddCircleOutline as NewPreorderIcon,
@@ -52,6 +50,7 @@ import {
   LoadingState,
   PageLayout,
   PageSection,
+  useContentWide,
   type KeyFigure,
 } from '../../../../components/layout'
 import {
@@ -149,17 +148,25 @@ export default function PreorderListClient({
     session?.sessionKind ?? null
   )
   const canEditPoint = role === 'inhaber'
-  const theme = useTheme()
-  // Unter md (Handy, Tablet hochkant) Karten statt einer Tabelle, die
-  // Artikel, Summe, Status und Aktion seitlich aus dem Bild schiebt.
-  const wide = useMediaQuery(theme.breakpoints.up('md'))
+  // Karten statt einer Tabelle, die Artikel, Summe, Status und Stornieren
+  // seitlich aus dem Bild schiebt - am Handy und quer am Tablet, wo neben
+  // der Seitenleiste nur 700-870 px bleiben.
+  const wide = useContentWide()
 
   const [points, setPoints] = useState<PickupPoint[]>([])
   const [pointId, setPointId] = useState<string>('')
   // Leer starten: der Vorgabetag kommt aus der Uhr, und der Wert stünde sonst
   // schon im SSR-HTML - das bricht die Hydration.
   const [date, setDate] = useState(initialDate ?? '')
-  const [day, setDay] = useState<PreorderDay | null>(null)
+  // Der Tag merkt sich, für welchen Liefertag und welche Sammelstelle er
+  // geladen wurde: nach einem Wechsel steht bis zur Antwort „wird geladen“
+  // da - nie die Bestellungen eines anderen Tags.
+  const [loaded, setLoaded] = useState<{
+    key: string
+    day: PreorderDay
+  } | null>(null)
+  const dayKey = `${date}|${pointId}`
+  const day = loaded?.key === dayKey ? loaded.day : null
   const [now, setNow] = useState<Date | null>(null)
 
   const [loadingPoints, setLoadingPoints] = useState(true)
@@ -250,18 +257,29 @@ export default function PreorderListClient({
     }
   }, [date, pointId])
 
+  // Nur die letzte Anfrage zählt (wie Liste und Abholliste): beim schnellen
+  // Blättern kam die Antwort des alten Tags sonst nach der des neuen an und
+  // blieb stehen.
+  const requestRef = useRef(0)
   const load = useCallback(async () => {
+    const id = ++requestRef.current
     // Ohne Sammelstelle gibt es nichts zu zeigen: der Tag ohne Ort wäre der
     // ganze Laden.
-    if (!isBusinessDate(date) || !pointId) return
+    if (!isBusinessDate(date) || !pointId) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError(null)
     try {
-      setDay(await fetchPreorderDay(date, pointId))
+      const next = await fetchPreorderDay(date, pointId)
+      if (id !== requestRef.current) return
+      setLoaded({ key: `${date}|${pointId}`, day: next })
       // Die Restzeit bis zum Bestellschluss erst hier aus der Uhr lesen.
       setNow(new Date())
     } catch (err) {
-      setDay(null)
+      if (id !== requestRef.current) return
+      setLoaded(null)
       setError(
         preorderErrorMessage(
           err,
@@ -269,7 +287,7 @@ export default function PreorderListClient({
         )
       )
     } finally {
-      setLoading(false)
+      if (id === requestRef.current) setLoading(false)
     }
   }, [date, pointId])
 

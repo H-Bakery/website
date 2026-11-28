@@ -6,6 +6,11 @@ interface Props {
   setOpen: (status: boolean) => void
 }
 
+/**
+ * Die Striche sitzen in einem 36x28 großen Rahmen (`.bars`); der Knopf legt
+ * ringsum Innenabstand an, damit die Trefferfläche mindestens 44x44 groß ist
+ * (WCAG 2.5.5), ohne dass sich das Aussehen ändert.
+ */
 const Hamburger: React.FC<Props> = (props) => {
   const { open, setOpen } = props
 
@@ -19,17 +24,29 @@ const Hamburger: React.FC<Props> = (props) => {
       onClick={() => setOpen(!open)}
       className={open ? 'open' : ''}
       sx={{
-        p: 0,
+        boxSizing: 'border-box',
+        minWidth: 44,
+        minHeight: 44,
+        p: '8px 4px',
+        // Die Striche bleiben dort, wo sie ohne Innenabstand standen.
+        mr: '-4px',
         border: 0,
+        borderRadius: '8px',
         bgcolor: 'transparent',
-        width: 36,
-        height: 28,
-        position: 'relative',
-        transform: 'rotate(0deg)',
-        transition: '320ms ease-in-out',
+        color: 'text.primary',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
         cursor: 'pointer',
 
-        '& span': {
+        '& .bars': {
+          display: 'block',
+          width: 36,
+          height: 28,
+          position: 'relative',
+        },
+
+        '& .bar': {
           display: 'block',
           position: 'absolute',
           height: 4,
@@ -41,54 +58,54 @@ const Hamburger: React.FC<Props> = (props) => {
           transform: 'rotate(0deg)',
           transition: '320ms ease-in-out',
 
-          '&:nth-child(1)': {
+          '&:nth-of-type(1)': {
             top: 0,
             width: '100%',
           },
 
-          '&:nth-child(2), &:nth-child(3)': {
+          '&:nth-of-type(2), &:nth-of-type(3)': {
             top: 12,
             width: '80%',
           },
 
-          '&:nth-child(4)': {
+          '&:nth-of-type(4)': {
             top: 24,
             width: '66%',
           },
         },
-        '&.open': {
-          '& span': {
-            '&:nth-child(1)': {
-              top: 18,
-              width: '0%',
-              right: '40%',
-            },
+        '&.open .bar': {
+          '&:nth-of-type(1)': {
+            top: 18,
+            width: '0%',
+            right: '40%',
+          },
 
-            '&:nth-child(2)': {
-              transform: 'rotate(45deg)',
-              width: '100%',
-              right: '-5%',
-            },
+          '&:nth-of-type(2)': {
+            transform: 'rotate(45deg)',
+            width: '100%',
+            right: '-5%',
+          },
 
-            '&:nth-child(3)': {
-              transform: 'rotate(-45deg)',
-              width: '100%',
-              right: '-5%',
-            },
+          '&:nth-of-type(3)': {
+            transform: 'rotate(-45deg)',
+            width: '100%',
+            right: '-5%',
+          },
 
-            '&:nth-child(4)': {
-              top: 18,
-              width: '0%',
-              right: '40%',
-            },
+          '&:nth-of-type(4)': {
+            top: 18,
+            width: '0%',
+            right: '40%',
           },
         },
       }}
     >
-      <span aria-hidden="true"></span>
-      <span aria-hidden="true"></span>
-      <span aria-hidden="true"></span>
-      <span aria-hidden="true"></span>
+      <span className="bars" aria-hidden="true">
+        <span className="bar"></span>
+        <span className="bar"></span>
+        <span className="bar"></span>
+        <span className="bar"></span>
+      </span>
     </Box>
   )
 }

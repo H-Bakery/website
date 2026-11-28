@@ -42,6 +42,7 @@ import {
   LoadingState,
   PageLayout,
   PageSection,
+  useContentWide,
 } from '../../../components/layout'
 import PreorderStatusChip from '../../../components/preorders/PreorderStatusChip'
 import { useOptionalSession } from '../../../lib/session'
@@ -95,6 +96,9 @@ export default function PreorderListClient({
   const router = useRouter()
   const theme = useTheme()
   const wide = useMediaQuery(theme.breakpoints.up('md'))
+  // Tabelle nur, wenn sie neben der Seitenleiste ganz passt: quer am Tablet
+  // (1024-1200 px) lag die Summe sonst seitlich außer Sicht - dort Karten.
+  const tableFits = useContentWide()
   const session = useOptionalSession()
   const role = session?.user?.role ?? null
   const canWrite = canWritePreorders(role)
@@ -467,7 +471,7 @@ export default function PreorderListClient({
         <PageSection
           title={countTitle}
           description={countLine}
-          variant={wide ? 'card' : 'plain'}
+          variant={tableFits ? 'card' : 'plain'}
           disablePadding
           actions={
             <Tooltip title="Aktualisieren">
@@ -483,7 +487,7 @@ export default function PreorderListClient({
             </Tooltip>
           }
         >
-          {wide ? (
+          {tableFits ? (
             <TableContainer sx={{ overflowX: 'auto' }}>
               <Table size="small" aria-label="Vorbestellungen">
                 <TableHead>

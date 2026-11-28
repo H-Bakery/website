@@ -1,16 +1,19 @@
 /**
  * @fileoverview Bedienung der Szene: Umschauen in Grenzen, Zoom über den
  * Öffnungswinkel, Doppeltipp hin und zurück, die Karte bei laufender Szene,
- * Auswahl aus der Liste, Preisschilder - mit dem synthetischen Fixture.
+ * Tippen ohne Geisterklick, Auswahl aus der Liste, Preisschilder - mit dem
+ * synthetischen Fixture.
  *
  * Was die Suite dafür von der App erwartet, steht im Kopf von
  * `support/app.ts`.
  */
 import { expect, test, type Page } from '@playwright/test'
 import {
+  BLICKPUNKTE,
   WAISE,
   allesHierListe,
   bilder,
+  erwarteteEintraege,
   ladeFixture,
   oeffne,
   produktSheet,
@@ -53,6 +56,166 @@ const position = (page: Page, slot: string) =>
 const yaw = async (page: Page) => {
   const { richtung } = await info(page)
   return (Math.atan2(richtung[0], richtung[2]) * 180) / Math.PI
+}
+
+declare global {
+  interface Window {
+    /** Klicks, die nicht dem Canvas galten (siehe `klicksMitschreiben`). */
+    __fremdeKlicks?: string[]
+  }
+}
+
+/**
+ * Schreibt jeden Klick mit, der nicht auf dem Canvas landet - ein Fingertipp
+ * ins Bild darf danach nichts anderes anklicken (Karte, Leiste, Pfeile).
+ * Hört in der Capture-Phase am Dokument, also vor jedem Bedienelement.
+ */
+const klicksMitschreiben = (page: Page) =>
+  page.evaluate(() => {
+    window.__fremdeKlicks = []
+    document.addEventListener(
+      'click',
+      (event) => {
+        const ziel = event.target instanceof Element ? event.target : null
+        if (ziel?.tagName === 'CANVAS') return
+        const bereich = ziel
+          ?.closest('[data-testid]')
+          ?.getAttribute('data-testid')
+        const element = ziel?.closest('button, a') ?? ziel
+        window.__fremdeKlicks?.push(
+          `${bereich ?? '-'}: ${
+            (element?.textContent ?? '').trim() || element?.tagName
+          }`
+        )
+      },
+      true
+    )
+  })
+
+const fremdeKlicks = (page: Page) =>
+  page.evaluate(() => window.__fremdeKlicks ?? null)
+
+/** Liegt an dieser Stelle oben das Canvas (kein Bedienelement darüber)? */
+const canvasOben = (page: Page, pos: { x: number; y: number }) =>
+  page.evaluate(
+    ({ x, y }) => document.elementFromPoint(x, y)?.tagName === 'CANVAS',
+    pos
+  )
+
+type Box = { x: number; y: number; width: number; height: number }
+
+const liegtIn = (pos: { x: number; y: number }, box: Box | null) =>
+  !!box &&
+  pos.x >= box.x &&
+  pos.x <= box.x + box.width &&
+  pos.y >= box.y &&
+  pos.y <= box.y + box.height
+
+/** Alle Produkte mit Karte, die es im Laden gibt (über alle Blickpunkte). */
+const PRODUKTE = Array.from(
+  new Map(
+    BLICKPUNKTE.flatMap((b) => erwarteteEintraege(b.moebel)).map((e) => [
+      e.slot,
+      e,
+    ])
+  ).values()
+)
+
+/**
+ * Tippt an der Theke nacheinander auf Produkte, die frei im Bild liegen -
+ * jedes Mal mit geschlossener Karte und am liebsten dort, wo die Karte gleich
+ * aufgeht: Dort landete der Klick, den der Browser nach dem Tipp nachreicht.
+ * Kein Tipp darf danach etwas in Karte oder Leiste anklicken - weder „Mehr
+ * lesen“ noch „In 3D ansehen“, keinen Link, keinen Chip. Danach gelten
+ * Pfeiltasten und `+` weiter der Szene, auch wenn der Fokus vorher in der
+ * Karte stand.
+ *
+ * `unterDerKarte`: so viele Tipps müssen dort liegen, wo die Karte aufging -
+ * sonst prüfte der Test nichts. Im Hochformat des Fixtures liegt kein Produkt
+ * so tief (das Sheet geht unten über der Leiste auf).
+ */
+async function tippeOhneGeisterklick(
+  page: Page,
+  unterDerKarte: number
+): Promise<void> {
+  await oeffne(page)
+  await ruhe(page)
+  await klicksMitschreiben(page)
+  const sheet = produktSheet(page)
+  let karte: Box | null = null
+  const getippt: string[] = []
+  let darunter = 0
+
+  for (let runde = 0; runde < 6; runde += 1) {
+    if (await sheet.isVisible()) {
+      await page.keyboard.press('Escape')
+      await expect(sheet).toBeHidden()
+      await ruhe(page)
+    }
+    // Frei im Bild (das Canvas liegt oben), noch nicht getippt; zuerst die,
+    // die dort liegen, wo die Karte zuletzt aufging.
+    const frei: {
+      eintrag: (typeof PRODUKTE)[number]
+      pos: { x: number; y: number }
+    }[] = []
+    for (const eintrag of PRODUKTE) {
+      if (getippt.includes(eintrag.slot)) continue
+      const pos = await position(page, eintrag.slot)
+      if (pos && (await canvasOben(page, pos))) frei.push({ eintrag, pos })
+    }
+    const wahl = frei.find((f) => liegtIn(f.pos, karte)) ?? frei[0]
+    if (!wahl) break
+    const { eintrag, pos } = wahl
+    await page.touchscreen.tap(pos.x, pos.y)
+    getippt.push(eintrag.slot)
+    await expect(sheet.getByText(eintrag.name, { exact: true })).toBeVisible()
+    karte = await sheet.boundingBox()
+    if (liegtIn(pos, karte)) darunter += 1
+    // Ein Geisterklick käme gleich nach dem Tipp; die Fahrt danach abwarten.
+    await ruhe(page)
+    expect(
+      await fremdeKlicks(page),
+      `nach dem Tipp auf ${eintrag.slot}`
+    ).toEqual([])
+    await expect(sheet).toHaveAttribute('data-aufgeklappt', 'false')
+    await expect(page.getByTestId('nahansicht')).toHaveCount(0)
+    expect(page.context().pages()).toHaveLength(1)
+  }
+  expect(getippt.length, 'mehrere Produkte angetippt').toBeGreaterThanOrEqual(3)
+  expect(darunter, 'Tipps dort, wo die Karte aufging').toBeGreaterThanOrEqual(
+    unterDerKarte
+  )
+
+  // Der Fokus steht in der Karte (z. B. mit der Tastatur auf „Schließen“) -
+  // ein Tipp ins Bild holt ihn in die Szene zurück.
+  await expect(sheet).toBeVisible()
+  await sheet.getByRole('button', { name: 'Schließen' }).focus()
+  let ziel: { x: number; y: number } | null = null
+  for (const eintrag of PRODUKTE) {
+    const pos = await position(page, eintrag.slot)
+    if (pos && (await canvasOben(page, pos))) {
+      ziel = pos
+      break
+    }
+  }
+  expect(ziel, 'ein Produkt neben der offenen Karte').not.toBeNull()
+  if (!ziel) return
+  await page.touchscreen.tap(ziel.x, ziel.y)
+  await expect(sheet).toBeVisible()
+  await expect(szene(page, 'Theke')).toBeFocused()
+  // Ohne Fokusrahmen um das ganze Bild (wie früher über mousedown) ...
+  await expect(szene(page, 'Theke')).toHaveCSS('outline-style', 'none')
+  await ruhe(page)
+  expect(await fremdeKlicks(page)).toEqual([])
+
+  const vorher = (await info(page)).fov
+  await page.keyboard.press('+')
+  await expect.poll(async () => (await info(page)).fov).toBeLessThan(vorher - 2)
+  // ... mit der Tastatur gehört er wieder dazu.
+  await expect(szene(page, 'Theke')).toHaveCSS('outline-style', 'solid')
+  await expect(sheet).toBeVisible()
+  await page.keyboard.press('ArrowLeft')
+  await expect(szene(page, 'Regale')).toBeVisible()
 }
 
 /** Mitte der freien Bildfläche über der Leiste - dort liegt kein Bedienelement. */
@@ -331,6 +494,30 @@ test.describe('Karte bei laufender Szene', () => {
         produkt.y <= karte.y + karte.height
       expect(unterDerKarte, `${groesse.width}×${groesse.height}`).toBe(false)
     }
+  })
+})
+
+test.describe('Tippen ohne Geisterklick', () => {
+  test('Handy hochkant: ein Fingertipp öffnet die Karte und klickt nichts darin an', async ({
+    page,
+    hasTouch,
+  }) => {
+    test.skip(!hasTouch, 'Finger gibt es am Handy.')
+    await tippeOhneGeisterklick(page, 0)
+  })
+})
+
+test.describe('Tippen ohne Geisterklick, Handy quer (844×390)', () => {
+  test.use({ viewport: { width: 844, height: 390 }, hasTouch: true })
+
+  test('ein Fingertipp öffnet die Karte rechts oben und klickt nichts darin an', async ({
+    page,
+    isMobile,
+  }) => {
+    // Einmal genügt: im Projekt mit dem mobilen Chrome.
+    test.skip(!isMobile, 'Quer mit Finger: im Projekt phone geprüft.')
+    // Rechts oben, wo die Karte aufgeht, liegen an der Theke Brote.
+    await tippeOhneGeisterklick(page, 2)
   })
 })
 

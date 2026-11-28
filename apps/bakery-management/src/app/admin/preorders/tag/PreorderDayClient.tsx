@@ -1,12 +1,15 @@
 'use client'
 
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import NextLink from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Alert,
   Box,
   Button,
+  Card,
+  CardActionArea,
+  CardContent,
   GlobalStyles,
   IconButton,
   Stack,
@@ -37,6 +40,7 @@ import {
   LoadingState,
   PageLayout,
   PageSection,
+  useContentWide,
   type KeyFigure,
 } from '../../../../components/layout'
 import PaymentNote from '../../../../components/preorders/PaymentNote'
@@ -64,9 +68,11 @@ import {
   variantLabel,
   type PreorderChannel,
   type PickupDays,
+  type Preorder,
   type PreorderDay,
 } from '../../../../lib/preordersTypes'
 import { TOUCH_LINK_STYLE } from '../../../../lib/muiTheme'
+import { useIsPrinting } from '../../../../lib/printMode'
 
 /**
  * Druckbild A4, schwarz auf weiß - der Admin-Bereich ist dunkel. Die Farben
@@ -210,6 +216,114 @@ const COMPACT_TABLE = {
   '& .preorder-day-items-full': { display: 'none' },
 } as const
 
+/**
+ * Die Bestellungen als Karten, solange die Tabelle nicht neben die
+ * Seitenleiste passt (Handy, Tablet quer bis knapp 1250 px): Status, Abholung und
+ * Summe bleiben sichtbar statt seitlich außer Sicht. Wie in der Tabelle:
+ * Stornierte grau und durchgestrichen - die Erstattung daneben nicht.
+ */
+function DayOrderCards({ preorders }: { preorders: Preorder[] }) {
+  return (
+    <Stack
+      component="ul"
+      spacing={1}
+      aria-label="Bestellungen des Tages"
+      sx={{ listStyle: 'none', p: 0, m: 0 }}
+    >
+      {preorders.map((p) => {
+        const cancelled = p.status === 'storniert'
+        const struck = cancelled
+          ? { textDecoration: 'line-through', color: 'text.secondary' }
+          : undefined
+        return (
+          <Card
+            key={p.id}
+            component="li"
+            data-testid="preorder-day-card"
+            sx={
+              cancelled
+                ? { border: 1, borderStyle: 'dashed', borderColor: 'divider' }
+                : undefined
+            }
+          >
+            <CardActionArea
+              component={NextLink}
+              href={`/admin/preorders/${p.id}`}
+            >
+              <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+                <Stack
+                  direction="row"
+                  justifyContent="space-between"
+                  alignItems="flex-start"
+                  spacing={1}
+                >
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography
+                      sx={{
+                        fontWeight: 600,
+                        overflowWrap: 'anywhere',
+                        ...struck,
+                      }}
+                    >
+                      {p.customerName}
+                    </Typography>
+                    {p.customerPhone && (
+                      <Typography variant="body2" color="text.secondary">
+                        {p.customerPhone}
+                      </Typography>
+                    )}
+                  </Box>
+                  <PreorderStatusChip preorder={p} />
+                </Stack>
+                <Typography variant="body2" color="text.secondary">
+                  {formatPickupPlace(p)}
+                </Typography>
+                <Typography
+                  variant="body2"
+                  component="div"
+                  sx={{ mt: 0.5, ...struck }}
+                >
+                  <ItemsSummary items={p.items} max={3} />
+                </Typography>
+                <Stack
+                  direction="row"
+                  justifyContent="space-between"
+                  alignItems="baseline"
+                  spacing={1}
+                  sx={{ mt: 0.5 }}
+                >
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ fontFamily: 'monospace' }}
+                  >
+                    {p.code}
+                  </Typography>
+                  <Box className="preorder-money" sx={{ textAlign: 'right' }}>
+                    <Typography
+                      component="span"
+                      variant="body2"
+                      className="preorder-total"
+                      sx={{ fontWeight: 600, ...struck }}
+                    >
+                      {formatCurrency(p.total)}
+                    </Typography>
+                    {paymentState(p).kind === 'paid' ? (
+                      ' ✓'
+                    ) : (
+                      <PaymentNote preorder={p} />
+                    )}
+                  </Box>
+                </Stack>
+              </CardContent>
+            </CardActionArea>
+          </Card>
+        )
+      })}
+    </Stack>
+  )
+}
+
 /** Vorheriger/nächster Produktionstag (Montag übersprungen). */
 function stepDay(date: string, direction: 1 | -1): string {
   let day = shiftDate(date, direction)
@@ -233,9 +347,22 @@ export default function PreorderDayClient({
   const canWrite = canWritePreorders(session?.user?.role ?? null)
   const theme = useTheme()
   const wide = useMediaQuery(theme.breakpoints.up('md'))
+  // Tabelle nur, wenn sie neben der Seitenleiste ganz passt - quer am
+  // Tablet lag die Summe sonst seitlich außer Sicht. Gedruckt wird immer
+  // die Tabelle.
+  const contentWide = useContentWide()
+  const printing = useIsPrinting()
+  const ordersAsTable = contentWide || printing
   // Leer starten: der Vorgabetag kommt aus der Uhr (Hydration).
   const [date, setDate] = useState(initialDate ?? '')
-  const [day, setDay] = useState<PreorderDay | null>(null)
+  // Der Tag merkt sich, für welches Datum er geladen wurde: nach einem
+  // Tageswechsel steht bis zur Antwort „wird geladen“ da - nie der alte Tag
+  // unter dem neuen Titel (und „Drucken“ druckte ihn so).
+  const [loaded, setLoaded] = useState<{
+    date: string
+    day: PreorderDay
+  } | null>(null)
+  const day = loaded?.date === date ? loaded.day : null
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Gesperrte Abholtage vom Server (Z14); `null` = nur der Ruhetag.
@@ -262,14 +389,25 @@ export default function PreorderDayClient({
   }, [])
   const closedDay = closedPickupDay(pickupDays, date, false)
 
+  // Nur die letzte Anfrage zählt (wie Liste und Abholliste): beim schnellen
+  // Blättern kam die Antwort des Vortags sonst nach der des neuen Tags an
+  // und blieb stehen.
+  const requestRef = useRef(0)
   const load = useCallback(async () => {
-    if (!isBusinessDate(date)) return
+    const id = ++requestRef.current
+    if (!isBusinessDate(date)) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError(null)
     try {
-      setDay(await fetchPreorderDay(date))
+      const next = await fetchPreorderDay(date)
+      if (id !== requestRef.current) return
+      setLoaded({ date, day: next })
     } catch (err) {
-      setDay(null)
+      if (id !== requestRef.current) return
+      setLoaded(null)
       setError(
         preorderErrorMessage(
           err,
@@ -277,7 +415,7 @@ export default function PreorderDayClient({
         )
       )
     } finally {
-      setLoading(false)
+      if (id === requestRef.current) setLoading(false)
     }
   }, [date])
 
@@ -471,7 +609,7 @@ export default function PreorderDayClient({
           </Box>
         )}
 
-        {loading && !day ? (
+        {!day && (loading || (!error && isBusinessDate(date))) ? (
           <LoadingState label="Tagesübersicht wird geladen …" />
         ) : emptyDay ? (
           <EmptyState
@@ -621,6 +759,8 @@ export default function PreorderDayClient({
                     .filter(Boolean)
                     .join(' · ') || undefined
                 }
+                // Karten stehen selbst auf Flächen - keine Fläche in der Fläche.
+                variant={ordersAsTable ? 'card' : 'plain'}
                 disablePadding={day.preorders.length > 0 && ordersOpen}
                 actions={
                   day.preorders.length > 0 ? (
@@ -650,111 +790,122 @@ export default function PreorderDayClient({
                     className="preorder-day-orders-wrap"
                     sx={{ display: ordersOpen ? 'block' : 'none' }}
                   >
-                    <TableContainer>
-                      <Table
-                        size="small"
-                        aria-label="Bestellungen des Tages"
-                        className="preorder-day-orders"
-                        sx={COMPACT_TABLE}
-                      >
-                        <TableHead>
-                          <TableRow>
-                            <TableCell>Code</TableCell>
-                            <TableCell>Status</TableCell>
-                            <TableCell>Kunde</TableCell>
-                            <TableCell>Abholung</TableCell>
-                            <TableCell>Artikel</TableCell>
-                            <TableCell align="right">Summe</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {day.preorders.map((p) => (
-                            <TableRow
-                              key={p.id}
-                              sx={{
-                                verticalAlign: 'top',
-                                ...(p.status === 'storniert' && {
-                                  '& td': { color: 'text.secondary' },
-                                  // Durchgestrichen wird die Bestellung, nicht
-                                  // die Erstattung daneben: „37,00 € erstatten“
-                                  // ist eine offene Aufgabe (W4-verify r4).
-                                  '& td:not(.preorder-money), & .preorder-total':
-                                    { textDecoration: 'line-through' },
-                                }),
-                              }}
-                            >
-                              <TableCell
+                    {ordersAsTable ? (
+                      <TableContainer>
+                        <Table
+                          size="small"
+                          aria-label="Bestellungen des Tages"
+                          className="preorder-day-orders"
+                          sx={COMPACT_TABLE}
+                        >
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Code</TableCell>
+                              <TableCell>Status</TableCell>
+                              <TableCell>Kunde</TableCell>
+                              <TableCell>Abholung</TableCell>
+                              <TableCell>Artikel</TableCell>
+                              <TableCell align="right">Summe</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {day.preorders.map((p) => (
+                              <TableRow
+                                key={p.id}
                                 sx={{
-                                  fontFamily: 'monospace',
-                                  fontSize: '0.8125rem',
-                                  whiteSpace: 'nowrap',
+                                  verticalAlign: 'top',
+                                  ...(p.status === 'storniert' && {
+                                    '& td': { color: 'text.secondary' },
+                                    // Durchgestrichen wird die Bestellung, nicht
+                                    // die Erstattung daneben: „37,00 € erstatten“
+                                    // ist eine offene Aufgabe (W4-verify r4).
+                                    '& td:not(.preorder-money), & .preorder-total':
+                                      { textDecoration: 'line-through' },
+                                  }),
                                 }}
                               >
-                                <NextLink
-                                  href={`/admin/preorders/${p.id}`}
-                                  style={{
-                                    color: 'inherit',
-                                    ...TOUCH_LINK_STYLE,
-                                    // Text oben wie in den Nachbarzellen,
-                                    // die Tippfläche bleibt 44 px.
-                                    alignItems: 'flex-start',
+                                <TableCell
+                                  sx={{
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.8125rem',
+                                    whiteSpace: 'nowrap',
                                   }}
                                 >
-                                  {p.code}
-                                </NextLink>
-                              </TableCell>
-                              <TableCell>
-                                <PreorderStatusChip preorder={p} />
-                              </TableCell>
-                              {/* Schmaler als vorher, damit die Tabelle quer am
+                                  <NextLink
+                                    href={`/admin/preorders/${p.id}`}
+                                    style={{
+                                      color: 'inherit',
+                                      ...TOUCH_LINK_STYLE,
+                                      // Text oben wie in den Nachbarzellen,
+                                      // die Tippfläche bleibt 44 px.
+                                      alignItems: 'flex-start',
+                                    }}
+                                  >
+                                    {p.code}
+                                  </NextLink>
+                                </TableCell>
+                                <TableCell>
+                                  <PreorderStatusChip preorder={p} />
+                                </TableCell>
+                                {/* Schmaler als vorher, damit die Tabelle quer am
                                   Laden-Tablet (1180 px) bis „Summe“ passt
                                   (UI-Runde 1); lange Namen brechen um. */}
-                              <TableCell
-                                sx={{ minWidth: 120, overflowWrap: 'anywhere' }}
-                              >
-                                {p.customerName}
-                                {p.customerPhone && (
-                                  <Typography
-                                    variant="body2"
-                                    color="text.secondary"
-                                  >
-                                    {p.customerPhone}
-                                  </Typography>
-                                )}
-                              </TableCell>
-                              <TableCell>{formatPickupPlace(p)}</TableCell>
-                              <TableCell sx={{ minWidth: 160 }}>
-                                <span className="preorder-day-items-full">
-                                  {formatItems(p.items)}
-                                </span>
-                                <span className="preorder-day-items-short">
-                                  <ItemsSummary items={p.items} max={3} />
-                                </span>
-                              </TableCell>
-                              <TableCell
-                                align="right"
-                                className="preorder-money"
-                                sx={{ whiteSpace: 'nowrap' }}
-                              >
-                                <span className="preorder-total">
-                                  {formatCurrency(p.total)}
-                                </span>
-                                {paymentState(p).kind === 'paid' ? (
-                                  ' ✓'
-                                ) : (
-                                  <PaymentNote preorder={p} />
-                                )}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
+                                <TableCell
+                                  sx={{
+                                    minWidth: 120,
+                                    overflowWrap: 'anywhere',
+                                  }}
+                                >
+                                  {p.customerName}
+                                  {p.customerPhone && (
+                                    <Typography
+                                      variant="body2"
+                                      color="text.secondary"
+                                    >
+                                      {p.customerPhone}
+                                    </Typography>
+                                  )}
+                                </TableCell>
+                                <TableCell>{formatPickupPlace(p)}</TableCell>
+                                <TableCell sx={{ minWidth: 160 }}>
+                                  <span className="preorder-day-items-full">
+                                    {formatItems(p.items)}
+                                  </span>
+                                  <span className="preorder-day-items-short">
+                                    <ItemsSummary items={p.items} max={3} />
+                                  </span>
+                                </TableCell>
+                                <TableCell
+                                  align="right"
+                                  className="preorder-money"
+                                  sx={{ whiteSpace: 'nowrap' }}
+                                >
+                                  <span className="preorder-total">
+                                    {formatCurrency(p.total)}
+                                  </span>
+                                  {paymentState(p).kind === 'paid' ? (
+                                    ' ✓'
+                                  ) : (
+                                    <PaymentNote preorder={p} />
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    ) : (
+                      <DayOrderCards preorders={day.preorders} />
+                    )}
                     <Typography
                       variant="caption"
                       color="text.secondary"
                       className="preorder-day-legend"
-                      sx={{ px: { xs: 2, md: 3 }, py: 1.5, display: 'block' }}
+                      sx={{
+                        px: ordersAsTable ? { xs: 2, md: 3 } : 0,
+                        py: 1.5,
+                        display: 'block',
+                      }}
                     >
                       ✓ = bezahlt, Betrag stimmt. Ein offener Rest oder eine
                       Erstattung steht mit Betrag in der Zeile. Stornierte

@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import Image from 'next/image'
 import EnhancedProductCard from './EnhancedProductCard'
@@ -79,6 +79,42 @@ describe('EnhancedProductCard', () => {
   })
 })
 
+describe('EnhancedProductCard – aus dem 3D-Modell gerendertes Bild', () => {
+  // Erfundenes Produkt und erfundene Pfade.
+  const testbrot: Product = {
+    id: 7,
+    name: 'Testbrot 500g',
+    category: 'Brot',
+    price: 1.5,
+    image: '/produkte-3d/bilder/testbrot-500g/haupt-800.webp',
+    renderedImage: {
+      src: '/produkte-3d/bilder/testbrot-500g/haupt-800.webp',
+      srcSet:
+        '/produkte-3d/bilder/testbrot-500g/haupt-400.webp 400w, /produkte-3d/bilder/testbrot-500g/haupt-800.webp 800w',
+      width: 800,
+      height: 800,
+    },
+  }
+
+  beforeEach(() => {
+    ImageMock.mockClear()
+  })
+
+  it('zeigt es als <img> mit srcset, Maßen, lazy und dem Produktnamen als alt', () => {
+    renderWithTheme(<EnhancedProductCard {...testbrot} />)
+
+    const img = screen.getByRole('img', { name: 'Testbrot 500g' })
+    expect(img).toHaveAttribute('src', testbrot.renderedImage?.src)
+    expect(img).toHaveAttribute('srcset', testbrot.renderedImage?.srcSet)
+    expect(img).toHaveAttribute('sizes')
+    expect(img).toHaveAttribute('width', '800')
+    expect(img).toHaveAttribute('height', '800')
+    expect(img).toHaveAttribute('loading', 'lazy')
+    // next/image bleibt für dieses Bild außen vor.
+    expect(ImageMock).not.toHaveBeenCalled()
+  })
+})
+
 // Beispielprodukt wie aus hq/products/*.md geladen: dort gibt es keine
 // Bewertungen, also darf die Karte auch keine anzeigen.
 const product: Product = {
@@ -113,5 +149,20 @@ describe('EnhancedProductCard – Bewertungen', () => {
     expect(screen.queryByRole('img', { name: /stars/i })).toBeNull()
     expect(document.querySelector('.MuiRating-root')).toBeNull()
     expect(screen.queryByText(/^\(\d+\)$/)).toBeNull()
+  })
+})
+
+describe('EnhancedProductCard – Hover-Hinweis', () => {
+  it('verspricht keine Schnellansicht, die es nicht gibt', () => {
+    renderWithTheme(<EnhancedProductCard {...product} />)
+    const card = screen.getByRole('link').closest('.MuiCard-root') as Element
+
+    fireEvent.mouseEnter(card)
+
+    expect(screen.queryByText(/schnellansicht/i)).toBeNull()
+    // „Ansehen“ ist Dekoration: der Link heißt weiter nach dem Produkt.
+    const hint = screen.getByText('Ansehen')
+    expect(hint.closest('[aria-hidden="true"]')).not.toBeNull()
+    expect(screen.getByRole('link')).not.toHaveAccessibleName(/ansehen/i)
   })
 })

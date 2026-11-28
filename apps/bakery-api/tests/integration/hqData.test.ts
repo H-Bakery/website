@@ -227,6 +227,87 @@ describe('without hq (CI, missing clone)', () => {
   })
 })
 
+describe('Kassenabgleich: opening days reach the finance routes', () => {
+  // Bare app with a signed-in inhaber (see above), on the synthetic hq:
+  // reports 17.02.-31.03.2026, Mondays closed, Thursday 05.03. missing.
+  const quiet = {
+    log: () => undefined,
+    warn: () => undefined,
+    error: () => undefined,
+  }
+  function mount(options: Parameters<typeof createHqDataRouter>[0]) {
+    const app = express()
+    app.use((req, _res, next) => {
+      req.user = {
+        id: 1,
+        username: 'test.inhaber',
+        displayName: 'Test',
+        role: 'inhaber',
+        sessionKind: 'personal',
+        sessionId: 1,
+        stationId: null,
+      }
+      next()
+    })
+    const hq = writeSyntheticHq(fs.mkdtempSync(path.join(root, 'kasse-')))
+    app.use(
+      createHqDataRouter({
+        reportsDir: hq.reportsDir,
+        financeDir: hq.financeDir,
+        today: '2026-04-15',
+        log: quiet,
+        ...options,
+      })
+    )
+    return app
+  }
+
+  it('calendarConfig: a month with one missing opening day is not reconciled', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { calendarConfig } = require('../fixtures/finance-report.synthetic')
+    const config = calendarConfig()
+    const app = mount({ calendarConfig: () => config })
+    const res = await request(app).get('/api/finance/month/2026-03')
+    expect(res.status).toBe(200)
+    expect(res.body.data.kasse).toMatchObject({
+      open_days: 26,
+      report_days: 25,
+      complete: false,
+    })
+    expect(res.body.data.reconciliation).toBeNull()
+    const note = res.body.data.notes.find(
+      (n: { key: string }) => n.key === 'kasse_incomplete'
+    )
+    expect(note.text).toMatch(
+      /^Kasse unvollständig: 25 von 26 Öffnungstagen \(es fehlt Do 05\.03\.\)\./
+    )
+    // Februar: die Berichte beginnen erst am 17.02.
+    const feb = await request(app).get('/api/finance/month/2026-02')
+    expect(
+      feb.body.data.notes.find(
+        (n: { key: string }) => n.key === 'kasse_incomplete'
+      ).text
+    ).toContain('Kassenberichte gibt es erst ab 17.02.2026')
+  })
+
+  it('default source without Backzettel master data: nothing counts as complete', async () => {
+    const app = mount({ backzettel: { hqDir: path.join(root, 'no-hq') } })
+    const res = await request(app).get('/api/finance/year/2026')
+    expect(res.status).toBe(200)
+    expect(res.body.data.reconciliation).toBeNull()
+    expect(res.body.data.months[2].kasse).toMatchObject({
+      open_days: null,
+      complete: false,
+      note: 'Kasse nicht prüfbar: kein gültiger Wochenplan (backzettel.yaml)',
+    })
+    expect(
+      res.body.data.notes.find(
+        (n: { key: string }) => n.key === 'kasse_incomplete'
+      ).text
+    ).toContain('deshalb kein Kassenabgleich')
+  })
+})
+
 describe('the mount stays in its lane', () => {
   it('does not put its role guard on other routes', async () => {
     // partners has no role guard yet (B6): verkauf still gets through.

@@ -81,6 +81,31 @@ describe('AllesHierListe', () => {
     expect(screen.queryByRole('list')).not.toBeInTheDocument()
   })
 
+  it('eine leere Liste kann ein Bedienelement unter dem Text tragen', async () => {
+    const nochmal = jest.fn()
+    const { user } = setup({
+      eintraege: [],
+      leerText: 'Hier fehlt gerade etwas.',
+      leerAktion: (
+        <button type="button" onClick={nochmal}>
+          Noch einmal versuchen
+        </button>
+      ),
+    })
+    expect(screen.getByText('Hier fehlt gerade etwas.')).toBeInTheDocument()
+    await user.click(
+      screen.getByRole('button', { name: 'Noch einmal versuchen' })
+    )
+    expect(nochmal).toHaveBeenCalledTimes(1)
+  })
+
+  it('das Bedienelement gibt es nur bei leerer Liste', () => {
+    setup({ leerAktion: <button type="button">Noch einmal versuchen</button> })
+    expect(
+      screen.queryByRole('button', { name: 'Noch einmal versuchen' })
+    ).not.toBeInTheDocument()
+  })
+
   it('schließt über den Knopf und mit Escape', async () => {
     const { user, onClose } = setup()
     await user.click(screen.getByRole('button', { name: 'Schließen' }))

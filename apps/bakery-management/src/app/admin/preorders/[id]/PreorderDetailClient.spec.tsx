@@ -3,9 +3,11 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import PreorderDetailClient from './PreorderDetailClient'
+import PreorderDetailPage from './page'
 import {
   cancelPreorder,
   changePreorderStatus,
+  downloadPreorderPdf,
   fetchCatalogue,
   fetchPickupPointInfo,
   fetchPickupPoints,
@@ -23,10 +25,15 @@ import {
 import { WithSession, fakeSession } from '../../../../lib/testing/fakeSession'
 import type { PilotRole } from '../../../../lib/roles'
 
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: jest.fn(), back: jest.fn(), refresh: jest.fn() }),
+  usePathname: () => '/admin/preorders/7',
+}))
 jest.mock('../../../../lib/preordersApi', () => ({
   ...jest.requireActual('../../../../lib/preordersApi'),
   cancelPreorder: jest.fn(),
   changePreorderStatus: jest.fn(),
+  downloadPreorderPdf: jest.fn(),
   fetchCatalogue: jest.fn(),
   fetchPickupPointInfo: jest.fn(),
   fetchPickupPoints: jest.fn(),
@@ -37,6 +44,9 @@ jest.mock('../../../../lib/preordersApi', () => ({
 }))
 
 const mockGet = getPreorder as jest.MockedFunction<typeof getPreorder>
+const mockPdf = downloadPreorderPdf as jest.MockedFunction<
+  typeof downloadPreorderPdf
+>
 const mockUpdate = updatePreorder as jest.MockedFunction<typeof updatePreorder>
 const mockCancel = cancelPreorder as jest.MockedFunction<typeof cancelPreorder>
 const mockStatus = changePreorderStatus as jest.MockedFunction<
@@ -81,6 +91,43 @@ beforeEach(() => {
 afterEach(() => jest.useRealTimers())
 
 describe('PreorderDetailClient (P3)', () => {
+  it('„Rechnung erstellen“ sieht nur der Inhaber, nicht bei stornierten', async () => {
+    const view = renderAs('inhaber')
+    expect(
+      await screen.findByRole('button', { name: 'Rechnung erstellen' })
+    ).toBeInTheDocument()
+    view.unmount()
+
+    renderAs('verkauf')
+    await screen.findByRole('heading', { name: 'LA-2026-11-13-01' })
+    expect(
+      screen.queryByRole('button', { name: 'Rechnung erstellen' })
+    ).not.toBeInTheDocument()
+  })
+
+  it('bietet dem Inhaber an einer PIN-Station keine Rechnung an', async () => {
+    renderWithTheme(
+      <WithSession
+        value={{ ...fakeSession({ role: 'inhaber' }), sessionKind: 'station' }}
+      >
+        <PreorderDetailClient id={7} />
+      </WithSession>
+    )
+    await screen.findByRole('heading', { name: 'LA-2026-11-13-01' })
+    expect(
+      screen.queryByRole('button', { name: 'Rechnung erstellen' })
+    ).not.toBeInTheDocument()
+  })
+
+  it('bietet für eine stornierte Vorbestellung keine Rechnung an', async () => {
+    mockGet.mockResolvedValue(preorder({ status: 'storniert' }))
+    renderAs('inhaber')
+    await screen.findByRole('heading', { name: 'LA-2026-11-13-01' })
+    expect(
+      screen.queryByRole('button', { name: 'Rechnung erstellen' })
+    ).not.toBeInTheDocument()
+  })
+
   it('zeigt Code, Status, Kunde, Positionen mit Preis-Snapshot', async () => {
     renderAs('verkauf')
     expect(
@@ -537,7 +584,48 @@ describe('PreorderDetailClient (P3)', () => {
     ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Bearbeiten' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Stornieren' })).toBeNull()
-    expect(screen.queryByRole('group', { name: 'Aktionen' })).toBeNull()
+    // … bis auf den Bestellschein: den darf laden, wer die Bestellung sieht.
+    const group = screen.getByRole('group', { name: 'Aktionen' })
+    expect(
+      within(group)
+        .getAllByRole('button')
+        .map((b) => b.textContent)
+    ).toEqual(['Als PDF drucken'])
+  })
+
+  it('„Als PDF drucken“ lädt den Bestellschein über die API - auch bei stornierten', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    mockGet.mockResolvedValue(preorder({ status: 'storniert' }))
+    mockPdf.mockResolvedValue(undefined)
+    renderAs('verkauf')
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Als PDF drucken' })
+    )
+    await waitFor(() => expect(mockPdf).toHaveBeenCalledTimes(1))
+    expect(mockPdf.mock.calls[0][0]).toMatchObject({
+      id: 7,
+      code: 'LA-2026-11-13-01',
+    })
+    // Lesen ändert nichts
+    expect(mockStatus).not.toHaveBeenCalled()
+  })
+
+  it('zeigt die Meldung der API, wenn der Bestellschein nicht erzeugt werden kann', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    mockPdf.mockRejectedValue(
+      Object.assign(new Error('Der Bestellschein kann nicht erzeugt werden.'), {
+        status: 503,
+        code: 'pdf_fonts_missing',
+      })
+    )
+    renderAs('verkauf')
+    await user.click(
+      await screen.findByRole('button', { name: 'Als PDF drucken' })
+    )
+    expect(
+      await screen.findByText('Der Bestellschein kann nicht erzeugt werden.')
+    ).toBeInTheDocument()
   })
 
   it('meldet eine fehlende Bestellung', async () => {
@@ -600,5 +688,98 @@ describe('detailActions', () => {
       'unpaid…',
       'reopen',
     ])
+  })
+})
+
+describe('Rückweg zur Abholliste (Personal-Rückmeldung)', () => {
+  /** Die Server-Seite `[id]/page.tsx` mit Query, wie Next sie aufruft. */
+  function pageFor(
+    searchParams: Record<string, string | string[] | undefined>
+  ) {
+    return PreorderDetailPage({
+      params: Promise.resolve({ id: '7' }),
+      searchParams: Promise.resolve(searchParams),
+    })
+  }
+
+  // Erst die Seite auflösen, dann ohne `await` dazwischen anzeigen - sonst
+  // käme die geladene Bestellung außerhalb von `act` an.
+  function show(page: React.ReactElement) {
+    return renderWithTheme(
+      <WithSession value={fakeSession({ role: 'verkauf' })}>{page}</WithSession>
+    )
+  }
+
+  const FROM_LIST = {
+    von: 'abholliste',
+    date: '2026-11-17',
+    point: 'laden',
+    q: 'Erika',
+  }
+  const LIST_HREF =
+    '/admin/preorders/abholliste?date=2026-11-17&point=laden&q=Erika'
+
+  it('aus der Abholliste: „Zurück zur Abholliste“ auf denselben Tag, Ort und dieselbe Suche - auch nach dem Speichern', async () => {
+    const user = userEvent.setup()
+    // Gespeichert wandert die Bestellung auf einen anderen Tag (neuer Code) -
+    // zurück geht es trotzdem auf die Liste, von der man kam.
+    mockUpdate.mockResolvedValue(
+      preorder({ code: 'LA-2026-11-14-01', pickupDate: '2026-11-14' })
+    )
+    show(await pageFor(FROM_LIST))
+    const edit = await screen.findByRole('button', { name: 'Bearbeiten' })
+    expect(
+      screen.getByRole('link', { name: 'Zurück zur Abholliste' })
+    ).toHaveAttribute('href', LIST_HREF)
+    expect(
+      screen.queryByRole('link', { name: 'Alle Vorbestellungen' })
+    ).not.toBeInTheDocument()
+
+    await user.click(edit)
+    await user.click(
+      await screen.findByRole('button', { name: 'Kornbrot 500g eins mehr' })
+    )
+    await user.click(screen.getByRole('radio', { name: 'Sa 14.11.' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Änderungen speichern' })
+    )
+    expect(
+      await screen.findByText(/neuer Code LA-2026-11-14-01/)
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'Zurück zur Abholliste' })
+    ).toHaveAttribute('href', LIST_HREF)
+  })
+
+  it('auch während des Ladens und bei einem Fehler führt der Rückweg zur Liste', async () => {
+    mockGet.mockRejectedValue(
+      Object.assign(new Error('Diese Vorbestellung existiert nicht.'), {
+        status: 404,
+      })
+    )
+    show(await pageFor(FROM_LIST))
+    expect(
+      await screen.findByText('Diese Vorbestellung existiert nicht.')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'Zurück zur Abholliste' })
+    ).toHaveAttribute('href', LIST_HREF)
+  })
+
+  it.each([
+    ['ohne Herkunft', {}],
+    ['andere Herkunft', { ...FROM_LIST, von: 'tag' }],
+    ['ungültiger Tag', { ...FROM_LIST, date: '2026-02-30' }],
+    ['ohne Tag', { ...FROM_LIST, date: undefined }],
+    ['ungültiger Ort', { ...FROM_LIST, point: '../users' }],
+  ])('%s: zurück zu „Alle Vorbestellungen“', async (_label, searchParams) => {
+    show(await pageFor(searchParams))
+    await screen.findByRole('button', { name: 'Bearbeiten' })
+    expect(
+      screen.getByRole('link', { name: 'Alle Vorbestellungen' })
+    ).toHaveAttribute('href', '/admin/preorders')
+    expect(
+      screen.queryByRole('link', { name: 'Zurück zur Abholliste' })
+    ).not.toBeInTheDocument()
   })
 })

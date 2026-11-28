@@ -15,6 +15,7 @@ import {
   useTheme,
 } from '@mui/material'
 import { Download as DownloadIcon } from '@mui/icons-material'
+import Link from 'next/link'
 import {
   DAY_STATUS_LABELS,
   downloadRestCsv,
@@ -36,6 +37,7 @@ import {
   type KeyFigure,
 } from '../../../../components/layout'
 import { backzettelErrorText } from '../../../../lib/backstubeErrors'
+import { plural } from '../../../../lib/plural'
 import DateRangeFilter from '../../../../components/analytics/DateRangeFilter'
 import { weekPresets } from '../../../../components/analytics/dateRange'
 
@@ -401,15 +403,26 @@ export default function RestAuswertungClient() {
       subtitle="Gebacken, verkauft und übrig - je Posten"
       back={{ href: '/admin/rest', label: 'Rest am Abend' }}
       actions={
-        <Button
-          variant="outlined"
-          startIcon={<DownloadIcon />}
-          onClick={() => void csv()}
-          disabled={!data || csvBusy}
-          sx={{ minHeight: 44 }}
-        >
-          CSV
-        </Button>
+        <>
+          {/* Abgleich Produktion ↔ Kasse: gebacken − CAP − verkauft − Rest. */}
+          <Button
+            component={Link}
+            href="/admin/abgleich"
+            variant="outlined"
+            sx={{ minHeight: 44 }}
+          >
+            Abgleich mit Kasse
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<DownloadIcon />}
+            onClick={() => void csv()}
+            disabled={!data || csvBusy}
+            sx={{ minHeight: 44 }}
+          >
+            CSV
+          </Button>
+        </>
       }
     >
       {/* Erst mit Daten: vorher stünden leere Von/Bis-Felder (tt.mm.jjjj)
@@ -487,11 +500,12 @@ export default function RestAuswertungClient() {
                 sx={{ mb: 1.5 }}
                 data-testid="day-counts"
               >
-                {data.counts.counted} Tage ausgewertet · {data.counts.partial}{' '}
-                teilweise gezählt · {data.counts.notCounted} ohne Zählung ·{' '}
+                {plural(data.counts.counted, 'Tag', 'Tage')} ausgewertet ·{' '}
+                {data.counts.partial} teilweise gezählt ·{' '}
+                {data.counts.notCounted} ohne Zählung ·{' '}
                 {data.counts.noBackzettel} ohne freigegebenen Backzettel
                 {data.counts.ruhetag > 0
-                  ? ` · ${data.counts.ruhetag} Ruhetage`
+                  ? ` · ${plural(data.counts.ruhetag, 'Ruhetag', 'Ruhetage')}`
                   : ''}
                 {(data.counts.geschlossen ?? 0) > 0
                   ? ` · ${data.counts.geschlossen} geschlossen`

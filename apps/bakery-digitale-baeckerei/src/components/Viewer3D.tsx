@@ -1,8 +1,8 @@
 'use client'
 /**
  * Hülle um die three-Szene (src/lib/scene/createViewer.ts). Wird nur über
- * `DigitaleBaeckerei` per next/dynamic (ssr: false) nachgeladen - three ist
- * nicht im ersten Bundle. In jest wird diese Komponente gemockt.
+ * `ladeViewer` nachgeladen - three ist nicht im ersten Bundle. In jest wird
+ * diese Komponente gemockt.
  *
  * Die Szene wird nur neu gebaut, wenn sich das Modell ändert. Blickpunkt,
  * Beschriftung und Auswahl gehen an die laufende Szene.
@@ -14,6 +14,7 @@ import {
   createViewer,
   WebGLUnavailableError,
   type Rechteck,
+  type SzenenEinrichtung,
   type Treffer,
   type ViewerHandle,
   type ViewerReadyInfo,
@@ -21,7 +22,11 @@ import {
 
 export interface Viewer3DProps {
   modelUrl: string
-  modelBytes?: number
+  /**
+   * Die Bytes des Modells - die App holt sie schon, bevor diese Komponente
+   * (mit three) geladen ist (`holeModell`). Die Szene entpackt nur.
+   */
+  modell: Promise<ArrayBuffer>
   /** Der aktive Blickpunkt; ein Wechsel lässt die Kamera dorthin gleiten. */
   blickpunkt: Blickpunkt
   fuellung: string
@@ -50,8 +55,23 @@ export interface Viewer3DProps {
   onErsteGeste?: () => void
   /** −1 = voriger, +1 = nächster Blickpunkt (Wischen mit zwei Fingern, Pfeiltasten). */
   onWechselGeste?: (richtung: -1 | 1) => void
+  /**
+   * Einrichtung des Raums (DB12): Belegung, Rahmen der Plätze, Regal-Modelle.
+   * Gelesen beim Aufbau der Szene; sie wartet darauf vor dem ersten Bild.
+   */
+  einrichtung?: Promise<SzenenEinrichtung | null>
+  /**
+   * Einrichten-Modus: eine geänderte Belegung - die laufende Szene richtet die
+   * Plätze neu ein.
+   */
+  belegung?: SzenenEinrichtung['belegung']
   /** Flüge zum Start dieses Raums (raeume.ts). `?intro=0` in der Adresse stellt sie ab. */
   intros?: readonly Intro[]
+  /**
+   * `false`: nach dem Laden ohne Flug am Blickpunkt stehen - der Raum wurde in
+   * diesem Besuch schon einmal betreten. Gelesen beim Aufbau der Szene.
+   */
+  introSpielen?: boolean
   /** Neuer Wert (> 0): den Flug noch einmal zeigen. */
   introNochmal?: number
   /** Neuer Wert (> 0): den laufenden Flug überspringen. */
@@ -67,7 +87,8 @@ export default function Viewer3D(props: Viewer3DProps) {
   const aktuell = useRef(props)
   aktuell.current = props
 
-  const { modelUrl, modelBytes, blickpunkt, fuellung, label, auswahl } = props
+  const { modelUrl, modell, blickpunkt, fuellung, label, auswahl } = props
+  const { einrichtung, belegung } = props
   const { intros, introNochmal = 0, introSchluss = 0 } = props
 
   /** Rechteck der Karte im Viewport - für die Szene, immer frisch gemessen. */
@@ -82,11 +103,12 @@ export default function Viewer3D(props: Viewer3DProps) {
     const container = containerRef.current
     if (!container) return
     let debug = false
-    let introSpielen = true
+    let introSpielen = aktuell.current.introSpielen !== false
     try {
       const parameter = new URLSearchParams(window.location.search)
       debug = parameter.has('debug')
-      introSpielen = parameter.get('intro') !== '0'
+      introSpielen =
+        aktuell.current.introSpielen !== false && parameter.get('intro') !== '0'
     } catch {
       /* ohne Messhaken, mit Flug */
     }
@@ -94,11 +116,12 @@ export default function Viewer3D(props: Viewer3DProps) {
       // Eigenes Canvas je Mounten - auch unter React StrictMode sauber.
       const viewer = createViewer(container, {
         modelUrl,
-        modelBytes,
+        modell,
         blickpunkt: aktuell.current.blickpunkt,
         fuellung,
         label: aktuell.current.label,
         debug,
+        einrichtung,
         intros,
         introSpielen,
         onIntro: (laeuft) => aktuell.current.onIntro?.(laeuft),
@@ -124,11 +147,16 @@ export default function Viewer3D(props: Viewer3DProps) {
       else aktuell.current.onError(err)
       return undefined
     }
-  }, [modelUrl, modelBytes, fuellung, intros, karte])
+  }, [modelUrl, modell, fuellung, intros, karte, einrichtung])
 
   useEffect(() => {
     viewerRef.current?.setBlickpunkt(blickpunkt)
   }, [blickpunkt])
+
+  // Nur der Einrichten-Modus gibt eine Belegung herein.
+  useEffect(() => {
+    if (belegung) viewerRef.current?.setzeBelegung(belegung)
+  }, [belegung])
 
   useEffect(() => {
     viewerRef.current?.setLabel(label)

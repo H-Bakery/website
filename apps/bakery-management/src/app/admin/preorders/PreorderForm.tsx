@@ -46,10 +46,13 @@ import {
   requestIdChangedTarget,
   updatePreorder,
   type EarlierPreorderRef,
+  type RequestFailureKind,
 } from '../../../lib/preordersApi'
 import {
   clearPreorderDraft,
   clearPreorderEditDraft,
+  draftMayHaveArrived,
+  draftOutcomeAfter,
   newRequestId,
   readPreorderDraft,
   readPreorderEditDraft,
@@ -254,6 +257,7 @@ function fieldsOf(preorder: Preorder): PreorderDraftFields {
     pickupDate: preorder.pickupDate,
     pickupTime: preorder.pickupTime ?? '',
     paid: preorder.paid,
+    externalPayment: preorder.externalPayment ?? false,
     note: preorder.note ?? '',
     lines: preorder.items.map((item) => ({
       key: lineKey(item.productId, item.variant),
@@ -314,6 +318,9 @@ export default function PreorderForm({
   )
   const [pickupTime, setPickupTime] = useState(preorder?.pickupTime ?? '')
   const [paid, setPaid] = useState(preorder?.paid ?? false)
+  const [externalPayment, setExternalPayment] = useState(
+    preorder?.externalPayment ?? false
+  )
   const [note, setNote] = useState(preorder?.note ?? '')
   const [lines, setLines] = useState<DraftLine[]>(
     () =>
@@ -347,15 +354,21 @@ export default function PreorderForm({
   const [showErrors, setShowErrors] = useState(false)
 
   // W4-Verifikation Runde 4: Entwurf (nur Erfassen) und Kennung des
-  // Speicherns - siehe `lib/preorderDraft.ts`.
+  // Speicherns - siehe `lib/preorderDraft.ts`. Dazu der Ausgang der Versuche
+  // mit dieser Kennung (`refused` = sicher nicht angelegt).
   const requestIdRef = useRef<string | null>(null)
+  const outcomeRef = useRef<RequestFailureKind | null>(null)
   // W4-Verifikation Runde 6: auch Änderungen an einer gespeicherten
   // Bestellung überstehen das Ende der Sitzung - mit der Version, auf der
   // sie beruhen (`baseVersionRef`), damit nichts still überschrieben wird.
   const baseVersionRef = useRef<string | null>(preorder?.updatedAt ?? null)
   const [draftReady, setDraftReady] = useState(false)
   const [restoredAt, setRestoredAt] = useState<string | null>(null)
-  const [restoredAfterAttempt, setRestoredAfterAttempt] = useState(false)
+  // Was der wiederhergestellte Entwurf über das Speichern weiß: nichts
+  // versucht, Versuch abgelehnt (sicher nicht angelegt) oder unklar.
+  const [restoredAttempt, setRestoredAttempt] = useState<
+    'none' | 'refused' | 'unclear'
+  >('none')
   const draftFields: PreorderDraftFields = {
     customerName,
     customerPhone,
@@ -364,6 +377,7 @@ export default function PreorderForm({
     pickupDate,
     pickupTime,
     paid,
+    externalPayment,
     note,
     lines,
   }
@@ -373,6 +387,7 @@ export default function PreorderForm({
   const nameRef = useRef<HTMLInputElement>(null)
   const phoneRef = useRef<HTMLInputElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const dateRef = useRef<HTMLInputElement>(null)
   const qtyRef = useRef<HTMLInputElement>(null)
   const firstVariantRef = useRef<HTMLDivElement>(null)
 
@@ -445,11 +460,19 @@ export default function PreorderForm({
         setPickupDate(draft.pickupDate)
         setPickupTime(draft.pickupTime)
         setPaid(draft.paid)
+        setExternalPayment(draft.externalPayment ?? false)
         setNote(draft.note)
         setLines(draft.lines)
         requestIdRef.current = draft.requestId
+        outcomeRef.current = draft.outcome ?? null
         setRestoredAt(draft.savedAt)
-        setRestoredAfterAttempt(Boolean(draft.requestId))
+        setRestoredAttempt(
+          !draft.requestId
+            ? 'none'
+            : draftMayHaveArrived(draft)
+            ? 'unclear'
+            : 'refused'
+        )
       }
       setDraftReady(true)
     } else {
@@ -463,11 +486,14 @@ export default function PreorderForm({
         setPickupDate(f.pickupDate)
         setPickupTime(f.pickupTime)
         setPaid(f.paid)
+        setExternalPayment(
+          f.externalPayment ?? preorder.externalPayment ?? false
+        )
         setNote(f.note)
         setLines(f.lines)
         baseVersionRef.current = draft.baseUpdatedAt
         setRestoredAt(draft.savedAt)
-        setRestoredAfterAttempt(false)
+        setRestoredAttempt('none')
       }
       setDraftReady(true)
     }
@@ -512,7 +538,12 @@ export default function PreorderForm({
       }
       return
     }
-    savePreorderDraft(sessionUserId, draftFields, requestIdRef.current)
+    savePreorderDraft(
+      sessionUserId,
+      draftFields,
+      requestIdRef.current,
+      outcomeRef.current
+    )
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     editing,
@@ -525,6 +556,7 @@ export default function PreorderForm({
     pickupDate,
     pickupTime,
     paid,
+    externalPayment,
     note,
     lines,
   ])
@@ -543,6 +575,7 @@ export default function PreorderForm({
       setPickupDate(f.pickupDate)
       setPickupTime(f.pickupTime)
       setPaid(f.paid)
+      setExternalPayment(f.externalPayment ?? false)
       setNote(f.note)
       setLines(f.lines)
       setPending(null)
@@ -552,6 +585,7 @@ export default function PreorderForm({
     }
     clearPreorderDraft(sessionUserId)
     requestIdRef.current = null
+    outcomeRef.current = null
     setRestoredAt(null)
     setEarlier(null)
     setCustomerName('')
@@ -563,6 +597,7 @@ export default function PreorderForm({
     )
     setPickupTime('')
     setPaid(false)
+    setExternalPayment(false)
     setNote('')
     setLines([])
     setPending(null)
@@ -863,6 +898,26 @@ export default function PreorderForm({
   const linesError =
     lines.length === 0 ? 'Bitte mindestens einen Artikel hinzufügen.' : null
   const valid = !nameError && !linesError && !dateError
+  // Was zuerst fehlt, in der Reihenfolge der Maske: Name → Abholtag →
+  // Artikel. Nach einem Speicherversuch steht es unten neben dem Knopf
+  // (`role="alert"`) - am Handy lag der Hinweis bei den Artikeln außer Sicht.
+  const firstInvalid = nameError ?? dateError ?? linesError
+  const footerError = error ?? (showErrors ? firstInvalid : null)
+
+  /** Fokus (und Blick) auf das erste ungültige Feld. */
+  const focusFirstInvalid = () => {
+    const target = nameError
+      ? nameRef.current
+      : dateError
+      ? dateRef.current
+      : pending
+      ? firstVariantRef.current ?? qtyRef.current
+      : searchRef.current
+    if (!target) return
+    // Mitte statt Rand: unten verdeckt sonst die Speicherleiste das Feld.
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    target.focus({ preventScroll: true })
+  }
 
   const submit = async () => {
     setShowErrors(true)
@@ -870,8 +925,9 @@ export default function PreorderForm({
     // sonst stünde „Telefonnummer ungültig“ neben einem leeren Feld
     // (W4-Verifikation Runde 2).
     if (!saving) setError(null)
-    if (!valid || saving) {
-      if (nameError) nameRef.current?.focus()
+    if (saving) return
+    if (!valid) {
+      focusFirstInvalid()
       return
     }
     // Abholtag in der Vergangenheit (meist ein Tippfehler, 01.11. statt
@@ -893,17 +949,26 @@ export default function PreorderForm({
       return
     }
     const input = currentInput()
+    let outcomeBefore: RequestFailureKind | null = null
     if (!preorder) {
       // Eine Kennung je Bestellung, über Wiederholungen gleich: kam die
       // Antwort des ersten Versuchs nicht an, liefert der zweite dieselbe
       // Bestellung statt einer zweiten (W4-Verifikation Runde 4). Wurde die
       // Maske inzwischen geändert, lehnt der Server ab (`request_id_changed`,
       // Runde 5) statt die alte Fassung als „gespeichert“ zu melden.
-      if (!requestIdRef.current) requestIdRef.current = newRequestId()
+      if (!requestIdRef.current) {
+        requestIdRef.current = newRequestId()
+        // zu einer neuen Kennung gibt es sicher noch nichts
+        outcomeRef.current = 'refused'
+      }
+      // Solange die Antwort aussteht, ist der Ausgang unklar.
+      outcomeBefore = outcomeRef.current
+      outcomeRef.current = null
       savePreorderDraft(
         sessionUserId,
         draftFieldsRef.current,
-        requestIdRef.current
+        requestIdRef.current,
+        null
       )
       input.requestId = requestIdRef.current
     }
@@ -948,6 +1013,22 @@ export default function PreorderForm({
       const target = preorder ? null : requestIdChangedTarget(err)
       if (target) setEarlier(target)
       const kind = requestFailureKind(err)
+      if (!preorder) {
+        // Im Entwurf, damit er nach Abmelden/Neuladen das Richtige sagt:
+        // abgelehnt (401, 4xx) heißt „noch nicht gespeichert“, nicht
+        // „vielleicht schon angekommen“.
+        outcomeRef.current = draftOutcomeAfter(
+          outcomeBefore,
+          kind,
+          Boolean(target)
+        )
+        savePreorderDraft(
+          sessionUserId,
+          draftFieldsRef.current,
+          requestIdRef.current,
+          outcomeRef.current
+        )
+      }
       setError(
         !preorder && kind !== 'refused'
           ? `${text} Ob die Bestellung schon angekommen ist, ist unklar - einfach noch einmal „Vorbestellung speichern“ tippen: sie wird dabei nicht doppelt angelegt. Die Eingaben bleiben erhalten.`
@@ -964,6 +1045,7 @@ export default function PreorderForm({
     if (!preorder) {
       clearPreorderDraft(sessionUserId)
       requestIdRef.current = null
+      outcomeRef.current = null
     } else {
       clearPreorderEditDraft(sessionUserId, preorder.id)
     }
@@ -1028,7 +1110,8 @@ export default function PreorderForm({
 
   /** Die Maske ist eine andere Bestellung (nächste Kundin): neu anlegen. */
   const saveAsNew = () => {
-    requestIdRef.current = newRequestId()
+    // Neue Kennung (beim Speichern vergeben): zu ihr gibt es noch nichts.
+    requestIdRef.current = null
     setEarlier(null)
     setError(null)
     void submit()
@@ -1048,6 +1131,9 @@ export default function PreorderForm({
         quantity: line.quantity,
       })),
       paid,
+      ...(externalPayment || preorder?.externalPayment
+        ? { externalPayment }
+        : {}),
       note: note.trim() || null,
     }
   }
@@ -1159,12 +1245,17 @@ export default function PreorderForm({
             </Button>
           }
         >
-          {restoredAfterAttempt ? (
+          {restoredAttempt === 'unclear' ? (
             <>
               Eingaben von {formatClock(restoredAt)} Uhr wiederhergestellt. Ein
               Speicherversuch blieb ohne Antwort - die Bestellung ist vielleicht
               schon angekommen. Beim Speichern wird das geprüft; nichts wird
               doppelt angelegt.
+            </>
+          ) : restoredAttempt === 'refused' ? (
+            <>
+              Eingaben von {formatClock(restoredAt)} Uhr wiederhergestellt. Noch
+              nicht gespeichert – bitte prüfen und speichern.
             </>
           ) : (
             <>
@@ -1303,12 +1394,20 @@ export default function PreorderForm({
                 </Typography>
               )}
 
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+              {/* Nebeneinander nur, wo die Spalte breit genug ist: ab md
+                  steht die Maske zweispaltig, und bis xl ist die linke
+                  Spalte schmal - bei 1024 px stand dort „18.11.2“ und
+                  „Uhrzeit (opti…“. */}
+              <Stack
+                direction={{ xs: 'column', sm: 'row', md: 'column', xl: 'row' }}
+                spacing={1.5}
+              >
                 <TextField
                   label="Abholtag"
                   type="date"
                   value={pickupDate}
                   onChange={(event) => setPickupDate(event.target.value)}
+                  inputRef={dateRef}
                   InputLabelProps={{ shrink: true }}
                   error={
                     Boolean(dateError) &&
@@ -1354,13 +1453,13 @@ export default function PreorderForm({
                   </Box>
                 ) : (
                   <TextField
-                    label="Uhrzeit (optional)"
+                    label="Uhrzeit"
                     type="time"
                     value={pickupTime}
                     onChange={(event) => setPickupTime(event.target.value)}
                     InputLabelProps={{ shrink: true }}
                     inputProps={{ step: 300 }}
-                    helperText=" "
+                    helperText="optional"
                     sx={{ flex: 1 }}
                   />
                 )}
@@ -1758,6 +1857,18 @@ export default function PreorderForm({
                 label={paid ? 'Bezahlt' : 'Noch nicht bezahlt'}
                 sx={{ mb: 1, minHeight: 44 }}
               />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={externalPayment}
+                    onChange={(event) =>
+                      setExternalPayment(event.target.checked)
+                    }
+                  />
+                }
+                label="Zahlung per Überweisung oder Rechnung"
+                sx={{ mb: 1, minHeight: 44 }}
+              />
               {paidBefore != null &&
                 paid &&
                 roundCents(total - paidBefore) !== 0 && (
@@ -1770,7 +1881,11 @@ export default function PreorderForm({
                     {total > paidBefore
                       ? `Differenz ${formatCurrency(
                           roundCents(total - paidBefore)
-                        )} bei der Abholung kassieren.`
+                        )} ${
+                          externalPayment
+                            ? 'noch offen.'
+                            : 'bei der Abholung kassieren.'
+                        }`
                       : `${formatCurrency(
                           roundCents(paidBefore - total)
                         )} an die Kundschaft zurückgeben.`}
@@ -1807,14 +1922,16 @@ export default function PreorderForm({
         }}
       >
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          {error ? (
+          {footerError ? (
             <Alert
               severity="error"
               sx={{ py: 0 }}
-              data-testid={earlier ? 'preorder-earlier' : undefined}
+              data-testid={
+                earlier && error ? 'preorder-earlier' : 'preorder-error'
+              }
             >
-              {error}
-              {earlier && (
+              {footerError}
+              {earlier && error && (
                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
                   <Button
                     variant="contained"

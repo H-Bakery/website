@@ -305,8 +305,10 @@ describe('fehlendeProdukte', () => {
 
 describe('LANDING_URL', () => {
   it('ist die SITE_URL der Landingpage', () => {
+    // Die Angaben stehen seit der Preisliste in der gemeinsamen Lib; die
+    // Landingpage (`apps/bakery-landing/src/config/legal.ts`) reicht sie durch.
     const legal = fs.readFileSync(
-      path.join(__dirname, '../../bakery-landing/src/config/legal.ts'),
+      path.join(__dirname, '../../../libs/shared/utils/src/lib/legal.ts'),
       'utf8'
     )
     const m = /export const SITE_URL = '([^']+)'/.exec(legal)

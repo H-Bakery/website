@@ -4,7 +4,37 @@
     "testbrot-500g": {
       "datei": "produkte-3d/testbrot-500g.glb",
       "bytes": 14580,
-      "bbox_m": { "min": [-0.1, 0, -0.05], "max": [0.1, 0.075, 0.05] }
+      "bbox_m": {
+        "min": [-0.1, 0, -0.05],
+        "max": [0.1, 0.075, 0.05]
+      }
+    }
+  },
+  "regal": {
+    "datei": "produkte-3d/_regal.glb",
+    "bytes": 3048,
+    "modelle": {
+      "musterbrezel": {
+        "bbox_m": {
+          "min": [-0.07, 0, -0.05],
+          "max": [0.07, 0.0306, 0.05]
+        },
+        "dreiecke": 14
+      },
+      "musterweck": {
+        "bbox_m": {
+          "min": [-0.04, 0, -0.035],
+          "max": [0.04, 0.051, 0.035]
+        },
+        "dreiecke": 14
+      },
+      "testbrot-500g": {
+        "bbox_m": {
+          "min": [-0.1, 0, -0.05],
+          "max": [0.1, 0.0765, 0.05]
+        },
+        "dreiecke": 14
+      }
     }
   }
 }

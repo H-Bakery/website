@@ -2,6 +2,7 @@
 import React, { useState } from 'react'
 import { Box, Container, Typography, Chip, Grid } from '@mui/material'
 import type { ProductsByCategory as CategoryGroup } from '../../lib/products'
+import { formatPrice } from '../../utils/formatPrice'
 
 interface ProductsByCategoryProps {
   categories: CategoryGroup[]
@@ -15,14 +16,6 @@ const CATEGORY_ICONS: Record<string, string> = {
   snacks: '\uD83E\uDD68',
   kuchen: '\uD83C\uDF70',
   torten: '\uD83C\uDF82',
-}
-
-function formatPrice(price: number): string {
-  return new Intl.NumberFormat('de-DE', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 2,
-  }).format(price)
 }
 
 const ProductsByCategory: React.FC<ProductsByCategoryProps> = ({

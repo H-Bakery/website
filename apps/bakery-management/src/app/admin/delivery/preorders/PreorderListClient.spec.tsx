@@ -1,5 +1,5 @@
 import React from 'react'
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import PreorderListClient from './PreorderListClient'
@@ -463,52 +463,172 @@ describe('PreorderListClient (Mörsbach, P2 auf /api/preorders)', () => {
     }
   })
 
-  describe('Layout nach Breite (W4-verify r3)', () => {
+  describe('Layout nach Breite des Inhalts (W4-verify r3, Tablet quer)', () => {
     const original = window.matchMedia
-    function setWide(wide: boolean) {
-      window.matchMedia = jest.fn().mockImplementation((query: string) => ({
-        // theme.breakpoints.up('md') -> "(min-width:900px)"
-        matches: wide && /min-width/.test(query),
-        media: query,
-        onchange: null,
-        addListener: jest.fn(),
-        removeListener: jest.fn(),
-        addEventListener: jest.fn(),
-        removeEventListener: jest.fn(),
-        dispatchEvent: jest.fn(),
-      })) as unknown as typeof window.matchMedia
+    /** `matchMedia` wie ein Fenster mit `width` px (nur `min-width`). */
+    function viewport(width: number) {
+      window.matchMedia = jest.fn().mockImplementation((query: string) => {
+        const min = /min-width:\s*([\d.]+)px/.exec(query)
+        return {
+          matches: min ? width >= Number(min[1]) : false,
+          media: query,
+          onchange: null,
+          addListener: jest.fn(),
+          removeListener: jest.fn(),
+          addEventListener: jest.fn(),
+          removeEventListener: jest.fn(),
+          dispatchEvent: jest.fn(),
+        }
+      }) as unknown as typeof window.matchMedia
     }
     afterEach(() => {
       window.matchMedia = original
     })
 
-    it('zeigt am Handy Karten mit Summe, Status und Aktion statt einer seitlich scrollenden Tabelle', async () => {
-      setWide(false)
+    it.each([
+      ['am Handy (390 px)', 390],
+      // ab md steht die Seitenleiste fest daneben: ~700 px Inhalt
+      ['quer am Tablet (1024 px)', 1024],
+      ['quer am Tablet (1180 px)', 1180],
+    ])(
+      '%s: Karten mit Summe, Status und Stornieren statt einer seitlich scrollenden Tabelle',
+      async (_label, width) => {
+        viewport(width)
+        renderAs()
+        expect(await screen.findByText('Testkundschaft A')).toBeInTheDocument()
+        expect(screen.queryByRole('table')).toBeNull()
+        const cards = screen.getAllByTestId('preorder-card')
+        expect(cards).toHaveLength(3)
+        const first = within(cards[0])
+        expect(first.getByText('MO-2026-09-12-01')).toBeInTheDocument()
+        expect(first.getByText('2 × Mustersemmel (Nuss)')).toBeInTheDocument()
+        expect(first.getByText('Offen')).toBeInTheDocument()
+        expect(first.getByText('1,20 €')).toBeInTheDocument()
+        expect(first.getByText('nicht bezahlt')).toBeInTheDocument()
+        expect(
+          first.getByRole('link', { name: /MO-2026-09-12-01 bearbeiten/ })
+        ).toHaveAttribute('href', `/admin/delivery/preorders/${OPEN.id}`)
+        expect(
+          first.getByRole('button', { name: /MO-2026-09-12-01 stornieren/ })
+        ).toBeInTheDocument()
+      }
+    )
+
+    it('am PC (1440 px) die Tabelle', async () => {
+      viewport(1440)
       renderAs()
       expect(await screen.findByText('Testkundschaft A')).toBeInTheDocument()
-      expect(screen.queryByRole('table')).toBeNull()
-      const cards = screen.getAllByTestId('preorder-card')
-      expect(cards).toHaveLength(3)
-      const first = within(cards[0])
-      expect(first.getByText('MO-2026-09-12-01')).toBeInTheDocument()
-      expect(first.getByText('2 × Mustersemmel (Nuss)')).toBeInTheDocument()
-      expect(first.getByText('Offen')).toBeInTheDocument()
+      const table = screen.getByRole('table', {
+        name: 'Vorbestellungen des Liefertags',
+      })
       expect(
-        first.getByRole('link', { name: /MO-2026-09-12-01 bearbeiten/ })
-      ).toHaveAttribute('href', `/admin/delivery/preorders/${OPEN.id}`)
-      expect(
-        first.getByRole('button', { name: /MO-2026-09-12-01 stornieren/ })
-      ).toBeInTheDocument()
+        within(table)
+          .getAllByRole('columnheader')
+          .map((th) => th.textContent)
+      ).toEqual([
+        'Code',
+        'Kunde',
+        'Telefon',
+        'Artikel',
+        'Summe',
+        'Status',
+        'Aktion',
+      ])
+      expect(screen.queryAllByTestId('preorder-card')).toHaveLength(0)
+    })
+  })
+
+  describe('Tageswechsel: nur die letzte Antwort zählt', () => {
+    const NEXT = '2026-09-19'
+    const AFTER = '2026-09-26'
+    /** Ein Liefertag mit einer eigenen, erfundenen Bestellung. */
+    const dayOf = (date: string) =>
+      dayWith(
+        [
+          kita({
+            id: Number(date.slice(-2)),
+            code: `MO-${date}-01`,
+            customerName: `Testkundschaft ${date.slice(-2)}`,
+            pickupDate: date,
+          }),
+        ],
+        { date }
+      )
+
+    function deferred<T>() {
+      let resolve!: (value: T) => void
+      let reject!: (reason: unknown) => void
+      const promise = new Promise<T>((res, rej) => {
+        resolve = res
+        reject = rej
+      })
+      return { promise, resolve, reject }
+    }
+
+    /** Zwei Wochen weiter - beide Antworten noch offen. */
+    async function flipTwice() {
+      const next = deferred<PreorderDay>()
+      const after = deferred<PreorderDay>()
+      mockDay.mockImplementation((date: string) =>
+        date === NEXT
+          ? next.promise
+          : date === AFTER
+          ? after.promise
+          : Promise.resolve(dayOf(date))
+      )
+      const user = userEvent.setup()
+      renderAs()
+      expect(await screen.findByText(`MO-${DATE}-01`)).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: 'Eine Woche vor' }))
+      await user.click(screen.getByRole('button', { name: 'Eine Woche vor' }))
+      await waitFor(() =>
+        expect(mockDay).toHaveBeenLastCalledWith(AFTER, POINT.id)
+      )
+      return { next, after }
+    }
+
+    it('die ältere Antwort kommt zuletzt: der neue Tag bleibt stehen, Datum und Liste passen', async () => {
+      const { next, after } = await flipTwice()
+      // bis zur Antwort nicht die Bestellungen des alten Tags
+      expect(screen.queryByText(`MO-${DATE}-01`)).toBeNull()
+      await act(async () => after.resolve(dayOf(AFTER)))
+      expect(await screen.findByText(`MO-${AFTER}-01`)).toBeInTheDocument()
+      await act(async () => next.resolve(dayOf(NEXT)))
+      expect(screen.queryByText(`MO-${NEXT}-01`)).toBeNull()
+      expect(screen.getByText(`MO-${AFTER}-01`)).toBeInTheDocument()
+      expect(screen.getByLabelText('Liefertag')).toHaveValue(AFTER)
+      expect(screen.getByText('Samstag, 26.09.2026')).toBeInTheDocument()
     })
 
-    it('bleibt ab md bei der Tabelle', async () => {
-      setWide(true)
-      renderAs()
-      expect(await screen.findByText('Testkundschaft A')).toBeInTheDocument()
+    it('scheitert die ältere Anfrage danach, steht kein Fehler da', async () => {
+      const { next, after } = await flipTwice()
+      await act(async () => after.resolve(dayOf(AFTER)))
+      expect(await screen.findByText(`MO-${AFTER}-01`)).toBeInTheDocument()
+      await act(async () => next.reject(new Error('Zeitüberschreitung')))
+      expect(screen.queryByText('Zeitüberschreitung')).toBeNull()
       expect(
-        screen.getByRole('table', { name: 'Vorbestellungen des Liefertags' })
+        screen.queryByRole('button', { name: 'Erneut versuchen' })
+      ).toBeNull()
+      expect(screen.getByText(`MO-${AFTER}-01`)).toBeInTheDocument()
+    })
+
+    it('eine veraltete Antwort beendet das Laden nicht', async () => {
+      const { next, after } = await flipTwice()
+      expect(
+        screen.getByText('Vorbestellungen werden geladen …')
       ).toBeInTheDocument()
-      expect(screen.queryAllByTestId('preorder-card')).toHaveLength(0)
+      await act(async () => next.resolve(dayOf(NEXT)))
+      expect(
+        screen.getByText('Vorbestellungen werden geladen …')
+      ).toBeInTheDocument()
+      // „Aktualisieren“ bleibt gesperrt, solange der neue Tag lädt
+      expect(
+        screen.getByRole('button', { name: 'Vorbestellungen aktualisieren' })
+      ).toBeDisabled()
+      expect(screen.queryByText(`MO-${NEXT}-01`)).toBeNull()
+      await act(async () => after.resolve(dayOf(AFTER)))
+      expect(await screen.findByText(`MO-${AFTER}-01`)).toBeInTheDocument()
+      expect(screen.queryByText('Vorbestellungen werden geladen …')).toBeNull()
     })
   })
 })

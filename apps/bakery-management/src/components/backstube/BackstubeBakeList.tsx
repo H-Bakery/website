@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { Box, ButtonBase, Stack, Typography } from '@mui/material'
+import { Alert, Box, ButtonBase, Stack, Typography } from '@mui/material'
 import CheckIcon from '@mui/icons-material/Check'
 import type {
   BackzettelConfigData,
@@ -22,8 +22,26 @@ import {
   previouslyBakedText,
 } from '../../lib/backzettelFormat'
 import { BakeDeltaGroup, bakeDeltaGroups } from '../../lib/backstubeBake'
-import { BackstubeDeltas } from './BackstubeDeltas'
+import { ACK_ALL_KEY, groupDetail } from './BackstubeDeltas'
+import { BackstubeOverview, jumpTo } from './BackstubeOverview'
+import { BS_ANCHOR_SX as ANCHOR_SX } from './BackstubeLayout'
+import { BS_SECTION_TITLE_SX } from './backstubeType'
+import {
+  BAKE_DELTAS_ANCHOR,
+  bakeProgress,
+  isLineBaked,
+  openDeltaCount,
+} from '../../lib/backstubeProgress'
 import { useBackstubeColors } from './backstubeColors'
+import { BackstubeDeltaBanner, NameLeader } from './BackstubeStates'
+import {
+  MAIN_CELL_SX,
+  QTY_CELL_SX,
+  QtyFigure,
+  TICK_CELL_SX,
+  rowGridSx,
+} from './BackstubeRow'
+import { BackstubeLines } from './BackstubeView'
 
 export interface BackstubeBakeListProps {
   list: BakeList
@@ -126,9 +144,7 @@ function BakeRow({
       data-testid={`bs-bake-${line.key}`}
       data-baked={baked ? 'true' : 'false'}
       sx={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: { xs: 1.5, sm: 2 },
+        ...rowGridSx(tickable),
         px: { xs: 1.5, sm: 2 },
         py: 1.5,
         minHeight: 80,
@@ -144,17 +160,23 @@ function BakeRow({
           : 'background.paper',
       }}
     >
-      <Box sx={{ flex: 1, minWidth: 0 }}>
+      <Box sx={MAIN_CELL_SX}>
         <Typography
           component="div"
           sx={{
             fontSize: { xs: '1.25rem', sm: '1.6rem' },
             fontWeight: 700,
             lineHeight: 1.2,
-            overflowWrap: 'anywhere',
+            overflowWrap: 'break-word',
+            hyphens: 'auto',
+            display: 'flex',
+            alignItems: 'baseline',
           }}
         >
-          {label}
+          <Box component="span" sx={{ minWidth: 0 }}>
+            {label}
+          </Box>
+          <NameLeader />
         </Typography>
         <Typography
           component="div"
@@ -245,28 +267,24 @@ function BakeRow({
           </Typography>
         )}
       </Box>
-      <Typography
-        component="div"
-        data-testid={`bs-bake-total-${line.key}`}
-        sx={{
-          fontSize: { xs: '2rem', sm: '2.75rem' },
-          fontWeight: 800,
-          lineHeight: 1,
-          fontVariantNumeric: 'tabular-nums',
-          color: draft || baked ? 'text.secondary' : 'text.primary',
-          flexShrink: 0,
-        }}
-      >
-        {minQtyText(line, line.unit)}
-      </Typography>
-      {tickable && onToggle && (
-        <BakeTick
-          checked={baked}
-          label={label}
-          pending={pending}
-          onClick={() => onToggle(line)}
-          testId={`bs-bake-tick-${line.key}`}
+      <Box sx={QTY_CELL_SX}>
+        <QtyFigure
+          testId={`bs-bake-total-${line.key}`}
+          text={minQtyText(line, line.unit)}
+          unit={line.unit}
+          muted={draft || baked}
         />
+      </Box>
+      {tickable && onToggle && (
+        <Box sx={TICK_CELL_SX}>
+          <BakeTick
+            checked={baked}
+            label={label}
+            pending={pending}
+            onClick={() => onToggle(line)}
+            testId={`bs-bake-tick-${line.key}`}
+          />
+        </Box>
       )}
     </Box>
   )
@@ -284,6 +302,9 @@ function BakeDeltaRow({
   canTick,
   pending,
   onToggle,
+  canAck,
+  ackingKey,
+  onAck,
 }: {
   group: BakeDeltaGroup
   config: BackzettelConfigData | null
@@ -291,9 +312,15 @@ function BakeDeltaRow({
   canTick: boolean
   pending: boolean
   onToggle?: (group: BakeDeltaGroup) => void
+  canAck: boolean
+  ackingKey: string | null
+  onAck?: (deltas: BackzettelDeltaEntry[], key: string) => void
 }) {
   const colors = useBackstubeColors()
   const d = group.first
+  // UI-Runde 2: „Gesehen“ steht hier an der Zeile (vorher doppelt in einem
+  // eigenen Kasten links). Gebacken quittiert offene Nachträge mit.
+  const unseen = group.deltas.filter((x) => !x.acknowledgedAt)
   // Gebacken - auch teils, wenn für die übrigen nichts mehr zu backen ist.
   const baked = group.checked
   const label = lineLabel(
@@ -304,7 +331,10 @@ function BakeDeltaRow({
     d.doughDate && d.doughDate !== bakeDate
       ? `Teig vom ${formatDateShort(d.doughDate)}`
       : null,
-    group.deltas.length > 1 ? `${group.deltas.length} Änderungen` : null,
+    // Ungesehene nennen ihre Zahl in der Zeile darunter (`groupDetail`).
+    group.deltas.length > 1 && unseen.length !== group.deltas.length
+      ? `${group.deltas.length} Änderungen`
+      : null,
     group.state === 'partial' && group.bakedFigure !== null
       ? `${formatSignedQty(group.bakedFigure, d.unit)} schon gebacken`
       : null,
@@ -314,10 +344,15 @@ function BakeDeltaRow({
   ]
     .filter(Boolean)
     .join(' · ')
+  const seenLabel =
+    unseen.length === 1
+      ? `Nachtrag ${label} gesehen`
+      : `${unseen.length} Nachträge ${label} gesehen`
   return (
     <Box
       data-testid={`bs-bake-dgroup-${group.key}`}
       data-baked={baked ? 'true' : 'false'}
+      data-unseen={unseen.length > 0 ? 'true' : undefined}
       sx={{
         display: 'flex',
         alignItems: 'center',
@@ -327,8 +362,13 @@ function BakeDeltaRow({
         minHeight: 80,
         borderRadius: 2,
         border: '2px solid',
-        borderColor: 'divider',
-        bgcolor: baked ? colors.doneRow : 'background.paper',
+        borderColor: unseen.length > 0 ? colors.deltaEdge : 'divider',
+        borderLeftWidth: unseen.length > 0 ? 8 : 2,
+        bgcolor: baked
+          ? colors.doneRow
+          : unseen.length > 0
+          ? colors.deltaRow
+          : 'background.paper',
       }}
     >
       <Typography
@@ -369,6 +409,14 @@ function BakeDeltaRow({
             {detail}
           </Typography>
         )}
+        {unseen.length > 0 && (
+          <Typography
+            component="div"
+            sx={{ fontSize: '1rem', color: 'text.secondary', mt: 0.25 }}
+          >
+            {groupDetail({ key: group.key, deltas: unseen, qty: 0 })}
+          </Typography>
+        )}
         {baked && (
           <Typography
             component="div"
@@ -376,6 +424,28 @@ function BakeDeltaRow({
           >
             {tickedText(group.bakedAt, group.bakedBy)}
           </Typography>
+        )}
+        {canAck && onAck && unseen.length > 0 && (
+          <ButtonBase
+            onClick={() => onAck(unseen, group.key)}
+            disabled={ackingKey !== null}
+            aria-label={seenLabel}
+            data-testid={`bs-bake-dseen-${group.key}`}
+            sx={{
+              mt: 1,
+              minHeight: 52,
+              px: 2.5,
+              borderRadius: 2,
+              fontSize: '1.15rem',
+              fontWeight: 800,
+              bgcolor: colors.deltaBg,
+              color: colors.deltaFg,
+              opacity: ackingKey === group.key ? 0.7 : 1,
+              '&:focus-visible': { outline: '3px solid', outlineOffset: 2 },
+            }}
+          >
+            Gesehen
+          </ButtonBase>
         )}
       </Box>
       {canTick && group.tickable && onToggle && (
@@ -392,94 +462,159 @@ function BakeDeltaRow({
 }
 
 /**
- * Reiter „Backen“ des Backstube-Tablets (Z10, docs/backzettel-v2.md §7.3):
- * was heute in den Ofen kommt - auch aus Teig vom Vortag („Teig vom Sa“).
- * Je Zeile ein eigener Haken „gebacken“ (Inhaber-Entscheidung O5,
- * 2026-11-08), getrennt von „erledigt“ auf dem Zettel des Teigtags (dort =
- * gemacht); Zeilen eines Entwurfs-Zettels haben keinen. Nachträge stehen
- * darunter mit eigenem Haken; „Gesehen“ quittiert auf dem Zettel, von dem
- * sie stammen.
+ * Linke Spalte (hochkant: oben) des Reiters „Backen“: woher die Zeilen
+ * kommen, ob ein Entwurf dabei ist, Überblick „n von m gebacken“ mit Sprung
+ * zu jedem Abschnitt und ein Hinweis auf neue Nachträge (die stehen mit
+ * „Gesehen“ unten in `BakeListMain`).
  */
-export function BackstubeBakeList({
+export function BakeListAside({
+  list,
+  onOpenDeltas,
+}: Pick<BackstubeBakeListProps, 'list'> & {
+  /** Hinweis „n neue Nachträge“ getippt (Bäcker-Ansicht: dorthin blättern). */
+  onOpenDeltas?: (anchor: string) => void
+}) {
+  const colors = useBackstubeColors()
+  const anyDraft = list.sources.some((s) => s.status === 'draft')
+  const progress = bakeProgress(list)
+  const unseen = openDeltaCount(list.deltas)
+  return (
+    <>
+      {/* UI-Runde 2: die Nachträge stehen einmal - unten bei den Zeilen mit
+          „Gesehen“ und gebacken-Haken; hier nur, dass es neue gibt. */}
+      {unseen > 0 && (
+        <BackstubeDeltaBanner
+          count={unseen}
+          onOpen={() => (onOpenDeltas ?? jumpTo)(BAKE_DELTAS_ANCHOR)}
+          testId="bs-bake-deltas-banner"
+        />
+      )}
+      <BackstubeOverview
+        progress={progress.total > 0 ? { ...progress, verb: 'gebacken' } : null}
+        progressTestId="bs-bake-progress"
+        status={
+          list.sources.length > 0 ? (
+            <Box component="span" data-testid="bs-bake-sources">
+              {list.sources
+                .map((s) => bakeSourceText(s, list.date))
+                .join(' · ')}
+            </Box>
+          ) : null
+        }
+        banner={
+          anyDraft ? (
+            <Box
+              role="status"
+              data-testid="bs-bake-draft"
+              sx={{
+                p: { xs: 2, sm: 2.5 },
+                mb: 2,
+                borderRadius: 2,
+                bgcolor: colors.draftBg,
+                color: colors.draftFg,
+              }}
+            >
+              <Typography
+                sx={{
+                  fontSize: { xs: '1.4rem', sm: '1.6rem' },
+                  fontWeight: 800,
+                  lineHeight: 1.15,
+                }}
+              >
+                Noch nicht alles freigegeben
+              </Typography>
+              <Typography sx={{ fontSize: '1.1rem', mt: 0.5 }}>
+                Gestrichelte Zeilen kommen von einem Entwurf und können sich
+                noch ändern.
+              </Typography>
+            </Box>
+          ) : null
+        }
+        entries={progress.entries}
+      />
+      {list.warnings.length > 0 && (
+        <Alert
+          severity="warning"
+          data-testid="bs-bake-warnings"
+          sx={{ fontSize: '1.05rem' }}
+        >
+          {list.warnings.map((w, i) => (
+            <div key={`${w.code}-${i}`}>{w.message}</div>
+          ))}
+        </Alert>
+      )}
+    </>
+  )
+}
+
+/**
+ * Rechte Spalte des Reiters „Backen“: die Zeilen je Abschnitt mit dem
+ * gebacken-Haken, darunter die Nachträge mit eigenem Haken.
+ */
+export function BakeListMain({
   list,
   config,
-  canAck,
-  ackingKey,
-  onAck,
   canTick = false,
   pendingKeys,
   onToggleLine,
   onToggleDeltas,
-}: BackstubeBakeListProps) {
-  const colors = useBackstubeColors()
+  canAck = false,
+  ackingKey = null,
+  onAck,
+  only,
+}: Pick<
+  BackstubeBakeListProps,
+  | 'list'
+  | 'config'
+  | 'canTick'
+  | 'pendingKeys'
+  | 'onToggleLine'
+  | 'onToggleDeltas'
+  | 'canAck'
+  | 'ackingKey'
+  | 'onAck'
+> & {
+  /** Bäcker-Ansicht: nur dieser Abschnitt (Sprungziel `bs-anchor-…`). */
+  only?: string
+}) {
   const lines = list.sections.flatMap((s) => s.lines)
   const deltaGroups = bakeDeltaGroups(list)
-  const anyDraft = list.sources.some((s) => s.status === 'draft')
+  const unseenGroups = deltaGroups.filter((g) =>
+    g.deltas.some((d) => !d.acknowledgedAt)
+  )
+  const unseenDeltas = unseenGroups.flatMap((g) =>
+    g.deltas.filter((d) => !d.acknowledgedAt)
+  )
+  const showDeltas =
+    deltaGroups.length > 0 && (!only || only === BAKE_DELTAS_ANCHOR)
   return (
-    <Stack spacing={2} data-testid="bs-bake-list">
-      {list.sources.length > 0 && (
-        <Typography
-          data-testid="bs-bake-sources"
-          sx={{ fontSize: { xs: '1.05rem', sm: '1.2rem' }, fontWeight: 600 }}
-        >
-          {list.sources.map((s) => bakeSourceText(s, list.date)).join(' · ')}
-        </Typography>
-      )}
-      {anyDraft && (
-        <Box
-          role="status"
-          data-testid="bs-bake-draft"
-          sx={{
-            p: { xs: 2, sm: 2.5 },
-            borderRadius: 2,
-            bgcolor: colors.draftBg,
-            color: colors.draftFg,
-          }}
-        >
-          <Typography
-            sx={{ fontSize: { xs: '1.4rem', sm: '1.7rem' }, fontWeight: 800 }}
-          >
-            Noch nicht alles freigegeben
-          </Typography>
-          <Typography sx={{ fontSize: '1.15rem', mt: 0.5 }}>
-            Gestrichelte Zeilen kommen von einem Entwurf und können sich noch
-            ändern.
-          </Typography>
-        </Box>
-      )}
-      <BackstubeDeltas
-        deltas={list.deltas}
-        bakeByKey={Object.fromEntries(
-          lines.map((l) => [l.key, l.delta?.bakeOpen])
-        )}
-        config={config}
-        canAck={canAck}
-        ackingKey={ackingKey}
-        onAck={onAck}
-        sheetDate={list.date}
-      />
+    <>
       {list.sections.map((section) =>
-        section.lines.length === 0 ? null : (
+        section.lines.length === 0 ||
+        (only && only !== `bs-anchor-bake-${section.id}`) ? null : (
           <Box
             component="section"
             key={section.id}
+            id={`bs-anchor-bake-${section.id}`}
             data-testid={`bs-bake-section-${section.id}`}
             aria-labelledby={`bs-bake-title-${section.id}`}
+            sx={ANCHOR_SX}
           >
             <Typography
               id={`bs-bake-title-${section.id}`}
               component="h2"
-              sx={{
-                fontSize: { xs: '1.5rem', sm: '1.9rem' },
-                fontWeight: 800,
-                mt: 1,
-                mb: 1,
-              }}
+              tabIndex={-1}
+              sx={{ ...BS_SECTION_TITLE_SX, mt: 1, mb: 1, outline: 'none' }}
             >
               {section.label}
             </Typography>
-            <Stack spacing={1}>
-              {section.lines.map((line) => (
+            <BackstubeLines
+              lines={section.lines}
+              sectionId={`bake-${section.id}`}
+              verb="gebacken"
+              lineKey={(line) => `${line.doughDate ?? ''}-${line.key}`}
+              isDone={isLineBaked}
+              renderLine={(line) => (
                 <BakeRow
                   key={`${line.doughDate ?? ''}-${line.key}`}
                   line={line}
@@ -488,29 +623,71 @@ export function BackstubeBakeList({
                   pending={!!pendingKeys?.has(bakeLineTickKey(line))}
                   onToggle={onToggleLine}
                 />
-              ))}
-            </Stack>
+              )}
+            />
           </Box>
         )
       )}
-      {deltaGroups.length > 0 && (
+      {showDeltas && (
         <Box
           component="section"
+          id={BAKE_DELTAS_ANCHOR}
           data-testid="bs-bake-deltas"
           aria-labelledby="bs-bake-deltas-title"
+          sx={ANCHOR_SX}
         >
-          <Typography
-            id="bs-bake-deltas-title"
-            component="h2"
+          <Box
             sx={{
-              fontSize: { xs: '1.5rem', sm: '1.9rem' },
-              fontWeight: 800,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 1.5,
               mt: 1,
               mb: 1,
             }}
           >
-            Nachträge (nicht in den Zahlen oben)
-          </Typography>
+            <Typography
+              id="bs-bake-deltas-title"
+              component="h2"
+              tabIndex={-1}
+              sx={{ ...BS_SECTION_TITLE_SX, outline: 'none' }}
+            >
+              Nachträge{' '}
+              <Box
+                component="span"
+                sx={{
+                  fontSize: '0.6em',
+                  fontWeight: 700,
+                  color: 'text.secondary',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                (nicht in den Zahlen oben)
+              </Box>
+            </Typography>
+            {canAck && onAck && unseenGroups.length > 1 && (
+              <ButtonBase
+                onClick={() => onAck(unseenDeltas, ACK_ALL_KEY)}
+                disabled={ackingKey !== null}
+                data-testid="bs-bake-deltas-ack-all"
+                aria-label={`Alle ${unseenDeltas.length} Nachträge gesehen`}
+                sx={{
+                  minHeight: 56,
+                  px: 2.5,
+                  borderRadius: 2,
+                  fontSize: '1.15rem',
+                  fontWeight: 800,
+                  border: '2px solid',
+                  borderColor: 'text.primary',
+                  opacity: ackingKey === ACK_ALL_KEY ? 0.7 : 1,
+                  '&:focus-visible': { outline: '3px solid', outlineOffset: 2 },
+                }}
+              >
+                Alle gesehen
+              </ButtonBase>
+            )}
+          </Box>
           <Stack spacing={1}>
             {deltaGroups.map((g) => (
               <BakeDeltaRow
@@ -521,26 +698,38 @@ export function BackstubeBakeList({
                 canTick={canTick}
                 pending={!!pendingKeys?.has(bakeDeltaTickKey(g))}
                 onToggle={onToggleDeltas}
+                canAck={canAck}
+                ackingKey={ackingKey}
+                onAck={onAck}
               />
             ))}
           </Stack>
         </Box>
       )}
-      {lines.length === 0 && (
+      {lines.length === 0 && !only && (
         <Typography sx={{ fontSize: '1.4rem', py: 4 }}>
           Für diesen Tag steht nichts auf der Backliste.
         </Typography>
       )}
-      {list.warnings.length > 0 && (
-        <Box
-          data-testid="bs-bake-warnings"
-          sx={{ fontSize: '1.05rem', color: 'text.secondary' }}
-        >
-          {list.warnings.map((w, i) => (
-            <div key={`${w.code}-${i}`}>{w.message}</div>
-          ))}
-        </Box>
-      )}
+    </>
+  )
+}
+
+/**
+ * Reiter „Backen“ des Backstube-Tablets (Z10, docs/backzettel-v2.md §7.3):
+ * was heute in den Ofen kommt - auch aus Teig vom Vortag („Teig vom Sa“).
+ * Je Zeile ein eigener Haken „gebacken“ (Inhaber-Entscheidung O5,
+ * 2026-11-08), getrennt von „erledigt“ auf dem Zettel des Teigtags (dort =
+ * gemacht); Zeilen eines Entwurfs-Zettels haben keinen. Nachträge stehen
+ * darunter mit eigenem Haken; „Gesehen“ quittiert auf dem Zettel, von dem
+ * sie stammen. Die Seite setzt Seitenspalte und Zeilen getrennt
+ * (`BakeListAside`/`BakeListMain`); zusammen ergeben sie diese Ansicht.
+ */
+export function BackstubeBakeList(props: BackstubeBakeListProps) {
+  return (
+    <Stack spacing={2} data-testid="bs-bake-list">
+      <BakeListAside {...props} />
+      <BakeListMain {...props} />
     </Stack>
   )
 }

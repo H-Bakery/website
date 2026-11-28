@@ -20,10 +20,15 @@
  *   - Ein Monat ist nur „vollständig“, wenn die Bankdaten (`period`) ihn ganz
  *     abdecken. Unvollständige Monate fließen nie in Durchschnitte ein - sonst
  *     drückt der laufende Monat jeden Mittelwert.
+ *   - Der Kassenabgleich zählt nur Monate, in denen **auch die Kasse**
+ *     vollständig ist: an jedem Öffnungstag (Wochenplan + hq-Kalender, über
+ *     `kalender.core.js`) ein Kassenbericht (`kasseCoverage`).
  *   - Beträge in Euro, Abflüsse negativ; gerechnet wird in Cent.
  */
 
 'use strict'
+
+const kalender = require('./kalender.core')
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/
 const DATE_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/
@@ -367,15 +372,157 @@ function categoryPresence(months, averages) {
 // KASSE
 // ============================================================================
 
+/** „26 Öffnungstagen“ (Dativ, nach „von“). */
+function openDaysText(n) {
+  return `${n} Öffnungstag${n === 1 ? '' : 'en'}`
+}
+
+/** Kurzer Grund, wenn sich die Kasse nicht prüfen lässt. */
+const KASSE_UNCHECKED = {
+  no_config: 'Kasse nicht prüfbar: kein gültiger Wochenplan (backzettel.yaml)',
+  no_calendar:
+    'Kasse nicht prüfbar: kein gültiger Öffnungskalender (kalender.yaml)',
+  no_days: 'Kasse nicht prüfbar: Kassentage unbekannt',
+}
+
+/** Ein Satz, warum es dann keinen Kassenabgleich gibt. */
+const KASSE_UNCHECKED_SENTENCE =
+  'Ohne Wochenplan und Öffnungskalender aus hq lässt sich nicht prüfen, ob an ' +
+  'jedem Öffnungstag ein Kassenbericht vorliegt – deshalb kein Kassenabgleich.'
+
+/**
+ * Wie vollständig die Kasse einen Monat abdeckt: Öffnungstage gegen Tage mit
+ * Kassenbericht. `aggregate` ist das Ergebnis von `reports.core.aggregateMonth`
+ * (die Tage ohne Bericht stehen in `missingDays`).
+ *
+ * `ctx.calendarConfig`: die Backzettel-Stammdaten mit Kalender
+ * (`config.calendar`, so lädt sie `backzettel-source.ts`) oder `null`;
+ * `ctx.today`: `JJJJ-MM-TT`; `ctx.reportsPeriod`: `{ from, to }`, erster und
+ * letzter Kassenbericht überhaupt - nur für den Hinweistext.
+ *
+ *   - Öffnungstag heißt `kalender.dayKind(…).open`: Wochenplan, Feiertage,
+ *     Schließtage (Betriebsferien) und Sonderöffnungen aus `kalender.yaml`.
+ *     Ein Tag **mit** Bericht zählt immer als Öffnungstag - der Laden hatte
+ *     offen, auch wenn der Kalender etwas anderes sagt.
+ *   - Für ein Jahr, das der Kalender nicht aufführt (`year-missing`), gilt der
+ *     Wochenplan; ein gesetzlicher Feiertag **ohne** Bericht zählt dann nicht
+ *     als fehlend (ob offen war, weiß niemand). Ein Schließtag wird nie
+ *     erfunden: mit Bericht zählt der Feiertag mit.
+ *   - Gezählt wird bis gestern - der heutige Bericht kann noch kommen; ist er
+ *     schon da, zählt heute mit. Der laufende Monat ist nie vollständig.
+ *   - Ohne Stammdaten (Wochenplan) oder ohne gültigen Kalender ist nichts
+ *     prüfbar: `open_days: null`, nie vollständig.
+ *
+ * Liefert `{ open_days, report_days, complete, note, detail, reason }`:
+ * `note` ist der kurze Hinweis für Tabellen (`null`, wenn vollständig),
+ * `detail` der Zusatz für die Monatsanalyse (Datenbeginn, fehlende Tage),
+ * `reason` `running` | `missing_reports` | `no_config` | `no_calendar` |
+ * `no_days` | `null`.
+ */
+function kasseCoverage(month, aggregate, ctx = {}) {
+  const first = `${month}-01`
+  const last = `${month}-${String(daysInMonth(month)).padStart(2, '0')}`
+  const today = isValidDate(ctx.today) ? ctx.today : null
+  const running = Boolean(today && last >= today)
+  const missingDays =
+    isPlainObject(aggregate) && Array.isArray(aggregate.missingDays)
+      ? new Set(aggregate.missingDays)
+      : null
+  // Bis gestern; ist der heutige Bericht schon da (Pipeline am Nachmittag),
+  // zählt heute mit - sonst sagte „bisher 14 von 14“ weniger Tage als die
+  // Kasse schon hat (`report_days` = `days`).
+  const end = !running
+    ? last
+    : today >= first && missingDays && !missingDays.has(today)
+    ? today
+    : kalender.addDays(today, -1)
+  const dates = []
+  for (let d = first; d <= end; d = kalender.addDays(d, 1)) dates.push(d)
+
+  const config = isPlainObject(ctx.calendarConfig) ? ctx.calendarConfig : null
+  const reason = !missingDays
+    ? 'no_days'
+    : !config || !Array.isArray(config.days) || config.days.length === 0
+    ? 'no_config'
+    : !kalender.calendarOf(config)
+    ? 'no_calendar'
+    : null
+  const withReport = missingDays ? dates.filter((d) => !missingDays.has(d)) : []
+  if (reason) {
+    return {
+      open_days: null,
+      report_days: withReport.length,
+      complete: false,
+      note: KASSE_UNCHECKED[reason],
+      detail: null,
+      reason,
+    }
+  }
+
+  const missing = []
+  let open = 0
+  for (const date of dates) {
+    if (!missingDays.has(date)) {
+      open += 1
+      continue
+    }
+    const day = kalender.dayKind(config, date)
+    if (!day.open) continue
+    if (day.calendar === 'year-missing' && kalender.holidayName(date)) continue
+    open += 1
+    missing.push(date)
+  }
+  const reports = withReport.length
+  const complete = !running && missing.length === 0
+  if (complete) {
+    return {
+      open_days: open,
+      report_days: reports,
+      complete: true,
+      note: null,
+      detail: null,
+      reason: null,
+    }
+  }
+
+  const period = isPlainObject(ctx.reportsPeriod) ? ctx.reportsPeriod : {}
+  let detail = null
+  if (isValidDate(period.from) && period.from > first && period.from <= last) {
+    detail = `Kassenberichte gibt es erst ab ${formatDateDe(period.from)}`
+  } else if (
+    isValidDate(period.to) &&
+    period.to >= first &&
+    period.to < end &&
+    missing.length > 0
+  ) {
+    detail = `Kassenberichte bisher nur bis ${formatDateDe(period.to)}`
+  } else if (missing.length > 0 && missing.length <= 3) {
+    detail = `es fehl${missing.length === 1 ? 't' : 'en'} ${missing
+      .map(kalender.shortDate)
+      .join(', ')}`
+  }
+  return {
+    open_days: open,
+    report_days: reports,
+    complete: false,
+    note: running
+      ? `Monat läuft noch: bisher ${reports} von ${openDaysText(open)}`
+      : `Kasse unvollständig: ${reports} von ${openDaysText(open)}`,
+    detail,
+    reason: running ? 'running' : 'missing_reports',
+  }
+}
+
 /**
  * Monatssumme der Kasse (Ergebnis von `reports.core.aggregateMonth`) auf das
- * Nötige verkleinert. `null`, wenn es keinen Bericht gibt.
+ * Nötige verkleinert, mit der Abdeckung aus `kasseCoverage` (`open_days`,
+ * `report_days`, `complete`, `note`). `null`, wenn es keinen Bericht gibt.
  */
-function kasseOf(aggregate) {
+function kasseOf(aggregate, coverage) {
   if (!isPlainObject(aggregate) || aggregate.status !== 'ok') return null
   const payments = isPlainObject(aggregate.payments) ? aggregate.payments : {}
   const amount = (key) => round2(num(payments[key] && payments[key].amount))
-  return {
+  const out = {
     revenue: round2(num(aggregate.revenue)),
     days: num(aggregate.dayCount),
     avg_day: round2(num(aggregate.avgDayRevenue)),
@@ -383,6 +530,34 @@ function kasseOf(aggregate) {
     cash: amount('cash'),
     card: amount('card'),
     unpaid: amount('other'),
+  }
+  if (!coverage) return out
+  return {
+    ...out,
+    open_days: coverage.open_days,
+    report_days: coverage.report_days,
+    complete: coverage.complete,
+    note: coverage.note,
+  }
+}
+
+/** Kasse eines Monats samt Abdeckung (oder `null` ohne Bericht). */
+function kasseMonthOf(month, aggregate, ctx) {
+  if (!isPlainObject(aggregate) || aggregate.status !== 'ok') {
+    return { kasse: null, coverage: null }
+  }
+  const coverage = kasseCoverage(month, aggregate, ctx)
+  return { kasse: kasseOf(aggregate, coverage), coverage }
+}
+
+/** Zusammenhang aus den Optionen von Jahr/Monat für `kasseCoverage`. */
+function kasseContext(options) {
+  return {
+    calendarConfig: options.calendarConfig || null,
+    today: isValidDate(options.today) ? options.today : null,
+    reportsPeriod: isPlainObject(options.reportsPeriod)
+      ? options.reportsPeriod
+      : null,
   }
 }
 
@@ -500,6 +675,25 @@ function buildNotes(statement, ctx) {
       )} gingen als Geldtransit vom Geschäftskonto weg (Verrechnungskonto, ` +
         'Wechselgeld). Was von dort aus bezahlt wurde, sieht diese Auswertung nicht – ' +
         'Kosten können also fehlen.'
+    )
+  }
+  if (ctx.kasseExcluded && ctx.kasseExcluded.length > 0) {
+    const excluded = ctx.kasseExcluded
+    const unchecked = excluded.some((r) => r.kasse.open_days === null)
+    const names = excluded.map((r) => monthName(r.month))
+    add(
+      'kasse_incomplete',
+      'info',
+      unchecked
+        ? KASSE_UNCHECKED_SENTENCE
+        : `Nicht im Kassenabgleich: ${
+            names.length === 1
+              ? names[0]
+              : `${names.slice(0, -1).join(', ')} und ${
+                  names[names.length - 1]
+                }`
+          } – dort fehlen Kassenberichte an Öffnungstagen. Verglichen werden nur Monate, ` +
+            'in denen Bank und Kasse vollständig sind.'
     )
   }
   if (ctx.reconciliation) {
@@ -672,7 +866,9 @@ function projectYear(summary, year, byMonth) {
 
 /**
  * Jahresabschluss für `year` (`JJJJ`). `options.kasseByMonth`: `{ 'JJJJ-MM':
- * Ergebnis von reports.core.aggregateMonth }`; `options.today`: `JJJJ-MM-TT`.
+ * Ergebnis von reports.core.aggregateMonth }`; `options.today`: `JJJJ-MM-TT`;
+ * `options.calendarConfig` und `options.reportsPeriod` für die Abdeckung der
+ * Kasse (`kasseCoverage`).
  * Liefert `{ status: 'ok', data }` oder `{ status: 'no-data', reason }`.
  */
 function buildYearReport(summary, year, options = {}) {
@@ -689,6 +885,7 @@ function buildYearReport(summary, year, options = {}) {
     ? options.kasseByMonth
     : {}
   const today = isValidDate(options.today) ? options.today : null
+  const kasseCtx = kasseContext(options)
 
   const rows = []
   const missingBefore = []
@@ -729,7 +926,7 @@ function buildYearReport(summary, year, options = {}) {
       /** Ergebnis seit Jahresbeginn (bzw. Datenbeginn) bis Ende dieses Monats. */
       cumulative_result:
         totals && coverage.status !== 'missing' ? euro(cumulative) : null,
-      kasse: kasseOf(kasseByMonth[month]),
+      kasse: kasseMonthOf(month, kasseByMonth[month], kasseCtx).kasse,
     })
   }
 
@@ -744,8 +941,11 @@ function buildYearReport(summary, year, options = {}) {
       : 'final'
 
   // Kassenabgleich nur über Monate, die Bank *und* Kasse vollständig haben -
-  // im laufenden Monat liegen Einzahlungen der letzten Tage noch nicht vor.
-  const recMonths = rows.filter((r) => r.coverage === 'complete' && r.kasse)
+  // im laufenden Monat liegen Einzahlungen der letzten Tage noch nicht vor,
+  // und ein Monat mit wenigen Kassentagen ergäbe eine Scheindifferenz.
+  const bankComplete = rows.filter((r) => r.coverage === 'complete' && r.kasse)
+  const recMonths = bankComplete.filter((r) => r.kasse.complete)
+  const kasseExcluded = bankComplete.filter((r) => !r.kasse.complete)
   const recStatement = statementOf(
     summary,
     recMonths.map((r) => byMonth.get(r.month)).filter(Boolean)
@@ -773,6 +973,7 @@ function buildYearReport(summary, year, options = {}) {
       : null,
     dataFrom: period.from,
     openUntil: status === 'provisional' ? period.to : null,
+    kasseExcluded,
     reconciliation,
   }
 
@@ -954,7 +1155,8 @@ function highlightsOf(statement, reference, avg, summary) {
 /**
  * Monatsanalyse für `month` (`JJJJ-MM`). `options.kasse`: Ergebnis von
  * `reports.core.aggregateMonth` für diesen Monat; `options.kassePreviousYear`
- * dasselbe für den Vorjahresmonat.
+ * dasselbe für den Vorjahresmonat; `options.today`, `options.calendarConfig`
+ * und `options.reportsPeriod` für die Abdeckung der Kasse (`kasseCoverage`).
  */
 function buildMonthReport(summary, month, options = {}) {
   if (!isValidMonth(month))
@@ -996,10 +1198,22 @@ function buildMonthReport(summary, month, options = {}) {
     ? 'too_few_months'
     : null
 
-  const kasse = kasseOf(options.kasse)
+  // Abgleich nur, wenn Bank *und* Kasse den Monat vollständig haben.
+  const kasseCtx = kasseContext(options)
+  const { kasse, coverage: kasseCov } = kasseMonthOf(
+    month,
+    options.kasse,
+    kasseCtx
+  )
   const reconciliation =
-    coverage.status === 'complete' ? reconcile(kasse, statement) : null
-  const kassePrev = kasseOf(options.kassePreviousYear)
+    coverage.status === 'complete' && kasse && kasse.complete
+      ? reconcile(kasse, statement)
+      : null
+  const kassePrev = kasseMonthOf(
+    addMonths(month, -12),
+    options.kassePreviousYear,
+    kasseCtx
+  ).kasse
 
   const index = all.findIndex((m) => m.month === month)
   const previous = index > 0 ? all[index - 1] : null
@@ -1039,6 +1253,18 @@ function buildMonthReport(summary, month, options = {}) {
       text: `${statement.unassigned.count} Buchung${
         statement.unassigned.count === 1 ? '' : 'en'
       } ohne Kategorie (${formatEuroDe(statement.unassigned.amount)}).`,
+    })
+  }
+  if (coverage.status === 'complete' && kasse && !kasse.complete) {
+    notes.push({
+      key: 'kasse_incomplete',
+      severity: 'info',
+      text:
+        kasse.open_days === null
+          ? `${kasse.note}. ${KASSE_UNCHECKED_SENTENCE}`
+          : `${kasse.note}${kasseCov.detail ? ` (${kasseCov.detail})` : ''}. ` +
+            'Kasse und Konto werden nur für Monate verglichen, in denen an jedem ' +
+            'Öffnungstag ein Kassenbericht vorliegt – sonst entstünde eine Scheindifferenz.',
     })
   }
   if (reconciliation) {
@@ -1112,6 +1338,7 @@ module.exports = {
   latestCompleteMonth,
   statementOf,
   projectYear,
+  kasseCoverage,
   buildYearReport,
   buildMonthReport,
   addMonths,

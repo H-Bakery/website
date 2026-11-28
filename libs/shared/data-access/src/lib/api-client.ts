@@ -37,6 +37,8 @@ export class ApiError extends Error {
 
 /** Per-request options of the public request methods. */
 export interface RequestOptions {
+  /** Abweichendes Zeitlimit für diese Anfrage in Millisekunden. */
+  timeoutMs?: number
   /** Extra headers for this request only (e.g. `X-Station-Token`). */
   headers?: Record<string, string>
   /**
@@ -216,13 +218,17 @@ export class ApiClient {
 
     // Add timeout using AbortController
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout)
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      requestOptions.timeoutMs ?? this.timeout
+    )
+    const abort = () => controller.abort()
+    if (options.signal?.aborted) abort()
+    else options.signal?.addEventListener('abort', abort, { once: true })
     config.signal = controller.signal
 
     try {
       const response = await fetch(url, config)
-      clearTimeout(timeoutId)
-
       let data: any
       const contentType = response.headers.get('content-type')
 
@@ -255,8 +261,6 @@ export class ApiClient {
         message: 'Request successful',
       }
     } catch (error) {
-      clearTimeout(timeoutId)
-
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
           throw new Error('Request timeout')
@@ -265,6 +269,9 @@ export class ApiClient {
       }
 
       throw new Error('Unknown error occurred')
+    } finally {
+      clearTimeout(timeoutId)
+      options.signal?.removeEventListener('abort', abort)
     }
   }
 
@@ -321,7 +328,10 @@ export class ApiClient {
     delete headers['Content-Type']
     const withAuth = Boolean(headers['Authorization'])
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout)
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      requestOptions.timeoutMs ?? this.timeout
+    )
     try {
       const response = await fetch(`${this.baseUrl}${endpoint}`, {
         method: 'GET',
@@ -378,6 +388,42 @@ export class ApiClient {
       {
         method: 'POST',
         body: data ? JSON.stringify(data) : undefined,
+      },
+      options
+    )
+  }
+
+  /** POST a single file as a raw request body with the normal session retry. */
+  async postFile<T>(
+    endpoint: string,
+    file: File,
+    options: RequestOptions = {}
+  ): Promise<ApiResponse<T>> {
+    return this.request<T>(
+      endpoint,
+      {
+        method: 'POST',
+        body: file,
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      },
+      options
+    )
+  }
+
+  /** Binärdaten mit derselben Sitzung und Fehlerbehandlung wie JSON senden. */
+  async postRaw<T>(
+    endpoint: string,
+    body: Blob,
+    signal: AbortSignal,
+    options?: RequestOptions
+  ): Promise<ApiResponse<T>> {
+    return this.request<T>(
+      endpoint,
+      {
+        method: 'POST',
+        body,
+        signal,
+        headers: { 'Content-Type': body.type },
       },
       options
     )

@@ -2,7 +2,27 @@ import { execFileSync } from 'child_process'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
+import yaml from 'js-yaml'
+import { EINRICHTEN_SPUR, TEST_SPUREN } from '../../../scripts/export-pruefung'
+import { pruefeIndex } from '../../../scripts/produkte-3d-lock'
+import { lesePaket } from '../../../scripts/regal-modelle'
+import { gehoertZu } from '../../lib/raeume/rauminfos'
+import { TESTRAEUME } from './testraeume'
+import { FORMEN, bauePaket, indexMitRegal } from './regal-fixture'
 import {
+  BACKSTUBE_GLB_PATH,
+  EINGERICHTET,
+  EINRICHTUNG_PATH,
+  MIT_REGAL,
+  REGAL_GENERATOR_PATH,
+  REGAL_GLB_PATH,
+  belegung,
+  einrichtung,
+  modellBelegungDatei,
+  RAEUME,
+  RAUMINFOS_DIR,
+  STATIONEN,
+  rauminfosDatei,
   GENERATOR_PATH,
   GLB_PATH,
   MIT_MODELL,
@@ -267,6 +287,115 @@ describe('twin.fixture.glb', () => {
   })
 })
 
+describe('testbackstube.fixture.glb (zweiter Raum, nur für Tests)', () => {
+  const backstube = leseGlb(fs.readFileSync(BACKSTUBE_GLB_PATH))
+  const namen: string[] = backstube.json.nodes.map(
+    (n: { name: string }) => n.name
+  )
+  const raum = TESTRAEUME[0]
+  const infopunkte = (
+    yaml.load(
+      fs.readFileSync(path.join(RAUMINFOS_DIR, `${raum.id}.yaml`), 'utf8')
+    ) as { infopunkte: { knoten: string; titel: string; kurz: string }[] }
+  ).infopunkte
+
+  it('ist deterministisch: der Generator liefert genau die eingecheckte Datei', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'backstube-fixture-'))
+    try {
+      const target = path.join(dir, 'a.glb')
+      execFileSync(process.execPath, [
+        GENERATOR_PATH,
+        '--raum',
+        'testbackstube',
+        '--out',
+        target,
+      ])
+      expect(
+        fs.readFileSync(target).equals(fs.readFileSync(BACKSTUBE_GLB_PATH))
+      ).toBe(true)
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('ist klein, ohne Decoder lesbar und hat keine Produkte', () => {
+    expect(fs.statSync(BACKSTUBE_GLB_PATH).size).toBeLessThan(20_000)
+    expect(backstube.json.extensionsUsed).not.toContain(
+      'EXT_meshopt_compression'
+    )
+    expect(namen.filter((n) => n.startsWith('produkt/'))).toEqual([])
+    expect(zeichenketten(backstube.json).filter((s) => PREIS.test(s))).toEqual(
+      []
+    )
+  })
+
+  it('die Räume des Fixtures sind der Laden und genau die Test-Räume der App', () => {
+    expect(RAEUME.map((r: { id: string }) => r.id)).toEqual([
+      'laden',
+      ...TESTRAEUME.map((r) => r.id),
+    ])
+    for (const r of TESTRAEUME) {
+      expect(RAEUME.find((x: { id: string }) => x.id === r.id)?.datei).toBe(
+        r.modell
+      )
+    }
+  })
+
+  it('jeder Test-Raum ist am Namen zu erkennen: Der Wächter des echten Exports findet ihn', () => {
+    for (const r of TESTRAEUME) {
+      for (const text of [r.id, r.name, r.modell, r.wechsel]) {
+        expect(TEST_SPUREN.some((spur) => text.includes(spur))).toBe(true)
+      }
+    }
+  })
+
+  it('jeder Blickpunkt des Test-Raums sieht Stücke des Modells, der Start-Blickpunkt ist einer davon', () => {
+    expect(raum.produkte).toBe(false)
+    expect(raum.blickpunkte.map((b) => b.id)).toContain(raum.start)
+    for (const blickpunkt of raum.blickpunkte) {
+      for (const prefix of blickpunkt.moebel) {
+        expect(namen.some((n) => n.startsWith(prefix))).toBe(true)
+      }
+    }
+  })
+
+  it('jeder synthetische Infopunkt gehört zu Stücken des Modells und zu genau einem Blickpunkt', () => {
+    expect(infopunkte.map((p) => p.titel)).toEqual([
+      STATIONEN.ofen.titel,
+      STATIONEN.kneter.titel,
+      STATIONEN.tisch.titel,
+    ])
+    for (const punkt of infopunkte) {
+      expect(namen.some((n) => gehoertZu(n, punkt.knoten))).toBe(true)
+      expect(
+        raum.blickpunkte.filter((b) =>
+          b.moebel.some((prefix) => gehoertZu(punkt.knoten, prefix))
+        )
+      ).toHaveLength(1)
+    }
+  })
+
+  it('hat eine Station ohne Infopunkt und eine Tür in den Laden', () => {
+    const { ohneInfo, tuer } = STATIONEN
+    expect(namen.some((n) => gehoertZu(n, ohneInfo.knoten))).toBe(true)
+    expect(infopunkte.some((p) => gehoertZu(ohneInfo.knoten, p.knoten))).toBe(
+      false
+    )
+    expect(raum.tueren).toEqual([{ knoten: tuer.knoten, ziel: tuer.ziel }])
+    expect(namen.some((n) => gehoertZu(n, tuer.knoten))).toBe(true)
+  })
+
+  it('die Infopunkte kommen durch denselben Leser wie die aus hq', () => {
+    const datei = JSON.parse(rauminfosDatei().toString('utf8'))
+    expect(Object.keys(datei.raeume)).toEqual([raum.id])
+    expect(datei.raeume[raum.id].infopunkte).toHaveLength(infopunkte.length)
+    // Der Schrägstrich am Ende von `knoten` ist erlaubt und fällt weg.
+    expect(
+      datei.raeume[raum.id].infopunkte.map((p: { knoten: string }) => p.knoten)
+    ).toEqual(['ofen', 'kneter', 'arbeitstisch'])
+  })
+})
+
 describe('products.snapshot.fixture.json', () => {
   const produkte = Object.entries<Record<string, unknown>>(snapshot.produkte)
 
@@ -417,6 +546,109 @@ describe('produkt.fixture.glb (Nahansicht)', () => {
   })
 })
 
+describe('regal.fixture.glb (Regal-Modelle der Einrichtung, DB12)', () => {
+  it('ist deterministisch: der Generator liefert genau die eingecheckten Dateien', () => {
+    const { glb, regal } = bauePaket()
+    expect(fs.readFileSync(REGAL_GLB_PATH).equals(glb)).toBe(true)
+    const index = fs.readFileSync(PRODUKT_INDEX_PATH, 'utf8')
+    expect(indexMitRegal(JSON.parse(index), regal)).toBe(index)
+    // … und der Generator selbst sagt dasselbe.
+    expect(() =>
+      execFileSync(process.execPath, [REGAL_GENERATOR_PATH, '--check'], {
+        stdio: 'pipe',
+      })
+    ).not.toThrow()
+  })
+
+  it('der Index hält den Vertrag der Sync-Skripte ein und nennt genau die drei erfundenen Formen', () => {
+    const index = pruefeIndex(
+      JSON.parse(fs.readFileSync(PRODUKT_INDEX_PATH, 'utf8'))
+    )
+    expect(Object.keys(index.regal?.modelle ?? {})).toEqual(MIT_REGAL)
+    expect(FORMEN.map((f) => f.id)).toEqual(MIT_REGAL)
+    expect(index.regal?.bytes).toBe(fs.statSync(REGAL_GLB_PATH).size)
+    expect(lesePaket(fs.readFileSync(REGAL_GLB_PATH))).toEqual(
+      Object.fromEntries(MIT_REGAL.map((id) => [id, { dreiecke: 14 }]))
+    )
+  })
+
+  it('jede Form ist ein Produkt des Snapshots, steht auf y = 0 und mittig', () => {
+    const { regal } = bauePaket()
+    for (const id of MIT_REGAL) {
+      expect(snapshot.produkte).toHaveProperty(id)
+      const { min, max } = regal.modelle[id].bbox_m
+      expect(min[1]).toBe(0)
+      expect(min[0]).toBeCloseTo(-max[0], 6)
+      expect(min[2]).toBeCloseTo(-max[2], 6)
+      expect(max[0] * 2).toBeLessThan(0.5)
+    }
+  })
+
+  it('das Regal-Modell von Testbrot ist so groß wie sein Modell der Nahansicht', () => {
+    const index = JSON.parse(fs.readFileSync(PRODUKT_INDEX_PATH, 'utf8'))
+    const nah = index.modelle[MIT_MODELL.produkt].bbox_m
+    const regal = index.regal.modelle[MIT_MODELL.produkt].bbox_m
+    expect(regal.max[0]).toBeCloseTo(nah.max[0], 3)
+    expect(regal.max[2]).toBeCloseTo(nah.max[2], 3)
+  })
+})
+
+describe('einrichtung.yaml (synthetische Einrichtung, DB12)', () => {
+  it('nennt nur Räume des Fixtures, Plätze des Modells und Produkte des Snapshots', () => {
+    const e = einrichtung()
+    expect(Object.keys(e.raeume)).toEqual(['laden'])
+    // wendeAn wirft sonst - und liefert die Belegung, wie sie gilt
+    const b = belegung('laden')
+    expect(b.geaendert).toBe(3)
+  })
+
+  it('deckt die drei Fälle ab: gelegt, ohne Regal-Modell, leer', () => {
+    const b = belegung('laden')
+    const { gelegt, ohneModell, leer } = EINGERICHTET
+    expect(b.slots.find((s) => s.slot === gelegt.slot)).toEqual({
+      slot: gelegt.slot,
+      produkt: gelegt.produkt,
+      anzahl: gelegt.anzahl,
+      quelle: 'einrichtung',
+    })
+    // im Modell liegt dort ein anderes Produkt
+    expect(plaetze.find((p) => p.slot === gelegt.slot)?.produkt).toBe(
+      gelegt.imModell
+    )
+    expect(MIT_REGAL).toContain(gelegt.produkt)
+    // neutrale Ware wird zu einem Produkt ohne Regal-Modell
+    expect(plaetze.find((p) => p.slot === ohneModell.slot)?.ware).toBeTruthy()
+    expect(MIT_REGAL).not.toContain(ohneModell.produkt)
+    expect(b.slots.at(-1)).toMatchObject({
+      slot: ohneModell.slot,
+      produkt: ohneModell.produkt,
+    })
+    expect(b.leer).toEqual([leer.slot])
+    expect(b.slots.some((s) => s.slot === leer.slot)).toBe(false)
+  })
+
+  it('die Listen der Tests folgen der Einrichtung', () => {
+    const theke = erwarteteEintraege(['theke/', 'gitterregal/'])
+    expect(theke.some((e) => e.slot === EINGERICHTET.leer.slot)).toBe(false)
+    expect(theke.at(-1)).toMatchObject({
+      slot: EINGERICHTET.ohneModell.slot,
+      produkt: EINGERICHTET.ohneModell.produkt,
+    })
+    const brot = erwarteteEintraege(['brotregal/'])
+    expect(brot.find((e) => e.slot === EINGERICHTET.gelegt.slot)?.produkt).toBe(
+      EINGERICHTET.gelegt.produkt
+    )
+  })
+
+  it('das Werkzeug des Einrichten-Modus ist am Text seines Knopfs zu erkennen', () => {
+    const quelle = fs.readFileSync(
+      path.join(__dirname, '../../components/einrichten/Einrichten.tsx'),
+      'utf8'
+    )
+    expect(quelle).toContain(`EINRICHTEN_SPUR = '${EINRICHTEN_SPUR}'`)
+  })
+})
+
 describe('keine Preise in den Fixtures (DB8)', () => {
   it('weder im Modell noch im Snapshot', () => {
     const imModell = zeichenketten(json).filter(
@@ -432,21 +664,42 @@ describe('keine Preise in den Fixtures (DB8)', () => {
 
 describe('der Export-Wächter (exportFehler)', () => {
   let outDir: string
-  const lege = (model: Uint8Array | null, snapshot: Uint8Array | null) => {
+  const lege = (
+    model: Uint8Array | null,
+    snapshot: Uint8Array | null,
+    backstube: Uint8Array | null = ausgeliefertesModell('testbackstube'),
+    rauminfos: Uint8Array | null = rauminfosDatei()
+  ) => {
     fs.mkdirSync(path.join(outDir, 'model'), { recursive: true })
     fs.mkdirSync(path.join(outDir, 'data'), { recursive: true })
     if (model) fs.writeFileSync(path.join(outDir, 'model', 'twin.glb'), model)
+    const zweites = path.join(outDir, 'model', 'testbackstube.glb')
+    if (backstube) fs.writeFileSync(zweites, backstube)
+    else fs.rmSync(zweites, { force: true })
+    const infos = path.join(outDir, 'data', 'rauminfos.json')
+    if (rauminfos) fs.writeFileSync(infos, rauminfos)
+    else fs.rmSync(infos, { force: true })
     if (snapshot) {
       fs.writeFileSync(
         path.join(outDir, 'data', 'products.snapshot.json'),
         snapshot
       )
     }
+    // Einrichten-Modus des Fixture-Builds: die synthetische Einrichtung.
+    fs.copyFileSync(
+      EINRICHTUNG_PATH,
+      path.join(outDir, 'data', 'einrichtung.quelle.yaml')
+    )
+    fs.writeFileSync(
+      path.join(outDir, 'data', 'einrichtung.modell.json'),
+      modellBelegungDatei()
+    )
   }
   /** Die Nahansicht im Export: Dateien in produkte-3d/ und der Index. */
   const legeProdukte = (
     dateien: Record<string, Uint8Array> = {
       [`${MIT_MODELL.produkt}.glb`]: fs.readFileSync(PRODUKT_GLB_PATH),
+      '_regal.glb': fs.readFileSync(REGAL_GLB_PATH),
     },
     index: Uint8Array | null = fs.readFileSync(PRODUKT_INDEX_PATH)
   ) => {
@@ -485,18 +738,28 @@ describe('der Export-Wächter (exportFehler)', () => {
     lege(ausgeliefertesModell(), fs.readFileSync(SNAPSHOT_PATH))
     const fixture = fs.readFileSync(PRODUKT_GLB_PATH)
     const name = `${MIT_MODELL.produkt}.glb`
-    const MELDUNG = /nicht genau das synthetische Produkt-Modell/
+    const MELDUNG = /nicht genau die synthetischen Produkt-Modelle/
+    const REGAL = { '_regal.glb': fs.readFileSync(REGAL_GLB_PATH) }
 
     // gar keine Nahansicht im Export
     expect(exportFehler(outDir)).toMatch(MELDUNG)
     // ein zweites (z. B. echtes) Modell daneben
-    legeProdukte({ [name]: fixture, 'echtes-brot.glb': Buffer.from('echt') })
+    legeProdukte({
+      ...REGAL,
+      [name]: fixture,
+      'echtes-brot.glb': Buffer.from('echt'),
+    })
     expect(exportFehler(outDir)).toMatch(/echtes-brot\.glb/)
     // dieselbe Datei unter anderem Namen
-    legeProdukte({ 'echtes-brot.glb': fixture })
+    legeProdukte({ ...REGAL, 'echtes-brot.glb': fixture })
     expect(exportFehler(outDir)).toMatch(MELDUNG)
     // anderer Inhalt unter dem richtigen Namen
-    legeProdukte({ [name]: Buffer.from('ein anderes Modell') })
+    legeProdukte({ ...REGAL, [name]: Buffer.from('ein anderes Modell') })
+    expect(exportFehler(outDir)).toMatch(MELDUNG)
+    // ohne das Paket der Regal-Modelle - oder mit einem anderen
+    legeProdukte({ [name]: fixture })
+    expect(exportFehler(outDir)).toMatch(MELDUNG)
+    legeProdukte({ [name]: fixture, '_regal.glb': Buffer.from('echte Regale') })
     expect(exportFehler(outDir)).toMatch(MELDUNG)
     // anderer oder fehlender Index
     legeProdukte(undefined, Buffer.from('{"version":1,"modelle":{}}'))
@@ -511,6 +774,50 @@ describe('der Export-Wächter (exportFehler)', () => {
     expect(exportFehler(outDir)).toMatch(/twin\.glb ist nicht das synthetische/)
     lege(Buffer.from('irgendein anderes Modell'), snapshot)
     expect(exportFehler(outDir)).toMatch(/twin\.glb ist nicht das synthetische/)
+  })
+
+  it('lehnt den Export ab, wenn der zweite Raum fehlt, ein anderes Modell ist oder ein drittes dabei liegt', () => {
+    const snapshot = fs.readFileSync(SNAPSHOT_PATH)
+    legeProdukte()
+    lege(ausgeliefertesModell(), snapshot, null)
+    expect(exportFehler(outDir)).toMatch(
+      /testbackstube\.glb ist nicht das synthetische/
+    )
+    lege(ausgeliefertesModell(), snapshot, Buffer.from('eine echte Backstube'))
+    expect(exportFehler(outDir)).toMatch(
+      /testbackstube\.glb ist nicht das synthetische/
+    )
+    lege(ausgeliefertesModell(), snapshot)
+    fs.writeFileSync(path.join(outDir, 'model', 'backstube.glb'), 'echt')
+    expect(exportFehler(outDir)).toMatch(
+      /mehr als die synthetischen Modelle \(backstube\.glb\)/
+    )
+  })
+
+  it('lehnt andere oder fehlende Infopunkte ab', () => {
+    const snapshot = fs.readFileSync(SNAPSHOT_PATH)
+    legeProdukte()
+    lege(ausgeliefertesModell(), snapshot, undefined, null)
+    expect(exportFehler(outDir)).toMatch(/nicht die synthetischen Infopunkte/)
+    lege(
+      ausgeliefertesModell(),
+      snapshot,
+      undefined,
+      Buffer.from('{"version":1,"raeume":{}}\n')
+    )
+    expect(exportFehler(outDir)).toMatch(/nicht die synthetischen Infopunkte/)
+  })
+
+  it('lehnt eine andere oder fehlende Einrichtung ab - nie eine Datei aus hq', () => {
+    lege(ausgeliefertesModell(), fs.readFileSync(SNAPSHOT_PATH))
+    legeProdukte()
+    const quelle = path.join(outDir, 'data', 'einrichtung.quelle.yaml')
+    fs.writeFileSync(quelle, 'raeume:\n  laden:\n    a/b: leer\n')
+    expect(exportFehler(outDir)).toMatch(/nicht die synthetische Einrichtung/)
+    fs.copyFileSync(EINRICHTUNG_PATH, quelle)
+    expect(exportFehler(outDir)).toBeNull()
+    fs.rmSync(path.join(outDir, 'data', 'einrichtung.modell.json'))
+    expect(exportFehler(outDir)).toMatch(/nicht die synthetische Einrichtung/)
   })
 
   it('lehnt einen anderen Snapshot und fehlende Dateien ab', () => {

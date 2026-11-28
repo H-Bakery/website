@@ -8,9 +8,16 @@
  *                                       das jüngste mit Bankdaten
  *   GET /api/finance/month[/:month]     Monatsanalyse, ohne Monat der jüngste
  *                                       vollständige
+ *   GET /api/finance/transactions?month=&category=&kind=&direction=&q=
+ *                                       Einzelbuchungen eines Monats (bereinigt,
+ *                                       `finance-transactions.core.js`)
+ *   GET /api/finance/transactions/:id   eine Buchung + weitere derselben Gegenseite
  *
  * Jahr und Monat rechnet `src/services/finance-report.core.js`; dazu kommen
- * die Monatssummen der Kasse (`HQ_REPORTS_DIR`) für den Kassenabgleich.
+ * die Monatssummen der Kasse (`HQ_REPORTS_DIR`) für den Kassenabgleich und
+ * die Backzettel-Stammdaten mit Kalender (`options.calendarConfig`, von
+ * `hq-data.routes.ts`) für die Öffnungstage - ohne sie ist kein Kassenmonat
+ * vollständig.
  *
  * Alle nur mit Rolle `inhaber` (401 ohne Sitzung, 403 mit anderer Rolle). Die
  * Rechen- und Bereinigungslogik steht ausschließlich in
@@ -31,26 +38,17 @@
 const fs = require('fs')
 const path = require('path')
 const finance = require('../services/finance.core')
+const transactions = require('../services/finance-transactions.core')
 const report = require('../services/finance-report.core')
 const reportsCore = require('../services/reports.core')
 const reportsFiles = require('../services/reports-files.core')
+const { berlinToday } = require('../services/backzettel-reference.core')
 
 const SUMMARY_FILENAME = 'finance-summary.json'
-
-/** Verzeichnis der Finanzdaten, relativ zu `apps/bakery-api/`. */
-function defaultFinanceDir() {
-  return path.join(
-    __dirname,
-    '..',
-    '..',
-    '..',
-    '..',
-    '..',
-    'hq',
-    'data',
-    'finance'
-  )
-}
+const {
+  createFinanceTransactionSource,
+  defaultFinanceDir,
+} = require('../services/finance-transaction-source')
 
 /**
  * Liest und bereinigt die Zusammenfassung. Liefert das Ergebnis von
@@ -96,7 +94,13 @@ function sendNoData(res, reason) {
 /**
  * Hängt die Routen an `app`. `auth.requireRole(...roles)` liefert die
  * Rollen-Wache (echte API: `createRoleGuards()` in `hq-data.routes.ts`);
- * `options.financeDir` und `options.log` sind für Tests.
+ * `options.financeDir`, `options.reportsDir`, `options.today` (Text oder
+ * Funktion) und `options.log` sind für Tests.
+ *
+ * `options.calendarConfig()` liefert die Backzettel-Stammdaten mit Kalender
+ * (Wochenplan + `kalender.yaml`, wie `backzettel-source.ts` sie lädt) oder
+ * `null`. Fehlt die Option oder liefert sie nichts, ist kein Kassenmonat
+ * vollständig - es gibt dann keinen Kassenabgleich, und die Antwort sagt es.
  */
 function install(app, auth, options = {}) {
   const log = options.log || console
@@ -106,6 +110,36 @@ function install(app, auth, options = {}) {
     options.reportsDir ||
     reportsFiles.resolveReportsDir(path.join(__dirname, '..', '..', '..', '..'))
   const ownerOnly = auth.requireRole('inhaber')
+  const today = () =>
+    typeof options.today === 'function'
+      ? options.today()
+      : options.today || berlinToday()
+
+  /** Stammdaten mit Kalender oder `null` - wirft nie. */
+  function calendarConfig() {
+    if (typeof options.calendarConfig !== 'function') return null
+    try {
+      return options.calendarConfig() || null
+    } catch (err) {
+      log.warn(`[finance] Kalender nicht ladbar: ${err && err.message}`)
+      return null
+    }
+  }
+
+  /** Erster und letzter Kassenbericht überhaupt (für den Hinweistext). */
+  function reportsPeriod() {
+    const dates = reportsFiles.listReportDates(reportsDir, log.warn)
+    return dates.length ? { from: dates[0], to: dates[dates.length - 1] } : null
+  }
+
+  /** Was der Core für die Abdeckung der Kasse braucht. */
+  function kasseContext() {
+    return {
+      today: today(),
+      calendarConfig: calendarConfig(),
+      reportsPeriod: reportsPeriod(),
+    }
+  }
 
   /** Monatssummen der Kasse für `months` (`JJJJ-MM`), je Monat oder fehlend. */
   function kasseFor(months) {
@@ -197,6 +231,7 @@ function install(app, auth, options = {}) {
       res,
       report.buildYearReport(loaded.summary, year, {
         kasseByMonth: kasseFor(months),
+        ...kasseContext(),
       })
     )
   }
@@ -222,11 +257,110 @@ function install(app, auth, options = {}) {
       report.buildMonthReport(loaded.summary, month, {
         kasse: kasse[month],
         kassePreviousYear: kasse[lastYear],
+        ...kasseContext(),
       })
     )
   }
   app.get('/api/finance/month', ownerOnly, monthHandler)
   app.get('/api/finance/month/:month', ownerOnly, monthHandler)
+
+  // -------------------------------------------------------------------------
+  // Einzelbuchungen (Buchungsliste, Detailseite)
+  // -------------------------------------------------------------------------
+
+  const { transactionMonths, readMonth } = createFinanceTransactionSource({
+    financeDir,
+    log,
+  })
+
+  /** Einzelbuchungen nie im Browser- oder Proxy-Cache ablegen. */
+  function noStore(res) {
+    res.set('Cache-Control', 'no-store')
+  }
+
+  app.get('/api/finance/transactions', ownerOnly, (req, res) => {
+    noStore(res)
+    const month = req.query.month
+    if (
+      month !== undefined &&
+      month !== '' &&
+      !transactions.isValidMonth(month)
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: 'validation',
+        message: 'Monat bitte im Format JJJJ-MM angeben.',
+      })
+    }
+    const { filters, errors } = transactions.parseFilters(req.query)
+    if (errors.length) {
+      return res.status(400).json({
+        success: false,
+        error: 'validation',
+        message: `Ungültiger Filter: ${errors.join(', ')}.`,
+      })
+    }
+    const months = transactionMonths()
+    if (months.length === 0) {
+      return sendNoData(
+        res,
+        'Keine Einzelbuchungen gefunden (hq/data/finance/transactions fehlt).'
+      )
+    }
+    const wanted = month || months[months.length - 1]
+    const loaded = loadSummary(financeDir, log)
+    const labels = transactions.labelsFrom(
+      loaded.status === 'ok' ? loaded.summary : null
+    )
+    res.json({
+      success: true,
+      status: 'ok',
+      data: transactions.buildListResponse({
+        month: wanted,
+        months,
+        rawTransactions: months.includes(wanted) ? readMonth(wanted) : null,
+        labels,
+        filters,
+      }),
+    })
+  })
+
+  app.get('/api/finance/transactions/:id', ownerOnly, (req, res) => {
+    noStore(res)
+    const { id } = req.params
+    if (!transactions.isValidId(id)) {
+      return res.status(400).json({
+        success: false,
+        error: 'validation',
+        message: 'Ungültige Buchungs-ID.',
+      })
+    }
+    const months = transactionMonths()
+    if (months.length === 0) {
+      return sendNoData(
+        res,
+        'Keine Einzelbuchungen gefunden (hq/data/finance/transactions fehlt).'
+      )
+    }
+    const allRaw = []
+    for (const m of months) allRaw.push(...(readMonth(m) || []))
+    const loaded = loadSummary(financeDir, log)
+    const detail = transactions.buildDetailResponse({
+      id,
+      allRaw,
+      labels: transactions.labelsFrom(
+        loaded.status === 'ok' ? loaded.summary : null
+      ),
+    })
+    if (!detail) {
+      return res.status(404).json({
+        success: false,
+        error: 'not_found',
+        message: 'Diese Buchung gibt es nicht (mehr).',
+      })
+    }
+    res.json({ success: true, status: 'ok', data: detail })
+  })
 
   log.log(`[finance] Endpunkte aktiv, Datenquelle: ${financeDir}`)
   return app

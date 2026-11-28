@@ -7,7 +7,6 @@
 export * from './lib/button'
 
 // Cart components
-export * from './lib/cart'
 
 // Icon components
 export * from './lib/icons'

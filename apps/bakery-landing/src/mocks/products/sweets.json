@@ -46,56 +46,56 @@
     "name": "Streusel",
     "category": "Teilchen",
     "image": "images/",
-    "price": 1.8
+    "price": 2
   },
   {
     "id": 61,
     "name": "Schoko-Vanille-Hörnchen",
     "category": "Teilchen",
     "image": "images/",
-    "price": 1.8
+    "price": 2.2
   },
   {
     "id": 62,
     "name": "Quarktasche",
     "category": "Teilchen",
     "image": "images/",
-    "price": 1.8
+    "price": 2.2
   },
   {
     "id": 63,
     "name": "Einback",
     "category": "Teilchen",
     "image": "images/",
-    "price": 1.2
+    "price": 1.4
   },
   {
     "id": 64,
     "name": "Sckokobrötchen",
     "category": "Teilchen",
     "image": "images/",
-    "price": 1.5
+    "price": 1.8
   },
   {
     "id": 65,
     "name": "Rosinenbrötchen",
     "category": "Teilchen",
     "image": "images/",
-    "price": 1.5
+    "price": 1.8
   },
   {
     "id": 66,
     "name": "Croissant",
     "category": "Teilchen",
     "image": "images/",
-    "price": 1.2
+    "price": 1.4
   },
   {
     "id": 67,
     "name": "Pain Chocolate",
     "category": "Teilchen",
     "image": "images/",
-    "price": 1.5
+    "price": 1.8
   },
   {
     "id": 68,
@@ -109,6 +109,6 @@
     "name": "Granatsplitter",
     "category": "Teilchen",
     "image": "images/",
-    "price": 2.2
+    "price": 2.8
   }
 ]

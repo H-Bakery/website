@@ -11,7 +11,11 @@ const request = require('supertest')
 
 const financeRoutes = require('../../src/routes/finance.routes')
 const { testRoleGuards } = require('../helpers/roleGuards')
-const { buildReportSummary } = require('../fixtures/finance-report.synthetic')
+const {
+  buildReportSummary,
+  calendarConfig,
+  openDates,
+} = require('../fixtures/finance-report.synthetic')
 const {
   FAKE_IBANS,
   FAKE_NAMES,
@@ -50,7 +54,9 @@ function reportFile(date, cash, card) {
   }
 }
 
-function buildApp({ summary } = {}) {
+const CONFIG = calendarConfig()
+
+function buildApp({ summary, calendar = () => CONFIG } = {}) {
   const financeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'finrep-fin-'))
   const reportsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'finrep-rep-'))
   const raw = summary || buildReportSummary()
@@ -68,17 +74,25 @@ function buildApp({ summary } = {}) {
   )
   const converted = path.join(reportsDir, 'converted')
   fs.mkdirSync(converted)
-  // März 2026: zwei Kassentage, je 200 bar + 100 Karte.
-  for (const date of ['2026-03-03', '2026-03-04']) {
+  // Februar 2026: an jedem der 24 Öffnungstage 250 bar + 125 Karte.
+  // März 2026: nur zwei Kassentage, je 200 bar + 100 Karte.
+  const days = [
+    ...openDates(CONFIG, '2026-02').map((date) => [date, 250, 125]),
+    ['2026-03-03', 200, 100],
+    ['2026-03-04', 200, 100],
+  ]
+  for (const [date, cash, card] of days) {
     fs.writeFileSync(
       path.join(converted, `${date}_4711.json`),
-      JSON.stringify(reportFile(date, 200, 100))
+      JSON.stringify(reportFile(date, cash, card))
     )
   }
   const app = express()
   financeRoutes.install(app, testRoleGuards(), {
     financeDir,
     reportsDir,
+    today: '2026-05-11',
+    calendarConfig: calendar,
     log: silentLog,
   })
   return app
@@ -118,17 +132,56 @@ describe('finance.routes - Jahresabschluss und Monatsanalyse', () => {
     }
   })
 
-  it('ohne Jahr: das jüngste; mit Kassenabgleich', async () => {
+  it('ohne Jahr: das jüngste; Kassenabgleich nur über vollständige Kassenmonate', async () => {
     const res = await asOwner(request(app).get('/api/finance/year'))
     expect(res.body).toMatchObject({ success: true, status: 'ok' })
-    expect(res.body.data).toMatchObject({ year: '2026', status: 'provisional' })
+    expect(res.body.data).toMatchObject({
+      year: '2026',
+      status: 'provisional',
+      today: '2026-05-11',
+    })
+    expect(res.body.data.months[1].kasse).toMatchObject({
+      revenue: 9000,
+      days: 24,
+      open_days: 24,
+      report_days: 24,
+      complete: true,
+      note: null,
+    })
     expect(res.body.data.months[2].kasse).toMatchObject({
       revenue: 600,
       days: 2,
       cash: 400,
       card: 200,
+      open_days: 26,
+      report_days: 2,
+      complete: false,
+      note: 'Kasse unvollständig: 2 von 26 Öffnungstagen',
     })
+    // Nur Februar: März hat Bankdaten, aber nur 2 von 26 Kassentagen.
+    expect(res.body.data.reconciliation).toMatchObject({
+      months: 1,
+      from: '2026-02',
+      to: '2026-02',
+      kasse_cash: 6000,
+      kasse_card: 3000,
+      bank_cash: 6000,
+      bank_card: 3000,
+      diff_total: 0,
+    })
+    expect(
+      res.body.data.notes.find((n) => n.key === 'kasse_incomplete').text
+    ).toContain('Nicht im Kassenabgleich: März')
     expect(res.body.data.years).toEqual(['2026', '2025'])
+  })
+
+  it('ein Jahr listet im Abgleich nur vollständige Monate', async () => {
+    const res = await asOwner(request(app).get('/api/finance/year/2026'))
+    const complete = res.body.data.months
+      .filter((m) => m.kasse && m.kasse.complete)
+      .map((m) => m.month)
+    expect(complete).toEqual(['2026-02'])
+    expect(res.body.data.reconciliation.months).toBe(complete.length)
   })
 
   it('ohne Monat: der jüngste vollständige', async () => {
@@ -136,14 +189,62 @@ describe('finance.routes - Jahresabschluss und Monatsanalyse', () => {
     expect(res.body.data.month).toBe('2026-04')
   })
 
-  it('Monat mit Kasse und Abgleich', async () => {
-    const res = await asOwner(request(app).get('/api/finance/month/2026-03'))
-    expect(res.body.data.kasse).toMatchObject({ revenue: 600, avg_day: 300 })
+  it('Monat mit vollständiger Kasse und Abgleich', async () => {
+    const res = await asOwner(request(app).get('/api/finance/month/2026-02'))
+    expect(res.body.data.kasse).toMatchObject({
+      revenue: 9000,
+      avg_day: 375,
+      complete: true,
+    })
     expect(res.body.data.reconciliation).toMatchObject({
       bank_cash: 6000,
-      kasse_cash: 400,
+      kasse_cash: 6000,
     })
+  })
+
+  it('Monat mit wenigen Kassentagen: Abdeckung statt Abgleich', async () => {
+    const res = await asOwner(request(app).get('/api/finance/month/2026-03'))
+    expect(res.body.data.kasse).toMatchObject({
+      revenue: 600,
+      avg_day: 300,
+      open_days: 26,
+      report_days: 2,
+      complete: false,
+    })
+    expect(res.body.data.reconciliation).toBeNull()
+    const note = res.body.data.notes.find((n) => n.key === 'kasse_incomplete')
+    // Der letzte Kassenbericht überhaupt ist vom 04.03. (aus dem Verzeichnis).
+    expect(note.text).toMatch(
+      /^Kasse unvollständig: 2 von 26 Öffnungstagen \(Kassenberichte bisher nur bis 04\.03\.2026\)\. /
+    )
+    expect(res.body.data.notes.map((n) => n.key)).not.toContain('kasse_bank')
     expect(res.body.data.highlights.length).toBeGreaterThan(0)
+  })
+
+  it('ohne Kalender: kein Monat vollständig, Grund auf Deutsch', async () => {
+    const plain = buildApp({ calendar: () => null })
+    const year = await asOwner(request(plain).get('/api/finance/year/2026'))
+    expect(year.body.data.reconciliation).toBeNull()
+    expect(year.body.data.months[1].kasse).toMatchObject({
+      open_days: null,
+      complete: false,
+    })
+    expect(
+      year.body.data.notes.find((n) => n.key === 'kasse_incomplete').text
+    ).toContain('deshalb kein Kassenabgleich')
+    const month = await asOwner(
+      request(plain).get('/api/finance/month/2026-02')
+    )
+    expect(month.body.data.reconciliation).toBeNull()
+    // Eine Option, die wirft, ist wie keine.
+    const broken = buildApp({
+      calendar: () => {
+        throw new Error('kaputt')
+      },
+    })
+    const res = await asOwner(request(broken).get('/api/finance/month/2026-02'))
+    expect(res.status).toBe(200)
+    expect(res.body.data.reconciliation).toBeNull()
   })
 
   it('ungültige Eingaben: 400 mit message und error', async () => {

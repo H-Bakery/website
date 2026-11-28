@@ -2,8 +2,9 @@
  * Dienstplan und Urlaubskonto (TASK-042): Feiertage Saarland, Öffnungstage
  * und -zeiten, Gewicht eines Tages, Urlaubstage einer Abwesenheit,
  * anteiliger Anspruch, Jahreskonto mit Übertrag, Schicht-Regeln, die
- * Tagesliste des Kalenders mit der Besetzung des Verkaufs und die geplanten
- * Stunden neben dem Soll.
+ * Tagesliste des Kalenders mit der Besetzung des Verkaufs, die geplanten
+ * Stunden neben dem Soll, die geschätzte Überstundenbezahlung (Monat bis
+ * heute), die geschätzten Lohnkosten und die Minijob-Grenze.
  *
  * Bewusst abhängigkeitsfreies CommonJS (Konvention wie `targets.core.js`):
  * dieselbe Datei benutzen die API (`src/services/dienstplan.service.ts`), die
@@ -853,6 +854,413 @@ function hoursByEmployee(
   )
 }
 
+// ============================================================================
+// ÜBERSTUNDEN (geschätzt) - Stunden der Woche und des Monats mit Stundenlohn
+// ============================================================================
+
+/**
+ * Höchster Stundenlohn in Cent (999,99 €) - Schutz vor Tippfehlern, keine
+ * Lohnregel. Der Stundenlohn ist Personendaten (D13): SQLite der Box, nur
+ * Inhaber, nie in hq und nie im Audit-Log.
+ */
+const MAX_HOURLY_WAGE_CENTS = 99999
+
+/** Woche (Mo-So) um `date`. */
+function weekOf(date) {
+  const from = addDays(date, 1 - isoWeekday(date))
+  return { from, to: addDays(from, 6) }
+}
+
+/** Kalendermonat um `date` (Erster bis Letzter). */
+function monthOf(date) {
+  const from = `${date.slice(0, 7)}-01`
+  return { from, to: addDays(addMonths(from, 1), -1) }
+}
+
+/**
+ * Monat, zu dem eine Woche gehört: der ihres Donnerstags - wie die
+ * Kalenderwoche (ISO 8601) und der Ansichtswechsel Woche → Monat. Die Woche
+ * 30.11.-06.12.2026 gehört so zum Dezember; ihre Stunden zählen trotzdem
+ * tageweise in den Monat, in dem sie liegen.
+ */
+function weekMonth(date) {
+  return monthOf(addDays(weekOf(date).from, 3))
+}
+
+function isWageCents(value) {
+  return Number.isInteger(value) && value >= 1 && value <= MAX_HOURLY_WAGE_CENTS
+}
+
+/**
+ * Geschätzte Bezahlung der Überstunden einer Person im Zeitraum:
+ * Überstunden × Stundenlohn. Überstunden = Plan − Soll, nur wenn positiv
+ * (`plannedHours`); keine Zuschläge. Verrechnet wird nur innerhalb des
+ * übergebenen Zeitraums - für den Monat (`monthHours`) heißt das: Minus- und
+ * Plusstunden seiner Wochen gleichen sich aus; kein Übertrag zwischen
+ * Monaten. Eine Schätzung nach Plan, keine Lohnabrechnung.
+ *
+ *   hours           Ergebnis von `plannedHours`
+ *   hourlyWageCents Stundenlohn in Cent oder `null` (nicht erfasst)
+ *
+ * Ergebnis `{ status, overtimeMinutes, hourlyWageCents, amountCents }`:
+ *   'no-target'   kein Soll (keine Wochenstunden) - Überstunden und Betrag
+ *                 `null` („offen“), nie 0
+ *   'no-overtime' Plan ≤ Soll - 0 Überstunden, Betrag 0 (mit oder ohne Lohn)
+ *   'no-wage'     Überstunden, aber kein Stundenlohn - Betrag `null`
+ *                 („Stundenlohn offen“), nie 0
+ *   'ok'          Betrag = round(Überstunden-Minuten × Cent ÷ 60)
+ */
+function overtimePay(hours, hourlyWageCents) {
+  const wage = isWageCents(hourlyWageCents) ? hourlyWageCents : null
+  if (!hours || hours.diffMinutes === null || hours.diffMinutes === undefined) {
+    return {
+      status: 'no-target',
+      overtimeMinutes: null,
+      hourlyWageCents: wage,
+      amountCents: null,
+    }
+  }
+  const overtimeMinutes = Math.max(0, hours.diffMinutes)
+  if (overtimeMinutes === 0) {
+    return {
+      status: 'no-overtime',
+      overtimeMinutes: 0,
+      hourlyWageCents: wage,
+      amountCents: 0,
+    }
+  }
+  if (wage === null) {
+    return {
+      status: 'no-wage',
+      overtimeMinutes,
+      hourlyWageCents: null,
+      amountCents: null,
+    }
+  }
+  return {
+    status: 'ok',
+    overtimeMinutes,
+    hourlyWageCents: wage,
+    amountCents: Math.round((overtimeMinutes * wage) / 60),
+  }
+}
+
+// ============================================================================
+// MONAT BIS HEUTE, LOHNKOSTEN, MINIJOB-GRENZE (vorläufig, 11/2026)
+// ============================================================================
+
+/**
+ * Minijob-Verdienstgrenze je Monat in Cent, je Kalenderjahr (§ 8 Abs. 1a
+ * SGB IV: Mindestlohn × 130 ÷ 3, auf volle Euro aufgerundet). 2026:
+ * Mindestlohn 13,90 € → **603 €**; 2027: Mindestlohn 14,60 € (Fünfte
+ * Mindestlohnanpassungsverordnung) → 632,67 € → **633 €**. Ein neues Jahr bekommt hier eine neue
+ * Zeile; ein Jahr ohne Wert prüft nichts (`status: 'no-limit'`, „Grenze
+ * offen“) - kein geschätzter Wert.
+ */
+const MINIJOB_LIMIT_CENTS = Object.freeze({ 2026: 60300, 2027: 63300 })
+
+/** Minijob-Grenze des Jahres in Cent oder `null` (nicht hinterlegt). */
+function minijobLimitCents(year) {
+  const value = MINIJOB_LIMIT_CENTS[Number(year)]
+  return typeof value === 'number' ? value : null
+}
+
+/**
+ * Wo `month` (`{ from, to }`) zu `today` liegt: 'past' (ganz vorbei),
+ * 'current' (heute liegt darin) oder 'future' (beginnt nach heute).
+ * `today` kommt von der API (Datum der Box), nie aus dem Core.
+ */
+function monthPhase(month, today) {
+  if (!isValidDate(today)) {
+    throw new TypeError(`monthPhase: today fehlt oder ist ungültig (${today})`)
+  }
+  if (today < month.from) return 'future'
+  if (today > month.to) return 'past'
+  return 'current'
+}
+
+/**
+ * Geschätzte Lohnkosten = Plan-Stunden × Stundenlohn (brutto, ohne
+ * Arbeitgeberanteile und Zuschläge). Ohne Stundenlohn bei geplanten Stunden
+ * `amountCents: null` („Stundenlohn offen“), nie 0; ohne geplante Stunden
+ * 0 € - mit oder ohne Lohn.
+ *   `{ status: 'ok' | 'no-wage', plannedMinutes, hourlyWageCents, amountCents }`
+ */
+function wageCost(plannedMinutes, hourlyWageCents) {
+  const wage = isWageCents(hourlyWageCents) ? hourlyWageCents : null
+  if (plannedMinutes > 0 && wage === null) {
+    return {
+      status: 'no-wage',
+      plannedMinutes,
+      hourlyWageCents: null,
+      amountCents: null,
+    }
+  }
+  return {
+    status: 'ok',
+    plannedMinutes,
+    hourlyWageCents: wage,
+    amountCents: wage === null ? 0 : Math.round((plannedMinutes * wage) / 60),
+  }
+}
+
+/**
+ * Minijob-Prüfung eines Monats: liegen die geplanten Lohnkosten des ganzen
+ * Monats (`wageCost`) über der Grenze des Jahres? Genau die Grenze ist noch
+ * in Ordnung.
+ *   `{ status: 'ok' | 'over' | 'no-wage' | 'no-limit', limitCents,
+ *      plannedCostCents, overCents }`
+ *   'no-wage'  Stunden geplant, Stundenlohn offen - Prüfung offen
+ *   'no-limit' Grenze für das Jahr nicht hinterlegt - Prüfung offen
+ */
+function minijobCheck(cost, year) {
+  const limitCents = minijobLimitCents(year)
+  const plannedCostCents = cost.amountCents
+  const base = { limitCents, plannedCostCents, overCents: null }
+  if (limitCents === null) return { ...base, status: 'no-limit' }
+  if (plannedCostCents === null) return { ...base, status: 'no-wage' }
+  if (plannedCostCents > limitCents) {
+    return { ...base, status: 'over', overCents: plannedCostCents - limitCents }
+  }
+  return { ...base, status: 'ok' }
+}
+
+/**
+ * Stunden einer Person in einem Kalendermonat, so wie sie bezahlt werden
+ * (vorläufige Entscheidung 11/2026):
+ *   - **laufender Monat** ('current'): Plan bis heute gegen Soll bis heute
+ *     (Erster bis `today`, einschließlich) - daraus Überstunden und
+ *     Bezahlung; der ganze Monat steht daneben (`full`).
+ *   - **vergangener Monat** ('past'): der ganze Monat.
+ *   - **künftiger Monat** ('future'): nur Plan gegen Soll des ganzen Monats,
+ *     noch keine Überstunden (`pay.status: 'future'`, Betrag `null`).
+ * Im Monat verrechnen sich Minus- und Plusstunden der Wochen (netto:
+ * Überstunden = max(0, Plan − Soll des Monats bis heute)); kein Übertrag
+ * zwischen Monaten, keine Zuschläge.
+ *
+ *   input = { month: { from, to }, today, employee: { id, weeklyHours,
+ *             hourlyWageCents, employmentType, entryDate, exitDate },
+ *             shifts, absences, closedWeekdays }
+ *
+ * Ergebnis: die Felder von `plannedHours` für den gewerteten Zeitraum
+ * (bis heute bzw. ganzer Monat) und dazu
+ *   phase     'past' | 'current' | 'future'
+ *   asOf      `today` im laufenden Monat, sonst `null`
+ *   full      `plannedHours` des ganzen Monats
+ *   pay       `overtimePay` des gewerteten Zeitraums; künftig
+ *             `{ status: 'future', overtimeMinutes: null, amountCents: null }`
+ *   wageCost  `{ toDate: wageCost | null (künftig), full: wageCost }`
+ *   minijob   `minijobCheck` der Lohnkosten des ganzen Monats, nur bei
+ *             `employmentType: 'minijob'`, sonst `null`
+ */
+function monthHours(input) {
+  const { month, today, employee } = input
+  const phase = monthPhase(month, today)
+  const common = {
+    employee,
+    shifts: input.shifts,
+    absences: input.absences,
+    closedWeekdays: input.closedWeekdays,
+  }
+  const full = plannedHours({ from: month.from, to: month.to, ...common })
+  const counted =
+    phase === 'current'
+      ? plannedHours({ from: month.from, to: today, ...common })
+      : full
+  const wage = isWageCents(employee.hourlyWageCents)
+    ? employee.hourlyWageCents
+    : null
+  const pay =
+    phase === 'future'
+      ? {
+          status: 'future',
+          overtimeMinutes: null,
+          hourlyWageCents: wage,
+          amountCents: null,
+        }
+      : overtimePay(counted, wage)
+  const fullCost = wageCost(full.plannedMinutes, wage)
+  return {
+    ...counted,
+    phase,
+    asOf: phase === 'current' ? today : null,
+    full,
+    pay,
+    wageCost: {
+      toDate:
+        phase === 'future' ? null : wageCost(counted.plannedMinutes, wage),
+      full: fullCost,
+    },
+    minijob:
+      employee.employmentType === 'minijob'
+        ? minijobCheck(fullCost, month.from.slice(0, 4))
+        : null,
+  }
+}
+
+/** Summe geschätzter Lohnkosten: nur bekannte Beträge, `null` wenn keiner. */
+function sumWageCosts(costs) {
+  let amountCents = null
+  let missingWageCount = 0
+  for (const c of costs) {
+    if (c.status === 'no-wage') missingWageCount += 1
+    else amountCents = (amountCents || 0) + c.amountCents
+  }
+  return { amountCents, missingWageCount }
+}
+
+/** Summen der Stunden eines Zeitraums (siehe `hoursOverview`). */
+function periodTotals(hours, withOvertime) {
+  const t = {
+    plannedMinutes: 0,
+    targetMinutes: null,
+    overtimeMinutes: null,
+    amountCents: null,
+    estimatedCount: 0,
+    missingWageCount: 0,
+    noTargetCount: 0,
+  }
+  for (const h of hours) {
+    t.plannedMinutes += h.plannedMinutes
+    if (h.targetMinutes === null) {
+      t.noTargetCount += 1
+      continue
+    }
+    t.targetMinutes = (t.targetMinutes || 0) + h.targetMinutes
+    if (!withOvertime) continue
+    t.overtimeMinutes = (t.overtimeMinutes || 0) + h.pay.overtimeMinutes
+    if (h.pay.status === 'ok') {
+      t.amountCents = (t.amountCents || 0) + h.pay.amountCents
+      t.estimatedCount += 1
+    } else if (h.pay.status === 'no-wage') {
+      t.missingWageCount += 1
+    }
+  }
+  // Niemand mit Überstunden fehlt der Lohn und keiner hat welche: 0 €.
+  if (
+    withOvertime &&
+    t.amountCents === null &&
+    t.missingWageCount === 0 &&
+    t.targetMinutes !== null
+  ) {
+    t.amountCents = 0
+  }
+  return t
+}
+
+/**
+ * Stundenübersicht: je Person Plan, Soll, Differenz und die geschätzte
+ * Überstundenbezahlung für die Woche und/oder den Monat, dazu die Summen.
+ *
+ *   input = {
+ *     periods:  { week?: { from, to }, month?: { from, to } },
+ *     today,    Datum der Box (`YYYY-MM-DD`) - Pflicht mit `month`
+ *     employees: [{ id, weeklyHours, hourlyWageCents, employmentType,
+ *                   entryDate, exitDate }],
+ *     shifts, absences, closedWeekdays   (wie `plannedHours`; Schichten und
+ *                                         Abwesenheiten müssen alle Zeiträume
+ *                                         abdecken)
+ *   }
+ *
+ * `week` ist eine Woche (Mo-So) als **Richtwert**: Plan − Soll der ganzen
+ * Woche, `{ ...plannedHours, pay }`. `month` ist ein Kalendermonat nach
+ * `monthHours` (bis heute, netto im Monat) - die Zahl, die bezahlt wird.
+ *
+ * Ergebnis `{ rows, totals }`:
+ *   rows[]   `{ employeeId, hourlyWageCents, week?, month? }` in der
+ *            Reihenfolge von `employees`
+ *   totals   je Zeitraum `{ plannedMinutes, targetMinutes, overtimeMinutes,
+ *            amountCents, estimatedCount, missingWageCount, noTargetCount }`
+ *            (beim Monat über den gewerteten Zeitraum): Soll und Überstunden
+ *            nur über Personen mit Soll (`null`, wenn niemand eins hat); der
+ *            Betrag summiert nur Personen mit Lohn (`null`, wenn es keine
+ *            Überstunden mit Lohn gibt und welche ohne Lohn - dann ist die
+ *            Summe offen, nicht 0); `missingWageCount` = Personen mit
+ *            Überstunden ohne Stundenlohn. Der Monat zusätzlich `phase`,
+ *            `asOf`, `full: { plannedMinutes, targetMinutes, noTargetCount }`,
+ *            `wageCost: { toDate | null, full }` je `{ amountCents,
+ *            missingWageCount }` und `minijob: { count, overCount, openCount,
+ *            limitCents }`. Künftiger Monat: Überstunden und Betrag `null`.
+ */
+function hoursOverview(input) {
+  const periods = input.periods || {}
+  if (periods.month && !isValidDate(input.today)) {
+    throw new TypeError('hoursOverview: today fehlt (Pflicht mit month)')
+  }
+  const common = {
+    shifts: input.shifts,
+    absences: input.absences,
+    closedWeekdays: input.closedWeekdays,
+  }
+  const rows = (input.employees || []).map((employee) => {
+    const wage = isWageCents(employee.hourlyWageCents)
+      ? employee.hourlyWageCents
+      : null
+    const row = { employeeId: employee.id, hourlyWageCents: wage }
+    if (periods.week) {
+      const hours = plannedHours({
+        from: periods.week.from,
+        to: periods.week.to,
+        employee,
+        ...common,
+      })
+      row.week = { ...hours, pay: overtimePay(hours, wage) }
+    }
+    if (periods.month) {
+      row.month = monthHours({
+        month: periods.month,
+        today: input.today,
+        employee,
+        ...common,
+      })
+    }
+    return row
+  })
+  const totals = {}
+  if (periods.week) {
+    totals.week = periodTotals(
+      rows.map((r) => r.week),
+      true
+    )
+  }
+  if (periods.month) {
+    const phase = monthPhase(periods.month, input.today)
+    const months = rows.map((r) => r.month)
+    const fullTotals = periodTotals(
+      months.map((m) => m.full),
+      false
+    )
+    const minijobs = months.filter((m) => m.minijob)
+    totals.month = {
+      ...periodTotals(months, phase !== 'future'),
+      phase,
+      asOf: phase === 'current' ? input.today : null,
+      full: {
+        plannedMinutes: fullTotals.plannedMinutes,
+        targetMinutes: fullTotals.targetMinutes,
+        noTargetCount: fullTotals.noTargetCount,
+      },
+      wageCost: {
+        toDate:
+          phase === 'future'
+            ? null
+            : sumWageCosts(months.map((m) => m.wageCost.toDate)),
+        full: sumWageCosts(months.map((m) => m.wageCost.full)),
+      },
+      minijob: {
+        count: minijobs.length,
+        overCount: minijobs.filter((m) => m.minijob.status === 'over').length,
+        openCount: minijobs.filter(
+          (m) =>
+            m.minijob.status === 'no-wage' || m.minijob.status === 'no-limit'
+        ).length,
+        limitCents: minijobLimitCents(periods.month.from.slice(0, 4)),
+      },
+    }
+  }
+  return { rows, totals }
+}
+
 /** Liegt `date` in der Beschäftigungszeit (Eintritt/Austritt, je optional)? */
 function withinEmployment(date, entryDate, exitDate) {
   if (isValidDate(entryDate) && date < entryDate) return false
@@ -900,5 +1308,17 @@ module.exports = {
   dailyTargetMinutes,
   plannedHours,
   hoursByEmployee,
+  MAX_HOURLY_WAGE_CENTS,
+  weekOf,
+  monthOf,
+  weekMonth,
+  overtimePay,
+  MINIJOB_LIMIT_CENTS,
+  minijobLimitCents,
+  monthPhase,
+  wageCost,
+  minijobCheck,
+  monthHours,
+  hoursOverview,
   withinEmployment,
 }

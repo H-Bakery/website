@@ -1,0 +1,15 @@
+# Synthetische Einrichtung für Tests (DB12) - in der Form der Datei in hq
+# (config/digitale-baeckerei/einrichtung.yaml). Alles erfunden.
+
+raeume:
+  laden:
+    # anderes Produkt, mit Regal-Modell: wird gelegt
+    brotregal/ebene-1/platz-04:
+      produkt: testbrot-500g
+      anzahl: 2
+    # neutrale Ware wird zu einem Produkt ohne Regal-Modell: im Bild leer, in der Liste
+    gitterregal/platz-04:
+      produkt: testkekse
+      anzahl: 2
+    # ausdrücklich leer: nichts im Bild, nicht in der Liste
+    theke/vitrine/ebene-2/platz-04: leer

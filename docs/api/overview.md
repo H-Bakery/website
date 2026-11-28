@@ -89,7 +89,9 @@ node --enable-source-maps dist/apps/bakery-api/bundle/main.js
    `20270105000000-delivery-tours-b8.js` (B8), `20270106000000-rest-count-line-rows.js` (M4),
    `20270201000000-backzettel-dough-day.js` (Z10), `20270210000000-backzettel-baked.js` (Z10 O5),
    `20270301000000-dienstplan.js` (TASK-042),
-   `20270310000000-backzettel-none-today.js` („Heute keine“). The
+   `20270310000000-backzettel-none-today.js` („Heute keine“),
+   `20270320000000-invoices.js` (Rechnungen), `20270325000000-invoices-pdf-paid.js` (Rechnungen: festgeschriebenes PDF, bezahlt),
+   `20270401000000-dienstplan-hourly-wage.js` (Dienstplan: Stundenlohn). The
    17 legacy migrations are archived in
    `migrations/archive/` and never loaded (`sequelize-cli` does not read subdirectories either).
 5. `initializeModels(sequelize)` - after the migrations, never before.
@@ -119,6 +121,7 @@ Mounted:
 | `/api/partners`                                  | `routes/partner.routes.ts`               | Backschrank, see [partners.md](partners.md)                           |
 | `/api/reports`, `/api/analytics`, `/api/finance` | `routes/hq-data.routes.ts`               | hq read-only data, see [hq-data.md](hq-data.md)                       |
 | `/api/products`, `/api/hq-products`              | `routes/hq-products.routes.ts`           | hq catalogue, see [hq-products.md](hq-products.md)                    |
+| `/api/price-list`                                | `routes/price-list.routes.ts`            | price list export, see [produkte.md](../domains/produkte.md)          |
 | `/api/preorders`                                 | `routes/preorders.routes.ts`             | Vorbestellungen, see [preorders.md](preorders.md)                     |
 | `/api/deliveries`                                | `routes/preorders.routes.ts` (alias)     | the Mörsbach mock contract (pickup points, preorders)                 |
 | `/api/deliveries`                                | `routes/delivery-tours.routes.ts`        | tours, stops, drivers, depot, see [deliveries.md](deliveries.md)      |

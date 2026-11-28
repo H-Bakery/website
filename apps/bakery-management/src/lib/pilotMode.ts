@@ -59,10 +59,17 @@ export const PILOT_ALLOWED_ROUTES: readonly string[] = [
   // dürfen Verkauf und Backstube, die Auswertung (/admin/rest/auswertung)
   // bleibt Inhaber - das regelt ROLE_ACCESS (roles.ts).
   '/admin/rest',
+  // Abgleich Produktion ↔ Kasse: nur Inhaber (ROLE_ACCESS in roles.ts,
+  // API: GET /api/abgleich `inhaber`) - ein Kontrollwerkzeug, Hinweise statt
+  // Beweise.
+  '/admin/abgleich',
   // Rezepte aus hq (Owner-Wunsch 2026-11-11, aus M5 vorgezogen): lesen
   // Inhaber, Backstubenleitung und Backstube, anlegen/ändern nur Inhaber und
   // Backstubenleitung - das regelt ROLE_ACCESS (roles.ts).
   '/admin/rezepte',
+  // Ausgangsrechnungen mit ZUGFeRD-PDF: im Pilot für den Inhaber sichtbar
+  // (nur er darf sie - ROLE_ACCESS in roles.ts, API: /api/invoices `inhaber`).
+  '/admin/rechnungen',
   // Kommende Pilot-Bildschirme (M1/M2):
   '/admin/preorders',
   '/admin/preorders/abholliste', // P2 (liegt unter /admin/preorders)

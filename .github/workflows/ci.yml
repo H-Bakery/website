@@ -66,6 +66,11 @@ jobs:
               - 'apps/bakery-landing/**'
               - 'apps/bakery-landing-e2e/**'
               - 'libs/shared/**'
+              - 'libs/bakery-shop/feature-cart/src/lib/pickup.ts'
+              - 'libs/bakery-shop/feature-cart/src/lib/lead-time.ts'
+              - 'apps/bakery-api/src/services/kalender*.js'
+              - 'apps/bakery-api/src/services/backzettel-config.loader.js'
+              - 'tools/landing/**'
               - 'tools/e2e/**'
               - '.github/workflows/ci.yml'
               - 'package-lock.json'
@@ -75,6 +80,7 @@ jobs:
               - 'apps/bakery-digitale-baeckerei/**'
               - 'apps/bakery-digitale-baeckerei-e2e/**'
               - 'libs/shared/hq-products/**'
+              - 'libs/shared/produkte-3d/**'
               - 'tools/e2e/**'
               - '.github/workflows/ci.yml'
               - 'package-lock.json'
@@ -258,6 +264,9 @@ jobs:
     needs: [changes, quality]
     if: needs.changes.outputs.landing == 'true'
     runs-on: ubuntu-24.04 # Playwright 1.54 has no chromium build for ubuntu-latest (26.04)
+    env:
+      HQ_PRODUCTS_DIR: ${{ github.workspace }}/tools/e2e/hq-products
+      NEXT_PUBLIC_WHATSAPP_NUMBER: '15550100000'
     steps:
       - uses: actions/checkout@v4
 
@@ -280,12 +289,31 @@ jobs:
           NODE_ENV: production
         run: npx nx build bakery-landing --configuration=production
 
-      # Der statische Export in apps/bakery-landing/out ist genau das, was nach
-      # GitHub Pages geht - ohne hq, mit dem gebuendelten Produkt-Fallback.
+      # Der statische Export in apps/bakery-landing/out nutzt den
+      # synthetischen Katalog für Sortiment und Vorbestellung.
       # tools/e2e/serve-static.js liefert ihn wie Pages aus (`/about` ->
       # about.html, Unbekanntes -> 404.html mit Status 404).
       - name: Run E2E tests
         run: npx nx e2e bakery-landing-e2e
+
+      # Zweiter Export fuer die aus den 3D-Modellen gerenderten Produktbilder
+      # (DB13): Der Export oben hat keine - das Daten-Repo produkte-3d gibt es
+      # nur lokal. Hier kommen die synthetischen Bilder aus
+      # apps/bakery-landing/src/test/fixtures/produktbilder dazu. Der
+      # synthetische Katalog ist in beiden Builds derselbe.
+      - name: Build landing with synthetic product images
+        env:
+          NX_ISOLATE_PLUGINS: 'false'
+          NODE_ENV: production
+          LANDING_PRODUKTBILDER_FIXTURE: '1'
+        run: |
+          rm -rf apps/bakery-landing/.next
+          npx nx build bakery-landing --configuration=production
+
+      - name: Run E2E tests (product images)
+        env:
+          LANDING_PRODUKTBILDER_FIXTURE: '1'
+        run: npx nx e2e bakery-landing-e2e --grep=Produktbilder
 
       - name: Upload test results
         if: always()

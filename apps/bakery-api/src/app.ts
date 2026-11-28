@@ -8,7 +8,7 @@
  * Mounted (roadmap §4): health, auth, users, partners (B6), the hq read-only
  * data (B4: reports, analytics, finance, targets), products (B5), preorders
  * (B7), the Backzettel (Z3), the delivery tours (B8), Rest am Abend (M4),
- * the Dienstplan (TASK-042) and the recipes.
+ * the Dienstplan (TASK-042), the recipes and the invoices (ZUGFeRD).
  * The other pilot domains get their mount points below as their tasks land.
  *
  * Every `/api` route needs a session (D5, B3) except the public auth
@@ -39,6 +39,7 @@ import { AuthRouterOptions } from './routes/auth.routes'
 import { createHqProductsRouters } from './routes/hq-products.routes'
 import { HqProductsOptions } from './services/hq-products.service'
 import { createPreorderRouters } from './routes/preorders.routes'
+import { createPriceListRouter } from './routes/price-list.routes'
 import { PreordersOptions } from './services/preorders.service'
 import { createDeliveryToursRouter } from './routes/delivery-tours.routes'
 import {
@@ -50,9 +51,23 @@ import {
   createBackzettel,
 } from './routes/backzettel.routes'
 import { createHqSyncRouter } from './routes/hq-sync.routes'
+import {
+  createInvoicesRouter,
+  InvoicesRouterOptions,
+} from './routes/invoices.routes'
 import { createRecipesRouter } from './routes/recipes.routes'
 import { RecipesOptions } from './services/recipes.service'
-import { createRestRouter, RestRouterOptions } from './routes/rest.routes'
+import { createRestRouter } from './routes/rest.routes'
+import { createSpracheRouter } from './routes/sprache.routes'
+import {
+  createRestService,
+  RestOptions,
+} from './services/rest-am-abend.service'
+import { VoiceOptions } from './services/sprache.service'
+import {
+  createAbgleichRouter,
+  AbgleichRouterOptions,
+} from './routes/abgleich.routes'
 import {
   createDienstplanRouter,
   DienstplanRouterOptions,
@@ -60,6 +75,8 @@ import {
 import { BACKZETTEL_CONFIG_REL } from './services/backzettel-config-write'
 import { HqEditsSync } from './services/hq-edits-sync.service'
 import { HqSnapshotWriter } from './services/hq-snapshots.service'
+import { createReceiptsRoutes } from './routes/receipts.routes'
+import type { ReceiptsOptions } from './services/receipts.service'
 import { createErrorHandler, notFoundHandler } from './utils/http-error'
 
 export interface CreateAppOptions {
@@ -123,7 +140,13 @@ export interface CreateAppOptions {
    * „Rest am Abend“ (M4, after the pilot): clock and reports dir for tests.
    * Default: `hq.reportsDir` / `hq.today`, the Backzettel's master data.
    */
-  rest?: RestRouterOptions
+  rest?: RestOptions
+  voice?: VoiceOptions
+  /**
+   * „Abgleich Produktion ↔ Kasse“ (inhaber): clock and reports dir for
+   * tests. Default: `hq.reportsDir` / `hq.today`.
+   */
+  abgleich?: AbgleichRouterOptions
   /**
    * Dienstplan (TASK-042, in the pilot for the owner): clock and finance dir (Ruhetage
    * from `config/targets.json`) for tests. Default: `hq.financeDir`.
@@ -135,6 +158,12 @@ export interface CreateAppOptions {
    * next to the Backzettel master data; written like the products.
    */
   recipes?: RecipesOptions
+  /**
+   * Ausgangsrechnungen: Verkäufer samt Bankverbindung (default: Impressum +
+   * `INVOICE_IBAN` …) und die Uhr, für Tests.
+   */
+  invoices?: Omit<InvoicesRouterOptions, 'preorders'>
+  receipts?: ReceiptsOptions
 }
 
 export function createApp(options: CreateAppOptions = {}): Application {
@@ -152,7 +181,6 @@ export function createApp(options: CreateAppOptions = {}): Application {
       allowedHeaders: ['Content-Type', 'Authorization', STATION_TOKEN_HEADER],
     })
   )
-  app.use(express.json({ limit: options.jsonLimit ?? '200kb' }))
   // W4 verification round 2: API answers carry names, phone numbers and
   // money. Without this, Chrome kept them in its disk cache on the shared
   // shop tablet after "Abmelden". A route may still override it.
@@ -160,6 +188,7 @@ export function createApp(options: CreateAppOptions = {}): Application {
     res.setHeader('Cache-Control', 'no-store')
     next()
   })
+  app.use(express.json({ limit: options.jsonLimit ?? '200kb' }))
   if (options.logRequests !== false) {
     app.use(loggerMiddleware)
   }
@@ -213,9 +242,22 @@ export function createApp(options: CreateAppOptions = {}): Application {
   // B4: /api/reports, /api/analytics (inhaber), /api/finance/* incl. targets
   // (inhaber, personal session) - the route modules behind the B3 guards.
   // Absolute paths, so mounted at the root.
+  const receipts = createReceiptsRoutes({
+    financeDir: options.hq?.financeDir,
+    log: options.hq?.log,
+    ...options.receipts,
+  })
+  app.use(receipts.router)
+  app.locals['receiptsService'] = receipts.service
   app.use(createHqDataRouter(options.hq))
   if (!options.publicCatalogue) app.use('/api/products', hqProducts.products)
   app.use('/api/hq-products', hqProducts.hqProducts)
+  // Preisliste (Export der Produktseite): Ladenliste inhaber/verkauf,
+  // Partnerliste inhaber - aus dem freigegebenen Katalog.
+  app.use(
+    '/api/price-list',
+    createPriceListRouter({ productsDir: hqProducts.service.productsDir })
+  )
   // B7: /api/preorders (+ /api/deliveries alias, shop POST /api/orders);
   // roles per route in routes/preorders.routes.ts
   const preorders = createPreorderRouters({
@@ -269,18 +311,31 @@ export function createApp(options: CreateAppOptions = {}): Application {
   // M4 „Rest am Abend“: counts at closing (verkauf), evaluation (inhaber);
   // „gebacken“ comes from the Backzettel service, sold from the cash reports.
   // The daily rest goes to hq data/production/rest/ like the Z9 snapshots.
+  const rest = createRestService(backzettel.source, backzettel.service, {
+    reportsDir: options.hq?.reportsDir,
+    today: options.hq?.today,
+    log: options.hq?.log?.warn,
+    ...(snapshots.enabled
+      ? {
+          onCounted: (view: unknown) => snapshots.restCounted(view),
+        }
+      : {}),
+    ...options.rest,
+  })
+  app.use('/api/rest', createRestRouter(rest))
   app.use(
-    '/api/rest',
-    createRestRouter(backzettel.source, backzettel.service, {
+    '/api/sprache',
+    createSpracheRouter(rest, backzettel.source.paths.hqDir, options.voice)
+  )
+  // „Abgleich Produktion ↔ Kasse“ (inhaber): gebacken − CAP − verkauft −
+  // Rest per bake day and item - the same sources as Rest am Abend.
+  app.use(
+    '/api/abgleich',
+    createAbgleichRouter(backzettel.source, backzettel.service, {
       reportsDir: options.hq?.reportsDir,
       today: options.hq?.today,
       log: options.hq?.log?.warn,
-      ...(snapshots.enabled
-        ? {
-            onCounted: (view: unknown) => snapshots.restCounted(view),
-          }
-        : {}),
-      ...options.rest,
+      ...options.abgleich,
     })
   )
   // Z14: closed days of the calendar (kalender.yaml) block the pickup date.
@@ -337,6 +392,15 @@ export function createApp(options: CreateAppOptions = {}): Application {
     ...options.recipes,
   })
   app.use('/api/recipes', recipes.router)
+  // Ausgangsrechnungen (ZUGFeRD/Factur-X), inhaber only; ein Entwurf kann
+  // aus einer Vorbestellung vorbelegt werden
+  app.use(
+    '/api/invoices',
+    createInvoicesRouter({
+      preorders: preorders.service,
+      ...options.invoices,
+    }).router
+  )
   // B5b/Z9 status + retry, inhaber only
   app.use('/api/hq-sync', createHqSyncRouter({ edits, snapshots }))
 

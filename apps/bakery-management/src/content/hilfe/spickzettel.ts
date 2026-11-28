@@ -44,6 +44,16 @@ const KEINE_VERBINDUNG: HilfeBlock = {
   ],
 }
 
+export const SPRACHE_TIPPS: HilfeBlock = {
+  title: 'Rest am Abend mit Sprache erfassen',
+  steps: [
+    'Auf einem Gerät mit HTTPS „Sprechen“ antippen. Nah am Mikrofon sprechen, zuerst den Produktnamen, dann die Zahl.',
+    'Zahlen als Gesamtmenge nennen. Bei ähnlichen Produkten die Sorte oder Größe dazusagen.',
+    'Den Vorschlag prüfen und übernehmen. Erst „Speichern“ schreibt die Zählung.',
+    'Spracheingabe ist freiwillig. Tippen geht jederzeit. Sprich nur Produktnamen und Mengen.',
+  ],
+}
+
 export const SPICKZETTEL: Record<PilotRole, Spickzettel> = {
   verkauf: {
     role: 'verkauf',
@@ -161,13 +171,13 @@ export const SPICKZETTEL: Record<PilotRole, Spickzettel> = {
       {
         title: 'Vorbereitung',
         steps: [
-          'Reiter **Vorbereitung heute**: was heute ab 14 Uhr für morgen vorbereitet wird.',
+          'Reiter **Vorbereitung**: was heute ab 14 Uhr für morgen vorbereitet wird.',
         ],
       },
       {
         title: 'Drucken',
         steps: [
-          'Unten **Planung & Druck**, dann **Drucken**: der Zettel des Teigtags auf einer Seite, unten Platz für Notizen.',
+          'Oben rechts **Planung & Druck** (am Tablet: Drucker-Zeichen, quer mit **Planung**), dann **Drucken**: der Zettel des Teigtags, meist zwei Blätter, samstags drei, Notizzeilen auf dem letzten Blatt.',
           'Abwiegen, Füllungen und Vorbereitung nur mit Haken bei **Abwiegeliste & Rezepte mitdrucken** (eigene Blätter).',
           'Die Backliste: in **Planung & Druck** auf **Backliste**, dann **Drucken**.',
           'Den Ausdruck des freigegebenen Zettels aufheben – er ist der Ersatz bei einem Ausfall.',
@@ -178,7 +188,7 @@ export const SPICKZETTEL: Record<PilotRole, Spickzettel> = {
         steps: [
           'Steht oben **Noch nicht freigegeben**, sind die Mengen ein Entwurf und können sich ändern.',
           'Abhaken geht erst nach der Freigabe.',
-          'Freigeben: **Planung & Druck** › **Freigeben** › **Jetzt freigeben** (Backstube oder Inhaber).',
+          'Freigeben: im gelben Kasten **Prüfen und freigeben** tippen, Mengen prüfen, dann **Freigeben** › **Jetzt freigeben** (Backstube oder Inhaber).',
           '„An diesem Tag wird nicht gebacken“ heißt Ruhetag.',
         ],
       },

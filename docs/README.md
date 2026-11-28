@@ -2,19 +2,22 @@
 
 ## Current
 
-| Doc                                              | What                                                                   |
-| ------------------------------------------------ | ---------------------------------------------------------------------- |
-| [roadmap.md](./roadmap.md)                       | Pilot plan, decisions D1…, task list, open questions - the one plan    |
-| [architecture.md](./architecture.md)             | Apps, backend, hq, how the pieces talk                                 |
-| [development.md](./development.md)               | Install, run, test, build, CI, task tracking                           |
-| [known-issues.md](./known-issues.md)             | Known failures and traps that are not regressions                      |
-| [runbook.md](./runbook.md)                       | Operating the Bäckerei-Box (deploy, backup, failures)                  |
-| [onboarding.md](./onboarding.md)                 | Staff onboarding and go-live checklist                                 |
-| [testing/e2e.md](./testing/e2e.md)               | Playwright suites and the synthetic catalogue                          |
-| [brand-identity.md](./brand-identity.md)         | Brand and website guide                                                |
-| [fernzugriff-fahrer.md](./fernzugriff-fahrer.md) | Remote access for the Fahrer-App (Q8) - draft for the owner, not built |
+| Doc                                              | What                                                                                                            |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| [roadmap.md](./roadmap.md)                       | Pilot plan, decisions D1…, task list, open questions - the one plan                                             |
+| [offene-fragen.md](./offene-fragen.md)           | Offene Fragen an den Inhaber - alle Entscheidungen mit gewählter Vorgabe an einer Stelle                        |
+| [architecture.md](./architecture.md)             | Apps, backend, hq, how the pieces talk                                                                          |
+| [development.md](./development.md)               | Install, run, test, build, CI, task tracking                                                                    |
+| [known-issues.md](./known-issues.md)             | Known failures and traps that are not regressions                                                               |
+| [runbook.md](./runbook.md)                       | Operating the Bäckerei-Box (deploy, backup, failures)                                                           |
+| [onboarding.md](./onboarding.md)                 | Staff onboarding and go-live checklist                                                                          |
+| [testing/e2e.md](./testing/e2e.md)               | Playwright suites and the synthetic catalogue                                                                   |
+| [brand-identity.md](./brand-identity.md)         | Brand and website guide                                                                                         |
+| [fernzugriff-fahrer.md](./fernzugriff-fahrer.md) | Remote access for the Fahrer-App (Q8) - draft for the owner, not built                                          |
+| [finanzen-buchungen.md](./finanzen-buchungen.md) | Bank bookings: list + detail built; plan for categorising in the app, CSV upload, linking invoices and receipts |
 
 **Domains** (German, rules as seen from outside the code):
+[Abgleich Produktion ↔ Kasse](./domains/abgleich.md) ·
 [Anmeldung](./domains/anmeldung.md) ·
 [Backzettel](./domains/backzettel.md) ·
 [Dienstplan & Urlaub](./domains/dienstplan.md) ·
@@ -22,6 +25,7 @@
 [Kassenberichte](./domains/kassenberichte.md) ·
 [Liefertouren](./domains/liefertouren.md) ·
 [Produkte](./domains/produkte.md) ·
+[Rechnungen (ZUGFeRD)](./domains/rechnungen.md) ·
 [Rest am Abend](./domains/rest-am-abend.md) ·
 [Rezepte](./domains/rezepte.md) ·
 [Verkaufspartner](./domains/verkaufspartner.md) ·
@@ -31,8 +35,9 @@
 **Real API internals** (English): [overview](./api/overview.md) · [auth](./api/auth.md) ·
 [hq-data](./api/hq-data.md) · [hq-products](./api/hq-products.md) ·
 [partners](./api/partners.md) · [preorders](./api/preorders.md) ·
-[deliveries](./api/deliveries.md) · [backzettel](./api/backzettel.md) · [rest](./api/rest.md) ·
-[dienstplan](./api/dienstplan.md) · [recipes](./api/recipes.md)
+[deliveries](./api/deliveries.md) · [backzettel](./api/backzettel.md) · [rest](./api/rest.md) · [Spracheingabe](./api/sprache.md) ·
+[abgleich](./api/abgleich.md) ·
+[dienstplan](./api/dienstplan.md) · [recipes](./api/recipes.md) · [invoices](./api/invoices.md) · [Belege](./api/receipts.md)
 
 **Apps:** [landing](./apps/landing.md) · [shop](./apps/shop.md) · [delivery](./apps/delivery.md) ·
 [partybrezel](./apps/partybrezel.md) (Klick-Prototyp, nicht im Pilot) ·

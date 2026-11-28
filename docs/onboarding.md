@@ -47,7 +47,7 @@ was die App kann – nur, was die Person morgen braucht.
 | 4–7   | **Zettel lesen:** Abschnitte, Basis / Vorb. / CAP unter dem Namen, die große Zahl ist die Menge. Samstag: Karte „Hefeteig & Füllungen" (Teigstücke, Chargen, Abwiegen).                                                     |
 | 7–9   | **Abhaken:** Kästchen rechts antippen, noch einmal tippen nimmt den Haken weg. Nur an freigegebenen Tagen – sonst steht oben „Noch nicht freigegeben".                                                                      |
 | 9–11  | **Nachträge:** gelber Kasten = Vorbestellungen nach der Freigabe, nicht in den Mengen. Zusätzlich backen bzw. weglassen, dann „Gesehen". (Am besten an einem echten Tag zeigen, sonst am Bildschirmfoto der Kurzanleitung.) |
-| 11–12 | **Vorbereitung heute** (Reiter) und **Planung & Druck › Drucken**. Den freigegebenen Ausdruck aufheben.                                                                                                                     |
+| 11–12 | **Vorbereitung** (Reiter) und **Planung & Druck › Drucken**. Den freigegebenen Ausdruck aufheben.                                                                                                                           |
 | 12–15 | **Fehlerfall:** mit dem letzten Ausdruck weiterbacken; Backzettel-Notfallblatt zeigen; Inhaber Bescheid geben. Abmelden.                                                                                                    |
 
 ### Fahrer (eigenes Handy)

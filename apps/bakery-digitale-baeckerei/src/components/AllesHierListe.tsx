@@ -11,7 +11,7 @@ import ListItemButton from '@mui/material/ListItemButton'
 import ListItemText from '@mui/material/ListItemText'
 import Typography from '@mui/material/Typography'
 import useMediaQuery from '@mui/material/useMediaQuery'
-import type { ListenEintrag } from '../lib/produkte/zuordnung'
+import type { ListenZeile } from '../lib/karte'
 import { KEINE_PRODUKTINFOS_TEXT, gruppiereEintraege } from './produktliste'
 import { SEITLICH, TOUCH_TARGET, WENIGER_BEWEGUNG } from './theme'
 
@@ -21,10 +21,13 @@ export const ENTDECKT_ZEILE_TEXT = 'schon entdeckt'
 
 export interface AllesHierListeProps {
   offen: boolean
-  /** alle belegten Plätze des Blickpunkts; gleiche Produkte werden eine Zeile */
-  eintraege: ListenEintrag[]
+  /**
+   * alle belegten Plätze und Infopunkte des Blickpunkts; gleiche Produkte
+   * werden eine Zeile
+   */
+  eintraege: ListenZeile[]
   blickpunktName: string
-  /** bekommt den (ersten) Platz des gewählten Produkts */
+  /** bekommt den (ersten) Platz des gewählten Produkts bzw. den Knoten des Infopunkts */
   onSelect: (slot: string) => void
   onClose: () => void
   /**
@@ -32,6 +35,11 @@ export interface AllesHierListeProps {
    * laden oder wenn sie nicht geladen werden konnten.
    */
   leerText?: string
+  /**
+   * Bedienelement unter dem Text der leeren Liste, z. B. „Noch einmal
+   * versuchen“, wenn die Produktdaten nicht geladen werden konnten.
+   */
+  leerAktion?: React.ReactNode
   /** ids der Produkte, deren Karte in diesem Besuch schon offen war: Haken an der Zeile. */
   entdeckt?: ReadonlySet<string>
   /** Zeile unter der Überschrift, z. B. „3 von 12 Produkten im Laden entdeckt“. */
@@ -50,6 +58,7 @@ export default function AllesHierListe({
   onSelect,
   onClose,
   leerText = LISTE_LEER_TEXT,
+  leerAktion,
   entdeckt,
   entdecktText,
 }: AllesHierListeProps) {
@@ -130,9 +139,10 @@ export default function AllesHierListe({
 
       <Box sx={{ overflowY: 'auto', overscrollBehavior: 'contain', pb: 1 }}>
         {zeilen.length === 0 ? (
-          <Typography color="text.secondary" sx={{ px: 2.5, py: 2 }}>
-            {leerText}
-          </Typography>
+          <Box sx={{ px: 2.5, py: 2 }}>
+            <Typography color="text.secondary">{leerText}</Typography>
+            {leerAktion && <Box sx={{ mt: 2 }}>{leerAktion}</Box>}
+          </Box>
         ) : (
           <List disablePadding aria-labelledby={titelId}>
             {zeilen.map(({ slot, produkt }) => (

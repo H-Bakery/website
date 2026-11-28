@@ -153,7 +153,7 @@ const brot = rahmen(2.8, 0.38)
 // ---------------------------------------------------------------------------
 // Die Szene: Name, extras, Primitive.
 
-const nodes = []
+let nodes = []
 const moebel = (name, ...teile) =>
   nodes.push({
     name,
@@ -488,194 +488,264 @@ produkt('wuerfelregal/platz-06', { ware: 'dose' }, 4, [
   box([1.6, 245.2, -3.69], [1.88, 245.32, -3.41], 'ware-blau'),
 ])
 
+const LADEN = nodes
+
+// ---------------------------------------------------------------------------
+// Zweiter Raum, nur für Tests: die „Testbackstube“ (DB11). Ein erfundener Raum
+// im eigenen Rahmen (gleiche Höhenlage wie der Laden), ohne Produkte - seine
+// Kisten sind Stationen mit Infopunkten (raeume/testbackstube.yaml). Keine
+// echte Backstube stand hier Modell.
+nodes = []
+moebel('backstube/boden', box([0, 244.2, -5], [6, 244.25, 0], 'boden'))
+moebel(
+  'backstube/wand',
+  box([-0.05, 244.25, -5], [0, 246.75, 0], 'wand'),
+  box([0, 244.25, 0], [6, 246.75, 0.05], 'wand'),
+  box([0, 244.25, -5.05], [6, 246.75, -5], 'wand'),
+  box([6, 244.25, -5], [6.05, 246.75, 0], 'wand')
+)
+moebel('backstube/decke', box([0, 246.75, -5], [6, 246.8, 0], 'decke'))
+// Blickpunkt „Ofen“: drei Stationen an der Westwand. Ofen und Kneter haben
+// einen Infopunkt, die Spüle absichtlich keinen (Tipp ohne Karte).
+moebel('ofen/korpus', box([0.1, 244.25, -4.0], [1.1, 246.2, -3.1], 'metall'))
+moebel('ofen/tuer', box([1.1, 244.9, -3.9], [1.14, 245.9, -3.2], 'stein'))
+moebel(
+  'kneter/korpus',
+  box([0.3, 244.25, -2.9], [1.0, 245.3, -2.4], 'regal-hell')
+)
+moebel('kneter/kessel', box([1.0, 244.5, -2.85], [1.5, 245.0, -2.45], 'metall'))
+moebel('spuele/becken', box([0.1, 244.25, -2.2], [0.7, 245.15, -1.7], 'rahmen'))
+// Blickpunkt „Arbeitstisch“: der Tisch und daneben die Tür zurück in den Laden.
+moebel(
+  'arbeitstisch/platte',
+  box([3.2, 245.1, -1.3], [4.4, 245.16, -0.4], 'holz')
+)
+moebel(
+  'arbeitstisch/gestell',
+  box([3.3, 244.25, -1.2], [4.3, 245.1, -0.5], 'rahmen')
+)
+moebel(
+  'tuer/blatt',
+  box([2.6, 244.25, -0.06], [3.2, 246.2, -0.02], 'holz-dunkel')
+)
+const TESTBACKSTUBE = nodes
+
+/** Die Räume des Fixtures: Schlüssel = `--raum`, Datei neben diesem Skript. */
+const RAEUME = {
+  laden: { nodes: LADEN, datei: 'twin.fixture.glb' },
+  testbackstube: { nodes: TESTBACKSTUBE, datei: 'testbackstube.fixture.glb' },
+}
+
 // ---------------------------------------------------------------------------
 // glTF zusammensetzen.
 
 const round4 = (n) => Math.round(n * 1e4) / 1e4
 const materialNames = Object.keys(MATERIALS)
-
-/**
- * Positions-Accessoren, nach Inhalt entdoppelt (gleiche Ware teilt Geometrie).
- * Die Preisschilder bekommen eine eigene BufferView (3), die im BIN-Teil VOR
- * den übrigen Positionen (2) liegt - wie im echten Modell hat ihre Geometrie
- * eigene Bytes, die `scripts/glb-bereinigen.js` herausschneidet, und alles
- * dahinter rückt auf.
- */
-const positionBlocks = []
-const preisBlocks = []
-const positionIndex = new Map()
 const PREIS_MATERIALIEN = ['preiskarte', 'preisschrift']
-const accessors = [
-  // 0: Indizes und 1: Farben gelten für jede Kiste.
-  { bufferView: 0, componentType: 5123, count: 36, type: 'SCALAR' },
-  {
-    bufferView: 1,
-    componentType: 5121,
-    normalized: true,
-    count: 24,
-    type: 'VEC3',
-  },
-]
 const POSITION_STRIDE = 8 // 3 × int16 + 2 Füllbytes (byteStride muss durch 4 teilbar sein)
 
-function positionAccessor(ints, preis) {
-  const blocks = preis ? preisBlocks : positionBlocks
-  const key = `${preis ? 'preis:' : ''}${ints.join(',')}`
-  let index = positionIndex.get(key)
-  if (index !== undefined) return index
-  const min = [32767, 32767, 32767]
-  const max = [-32767, -32767, -32767]
-  for (let i = 0; i < ints.length; i += 3) {
-    for (let k = 0; k < 3; k += 1) {
-      min[k] = Math.min(min[k], ints[i + k])
-      max[k] = Math.max(max[k], ints[i + k])
-    }
-  }
-  index = accessors.length
-  accessors.push({
-    bufferView: preis ? 3 : 2,
-    byteOffset: blocks.length * 24 * POSITION_STRIDE,
-    componentType: 5122,
-    normalized: true,
-    count: 24,
-    type: 'VEC3',
-    min,
-    max,
-  })
-  blocks.push(ints)
-  positionIndex.set(key, index)
-  return index
-}
-
-const gltfNodes = []
-const meshes = []
-for (const node of nodes) {
-  const ecken = node.teile.map((t) => kiste(t.c, t.g, t.gedreht))
-  const min = [Infinity, Infinity, Infinity]
-  const max = [-Infinity, -Infinity, -Infinity]
-  for (const p of ecken.flat()) {
-    for (let k = 0; k < 3; k += 1) {
-      min[k] = Math.min(min[k], p[k])
-      max[k] = Math.max(max[k], p[k])
-    }
-  }
-  const translation = [0, 1, 2].map((k) => round4((min[k] + max[k]) / 2))
-  let reach = 0
-  for (const p of ecken.flat()) {
-    for (let k = 0; k < 3; k += 1) {
-      reach = Math.max(reach, Math.abs(p[k] - translation[k]))
-    }
-  }
-  const scale = Math.ceil(reach * 1e4) / 1e4
-  const primitives = node.teile.map((teil, i) => {
-    const ints = ecken[i].flatMap((p) =>
-      p.map((v, k) => Math.round(((v - translation[k]) / scale) * 32767))
-    )
-    const material = materialNames.indexOf(teil.mat)
-    if (material < 0) throw new Error(`Unbekanntes Material: ${teil.mat}`)
-    return {
-      attributes: {
-        COLOR_0: 1,
-        POSITION: positionAccessor(ints, PREIS_MATERIALIEN.includes(teil.mat)),
-      },
-      mode: 4,
-      material,
-      indices: 0,
-    }
-  })
-  // Ohne Mesh-Namen (das echte Modell wiederholt dort den Knotennamen) - spart Platz.
-  meshes.push({ primitives })
-  gltfNodes.push({
-    name: node.name,
-    extras: node.extras,
-    translation,
-    scale: [scale, scale, scale],
-    mesh: meshes.length - 1,
-  })
-}
-
-// Binärteil: Indizes, Farben, Positionen der Preisschilder, übrige Positionen.
-const indexBytes = Buffer.alloc(36 * 2)
-for (let f = 0; f < 6; f += 1) {
-  const o = f * 4
-  ;[o, o + 1, o + 2, o, o + 2, o + 3].forEach((v, i) =>
-    indexBytes.writeUInt16LE(v, (f * 6 + i) * 2)
-  )
-}
-const colourBytes = Buffer.alloc(24 * 4)
-FACES.forEach((face, f) => {
-  for (let c = 0; c < 4; c += 1) {
-    colourBytes.fill(face.shade, (f * 4 + c) * 4, (f * 4 + c) * 4 + 3)
-  }
-})
-function positionen(blocks) {
-  const bytes = Buffer.alloc(blocks.length * 24 * POSITION_STRIDE)
-  blocks.forEach((ints, b) => {
-    for (let i = 0; i < 24; i += 1) {
+/** Baut aus einer Knotenliste den GLB-Container. */
+function baue(nodes) {
+  /**
+   * Positions-Accessoren, nach Inhalt entdoppelt (gleiche Ware teilt Geometrie).
+   * Die Preisschilder bekommen eine eigene BufferView (3), die im BIN-Teil VOR
+   * den übrigen Positionen (2) liegt - wie im echten Modell hat ihre Geometrie
+   * eigene Bytes, die `scripts/glb-bereinigen.js` herausschneidet, und alles
+   * dahinter rückt auf.
+   */
+  const positionBlocks = []
+  const preisBlocks = []
+  const positionIndex = new Map()
+  const accessors = [
+    // 0: Indizes und 1: Farben gelten für jede Kiste.
+    { bufferView: 0, componentType: 5123, count: 36, type: 'SCALAR' },
+    {
+      bufferView: 1,
+      componentType: 5121,
+      normalized: true,
+      count: 24,
+      type: 'VEC3',
+    },
+  ]
+  function positionAccessor(ints, preis) {
+    const blocks = preis ? preisBlocks : positionBlocks
+    const key = `${preis ? 'preis:' : ''}${ints.join(',')}`
+    let index = positionIndex.get(key)
+    if (index !== undefined) return index
+    const min = [32767, 32767, 32767]
+    const max = [-32767, -32767, -32767]
+    for (let i = 0; i < ints.length; i += 3) {
       for (let k = 0; k < 3; k += 1) {
-        bytes.writeInt16LE(
-          ints[i * 3 + k],
-          (b * 24 + i) * POSITION_STRIDE + k * 2
-        )
+        min[k] = Math.min(min[k], ints[i + k])
+        max[k] = Math.max(max[k], ints[i + k])
       }
     }
-  })
-  return bytes
-}
-const preisBytes = positionen(preisBlocks)
-const positionBytes = positionen(positionBlocks)
-const bin = Buffer.concat([indexBytes, colourBytes, preisBytes, positionBytes])
+    index = accessors.length
+    accessors.push({
+      bufferView: preis ? 3 : 2,
+      byteOffset: blocks.length * 24 * POSITION_STRIDE,
+      componentType: 5122,
+      normalized: true,
+      count: 24,
+      type: 'VEC3',
+      min,
+      max,
+    })
+    blocks.push(ints)
+    positionIndex.set(key, index)
+    return index
+  }
 
-const gltf = {
-  asset: {
-    generator: 'bakery-digitale-baeckerei build-fixture',
-    version: '2.0',
-  },
-  extensionsUsed: ['KHR_materials_unlit', 'KHR_mesh_quantization'],
-  extensionsRequired: ['KHR_mesh_quantization'],
-  scene: 0,
-  scenes: [{ name: 'fixture', nodes: gltfNodes.map((_, i) => i) }],
-  nodes: gltfNodes,
-  meshes,
-  materials: materialNames.map((name) => {
-    const colour = MATERIALS[name]
-    const durchsichtig = colour.length === 4
-    return {
-      name,
-      ...(durchsichtig ? { alphaMode: 'BLEND', doubleSided: true } : {}),
-      pbrMetallicRoughness: {
-        baseColorFactor: durchsichtig ? colour : [...colour, 1],
-        metallicFactor: 0,
-      },
-      extensions: { KHR_materials_unlit: {} },
+  const gltfNodes = []
+  const meshes = []
+  for (const node of nodes) {
+    const ecken = node.teile.map((t) => kiste(t.c, t.g, t.gedreht))
+    const min = [Infinity, Infinity, Infinity]
+    const max = [-Infinity, -Infinity, -Infinity]
+    for (const p of ecken.flat()) {
+      for (let k = 0; k < 3; k += 1) {
+        min[k] = Math.min(min[k], p[k])
+        max[k] = Math.max(max[k], p[k])
+      }
     }
-  }),
-  accessors,
-  bufferViews: [
-    { buffer: 0, byteOffset: 0, byteLength: indexBytes.length, target: 34963 },
-    {
-      buffer: 0,
-      byteOffset: indexBytes.length,
-      byteLength: colourBytes.length,
-      byteStride: 4,
-      target: 34962,
+    const translation = [0, 1, 2].map((k) => round4((min[k] + max[k]) / 2))
+    let reach = 0
+    for (const p of ecken.flat()) {
+      for (let k = 0; k < 3; k += 1) {
+        reach = Math.max(reach, Math.abs(p[k] - translation[k]))
+      }
+    }
+    const scale = Math.ceil(reach * 1e4) / 1e4
+    const primitives = node.teile.map((teil, i) => {
+      const ints = ecken[i].flatMap((p) =>
+        p.map((v, k) => Math.round(((v - translation[k]) / scale) * 32767))
+      )
+      const material = materialNames.indexOf(teil.mat)
+      if (material < 0) throw new Error(`Unbekanntes Material: ${teil.mat}`)
+      return {
+        attributes: {
+          COLOR_0: 1,
+          POSITION: positionAccessor(
+            ints,
+            PREIS_MATERIALIEN.includes(teil.mat)
+          ),
+        },
+        mode: 4,
+        material,
+        indices: 0,
+      }
+    })
+    // Ohne Mesh-Namen (das echte Modell wiederholt dort den Knotennamen) - spart Platz.
+    meshes.push({ primitives })
+    gltfNodes.push({
+      name: node.name,
+      extras: node.extras,
+      translation,
+      scale: [scale, scale, scale],
+      mesh: meshes.length - 1,
+    })
+  }
+
+  // Binärteil: Indizes, Farben, Positionen der Preisschilder, übrige Positionen.
+  const indexBytes = Buffer.alloc(36 * 2)
+  for (let f = 0; f < 6; f += 1) {
+    const o = f * 4
+    ;[o, o + 1, o + 2, o, o + 2, o + 3].forEach((v, i) =>
+      indexBytes.writeUInt16LE(v, (f * 6 + i) * 2)
+    )
+  }
+  const colourBytes = Buffer.alloc(24 * 4)
+  FACES.forEach((face, f) => {
+    for (let c = 0; c < 4; c += 1) {
+      colourBytes.fill(face.shade, (f * 4 + c) * 4, (f * 4 + c) * 4 + 3)
+    }
+  })
+  function positionen(blocks) {
+    const bytes = Buffer.alloc(blocks.length * 24 * POSITION_STRIDE)
+    blocks.forEach((ints, b) => {
+      for (let i = 0; i < 24; i += 1) {
+        for (let k = 0; k < 3; k += 1) {
+          bytes.writeInt16LE(
+            ints[i * 3 + k],
+            (b * 24 + i) * POSITION_STRIDE + k * 2
+          )
+        }
+      }
+    })
+    return bytes
+  }
+  const preisBytes = positionen(preisBlocks)
+  const positionBytes = positionen(positionBlocks)
+  const bin = Buffer.concat([
+    indexBytes,
+    colourBytes,
+    preisBytes,
+    positionBytes,
+  ])
+
+  const gltf = {
+    asset: {
+      generator: 'bakery-digitale-baeckerei build-fixture',
+      version: '2.0',
     },
-    {
-      buffer: 0,
-      byteOffset: indexBytes.length + colourBytes.length + preisBytes.length,
-      byteLength: positionBytes.length,
-      byteStride: POSITION_STRIDE,
-      target: 34962,
-    },
-    {
-      buffer: 0,
-      byteOffset: indexBytes.length + colourBytes.length,
-      byteLength: preisBytes.length,
-      byteStride: POSITION_STRIDE,
-      target: 34962,
-    },
-  ],
-  buffers: [{ byteLength: bin.length }],
+    extensionsUsed: ['KHR_materials_unlit', 'KHR_mesh_quantization'],
+    extensionsRequired: ['KHR_mesh_quantization'],
+    scene: 0,
+    scenes: [{ name: 'fixture', nodes: gltfNodes.map((_, i) => i) }],
+    nodes: gltfNodes,
+    meshes,
+    materials: materialNames.map((name) => {
+      const colour = MATERIALS[name]
+      const durchsichtig = colour.length === 4
+      return {
+        name,
+        ...(durchsichtig ? { alphaMode: 'BLEND', doubleSided: true } : {}),
+        pbrMetallicRoughness: {
+          baseColorFactor: durchsichtig ? colour : [...colour, 1],
+          metallicFactor: 0,
+        },
+        extensions: { KHR_materials_unlit: {} },
+      }
+    }),
+    accessors,
+    bufferViews: [
+      {
+        buffer: 0,
+        byteOffset: 0,
+        byteLength: indexBytes.length,
+        target: 34963,
+      },
+      {
+        buffer: 0,
+        byteOffset: indexBytes.length,
+        byteLength: colourBytes.length,
+        byteStride: 4,
+        target: 34962,
+      },
+      {
+        buffer: 0,
+        byteOffset: indexBytes.length + colourBytes.length + preisBytes.length,
+        byteLength: positionBytes.length,
+        byteStride: POSITION_STRIDE,
+        target: 34962,
+      },
+      // Nur ein Modell mit Preisschildern hat ihre BufferView.
+      ...(preisBytes.length > 0
+        ? [
+            {
+              buffer: 0,
+              byteOffset: indexBytes.length + colourBytes.length,
+              byteLength: preisBytes.length,
+              byteStride: POSITION_STRIDE,
+              target: 34962,
+            },
+          ]
+        : []),
+    ],
+    buffers: [{ byteLength: bin.length }],
+  }
+
+  return { bytes: glb(gltf, bin), gltfNodes, geometrien: positionBlocks.length }
 }
 
 /** GLB-Container: Kopf, JSON-Chunk (mit Leerzeichen aufgefüllt), BIN-Chunk. */
@@ -705,35 +775,51 @@ function glb(json, binary) {
   ])
 }
 
-const bytes = glb(gltf, bin)
 const args = process.argv.slice(2)
+const raumAt = args.indexOf('--raum')
+const gewaehlt = raumAt >= 0 ? args[raumAt + 1] : null
+if (
+  gewaehlt !== null &&
+  !Object.prototype.hasOwnProperty.call(RAEUME, gewaehlt)
+) {
+  console.error(
+    `build-fixture: --raum kennt nur ${Object.keys(RAEUME).join(', ')}`
+  )
+  process.exit(1)
+}
+/** Ohne --raum: alle Räume (mit --out oder --list: der Laden). */
+const einzeln = args.includes('--out') || args.includes('--list')
+const raeume = gewaehlt ? [gewaehlt] : einzeln ? ['laden'] : Object.keys(RAEUME)
 
-if (args.includes('--list')) {
-  for (const node of gltfNodes) {
-    const { product, ware, count, fills } = node.extras
-    const was = product ? `product=${product}` : ware ? `ware=${ware}` : ''
+for (const raum of raeume) {
+  const { nodes: knoten, datei } = RAEUME[raum]
+  const ziel = path.join(HERE, datei)
+  const { bytes, gltfNodes, geometrien } = baue(knoten)
+  if (args.includes('--list')) {
+    for (const node of gltfNodes) {
+      const { product, ware, count, fills } = node.extras
+      const was = product ? `product=${product}` : ware ? `ware=${ware}` : ''
+      console.log(
+        [node.name, was, count ?? '', fills ? fills.join('+') : '']
+          .join('\t')
+          .trimEnd()
+      )
+    }
+  } else if (args.includes('--check')) {
+    const current = fs.existsSync(ziel) ? fs.readFileSync(ziel) : null
+    if (!current || !current.equals(bytes)) {
+      console.error(
+        `build-fixture: ${datei} weicht vom Generator ab - neu bauen: node src/test/fixtures/build-fixture.mjs`
+      )
+      process.exit(1)
+    }
+    console.log(`build-fixture: ${datei} ist aktuell (${bytes.length} Bytes)`)
+  } else {
+    const at = args.indexOf('--out')
+    const target = at >= 0 && args[at + 1] ? path.resolve(args[at + 1]) : ziel
+    fs.writeFileSync(target, bytes)
     console.log(
-      [node.name, was, count ?? '', fills ? fills.join('+') : '']
-        .join('\t')
-        .trimEnd()
+      `build-fixture: ${target} - ${bytes.length} Bytes, ${gltfNodes.length} Knoten, ${geometrien} Geometrien`
     )
   }
-} else if (args.includes('--check')) {
-  const current = fs.existsSync(TARGET) ? fs.readFileSync(TARGET) : null
-  if (!current || !current.equals(bytes)) {
-    console.error(
-      'build-fixture: twin.fixture.glb weicht vom Generator ab - neu bauen: node src/test/fixtures/build-fixture.mjs'
-    )
-    process.exit(1)
-  }
-  console.log(
-    `build-fixture: twin.fixture.glb ist aktuell (${bytes.length} Bytes)`
-  )
-} else {
-  const at = args.indexOf('--out')
-  const target = at >= 0 && args[at + 1] ? path.resolve(args[at + 1]) : TARGET
-  fs.writeFileSync(target, bytes)
-  console.log(
-    `build-fixture: ${target} - ${bytes.length} Bytes, ${gltfNodes.length} Knoten, ${positionBlocks.length} Geometrien`
-  )
 }

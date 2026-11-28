@@ -18,6 +18,7 @@
  *   Shift, Absence                               employees, vacation_entitlements,
  *                                                shift_templates, shifts, absences
  *                                                (TASK-042 Dienstplan migration)
+ *   Invoice, InvoiceLine                         invoices, invoice_lines (Rechnungen)
  *
  * The legacy models (Cash, Chat, Product, Order, Inventory, Recipe, ...) were
  * deleted with the unmounted code in B12; their tables may still sit in an old
@@ -51,6 +52,8 @@ import { default as VacationEntitlement } from './VacationEntitlement'
 import { default as ShiftTemplate } from './ShiftTemplate'
 import { default as Shift } from './Shift'
 import { default as Absence } from './Absence'
+import { default as Invoice } from './Invoice'
+import { default as InvoiceLine } from './InvoiceLine'
 
 // Sequelize instance - set during initializeModels
 let _sequelize: Sequelize | undefined
@@ -92,6 +95,8 @@ export {
   ShiftTemplate,
   Shift,
   Absence,
+  Invoice,
+  InvoiceLine,
 }
 
 /** The models `initializeModels()` sets up, in dependency order. */
@@ -122,6 +127,8 @@ export const PILOT_MODELS = [
   ShiftTemplate,
   Shift,
   Absence,
+  Invoice,
+  InvoiceLine,
 ] as const
 
 export async function initializeModels(seq: Sequelize): Promise<void> {
@@ -226,6 +233,14 @@ function setupAssociations(): void {
   Shift.belongsTo(Employee, { foreignKey: 'employeeId', as: 'employee' })
   Employee.hasMany(Absence, { foreignKey: 'employeeId', as: 'absences' })
   Absence.belongsTo(Employee, { foreignKey: 'employeeId', as: 'employee' })
+
+  // Rechnungen
+  Invoice.hasMany(InvoiceLine, {
+    foreignKey: 'invoiceId',
+    as: 'lines',
+    onDelete: 'CASCADE',
+  })
+  InvoiceLine.belongsTo(Invoice, { foreignKey: 'invoiceId', as: 'invoice' })
 }
 
 /** Models with a table in the pilot schema (for tooling and tests). */

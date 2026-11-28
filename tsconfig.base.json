@@ -22,12 +22,20 @@
       "@bakery/shared/data-access": ["libs/shared/data-access/src/index.ts"],
       "@bakery/shared/data-mocks": ["libs/shared/data-mocks/src/index.ts"],
       "@bakery/shared/hq-products": ["libs/shared/hq-products/src/index.js"],
+      "@bakery/shared/legal": ["libs/shared/utils/src/lib/legal.ts"],
+      "@bakery/shared/produkte-3d": ["libs/shared/produkte-3d/src/index.js"],
       "@bakery/shared/test-utils": ["libs/shared/test-utils/src/index.ts"],
       "@bakery/shared/types": ["libs/shared/types/src/index.ts"],
       "@bakery/shared/ui": ["libs/shared/ui/src/index.ts"],
       "@bakery/shared/utils": ["libs/shared/utils/src/index.ts"],
       "@bakery/shop/feature-cart": [
         "libs/bakery-shop/feature-cart/src/index.ts"
+      ],
+      "@bakery/shop/feature-cart/pickup": [
+        "libs/bakery-shop/feature-cart/src/lib/pickup.ts"
+      ],
+      "@bakery/shop/feature-cart/lead-time": [
+        "libs/bakery-shop/feature-cart/src/lib/lead-time.ts"
       ],
       "@bakery/shop/feature-catalog": [
         "libs/bakery-shop/feature-catalog/src/index.ts"

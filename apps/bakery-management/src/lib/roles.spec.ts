@@ -58,6 +58,8 @@ describe('ROLE_ACCESS - die eine Rollen-Tabelle', () => {
     ['verkauf', '/admin/products', true],
     ['verkauf', '/admin/products/new', false],
     ['verkauf', '/admin/products/roggenbrot', false],
+    ['verkauf', '/admin/products/preisliste', true],
+    ['backstube', '/admin/products/preisliste', false],
     ['verkauf', '/admin/partners/1/visit/new', true],
     ['verkauf', '/admin/finance', false],
     ['verkauf', '/admin/users', false],
@@ -81,6 +83,13 @@ describe('ROLE_ACCESS - die eine Rollen-Tabelle', () => {
     ['backstube', '/admin/rest', true],
     ['backstube', '/admin/rest/auswertung', false],
     ['fahrer', '/admin/rest', false],
+    // Rechnungen (ZUGFeRD): nur Inhaber
+    ['inhaber', '/admin/rechnungen', true],
+    ['inhaber', '/admin/rechnungen/12', true],
+    ['verkauf', '/admin/rechnungen', false],
+    ['verkauf', '/admin/rechnungen/12', false],
+    ['backstube', '/admin/rechnungen', false],
+    ['fahrer', '/admin/rechnungen/12', false],
     // TASK-042 Dienstplan: nur Inhaber
     ['inhaber', '/admin/dienstplan', true],
     ['inhaber', '/admin/dienstplan/mitarbeiter/3', true],
@@ -89,6 +98,12 @@ describe('ROLE_ACCESS - die eine Rollen-Tabelle', () => {
     ['backstube', '/admin/dienstplan/mitarbeiter/3', false],
     ['fahrer', '/admin/dienstplan', false],
     ['inhaber', '/admin/rest/auswertung', true],
+    // Abgleich Produktion ↔ Kasse: nur Inhaber
+    ['inhaber', '/admin/abgleich', true],
+    ['verkauf', '/admin/abgleich', false],
+    ['backstube', '/admin/abgleich', false],
+    ['backstubenleiter', '/admin/abgleich', false],
+    ['fahrer', '/admin/abgleich', false],
     ['backstube', '/admin/preorders', false],
     ['backstube', '/admin/reports', false],
     ['fahrer', '/admin/delivery/preorders/backliste', true],
@@ -399,6 +414,36 @@ describe('getNavigationForRole', () => {
       )
       expect(isPathAllowedForRole('/admin/dienstplan', role)).toBe(false)
     }
+  })
+
+  it('Rechnungen: im Pilotbetrieb und außerhalb nur im Menü des Inhabers', () => {
+    for (const pilot of [true, false]) {
+      expect(hrefs(getNavigationForRole('inhaber', pilot))).toContain(
+        '/admin/rechnungen'
+      )
+      for (const role of [
+        'verkauf',
+        'backstube',
+        'backstubenleiter',
+        'fahrer',
+      ] as PilotRole[]) {
+        expect(hrefs(getNavigationForRole(role, pilot))).not.toContain(
+          '/admin/rechnungen'
+        )
+        expect(isPathAllowedForRole('/admin/rechnungen', role)).toBe(false)
+      }
+    }
+  })
+
+  it('Rechnungen: an einer PIN-Station auch für den Inhaber gesperrt', () => {
+    expect(isPersonalOnlyPath('/admin/rechnungen')).toBe(true)
+    expect(isPersonalOnlyPath('/admin/rechnungen/12')).toBe(true)
+    expect(
+      isPathAllowedForRole('/admin/rechnungen/12', 'inhaber', 'station')
+    ).toBe(false)
+    expect(
+      isPathAllowedForRole('/admin/rechnungen/12', 'inhaber', 'personal')
+    ).toBe(true)
   })
 
   it('Pilotbetrieb und Rolle überlagern sich: gesperrte Seiten fehlen auch dem Inhaber', () => {

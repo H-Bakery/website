@@ -8,6 +8,10 @@
  * (`dryRun`) macht dieselbe Arbeit und rollt am Ende zurück, damit der
  * Bericht genau das zeigt, was ein echter Lauf täte.
  */
+import {
+  anonymizeInvoiceDrafts,
+  InvoiceDraftAnonymizeReport,
+} from './invoice-anonymize'
 import { Op, QueryTypes } from 'sequelize'
 
 import { audit } from '../auth/audit'
@@ -305,6 +309,11 @@ export interface AnonymizeReport {
    * selben Lauf und in derselben Transaktion (`delivery-anonymize.ts`).
    */
   deliveryStops: DeliveryAnonymizeReport
+  /**
+   * Liegengebliebene Rechnungsentwürfe, die Name und Anschrift verloren haben
+   * (`invoice-anonymize.ts`). Ausgestellte Rechnungen sind nie dabei.
+   */
+  invoiceDrafts: InvoiceDraftAnonymizeReport['drafts']
 }
 
 /**
@@ -341,6 +350,7 @@ export async function anonymizePreorders(
       anonymized: [],
       unfinished: 0,
       deliveryStops: { stops: [], geocacheRemoved: 0 },
+      invoiceDrafts: [],
     }
     for (const row of candidates) {
       const plain = row.get({ plain: true })
@@ -379,6 +389,9 @@ export async function anonymizePreorders(
       cutoff,
       now,
     })
+    report.invoiceDrafts = (
+      await anonymizeInvoiceDrafts(transaction, { cutoff, now })
+    ).drafts
     return report
   })
 }

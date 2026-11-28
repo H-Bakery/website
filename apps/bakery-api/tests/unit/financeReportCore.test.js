@@ -6,8 +6,19 @@
 const report = require('../../src/services/finance-report.core')
 const {
   buildReportSummary,
+  calendarConfig,
   kasseMonth,
+  kasseMonthOn,
+  openDates,
 } = require('../fixtures/finance-report.synthetic')
+
+/** Stammdaten mit Kalender 2025 und 2026, Montag Ruhetag. */
+const CONFIG = calendarConfig()
+
+/** Kasse mit einem Bericht an jedem Öffnungstag von `month`. */
+function fullKasse(month, amounts, config = CONFIG) {
+  return kasseMonthOn(month, openDates(config, month), amounts)
+}
 
 describe('finance-report.core - monthCoverage', () => {
   const period = { from: '2025-03-15', to: '2026-05-10' }
@@ -202,10 +213,18 @@ describe('finance-report.core - Jahresabschluss', () => {
 
   it('Kassenabgleich nur über vollständige Monate mit Kasse', () => {
     const kasseByMonth = {}
-    for (const m of ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05']) {
-      kasseByMonth[m] = kasseMonth()
+    for (const m of ['2026-01', '2026-02', '2026-03', '2026-04']) {
+      kasseByMonth[m] = fullKasse(m)
     }
-    const { data } = report.buildYearReport(summary, '2026', { kasseByMonth })
+    kasseByMonth['2026-05'] = kasseMonthOn(
+      '2026-05',
+      openDates(CONFIG, '2026-05', { to: '2026-05-10' })
+    )
+    const { data } = report.buildYearReport(summary, '2026', {
+      kasseByMonth,
+      calendarConfig: CONFIG,
+      today: '2026-05-11',
+    })
     expect(data.reconciliation).toMatchObject({
       months: 4,
       from: '2026-01',
@@ -217,7 +236,18 @@ describe('finance-report.core - Jahresabschluss', () => {
       diff_total: -4700,
     })
     expect(data.kasse.revenue).toBe(47500)
-    expect(data.months[0].kasse).toMatchObject({ revenue: 9500, days: 25 })
+    expect(data.months[0].kasse).toMatchObject({
+      revenue: 9500,
+      days: 26,
+      open_days: 26,
+      report_days: 26,
+      complete: true,
+      note: null,
+    })
+    expect(data.months[4].kasse).toMatchObject({
+      complete: false,
+      note: 'Monat läuft noch: bisher 8 von 8 Öffnungstagen',
+    })
     expect(data.notes.find((n) => n.key === 'kasse_bank').text).toContain(
       'Differenz −4.700,00 €. Weniger auf dem Konto als in der Kasse'
     )
@@ -370,14 +400,19 @@ describe('finance-report.core - Monatsanalyse', () => {
 
   it('Kassenabgleich im Monat', () => {
     const { data } = report.buildMonthReport(summary, '2026-03', {
-      kasse: kasseMonth(),
-      kassePreviousYear: kasseMonth({ revenue: 9000 }),
+      kasse: fullKasse('2026-03'),
+      kassePreviousYear: fullKasse('2025-03', { revenue: 9000 }),
+      calendarConfig: CONFIG,
+      today: '2026-05-11',
     })
     expect(data.kasse).toMatchObject({
       revenue: 9500,
-      avg_day: 380,
       cash: 6400,
+      open_days: 26,
+      report_days: 26,
+      complete: true,
     })
+    expect(data.kasse_previous_year).toMatchObject({ complete: true })
     expect(data.kasse_previous_year.revenue).toBe(9000)
     expect(data.reconciliation).toMatchObject({
       bank_cash: 6000,
@@ -393,5 +428,342 @@ describe('finance-report.core - Monatsanalyse', () => {
   it('unbekannter oder ungültiger Monat', () => {
     expect(report.buildMonthReport(summary, '2024-01').status).toBe('no-data')
     expect(report.buildMonthReport(summary, '2026-13').status).toBe('no-data')
+  })
+})
+
+describe('finance-report.core - Kasse nur über vollständige Kassenmonate', () => {
+  const summary = buildReportSummary()
+  const TODAY = '2026-05-11'
+  // Kasse eines halben Monats: bar 2000 + Karte 1000 gegen 9000 auf dem Konto
+  // ergäbe +6000 „mehr auf dem Konto“ - genau die Scheindifferenz.
+  const SMALL = { revenue: 3000, cash: 2000, card: 1000 }
+
+  it('(a) Berichte erst ab Monatsmitte: kein Abgleich, Abdeckung mit Datenbeginn', () => {
+    const march = kasseMonthOn(
+      '2025-03',
+      openDates(CONFIG, '2025-03', { from: '2025-03-15' }),
+      SMALL
+    )
+    const options = {
+      calendarConfig: CONFIG,
+      today: TODAY,
+      reportsPeriod: { from: '2025-03-15', to: '2026-05-10' },
+    }
+    const year = report.buildYearReport(summary, '2025', {
+      ...options,
+      kasseByMonth: { '2025-03': march },
+    }).data
+    expect(year.months[2].kasse).toMatchObject({
+      revenue: 3000,
+      open_days: 26,
+      report_days: 14,
+      complete: false,
+      note: 'Kasse unvollständig: 14 von 26 Öffnungstagen',
+    })
+    expect(year.reconciliation).toBeNull()
+    expect(year.notes.map((n) => n.key)).not.toContain('kasse_bank')
+    expect(JSON.stringify(year.notes)).not.toContain('Mehr auf dem Konto')
+    expect(year.notes.find((n) => n.key === 'kasse_incomplete').text).toBe(
+      'Nicht im Kassenabgleich: März – dort fehlen Kassenberichte an Öffnungstagen. ' +
+        'Verglichen werden nur Monate, in denen Bank und Kasse vollständig sind.'
+    )
+
+    const month = report.buildMonthReport(summary, '2025-03', {
+      ...options,
+      kasse: march,
+    }).data
+    expect(month.coverage.status).toBe('complete')
+    expect(month.reconciliation).toBeNull()
+    expect(month.kasse).toMatchObject({
+      open_days: 26,
+      report_days: 14,
+      complete: false,
+    })
+    const note = month.notes.find((n) => n.key === 'kasse_incomplete')
+    expect(note.severity).toBe('info')
+    expect(note.text).toContain(
+      'Kasse unvollständig: 14 von 26 Öffnungstagen (Kassenberichte gibt es erst ab 15.03.2025).'
+    )
+    expect(month.notes.map((n) => n.key)).not.toContain('kasse_bank')
+    expect(JSON.stringify(month)).not.toContain('Mehr auf dem Konto')
+  })
+
+  it('(b) ganzer Monat mit Ruhetagen und Betriebsferien zählt', () => {
+    const config = calendarConfig({
+      tage: [
+        {
+          von: '2025-08-04',
+          bis: '2025-08-17',
+          typ: 'geschlossen',
+          notiz: 'Betriebsferien',
+        },
+      ],
+    })
+    const kasseByMonth = {
+      '2025-08': fullKasse('2025-08', {}, config),
+      '2025-09': fullKasse('2025-09', {}, config),
+    }
+    const { data } = report.buildYearReport(summary, '2025', {
+      kasseByMonth,
+      calendarConfig: config,
+      today: TODAY,
+    })
+    expect(data.months[7].kasse).toMatchObject({
+      open_days: 15,
+      report_days: 15,
+      complete: true,
+      note: null,
+    })
+    expect(data.reconciliation).toMatchObject({
+      months: 2,
+      from: '2025-08',
+      to: '2025-09',
+    })
+    expect(data.notes.map((n) => n.key)).not.toContain('kasse_incomplete')
+
+    // Dieselben Berichte ohne den Ferien-Eintrag: 12 Öffnungstage fehlen.
+    const plain = report.buildYearReport(summary, '2025', {
+      kasseByMonth,
+      calendarConfig: CONFIG,
+      today: TODAY,
+    }).data
+    expect(plain.months[7].kasse).toMatchObject({
+      open_days: 26,
+      report_days: 15,
+      complete: false,
+    })
+    expect(plain.reconciliation).toMatchObject({
+      months: 1,
+      from: '2025-09',
+      to: '2025-09',
+    })
+  })
+
+  it('(c) Jahr ohne Kalender: Feiertag ohne Bericht fehlt nicht, mit Bericht zählt er', () => {
+    const only2026 = calendarConfig({ years: [2026] })
+    // Mai 2025: 1.5. und 29.5. sind Feiertage - der Kalender kennt 2025 nicht.
+    const noHolidays = openDates(only2026, '2025-05', {
+      skip: ['2025-05-01', '2025-05-29'],
+    })
+    const without = report.buildMonthReport(summary, '2025-05', {
+      kasse: kasseMonthOn('2025-05', noHolidays),
+      calendarConfig: only2026,
+      today: TODAY,
+    }).data
+    expect(without.kasse).toMatchObject({
+      open_days: 25,
+      report_days: 25,
+      complete: true,
+    })
+    expect(without.reconciliation).not.toBeNull()
+
+    // Mit Bericht am 29.5. war offen - kein erfundener Schließtag.
+    const opened = report.buildMonthReport(summary, '2025-05', {
+      kasse: kasseMonthOn('2025-05', [...noHolidays, '2025-05-29']),
+      calendarConfig: only2026,
+      today: TODAY,
+    }).data
+    expect(opened.kasse).toMatchObject({
+      open_days: 26,
+      report_days: 26,
+      complete: true,
+    })
+
+    // Ein gewöhnlicher Tag fehlt dagegen auch ohne Kalenderjahr.
+    const gap = report.buildMonthReport(summary, '2025-05', {
+      kasse: kasseMonthOn(
+        '2025-05',
+        noHolidays.filter((d) => d !== '2025-05-13')
+      ),
+      calendarConfig: only2026,
+      today: TODAY,
+    }).data
+    expect(gap.kasse).toMatchObject({ open_days: 25, complete: false })
+    expect(gap.reconciliation).toBeNull()
+  })
+
+  it('(d) genau ein fehlender Öffnungstag: nicht im Abgleich', () => {
+    const october = kasseMonthOn(
+      '2025-10',
+      openDates(CONFIG, '2025-10', { skip: ['2025-10-23'] })
+    )
+    const options = {
+      calendarConfig: CONFIG,
+      today: TODAY,
+      reportsPeriod: { from: '2025-01-02', to: '2026-05-10' },
+    }
+    const year = report.buildYearReport(summary, '2025', {
+      ...options,
+      kasseByMonth: {
+        '2025-10': october,
+        '2025-11': fullKasse('2025-11'),
+        '2025-12': fullKasse('2025-12'),
+      },
+    }).data
+    expect(year.months[9].kasse).toMatchObject({
+      open_days: 26,
+      report_days: 25,
+      complete: false,
+      note: 'Kasse unvollständig: 25 von 26 Öffnungstagen',
+    })
+    expect(year.reconciliation).toMatchObject({
+      months: 2,
+      from: '2025-11',
+      to: '2025-12',
+      kasse_cash: 12800,
+    })
+    const month = report.buildMonthReport(summary, '2025-10', {
+      ...options,
+      kasse: october,
+    }).data
+    expect(month.reconciliation).toBeNull()
+    expect(month.notes.find((n) => n.key === 'kasse_incomplete').text).toMatch(
+      /^Kasse unvollständig: 25 von 26 Öffnungstagen \(es fehlt Do 23\.10\.\)\./
+    )
+  })
+
+  it('(e) der laufende Monat zählt nie, auch wenn die Bank ihn schon abdeckt', () => {
+    // Bankdaten bis 10.05., heute ist der 30.04.: April ist für die Bank
+    // vollständig, für die Kasse fehlt noch der heutige Tag.
+    const kasseByMonth = {
+      '2026-03': fullKasse('2026-03'),
+      '2026-04': fullKasse('2026-04'),
+    }
+    const running = report.buildYearReport(summary, '2026', {
+      kasseByMonth,
+      calendarConfig: CONFIG,
+      today: '2026-04-30',
+    }).data
+    expect(running.months[3].coverage).toBe('complete')
+    // Der heutige Bericht (30.04.) ist schon da: er zählt mit, wie in `days`.
+    expect(running.months[3].kasse).toMatchObject({
+      days: 25,
+      open_days: 25,
+      report_days: 25,
+      complete: false,
+      note: 'Monat läuft noch: bisher 25 von 25 Öffnungstagen',
+    })
+    expect(running.reconciliation).toMatchObject({
+      months: 1,
+      from: '2026-03',
+      to: '2026-03',
+    })
+    // Noch ohne heutigen Bericht: bis gestern, heute fehlt (noch) nicht.
+    const morning = report.buildYearReport(summary, '2026', {
+      kasseByMonth: {
+        ...kasseByMonth,
+        '2026-04': kasseMonthOn(
+          '2026-04',
+          openDates(CONFIG, '2026-04', { to: '2026-04-29' })
+        ),
+      },
+      calendarConfig: CONFIG,
+      today: '2026-04-30',
+    }).data
+    expect(morning.months[3].kasse).toMatchObject({
+      days: 24,
+      open_days: 24,
+      report_days: 24,
+      complete: false,
+      note: 'Monat läuft noch: bisher 24 von 24 Öffnungstagen',
+    })
+    // Einen Tag später ist April abgeschlossen und zählt mit.
+    const next = report.buildYearReport(summary, '2026', {
+      kasseByMonth,
+      calendarConfig: CONFIG,
+      today: '2026-05-01',
+    }).data
+    expect(next.months[3].kasse.complete).toBe(true)
+    expect(next.reconciliation).toMatchObject({
+      months: 2,
+      from: '2026-03',
+      to: '2026-04',
+    })
+  })
+
+  it('ohne Stammdaten oder Kalender ist kein Monat vollständig - und das steht da', () => {
+    const kasseByMonth = { '2026-03': fullKasse('2026-03') }
+    for (const calendar of [
+      null,
+      { ...CONFIG, calendar: null },
+      { ...CONFIG, days: [] },
+    ]) {
+      const year = report.buildYearReport(summary, '2026', {
+        kasseByMonth,
+        calendarConfig: calendar,
+        today: TODAY,
+      }).data
+      expect(year.months[2].kasse).toMatchObject({
+        open_days: null,
+        report_days: 26,
+        complete: false,
+      })
+      expect(year.months[2].kasse.note).toMatch(/^Kasse nicht prüfbar: /)
+      expect(year.reconciliation).toBeNull()
+      expect(year.notes.find((n) => n.key === 'kasse_incomplete').text).toBe(
+        'Ohne Wochenplan und Öffnungskalender aus hq lässt sich nicht prüfen, ob an ' +
+          'jedem Öffnungstag ein Kassenbericht vorliegt – deshalb kein Kassenabgleich.'
+      )
+      const month = report.buildMonthReport(summary, '2026-03', {
+        kasse: kasseByMonth['2026-03'],
+        calendarConfig: calendar,
+        today: TODAY,
+      }).data
+      expect(month.reconciliation).toBeNull()
+      expect(
+        month.notes.find((n) => n.key === 'kasse_incomplete').text
+      ).toContain('deshalb kein Kassenabgleich')
+    }
+    // Eine Monatssumme ohne `missingDays` ist ebenso nicht prüfbar.
+    const old = report.buildMonthReport(summary, '2026-03', {
+      kasse: kasseMonth(),
+      calendarConfig: CONFIG,
+      today: TODAY,
+    }).data
+    expect(old.kasse).toMatchObject({ open_days: null, complete: false })
+    expect(old.reconciliation).toBeNull()
+  })
+
+  it('kasseCoverage nennt bis zu drei fehlende Tage und das Ende der Berichte', () => {
+    const days = openDates(CONFIG, '2025-10')
+    const two = report.kasseCoverage(
+      '2025-10',
+      kasseMonthOn(
+        '2025-10',
+        days.filter((d) => d !== '2025-10-07' && d !== '2025-10-08')
+      ),
+      { calendarConfig: CONFIG, today: TODAY }
+    )
+    expect(two).toMatchObject({
+      open_days: 26,
+      report_days: 24,
+      complete: false,
+      detail: 'es fehlen Di 07.10., Mi 08.10.',
+      reason: 'missing_reports',
+    })
+    const stopped = report.kasseCoverage(
+      '2025-10',
+      kasseMonthOn(
+        '2025-10',
+        days.filter((d) => d <= '2025-10-20')
+      ),
+      {
+        calendarConfig: CONFIG,
+        today: TODAY,
+        reportsPeriod: { from: '2025-01-02', to: '2025-10-20' },
+      }
+    )
+    expect(stopped.detail).toBe('Kassenberichte bisher nur bis 20.10.2025')
+    // Ein Bericht an einem Ruhetag zählt als Öffnungstag (es war offen).
+    const monday = report.kasseCoverage(
+      '2025-10',
+      kasseMonthOn('2025-10', [...days, '2025-10-06']),
+      { calendarConfig: CONFIG, today: TODAY }
+    )
+    expect(monday).toMatchObject({
+      open_days: 27,
+      report_days: 27,
+      complete: true,
+    })
   })
 })

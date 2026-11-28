@@ -41,6 +41,7 @@ import {
   printDate,
   type PrintKpi,
 } from '../../../../components/finance/FinancePrint'
+import { plural } from '../../../../lib/plural'
 import type { ComparisonRow } from './MonatsanalyseClient'
 
 /** Pfeil vor einer Auffälligkeit - Text trägt die Aussage, das Zeichen hilft beim Überfliegen. */
@@ -139,6 +140,7 @@ export function MonatsanalysePrint({
   highlightsEmptyText,
   comparisonRows,
   notes,
+  kasseNote = null,
 }: {
   report: FinanceMonthReport
   kpis: PrintKpi[]
@@ -146,11 +148,13 @@ export function MonatsanalysePrint({
   highlightsEmptyText: string
   comparisonRows: ComparisonRow[]
   notes: FinanceReportNote[]
+  /** Warum kein Kassenabgleich, obwohl die Bank vollständig ist (Server-Text). */
+  kasseNote?: string | null
 }) {
   const complete = report.coverage.status === 'complete'
   const avg = report.comparison.average
   const comparison = avg !== null
-  const averageLabel = avg ? `Ø ${avg.months} Monate` : 'Ø'
+  const averageLabel = avg ? `Ø ${plural(avg.months, 'Monat', 'Monate')}` : 'Ø'
   const { statement } = report
   const points = trendFlowPoints(report)
   const legend: LegendKey[] = ['income', 'expense', 'result']
@@ -294,8 +298,10 @@ export function MonatsanalysePrint({
         number={next()}
         title="Einnahmen nach Art"
         intro={
-          comparison
-            ? `Mit dem Durchschnitt der ${avg?.months} vollen Monate davor.`
+          avg
+            ? avg.months === 1
+              ? 'Mit dem Wert des Vormonats.'
+              : `Mit dem Durchschnitt der ${avg.months} vollen Monate davor.`
             : 'Ein Vergleich mit dem Durchschnitt folgt, wenn der Monat vollständig ist.'
         }
         pageBreak
@@ -448,10 +454,10 @@ export function MonatsanalysePrint({
             </tbody>
           </table>
         ) : (
-          <p className="fp-intro">
-            {complete
-              ? 'Für diesen Monat gibt es keine Kassenberichte.'
-              : 'Der Abgleich folgt, wenn der Monat vollständig ist.'}
+          <p className="fp-intro" data-testid="print-no-reconciliation">
+            {!complete
+              ? 'Der Abgleich folgt, wenn der Monat vollständig ist.'
+              : kasseNote ?? 'Für diesen Monat gibt es keine Kassenberichte.'}
           </p>
         )}
         {report.kasse_previous_year && (

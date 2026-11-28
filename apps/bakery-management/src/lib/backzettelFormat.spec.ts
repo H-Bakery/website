@@ -1,4 +1,5 @@
 import {
+  splitQtyText,
   DELTA_KIND_LABELS,
   deltaAfterDone,
   deltaAfterDoneText,
@@ -451,5 +452,21 @@ describe('Nachtrag nach dem Abhaken (UI-Runde 1)', () => {
     expect(after?.bake).toBe(-5)
     if (!after) throw new Error('erwartet: Nachtrag nach dem Haken')
     expect(deltaAfterDoneText(line, after)).toContain('5 weniger nötig')
+  })
+})
+
+describe('splitQtyText (Tablet: Zahl groß, Einheit klein)', () => {
+  it('trennt nur eine passende Einheit ab', () => {
+    expect(splitQtyText('2 L', 'Liter')).toEqual({ figure: '2', unit: 'L' })
+    expect(splitQtyText('≥ 4,5 Bl.', 'Blech')).toEqual({
+      figure: '≥ 4,5',
+      unit: 'Bl.',
+    })
+    expect(splitQtyText('40', 'Stück')).toEqual({ figure: '40', unit: null })
+    expect(splitQtyText('offen', 'Liter')).toEqual({
+      figure: 'offen',
+      unit: null,
+    })
+    expect(splitQtyText('3', null)).toEqual({ figure: '3', unit: null })
   })
 })

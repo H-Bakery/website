@@ -55,18 +55,18 @@ while [ $# -gt 0 ]; do
     ;;
   --from-file)
     [ $# -ge 2 ] || die 2 "--from-file braucht einen Pfad"
-    from_file="$2"
+    from_file="$(caller_path "$2")"
     shift
     ;;
   --target)
     [ $# -ge 2 ] || die 2 "--target braucht ein Verzeichnis"
-    target="$2"
+    target="$(caller_path "$2")"
     shift
     ;;
   --apply) apply=1 ;;
   --force) force=1 ;;
   -h | --help)
-    sed -n '2,27p' "$0"
+    sed -n '2,27p' "$SCRIPT_DIR/restore.sh"
     exit 0
     ;;
   *) die 2 "unbekanntes Argument: $1" ;;

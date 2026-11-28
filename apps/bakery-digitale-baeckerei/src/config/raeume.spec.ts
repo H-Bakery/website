@@ -1,10 +1,10 @@
 import {
-  START_BLICKPUNKT_ID,
   START_RAUM_ID,
   findeBlickpunkt,
   findeBlickpunktFuerSlot,
   findeRaum,
   raeume,
+  startBlickpunkt,
   type Raum,
   type Vec3,
 } from './raeume'
@@ -39,11 +39,48 @@ function laden(): Raum {
 }
 
 describe('raeume (Konfiguration)', () => {
+  it('jeder Raum hat, was der Wechsel braucht: Beschriftung, Modell, Start-Blickpunkt, Türen in bekannte Räume', () => {
+    for (const raum of raeume) {
+      expect(raum.id).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/)
+      expect(raum.wechsel.trim()).not.toBe('')
+      expect(raum.modell).toMatch(/^[\w-][\w.-]*\.glb$/)
+      expect(startBlickpunkt(raum).id).toBe(raum.start)
+      for (const tuer of raum.tueren ?? []) {
+        expect(tuer.ziel).not.toBe(raum.id)
+        expect(findeRaum(tuer.ziel)).toBeDefined()
+      }
+      for (const intro of raum.intros ?? []) {
+        expect(findeBlickpunkt(raum, intro.ziel)).toBeDefined()
+      }
+    }
+    expect(new Set(raeume.map((r) => r.modell)).size).toBe(raeume.length)
+  })
+
+  it('der Laden: Produkte, keine Tür, Beschriftung in der Du-Form', () => {
+    const raum = laden()
+    expect(raum).toMatchObject({
+      name: 'Laden',
+      wechsel: 'In den Laden',
+      modell: 'twin.glb',
+      produkte: true,
+      start: 'theke',
+      fuellung: 'morgens',
+    })
+    expect(raum.tueren).toBeUndefined()
+  })
+
+  it('findeRaum sucht auch unter anderen Räumen als den konfigurierten', () => {
+    const fremd = { ...laden(), id: 'werkstatt' }
+    expect(findeRaum('werkstatt')).toBeUndefined()
+    expect(findeRaum('werkstatt', [fremd])).toBe(fremd)
+  })
+
   it('hat den Start-Blickpunkt', () => {
     const raum = findeRaum(START_RAUM_ID)
     if (!raum) throw new Error('Start-Raum fehlt')
-    expect(findeBlickpunkt(raum, START_BLICKPUNKT_ID)).toBeDefined()
-    expect(raum.blickpunkte[0].id).toBe(START_BLICKPUNKT_ID)
+    expect(findeBlickpunkt(raum, raum.start)).toBeDefined()
+    expect(raum.start).toBe('theke')
+    expect(raum.blickpunkte[0].id).toBe(raum.start)
   })
 
   it('der Laden hat die drei Blickpunkte aus DB3, in dieser Reihenfolge', () => {

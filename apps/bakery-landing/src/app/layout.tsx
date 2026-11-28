@@ -6,6 +6,8 @@ import { LocalFooter } from '../components/LocalFooter'
 import { getSeoOpeningHours } from '../utils/openingHours'
 import { Box } from '@mui/material'
 import { SITE_URL, LEGAL } from '../config/legal'
+import { loadOrderCatalogue } from '../lib/products'
+import { OrderProvider } from '../components/order/OrderProvider'
 
 export const metadata = {
   title:
@@ -59,6 +61,32 @@ export const metadata = {
     },
   },
 }
+
+/**
+ * Sprunglink „Zum Inhalt springen“: unsichtbar, bis er per Tastatur den Fokus
+ * bekommt, dann oben links über der Kopfzeile (die liegt auf zIndex 10001).
+ */
+const skipLinkSx = {
+  position: 'fixed',
+  top: 16,
+  left: 16,
+  zIndex: 10002,
+  px: 2,
+  py: 1.5,
+  borderRadius: '8px',
+  bgcolor: 'primary.main',
+  color: 'primary.contrastText',
+  fontWeight: 700,
+  textDecoration: 'underline',
+  boxShadow: 3,
+  transform: 'translateY(calc(-100% - 24px))',
+  '&:focus': {
+    transform: 'none',
+    outline: '3px solid',
+    outlineColor: 'secondary.main',
+    outlineOffset: '2px',
+  },
+} as const
 
 export default function RootLayout({
   children,
@@ -195,24 +223,39 @@ export default function RootLayout({
       </head>
       <body>
         <ThemeRegistry>
-          <Box
-            sx={{
-              background:
-                'radial-gradient(143.25% 143.25% at 50% 100%, #FFFFFF 0%, rgba(255, 255, 255, 0) 100%), #FFF3E6',
-              minHeight: '100vh',
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-          >
-            <Header />
+          <OrderProvider catalogue={loadOrderCatalogue()}>
             <Box
-              component="main"
-              sx={{ flex: 1, minHeight: 'calc(100vh - 332px)' }}
+              sx={{
+                background:
+                  'radial-gradient(143.25% 143.25% at 50% 100%, #FFFFFF 0%, rgba(255, 255, 255, 0) 100%), #FFF3E6',
+                minHeight: '100vh',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
             >
-              {children}
+              {/* Erstes fokussierbares Element: springt an der Kopfzeile vorbei. */}
+              <Box component="a" href="#inhalt" sx={skipLinkSx}>
+                Zum Inhalt springen
+              </Box>
+              <Header />
+              <Box
+                component="main"
+                id="inhalt"
+                tabIndex={-1}
+                sx={{
+                  flex: 1,
+                  minHeight: 'calc(100vh - 332px)',
+                  // Der Sprung landet nicht unter der fixierten Kopfzeile
+                  // (Werte wie HEADER_SPACE in components/header).
+                  scrollMarginTop: { xs: '72px', sm: '102px' },
+                  '&:focus': { outline: 'none' },
+                }}
+              >
+                {children}
+              </Box>
+              <LocalFooter />
             </Box>
-            <LocalFooter />
-          </Box>
+          </OrderProvider>
         </ThemeRegistry>
       </body>
     </html>

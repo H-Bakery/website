@@ -409,11 +409,25 @@ erweitertes `GET /api/backzettel/config`.
   gewöhnliche Korrektur-Editor (Menge, Grund Pflicht). Gespeichert wird über denselben
   `PUT …/correction` wie an einer Zeile, mit `bakeDate`. Ohne das ließ sich ein Posten mit
   Grundmenge 0 am Tag gar nicht eintragen (zwei Marmorkuchen, ein Kranz unter der Woche).
-- **Bildschirm:** ab `md` eine Tabelle je Abschnitt (feste Spaltenbreiten), darunter Karten; beide
-  stehen im DOM und werden per CSS umgeschaltet (Specs greifen über `table-<abschnitt>` /
-  `line-card-<key>`). Offene Nachträge: Zeile mit Warnrand + Chip, Karte „Nachträge seit der Freigabe"
-  mit „Gesehen". `configChangedSinceConfirm` und `prepDateProvisional` stehen als Hinweise da.
-  Bedienelemente ≥ 44 px.
+- **Bildschirm:** je Abschnitt eine Tabelle oder Karten; beide stehen im DOM und werden per CSS
+  umgeschaltet (Specs greifen über `table-<abschnitt>` / `line-card-<key>`). **Entscheidend ist die
+  Breite des Inhalts, nicht des Fensters** (Befund 2026-11-17: bei 1024 px bleiben neben der festen
+  Seitenleiste ~694 px, die Brot-Tabelle braucht ~940 px - Brote rechts fielen aus dem Bild, genau
+  auf der Seite mit „Freigeben"): eine CSS-Container-Abfrage am Rahmen (`tableFitSx` in
+  `BackzettelSectionView.tsx`, Container `bz-fit`) zeigt die Tabelle erst ab ihrer Mindestbreite,
+  darunter die Karten; ohne Container-Abfragen (alter Browser) gilt die alte Regel „Tabelle ab
+  `md`". Abschnitte: feste Spalten in px (`SECTION_COLS`, „Posten" bekommt den Rest), Tabelle ab
+  `SECTION_TABLE_MIN_WIDTH` (840 px). Brot: `breadTableMinWidth` (Name 140 + je Größe bzw.
+  „Menge" 136 + Teig 96); wird die sichtbare Tabelle doch breiter (Abzeichen „Grundmenge offen",
+  „44 Stück" neben dem Stift), misst `BreadTable` nach und hebt die Grenze, bis neue Daten kommen:
+  neue Daten (Laden, Speichern) im Layout-Effekt vor dem ersten Bild - sonst blitzte die Tabelle
+  kurz auf -, danach bei jeder Größenänderung per ResizeObserver. Stand synthetisch (vier Größen + „Menge"): Brot bei 1024-1180 px als Karten,
+  ab 1280 px als Tabelle (Entwurf mit Stiften und „Grundmenge offen" erst ab 1440 px); Abschnitte
+  bei 1024/1080 px als Karten, ab 1180 px als Tabellen. Basis „offen" steht als Warnschrift (kein
+  Chip, der zu „o…" wurde), darunter die Erklärung „„offen": Grundmenge noch nicht festgelegt …" -
+  ein `title` erreicht am Tablet niemand. Offene Nachträge: Zeile mit Warnrand + Chip, Karte
+  „Nachträge seit der Freigabe" mit „Gesehen". `configChangedSinceConfirm` und
+  `prepDateProvisional` stehen als Hinweise da. Bedienelemente ≥ 44 px.
 - **Druck eines Teigtag-Zettels (Z10 S6, überarbeitet U8/Z13, `sheetVersion: 2`):**
   `components/backzettel/DoughDayPrint.tsx`, A4 hoch, schwarz auf weiß (nur Striche und
   Schriftstärke, keine Flächen). Muss **nicht** wie der alte Papierzettel aussehen (Inhaber,
@@ -516,6 +530,35 @@ Die Stationsansicht der Backstube, Startseite der Rolle `backstube` nach der PIN
 `/admin` - keine Seitenleiste, deshalb mit eigenem „Abmelden" (`LogoutButton`, auf der Station zurück
 zu den Namenskacheln). Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhaber, Backstube).
 
+- **Aufbau (UI-Umbau 2026-11):** fester Kopf (`BackstubeHeader.tsx`) mit Datum, „Backstube · Name ·
+  Stand HH:MM" (nach gescheitertem Neuladen gelb mit Wolke), Neu laden, „Planung & Druck" (Drucker,
+  ab 900 px mit dem Kurznamen „Planung", ab 1200 px der volle Name; Name für Vorlesen immer
+  „Planung & Druck"; hochkant nur das Zeichen, sonst würde das Datum gekürzt), „Zur Verwaltung"
+  (unter 1200 px nur als Zeichen, Name per `aria-label`), Abmelden, Reitern Zettel / Backen /
+  Vorbereitung, Heute/Morgen und einer Fortschrittsleiste über die ganze Breite (Zettel:
+  erledigt, Backen: gebacken). Darunter **ab 1080 px zwei Spalten** (`BackstubeLayout.tsx`, Tablet
+  quer und Desktop): links eine mitlaufende Spalte mit eigenem Bildlauf - offene Nachträge zuerst,
+  dann der **Überblick** (`BackstubeOverview.tsx`: „n von m erledigt", je Abschnitt ein Sprungknopf
+  mit „3/7" und Balken; im Entwurf nur die Zeilenzahl), dann Hinweise -, rechts was zu tun ist
+  (Teige heute, Hefeteig & Füllungen, die Zeilen; höchstens ~940 px breit, eine Punktlinie führt vom
+  Namen zur Menge). Hochkant und am Handy steht die linke Spalte über den Zeilen; weit unten führt
+  „Überblick" zurück nach oben. Gezählt wird nur, was der Server an den Zeilen trägt
+  (`src/lib/backstubeProgress.ts`, rein und getestet; ein Nachtrag nach dem Haken öffnet die Zeile wieder).
+  Ein gescheiterter Haken meldet sich unten fest im Bild, auch wenn die Zeile weit unten lag. Am Handy
+  läuft der Kopf mit (vier Reihen wären ein Drittel des Bildschirms).
+- **UI-Runde 2 (2026-11):** Erledigte bzw. gebackene Zeilen klappen je Abschnitt zu einer Zeile
+  „✓ n erledigt" zusammen (antippen klappt auf, der Haken lässt sich dort zurücknehmen); eine gerade
+  abgehakte Zeile bleibt 5 s stehen. „Erledigte ausblenden" im Überblick gilt je Gerät
+  (`localStorage` `bakery-backstube-hide-done`, Vorgabe an; gesperrter Speicher → Vorgabe); beim
+  Drucken stehen alle Zeilen da (`BackstubeView.tsx`). **Menge zuerst:** unter 1300 px steht die Menge
+  groß links vor dem Namen (aus 1-2 m lesbar), ab 1300 px und im Druck Name - Punktlinie - Menge
+  (`BackstubeRow.tsx`). **Bäcker-Ansicht** (`BackstubeFocus.tsx`): nur ein Abschnitt, beginnt beim
+  ersten offenen, blättert mit zwei großen Knöpfen unten, Wischen oder Pfeiltasten; „Ganze Liste"/Esc
+  führt zurück. Start im Kopf (ab 1080 px) bzw. im Überblick; keine eigenen Daten, nur
+  `sheetProgress`/`bakeProgress`. **Nachträge nur einmal:** im Reiter Backen stehen sie nur im Abschnitt
+  „Nachträge" (je Zeile Haken + „Gesehen", oben „Alle gesehen"), links ein Hinweis mit Zahl, der dorthin
+  springt; der Zettel behält seinen (kompakteren) Kasten. Der Kopf ist in allen Reitern gleich hoch
+  (Heute/Morgen hält in Vorbereitung unsichtbar den Platz); „7,8 kg" in der Maschinenleiste bricht nicht um.
 - **Welcher Tag:** `src/lib/backstubeDay.ts` (rein, getestet). Vor **12 Uhr** (Ortszeit des Tablets,
   `BACKSTUBE_SWITCH_HOUR`) heute - die Schicht ab 2 Uhr läuft -, ab 12 Uhr der nächste
   Produktionstag; ist heute kein Produktionstag, immer der nächste. Der Umschalter „Heute"/„Morgen"
@@ -547,6 +590,10 @@ zu den Namenskacheln). Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhabe
   während eines laufenden Hakens zurückkommt, wird verworfen (`mutationSeq`) - sonst spränge der Haken
   kurz zurück.
 - **Entwurf:** großes Banner „Noch nicht freigegeben", Zahlen grau, gestrichelte Zeilen, keine Haken.
+  Wer freigeben darf (`hasBackstubeRights` und Zugang zu `/admin/backzettel`: Inhaber, Backstube,
+  Backstubenleitung), hat im Banner einen 56-px-Knopf **„Prüfen und freigeben"** zur Tagesplanung
+  `/admin/backzettel/<datum>`; dort wird geprüft und freigegeben. Verkauf sieht ihn nicht (darf die
+  Planung lesen, aber nicht freigeben). Vorher führte nur das Drucker-Zeichen im Kopf dorthin.
 - **Reiter „Backen" (O5):** je Zeile eines freigegebenen Zettels ein eigener 72-px-Haken
   **gebacken** (`BackstubeBakeList.tsx`), getrennt von „erledigt" im Reiter „Zettel"; Zeilen eines
   Entwurfs-Zettels (gestrichelt) haben keinen. Darunter „Nachträge (nicht in den Zahlen oben)" je
@@ -556,15 +603,17 @@ zu den Namenskacheln). Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhabe
   gesetzt und bei Fehler zurückgenommen; 409/404 laden die Backliste neu, ein Neuladen während
   eines laufenden Hakens wird verworfen. Der **Ausdruck** der Backliste bleibt Papier: ein leeres
   Kästchen je Zeile, unverändert (eine Seite).
-- **Nachträge:** Karte oben mit je einem großen „Gesehen", an der Zeile ein Badge „Nachtrag +N" (offen
+- **Nachträge:** Karte zuoberst in der linken Spalte (hochkant: über allem) mit je einem großen
+  „Gesehen", an der Zeile ein Badge „Nachtrag +N" (offen
   farbig, quittiert „· gesehen"). Nachträge stehen nie im Gesamt.
 - **Samstag:** Hefeteig & Füllungen (`components/backstube/BackstubeHefeteig.tsx`) **vor** den Zeilen,
   sonst danach. Dieselben Server-Zahlen wie die Tagesplanung, nur groß.
-- **„Vorbereitung heute":** `GET /api/backzettel/:datum/prep` für den nächsten Produktionstag nach
+- **Reiter „Vorbereitung"** (heute vorzubereiten): `GET /api/backzettel/:datum/prep` für den nächsten Produktionstag nach
   heute (vorbereitet am Kalender-Vortag ab 14 Uhr); ist der Vortag Ruhetag, steht der Hinweis aus
   `prepDateProvisional` da. Kein Umschalter - die Vorbereitung gilt immer dem nächsten Backtag.
 - **Neu geladen** wird alle 60 s (`BACKSTUBE_REFRESH_MS`), bei `focus` und `visibilitychange`.
-  Scheitert ein Neuladen, bleibt der letzte Stand stehen mit Hinweis und „Stand von HH:MM".
+  Scheitert ein Neuladen, bleibt der letzte Stand stehen mit Hinweis und „Stand von HH:MM"; der
+  Kopf zeigt den Stand gelb.
   **Fehlertexte** über `describeBackstubeError` (`src/lib/backstubeErrors.ts`): kein Server erreicht
   (fetch-Fehler, Zeitüberschreitung, 502-504 ohne JSON-Kennung von Caddy) → „Keine Verbindung zum
   Server – bitte WLAN prüfen."; 4xx mit deutscher API-`message` → diese; sonst ein deutscher Text mit
@@ -593,6 +642,6 @@ zu den Namenskacheln). Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhabe
   `admin/backzettel/grundmengen/GrundmengenClient.spec.tsx`,
   `components/backzettel/BackzettelPrint.spec.tsx`, Z10-Druck: `src/lib/dayPrintLayout.spec.ts`,
   `components/backzettel/{DoughDayPrint,BakeListPrint,AddLineCard}.spec.tsx`, Druck-Auswahl in
-  `admin/backzettel/[datum]/BackzettelDayClient.v2.spec.tsx`; `app/backstube/BackstubeClient.spec.tsx`,
+  `admin/backzettel/[datum]/BackzettelDayClient.v2.spec.tsx`; `app/backstube/BackstubeClient{,.v2}.spec.tsx`, `src/lib/backstubeProgress.spec.ts`,
   `components/backstube/backstubeColors.spec.ts`. Fixtures erfunden: `src/lib/backzettelFixtures.ts`
   (eindeutige Zeilen-IDs je Zeile), `src/lib/grundmengenFixtures.ts`.

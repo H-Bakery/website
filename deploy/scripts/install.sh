@@ -59,7 +59,7 @@ while [ $# -gt 0 ]; do
   --units-only) mode="units" ;;
   --check) mode="check" ;;
   -h | --help)
-    sed -n '2,33p' "$0"
+    sed -n '2,33p' "$SCRIPT_DIR/install.sh"
     exit 0
     ;;
   *) die 2 "unbekanntes Argument: $1" ;;

@@ -140,7 +140,16 @@ export function MachineStrip({
             </Typography>
             {members.length > 0 && (
               <Typography sx={{ fontSize: small, color: 'text.secondary' }}>
-                {members.map((m) => `${m.name} ${kgText(m)}`).join(' · ')}
+                {/* UI-Runde 2: „1,7“ und „kg“ nie getrennt umbrechen. */}
+                {members.map((m, i) => (
+                  <React.Fragment key={m.id}>
+                    {i > 0 ? ' · ' : ''}
+                    {m.name}{' '}
+                    <Box component="span" sx={{ whiteSpace: 'nowrap' }}>
+                      {kgText(m)}
+                    </Box>
+                  </React.Fragment>
+                ))}
               </Typography>
             )}
             <Typography sx={{ fontSize: small }}>

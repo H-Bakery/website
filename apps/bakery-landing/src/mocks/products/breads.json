@@ -33,7 +33,7 @@
     "name": "Holzluken 500g",
     "category": "Brot",
     "image": "/assets/images/products/brot-rund.svg",
-    "price": 2.9
+    "price": 3
   },
   {
     "id": 6,
@@ -89,21 +89,21 @@
     "name": "Kerbricher 500g",
     "category": "Brot",
     "image": "/assets/images/products/brot-rund.svg",
-    "price": 2.9
+    "price": 3.2
   },
   {
     "id": 14,
     "name": "Kerbricher 750g",
     "category": "Brot",
     "image": "/assets/images/products/brot-rund.svg",
-    "price": 4
+    "price": 4.2
   },
   {
     "id": 15,
     "name": "Haferflocken 500g",
     "category": "Brot",
     "image": "/assets/images/products/vollkorn-kastenbrot.svg",
-    "price": 3.2
+    "price": 3.4
   },
   {
     "id": 16,
@@ -117,7 +117,7 @@
     "name": "Voll-Gut 500g",
     "category": "Brot",
     "image": "/assets/images/products/vollkorn-kastenbrot.svg",
-    "price": 3.2
+    "price": 3.4
   },
   {
     "id": 18,
@@ -152,7 +152,7 @@
     "name": "Hildegard von Bingen 500g",
     "category": "Brot",
     "image": "/assets/images/products/brot-rund.svg",
-    "price": 3.5
+    "price": 3.6
   },
   {
     "id": 23,
@@ -166,7 +166,7 @@
     "name": "König Ludwig 500g",
     "category": "Brot",
     "image": "/assets/images/products/brot-rund.svg",
-    "price": 3.5
+    "price": 3.6
   },
   {
     "id": 25,

@@ -90,20 +90,75 @@ export function DeltaChip({ line }: { line: BackzettelLine }) {
   )
 }
 
+/** Erklärung zu „offen“ unter dem Abschnitt - ein `title` erreicht am Tablet niemand. */
+export const BASE_OPEN_NOTE =
+  '„offen“: Grundmenge noch nicht festgelegt – bekannt sind nur Vorbestellungen und CAP.'
+
+/**
+ * Basis einer Zeile; Grundmenge offen: „offen“ als Warnschrift. Kein Chip -
+ * in der schmalen Spalte wurde er zu „o…“ (Tablet quer).
+ */
 function BaseValue({ line }: { line: BackzettelLine }) {
   if (line.baseUnset) {
     return (
-      <Chip
-        size="small"
-        variant="outlined"
-        color="warning"
-        label="offen"
-        title="Grundmenge noch nicht festgelegt"
-      />
+      <Box
+        component="span"
+        data-testid={`base-open-${line.key}`}
+        sx={{ color: 'warning.main', fontWeight: 700 }}
+      >
+        offen
+      </Box>
     )
   }
   return <>{formatNumber(line.base)}</>
 }
+
+/** Name des CSS-Containers um Tabelle und Karten (`tableFitSx`). */
+const FIT_CONTAINER = 'bz-fit'
+
+/**
+ * Tabelle oder Karten nach der Breite, die der Inhalt wirklich hat - nicht
+ * nach dem Fenster: neben der festen Seitenleiste (280 px) bleiben bei
+ * 1024 px nur ~694 px, die Tabelle ab `md` schob dort Spalten aus dem Bild
+ * (Befund 2026-11-17). Eine CSS-Container-Abfrage am Rahmen zeigt die
+ * Tabelle erst, wenn er mindestens `minWidth` px breit ist, sonst die
+ * Karten. Beide stehen weiter im DOM - kein Messen vor dem ersten Bild, kein
+ * Aufblitzen, ein Datenstand. Ohne Container-Abfragen (alter Browser) gilt
+ * die alte Regel: Tabelle ab `md`.
+ */
+export function tableFitSx(minWidth: number) {
+  const narrow = `@container ${FIT_CONTAINER} (width < ${minWidth}px)`
+  const wide = `@container ${FIT_CONTAINER} (width >= ${minWidth}px)`
+  return {
+    container: {
+      containerType: 'inline-size',
+      containerName: FIT_CONTAINER,
+    },
+    table: {
+      display: { xs: 'none', md: 'block' },
+      [narrow]: { display: 'none' },
+      [wide]: { display: 'block' },
+    },
+    cards: {
+      display: { xs: 'block', md: 'none' },
+      [narrow]: { display: 'block' },
+      [wide]: { display: 'none' },
+    },
+  } as const
+}
+
+/**
+ * Spaltenbreiten der Abschnitts-Tabelle in px (Basis, Saison, Vorbestellt,
+ * CAP, Korrektur, Gesamt): fest, damit die Zahlen in allen Abschnitten
+ * untereinander stehen und „Vorbestellt“ nicht in „CAP“ läuft. Korrektur
+ * fasst Zahl + 44-px-Stift, Gesamt „≥ 12,5 L“ in großer Schrift. „Posten“
+ * bekommt den Rest, mindestens `SECTION_NAME_MIN`.
+ */
+export const SECTION_COLS = [80, 80, 120, 72, 168, 120] as const
+export const SECTION_NAME_MIN = 200
+/** Ab dieser Breite des Abschnitts steht die Tabelle da, darunter Karten. */
+export const SECTION_TABLE_MIN_WIDTH =
+  SECTION_NAME_MIN + SECTION_COLS.reduce((sum, w) => sum + w, 0)
 
 /**
  * Tagesentscheidung bei offener Grundmenge: „Heute keine“ bzw. „Für heute
@@ -327,10 +382,12 @@ function SourcesLine({ line }: { line: BackzettelLine }) {
 }
 
 /**
- * Ein Abschnitt des Backzettels (Brot, Brötchen, Hefeteig, …): ab `md` als
- * Tabelle Basis | Saison | Vorbestellt | CAP | Korrektur | Gesamt, darunter
- * als Kartenliste (Handy, Tablet hochkant). Beide stehen im DOM und werden per
- * CSS umgeschaltet - so gibt es weder Aufblitzen noch einen zweiten Datenstand.
+ * Ein Abschnitt des Backzettels (Brot, Brötchen, Hefeteig, …): ist der
+ * Abschnitt mindestens `SECTION_TABLE_MIN_WIDTH` breit, als Tabelle Basis |
+ * Saison | Vorbestellt | CAP | Korrektur | Gesamt, sonst als Kartenliste
+ * (Handy, Tablet hochkant, Tablet quer neben der Seitenleiste). Beide stehen
+ * im DOM und werden per CSS umgeschaltet (`tableFitSx`) - so gibt es weder
+ * Aufblitzen noch einen zweiten Datenstand.
  */
 export function BackzettelSectionView({
   section,
@@ -347,6 +404,8 @@ export function BackzettelSectionView({
     (line: BackzettelLine) =>
     (c: number, r: string | null, o?: CorrectionSaveOptions) =>
       onSaveCorrection(line, c, r, o)
+  const fit = tableFitSx(SECTION_TABLE_MIN_WIDTH)
+  const baseOpen = section.lines.some((line) => line.baseUnset)
 
   return (
     <PageSection
@@ -354,198 +413,214 @@ export function BackzettelSectionView({
       disablePadding
       data-testid={`section-${section.id}`}
     >
-      {/* Tabelle ab md */}
-      <TableContainer
-        sx={{ display: { xs: 'none', md: 'block' } }}
-        data-testid={`table-${section.id}`}
+      <Box
+        sx={fit.container}
+        data-testid={`fit-${section.id}`}
+        data-table-min-width={SECTION_TABLE_MIN_WIDTH}
       >
-        {/* Feste Spaltenbreiten: die Zahlen stehen in allen Abschnitten
-            untereinander. */}
-        <Table
-          size="small"
-          aria-label={`Backzettel ${section.label}`}
-          sx={{ tableLayout: 'fixed' }}
-        >
-          <colgroup>
-            <col style={{ width: '30%' }} />
-            <col style={{ width: '9%' }} />
-            <col style={{ width: '9%' }} />
-            <col style={{ width: '11%' }} />
-            <col style={{ width: '8%' }} />
-            <col style={{ width: '20%' }} />
-            <col style={{ width: '13%' }} />
-          </colgroup>
-          <TableHead>
-            <TableRow>
-              <TableCell>Posten</TableCell>
-              <TableCell sx={NUM}>Basis</TableCell>
-              <TableCell sx={NUM}>Saison</TableCell>
-              <TableCell sx={NUM}>Vorbestellt</TableCell>
-              <TableCell sx={NUM}>CAP</TableCell>
-              <TableCell sx={NUM}>Korrektur</TableCell>
-              <TableCell sx={NUM}>Gesamt</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {section.lines.map((line) => {
-              const label = lineLabel(line, config)
-              const editing = editingKey === line.key
-              return (
-                <React.Fragment key={line.key}>
-                  <TableRow
-                    data-testid={`line-row-${line.key}`}
-                    sx={deltaSx(line, reopened(line))}
-                  >
-                    <TableCell>
-                      <LineName line={line} config={config} deltas={deltas} />
-                    </TableCell>
-                    <TableCell sx={NUM}>
-                      <BaseValue line={line} />
-                    </TableCell>
-                    <TableCell sx={NUM}>
-                      {formatSigned(line.seasonal)}
-                    </TableCell>
-                    <TableCell sx={NUM}>
-                      {formatOrDash(line.preorders)}
-                    </TableCell>
-                    <TableCell sx={NUM}>{formatOrDash(line.cap)}</TableCell>
-                    <TableCell sx={NUM}>
-                      <CorrectionValue
-                        line={line}
-                        label={label}
-                        editable={editable && !editing}
-                        onEdit={() => onEdit(line.key)}
-                      />
-                    </TableCell>
-                    <TableCell sx={NUM}>
-                      <Typography
-                        component="span"
-                        sx={TOTAL_SX}
-                        data-testid={`line-total-${line.key}`}
-                      >
-                        {minQtyText(line, line.unit)}
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
-                  {editing && (
-                    <TableRow>
-                      <TableCell
-                        colSpan={7}
-                        sx={{ bgcolor: 'action.selected' }}
-                      >
-                        <CorrectionEditor
-                          idPrefix="table"
+        {/* Tabelle, wenn der Abschnitt breit genug ist */}
+        <TableContainer sx={fit.table} data-testid={`table-${section.id}`}>
+          {/* Feste Spaltenbreiten: die Zahlen stehen in allen Abschnitten
+            untereinander; „Posten“ bekommt den Rest. */}
+          <Table
+            size="small"
+            aria-label={`Backzettel ${section.label}`}
+            sx={{ tableLayout: 'fixed' }}
+          >
+            <colgroup>
+              <col />
+              {SECTION_COLS.map((width, i) => (
+                <col key={i} style={{ width }} />
+              ))}
+            </colgroup>
+            <TableHead>
+              <TableRow>
+                <TableCell>Posten</TableCell>
+                <TableCell sx={NUM}>Basis</TableCell>
+                <TableCell sx={NUM}>Saison</TableCell>
+                <TableCell sx={NUM}>Vorbestellt</TableCell>
+                <TableCell sx={NUM}>CAP</TableCell>
+                <TableCell sx={NUM}>Korrektur</TableCell>
+                <TableCell sx={NUM}>Gesamt</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {section.lines.map((line) => {
+                const label = lineLabel(line, config)
+                const editing = editingKey === line.key
+                return (
+                  <React.Fragment key={line.key}>
+                    <TableRow
+                      data-testid={`line-row-${line.key}`}
+                      sx={deltaSx(line, reopened(line))}
+                    >
+                      <TableCell sx={{ overflowWrap: 'break-word' }}>
+                        <LineName line={line} config={config} deltas={deltas} />
+                      </TableCell>
+                      <TableCell sx={NUM}>
+                        <BaseValue line={line} />
+                      </TableCell>
+                      <TableCell sx={NUM}>
+                        {formatSigned(line.seasonal)}
+                      </TableCell>
+                      <TableCell sx={NUM}>
+                        {formatOrDash(line.preorders)}
+                      </TableCell>
+                      <TableCell sx={NUM}>{formatOrDash(line.cap)}</TableCell>
+                      <TableCell sx={NUM}>
+                        <CorrectionValue
                           line={line}
                           label={label}
-                          onSave={save(line)}
-                          onCancel={() => onEdit(null)}
+                          editable={editable && !editing}
+                          onEdit={() => onEdit(line.key)}
                         />
                       </TableCell>
-                    </TableRow>
-                  )}
-                </React.Fragment>
-              )
-            })}
-          </TableBody>
-        </Table>
-      </TableContainer>
-
-      {/* Kartenliste unter md */}
-      <Box
-        sx={{ display: { xs: 'block', md: 'none' } }}
-        data-testid={`cards-${section.id}`}
-      >
-        {section.lines.map((line, index) => {
-          const label = lineLabel(line, config)
-          const editing = editingKey === line.key
-          return (
-            <Box
-              key={line.key}
-              data-testid={`line-card-${line.key}`}
-              sx={{
-                px: 2,
-                py: 1.5,
-                borderTop: index === 0 ? 0 : 1,
-                borderColor: 'divider',
-                ...deltaSx(line, reopened(line)),
-              }}
-            >
-              <Stack
-                direction="row"
-                spacing={1}
-                alignItems="flex-start"
-                justifyContent="space-between"
-              >
-                <LineName line={line} config={config} deltas={deltas} />
-                <Typography
-                  component="div"
-                  sx={{ ...TOTAL_SX, fontSize: '1.5rem', whiteSpace: 'nowrap' }}
-                  aria-label={`Gesamt ${label}`}
-                >
-                  {minQtyText(line, line.unit)}
-                </Typography>
-              </Stack>
-              <SourcesLine line={line} />
-              {(editable ||
-                line.correction !== 0 ||
-                line.correctionClamped) && (
-                <Stack
-                  direction="row"
-                  alignItems="center"
-                  justifyContent="space-between"
-                  sx={{ mt: 0.5, minHeight: editable ? 44 : 0 }}
-                >
-                  <Box sx={{ minWidth: 0 }}>
-                    <Typography variant="body2">
-                      Korrektur: {formatSigned(line.correction)}
-                      {line.correctionClamped && (
+                      <TableCell sx={NUM}>
                         <Typography
                           component="span"
-                          variant="body2"
-                          color="error"
-                          fontWeight={600}
+                          sx={TOTAL_SX}
+                          data-testid={`line-total-${line.key}`}
                         >
-                          {' '}
-                          - größer als die Menge
+                          {minQtyText(line, line.unit)}
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                    {editing && (
+                      <TableRow>
+                        <TableCell
+                          colSpan={7}
+                          sx={{ bgcolor: 'action.selected' }}
+                        >
+                          <CorrectionEditor
+                            idPrefix="table"
+                            line={line}
+                            label={label}
+                            onSave={save(line)}
+                            onCancel={() => onEdit(null)}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </React.Fragment>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+
+        {/* Kartenliste, wenn die Tabelle nicht passt */}
+        <Box sx={fit.cards} data-testid={`cards-${section.id}`}>
+          {section.lines.map((line, index) => {
+            const label = lineLabel(line, config)
+            const editing = editingKey === line.key
+            return (
+              <Box
+                key={line.key}
+                data-testid={`line-card-${line.key}`}
+                sx={{
+                  px: 2,
+                  py: 1.5,
+                  borderTop: index === 0 ? 0 : 1,
+                  borderColor: 'divider',
+                  ...deltaSx(line, reopened(line)),
+                }}
+              >
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  alignItems="flex-start"
+                  justifyContent="space-between"
+                >
+                  <LineName line={line} config={config} deltas={deltas} />
+                  <Typography
+                    component="div"
+                    sx={{
+                      ...TOTAL_SX,
+                      fontSize: '1.5rem',
+                      whiteSpace: 'nowrap',
+                    }}
+                    aria-label={`Gesamt ${label}`}
+                  >
+                    {minQtyText(line, line.unit)}
+                  </Typography>
+                </Stack>
+                <SourcesLine line={line} />
+                {(editable ||
+                  line.correction !== 0 ||
+                  line.correctionClamped) && (
+                  <Stack
+                    direction="row"
+                    alignItems="center"
+                    justifyContent="space-between"
+                    sx={{ mt: 0.5, minHeight: editable ? 44 : 0 }}
+                  >
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="body2">
+                        Korrektur: {formatSigned(line.correction)}
+                        {line.correctionClamped && (
+                          <Typography
+                            component="span"
+                            variant="body2"
+                            color="error"
+                            fontWeight={600}
+                          >
+                            {' '}
+                            - größer als die Menge
+                          </Typography>
+                        )}
+                      </Typography>
+                      {line.correctionReason && (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ overflowWrap: 'anywhere' }}
+                        >
+                          {line.correctionReason}
+                          {line.correctionBy
+                            ? ` (${line.correctionBy.displayName})`
+                            : ''}
                         </Typography>
                       )}
-                    </Typography>
-                    {line.correctionReason && (
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ overflowWrap: 'anywhere' }}
+                    </Box>
+                    {editable && !editing && (
+                      <IconButton
+                        onClick={() => onEdit(line.key)}
+                        aria-label={`Korrektur ${label} bearbeiten`}
+                        sx={{ width: 44, height: 44 }}
                       >
-                        {line.correctionReason}
-                        {line.correctionBy
-                          ? ` (${line.correctionBy.displayName})`
-                          : ''}
-                      </Typography>
+                        <EditIcon fontSize="small" />
+                      </IconButton>
                     )}
-                  </Box>
-                  {editable && !editing && (
-                    <IconButton
-                      onClick={() => onEdit(line.key)}
-                      aria-label={`Korrektur ${label} bearbeiten`}
-                      sx={{ width: 44, height: 44 }}
-                    >
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                  )}
-                </Stack>
-              )}
-              {editing && (
-                <CorrectionEditor
-                  idPrefix="card"
-                  line={line}
-                  label={label}
-                  onSave={save(line)}
-                  onCancel={() => onEdit(null)}
-                />
-              )}
-            </Box>
-          )
-        })}
+                  </Stack>
+                )}
+                {editing && (
+                  <CorrectionEditor
+                    idPrefix="card"
+                    line={line}
+                    label={label}
+                    onSave={save(line)}
+                    onCancel={() => onEdit(null)}
+                  />
+                )}
+              </Box>
+            )
+          })}
+        </Box>
+        {baseOpen && (
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            data-testid={`base-open-note-${section.id}`}
+            sx={{
+              px: 2,
+              py: 1,
+              borderTop: 1,
+              borderColor: 'divider',
+            }}
+          >
+            {BASE_OPEN_NOTE}
+          </Typography>
+        )}
       </Box>
     </PageSection>
   )

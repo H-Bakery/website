@@ -11,17 +11,16 @@ import Brotplan from '../components/home/wochenanfebote'
 import EnhancedTestimonial from '../components/home/testimonial/EnhancedTestimonial'
 import CallToAction from '../components/CallToAction'
 import MapComponent from '../components/home/map'
-import { loadProducts } from '../lib/products'
+import { loadListedProducts } from '../lib/products'
+import { pageOpenGraph } from '../lib/seo/pageMetadata'
 import { Metadata } from 'next'
-import { SITE_URL } from '../config/legal'
+import { LEGAL, SITE_URL } from '../config/legal'
 
 export const metadata: Metadata = {
   alternates: {
     canonical: '/',
   },
-  openGraph: {
-    url: SITE_URL,
-  },
+  openGraph: pageOpenGraph({ url: SITE_URL }),
 }
 
 const FEATURED_CATEGORIES = [
@@ -35,21 +34,18 @@ const FEATURED_CATEGORIES = [
 ]
 
 export default function HomePage() {
-  const allProducts = loadProducts()
+  const listedProducts = loadListedProducts()
 
-  // Pick 1 available product per category + 1 extra
-  const featured: typeof allProducts = []
+  // Pick 1 offered product per category + 1 extra
+  const featured: typeof listedProducts = []
   for (const cat of FEATURED_CATEGORIES) {
-    const product = allProducts.find(
-      (p) =>
-        p.category === cat && p.available !== false && !featured.includes(p)
+    const product = listedProducts.find(
+      (p) => p.category === cat && !featured.includes(p)
     )
     if (product) featured.push(product)
   }
   // Add 1 extra product not yet picked
-  const extra = allProducts.find(
-    (p) => p.available !== false && !featured.includes(p)
-  )
+  const extra = listedProducts.find((p) => !featured.includes(p))
   if (extra) featured.push(extra)
 
   return (
@@ -76,7 +72,7 @@ export default function HomePage() {
         primaryAction={{
           label: 'Jetzt anrufen',
           icon: <PhoneIcon />,
-          href: 'tel:068412229',
+          href: LEGAL.phoneHref,
           variant: 'contained',
         }}
         secondaryAction={{

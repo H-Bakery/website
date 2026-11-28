@@ -1,3 +1,4 @@
+/** @jest-environment-options {"url": "https://sprache.test"} */
 import React from 'react'
 import {
   fireEvent,
@@ -9,6 +10,8 @@ import {
 import { ApiError } from '@bakery/shared/data-access'
 import RestClient, { DRAFT_STALE_MESSAGE } from './RestClient'
 import * as api from '../../../lib/restApi'
+import * as voice from '../../../lib/spracheApi'
+import { useRecorder } from '../../../components/sprache/useRecorder'
 import type { RestCountRow, RestDay, RestLine } from '../../../lib/restApi'
 import { fakeSession, WithSession } from '../../../lib/testing/fakeSession'
 import type { PilotRole } from '../../../lib/roles'
@@ -18,6 +21,15 @@ jest.mock('../../../lib/restApi', () => {
   const actual = jest.requireActual('../../../lib/restApi')
   return { ...actual, fetchRestDay: jest.fn(), saveRestDay: jest.fn() }
 })
+jest.mock('../../../lib/spracheApi', () => ({
+  fetchVoiceStatus: jest.fn(async () => undefined),
+  understandVoice: jest.fn(),
+}))
+jest.mock('../../../components/sprache/useRecorder', () => ({
+  useRecorder: jest.fn(() => ({ phase: 'idle' })),
+}))
+const voiceApi = jest.mocked(voice)
+const recorder = jest.mocked(useRecorder)
 const mocked = api as jest.Mocked<typeof api>
 
 function row(overrides: Partial<RestCountRow> = {}): RestCountRow {
@@ -616,5 +628,360 @@ describe('Rest am Abend - Tagestyp aus dem Kalender (Z14)', () => {
     )
     expect(screen.getByTestId('rest-line-weck|')).toBeTruthy()
     expect(screen.queryByTestId('rest-closed-day')).toBeNull()
+  })
+})
+
+describe('Spracheingabe für Rest am Abend', () => {
+  const status: voice.VoiceStatus = {
+    enabled: true,
+    screens: ['rest'],
+    budget: {
+      month: '2026-12',
+      limitEuro: 10,
+      spentEuro: 0,
+      remainingEuro: 10,
+      warning: false,
+    },
+  }
+  const result: voice.VoiceResult = {
+    transcript: 'Weck drei',
+    unmatched: [],
+    proposal: [
+      {
+        key: 'weck||test-weck',
+        menge: 3,
+        heard: 'Weck drei',
+        unsicher: false,
+        reason: null,
+      },
+    ],
+    usage: { costEuro: 0.001, llmUsed: false },
+  }
+  const secureDescriptor = Object.getOwnPropertyDescriptor(
+    window,
+    'isSecureContext'
+  )
+  const mediaDescriptor = Object.getOwnPropertyDescriptor(
+    navigator,
+    'mediaDevices'
+  )
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    useMemoryStorage()
+    Object.defineProperty(window, 'isSecureContext', {
+      configurable: true,
+      value: true,
+    })
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: jest.fn() },
+    })
+    mocked.fetchRestDay.mockResolvedValue(makeDay())
+    voiceApi.fetchVoiceStatus.mockResolvedValue(status)
+    voiceApi.understandVoice.mockResolvedValue(result)
+    recorder.mockReturnValue({
+      phase: 'idle',
+      seconds: 0,
+      level: 0,
+      noSound: false,
+      error: null,
+      start: jest.fn(async (onClip) =>
+        onClip(new Blob(['Test'], { type: 'audio/wav' }))
+      ),
+      stop: jest.fn(),
+      cancel: jest.fn(),
+    })
+  })
+
+  afterEach(() => {
+    if (secureDescriptor)
+      Object.defineProperty(window, 'isSecureContext', secureDescriptor)
+    else Reflect.deleteProperty(window, 'isSecureContext')
+    if (mediaDescriptor)
+      Object.defineProperty(navigator, 'mediaDevices', mediaDescriptor)
+    else Reflect.deleteProperty(navigator, 'mediaDevices')
+  })
+
+  it.each(['disabled', 'backstube', 'gesperrt', 'ohne HTTPS', 'ohne Mikrofon'])(
+    'zeigt keinen Mikrofonknopf (%s)',
+    async (condition) => {
+      if (condition === 'disabled')
+        voiceApi.fetchVoiceStatus.mockResolvedValue({
+          ...status,
+          enabled: false,
+        })
+      if (condition === 'gesperrt')
+        mocked.fetchRestDay.mockResolvedValue(makeDay({ editable: false }))
+      if (condition === 'ohne HTTPS')
+        Object.defineProperty(window, 'isSecureContext', { value: false })
+      if (condition === 'ohne Mikrofon')
+        Object.defineProperty(navigator, 'mediaDevices', { value: undefined })
+      renderAs(condition === 'backstube' ? 'backstube' : 'verkauf')
+      await screen.findByTestId('rest-line-weck|')
+      if (condition === 'ohne HTTPS') {
+        expect(
+          await screen.findByText('Spracheingabe braucht HTTPS – bitte tippen.')
+        ).toBeTruthy()
+      }
+      if (condition === 'ohne Mikrofon') {
+        expect(
+          await screen.findByText(
+            'Das Mikrofon ist auf diesem Gerät nicht verfügbar – bitte tippen.'
+          )
+        ).toBeTruthy()
+      }
+      expect(screen.queryByRole('button', { name: 'Sprechen' })).toBeNull()
+      expect(voiceApi.understandVoice).not.toHaveBeenCalled()
+      if (condition === 'backstube' || condition === 'gesperrt') {
+        expect(voiceApi.fetchVoiceStatus).not.toHaveBeenCalled()
+      }
+    }
+  )
+
+  it('zeigt den leeren Monat und sperrt Aufnahmen', async () => {
+    voiceApi.fetchVoiceStatus.mockResolvedValue({
+      ...status,
+      budget: { ...status.budget, remainingEuro: 0 },
+    })
+    renderAs('inhaber')
+    expect(
+      await screen.findByText(
+        'Spracheingabe für diesen Monat aufgebraucht – bitte tippen.'
+      )
+    ).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Sprechen' })).toHaveProperty(
+      'disabled',
+      true
+    )
+  })
+
+  async function speak() {
+    fireEvent.click(await screen.findByRole('button', { name: 'Sprechen' }))
+    expect(
+      await screen.findByRole('dialog', { name: 'Freiwillige Spracheingabe' })
+    ).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Aufnahme starten' }))
+    return screen.findByRole('dialog', { name: 'Sprachvorschlag prüfen' })
+  }
+
+  it('übernimmt nur in den Entwurf und stellt mit Rückgängig den vorherigen Entwurf wieder her', async () => {
+    renderAs('verkauf')
+    await screen.findByTestId('rest-line-weck|')
+    fireEvent.click(screen.getByRole('button', { name: 'Weck: mehr' }))
+    const dialog = await speak()
+    expect(within(dialog).getByText('Gehört: „Weck drei“')).toBeTruthy()
+    expect(within(dialog).getByText('1 St. → 3 St.')).toBeTruthy()
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Übernehmen (1)' })
+    )
+    expect(await screen.findByText('1 Zeile übernommen')).toBeTruthy()
+    expect(
+      await screen.findByRole('button', { name: 'Weck: Menge eingeben' })
+    ).toHaveTextContent('3')
+    expect(mocked.saveRestDay).not.toHaveBeenCalled()
+    expect(voiceApi.understandVoice).toHaveBeenCalledWith(
+      '2026-12-01',
+      expect.any(Blob),
+      expect.any(AbortSignal)
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rückgängig' }))
+    expect(
+      screen.getByRole('button', { name: 'Weck: Menge eingeben' })
+    ).toHaveTextContent('1')
+    mocked.saveRestDay.mockResolvedValue(makeDay({ changed: 1 }))
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
+    expect(mocked.saveRestDay).toHaveBeenCalledWith('2026-12-01', [
+      { itemId: 'weck', productId: 'test-weck', qty: 1, expected: null },
+    ])
+    await screen.findByText('1 Zählung gespeichert.')
+  })
+
+  it('behält die Herkunft beim Neuladen und sendet sie erst beim Speichern', async () => {
+    const page = renderAs('verkauf')
+    const dialog = await speak()
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Übernehmen (1)' })
+    )
+    expect(mocked.saveRestDay).not.toHaveBeenCalled()
+    page.unmount()
+    renderAs('verkauf')
+    mocked.saveRestDay.mockResolvedValue(makeDay({ changed: 1 }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Speichern' }))
+    expect(mocked.saveRestDay).toHaveBeenCalledWith(
+      '2026-12-01',
+      [{ itemId: 'weck', productId: 'test-weck', qty: 3, expected: null }],
+      'sprache'
+    )
+    await screen.findByText('1 Zählung gespeichert.')
+  })
+
+  it('sperrt Rückgängig beim PUT und bewahrt den vorherigen Entwurf samt Grundlage nach 409', async () => {
+    let rejectSave: (error: ApiError) => void = () => undefined
+    mocked.saveRestDay.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectSave = reject
+        })
+    )
+    renderAs('verkauf')
+    await screen.findByTestId('rest-line-weck|')
+    fireEvent.click(screen.getByRole('button', { name: 'Weck: mehr' }))
+    const dialog = await speak()
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Übernehmen (1)' })
+    )
+    const undo = await screen.findByRole('button', { name: 'Rückgängig' })
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
+    expect(undo).toBeDisabled()
+
+    mocked.fetchRestDay.mockResolvedValueOnce(
+      makeDay({
+        lines: [line({ rows: [row({ qty: 6, revision: 1 })] })],
+      })
+    )
+    const error = new ApiError(
+      'Weck wurde inzwischen anders gezählt.',
+      409,
+      'rest_changed'
+    )
+    error.details = {
+      current: [
+        { itemId: 'weck', variant: null, productId: 'test-weck', qty: 6 },
+      ],
+    }
+    rejectSave(error)
+    await waitFor(() => expect(undo).toBeEnabled())
+    fireEvent.click(undo)
+    expect(
+      screen.getByRole('button', { name: 'Weck: Menge eingeben' })
+    ).toHaveTextContent('1')
+    expect(mocked.saveRestDay).toHaveBeenCalledTimes(1)
+
+    // Ein Wiederholungs-PUT muss die vor dem Sprechen bekannte Grundlage
+    // verwenden, damit die fremde 6 nicht still überschrieben wird.
+    mocked.saveRestDay.mockRejectedValueOnce(error)
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Meine Zahlen speichern' })
+    )
+    expect(mocked.saveRestDay).toHaveBeenLastCalledWith('2026-12-01', [
+      { itemId: 'weck', productId: 'test-weck', qty: 1, expected: null },
+    ])
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Meine Zahlen speichern' })
+      ).toBeEnabled()
+    )
+  })
+
+  it('lässt Rückgängig nach einem Netzwerkfehler verfügbar', async () => {
+    mocked.saveRestDay.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    renderAs('verkauf')
+    const dialog = await speak()
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Übernehmen (1)' })
+    )
+    const undo = await screen.findByRole('button', { name: 'Rückgängig' })
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
+    await waitFor(() => expect(undo).toBeEnabled())
+    fireEvent.click(undo)
+    expect(
+      screen.queryByRole('button', { name: 'Speichern' })
+    ).not.toBeInTheDocument()
+  })
+
+  it('zeigt bei einer gescheiterten Wiederholung den Fehler im Blatt und behält den Vorschlag', async () => {
+    voiceApi.understandVoice
+      .mockResolvedValueOnce(result)
+      .mockRejectedValueOnce(new ApiError('Test', 503, 'voice_unavailable'))
+    renderAs('verkauf')
+    const dialog = await speak()
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Nochmal sprechen' })
+    )
+    const warning = await within(dialog).findByText(
+      'Spracheingabe braucht Internet – bitte tippen.'
+    )
+    expect(warning.closest('[aria-live="polite"]')).toBeTruthy()
+    expect(within(dialog).getByText('Gehört: „Weck drei“')).toBeTruthy()
+    expect(
+      within(dialog).getByRole('button', { name: 'Übernehmen (1)' })
+    ).toBeEnabled()
+    const retry = within(dialog).getByRole('button', {
+      name: 'Nochmal sprechen',
+    })
+    expect(retry).toBeEnabled()
+    fireEvent.click(retry)
+    expect(
+      await within(dialog).findByText('Gehört: „Weck drei“ · „Weck drei“')
+    ).toBeTruthy()
+    expect(
+      within(dialog).queryByText(
+        'Spracheingabe braucht Internet – bitte tippen.'
+      )
+    ).toBeNull()
+  })
+
+  it('sperrt nach voice_unavailable den Mikrofonknopf und zeigt eine Wiederholung an', async () => {
+    voiceApi.understandVoice.mockRejectedValueOnce(
+      new ApiError('Test', 503, 'voice_unavailable')
+    )
+    renderAs('verkauf')
+    fireEvent.click(await screen.findByRole('button', { name: 'Sprechen' }))
+    const notice = await screen.findByRole('dialog', {
+      name: 'Freiwillige Spracheingabe',
+    })
+    fireEvent.click(
+      within(notice).getByRole('button', { name: 'Aufnahme starten' })
+    )
+    expect(
+      await screen.findByText('Spracheingabe braucht Internet – bitte tippen.')
+    ).toBeVisible()
+    expect(
+      await screen.findByRole('button', { name: 'Sprechen' })
+    ).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Erneut sprechen' }))
+    expect(
+      await screen.findByRole('dialog', { name: 'Sprachvorschlag prüfen' })
+    ).toBeVisible()
+  })
+
+  it('zeigt den API-Hinweis zum Parser-Teilvorschlag im Bestätigungsblatt', async () => {
+    const hint =
+      'Freie Sätze konnten nicht ausgewertet werden – bitte prüfen oder tippen.'
+    voiceApi.understandVoice.mockResolvedValueOnce({ ...result, hint })
+    renderAs('verkauf')
+    const dialog = await speak()
+    expect(
+      within(dialog).getByText(hint).closest('[aria-live="polite"]')
+    ).toBeTruthy()
+    expect(
+      within(dialog).getByRole('button', { name: 'Übernehmen (1)' })
+    ).toBeEnabled()
+  })
+
+  it('hängt weitere Aufnahmen an und verlangt bei Duplikaten eine Auswahl', async () => {
+    renderAs('verkauf')
+    const dialog = await speak()
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Nochmal sprechen' })
+    )
+    expect(
+      await screen.findByText('Gehört: „Weck drei“ · „Weck drei“')
+    ).toBeTruthy()
+    expect(
+      within(dialog).getByRole('button', { name: 'Übernehmen (0)' })
+    ).toHaveProperty('disabled', true)
+    fireEvent.click(
+      within(dialog).getAllByRole('button', {
+        name: 'Weck aus dem Vorschlag entfernen',
+      })[0]
+    )
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Übernehmen (1)' })
+    )
+    expect(await screen.findByText('1 Zeile übernommen')).toBeTruthy()
+    expect(mocked.saveRestDay).not.toHaveBeenCalled()
   })
 })

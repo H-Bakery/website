@@ -1,12 +1,20 @@
 'use client'
 import React, { useEffect, useState } from 'react'
 import { Box, Button, Typography, Link } from '@mui/material'
+import type { ResponsiveStyleValue } from '@mui/system'
 import MapIcon from '@mui/icons-material/Map'
 
 export const MAP_CONSENT_KEY = 'osm-map-consent'
 
 interface MapConsentProps {
   children: React.ReactNode
+  /**
+   * Höhe der geladenen Karte - Leaflet braucht eine feste Höhe. Der Hinweis
+   * davor ist nur *mindestens* so hoch und wächst mit seinem Inhalt, damit auf
+   * schmalen Bildschirmen weder Knopf noch Datenschutzhinweis abgeschnitten
+   * werden. Standard: die Höhe des umgebenden Rahmens.
+   */
+  height?: ResponsiveStyleValue<number | string>
 }
 
 /**
@@ -14,7 +22,7 @@ interface MapConsentProps {
  * Kartenkacheln werden erst nach ausdrücklicher Zustimmung geladen.
  * Die Entscheidung wird im Local Storage gespeichert.
  */
-export function MapConsent({ children }: MapConsentProps) {
+export function MapConsent({ children, height = '100%' }: MapConsentProps) {
   const [consented, setConsented] = useState<boolean>(false)
 
   useEffect(() => {
@@ -34,14 +42,16 @@ export function MapConsent({ children }: MapConsentProps) {
     setConsented(true)
   }
 
-  if (consented) return <>{children}</>
+  if (consented) {
+    return <Box sx={{ height, width: '100%' }}>{children}</Box>
+  }
 
   return (
     <Box
       role="region"
       aria-label="Kartenhinweis"
       sx={{
-        height: '100%',
+        minHeight: height,
         width: '100%',
         display: 'flex',
         flexDirection: 'column',
@@ -54,7 +64,7 @@ export function MapConsent({ children }: MapConsentProps) {
         color: '#3B2B28',
       }}
     >
-      <MapIcon sx={{ fontSize: 48, color: '#928168' }} />
+      <MapIcon sx={{ fontSize: 48, color: 'text.secondary' }} />
       <Typography variant="h6" component="p" sx={{ fontWeight: 700 }}>
         Karte anzeigen
       </Typography>
@@ -70,7 +80,7 @@ export function MapConsent({ children }: MapConsentProps) {
       <Button variant="contained" onClick={accept} startIcon={<MapIcon />}>
         Karte laden
       </Button>
-      <Typography variant="caption" sx={{ color: '#928168' }}>
+      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
         Ihre Entscheidung wird lokal in Ihrem Browser gespeichert.
       </Typography>
     </Box>

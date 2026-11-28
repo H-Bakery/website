@@ -18,6 +18,8 @@ import Image from 'next/image'
 
 import { formatPrice } from '../../../utils/formatPrice'
 import { Product } from '../../../types/product'
+import RenderedImage from '../../products/RenderedImage'
+import { AddToCartButton } from '../../order/AddToCartButton'
 
 // Animation keyframes removed - using simple CSS transitions instead
 
@@ -88,23 +90,38 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
                 Wrappers, und next/image warnt im Dev-Modus nicht mehr, dass
                 nur eine Seite per CSS verändert wurde. `quality` wirkt mit
                 `images.unoptimized` nicht. */}
-            <Image
-              fill
-              src={imageSrc}
-              alt={`Bild von ${product.name}`}
-              loading="lazy"
-              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-              style={{
-                objectFit: imageSrc.endsWith('.svg') ? 'contain' : 'cover',
-              }}
-            />
+            {product.renderedImage ? (
+              // Aus dem 3D-Modell gerendert: quadratisch und transparent, wird
+              // in den 200px-Rahmen eingepasst (höchstens 200px breit).
+              <RenderedImage
+                image={product.renderedImage}
+                alt={product.name}
+                sizes="200px"
+              />
+            ) : (
+              <Image
+                fill
+                src={imageSrc}
+                alt={`Bild von ${product.name}`}
+                loading="lazy"
+                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                style={{
+                  objectFit: imageSrc.endsWith('.svg') ? 'contain' : 'cover',
+                }}
+              />
+            )}
           </Box>
 
-          {/* Quick View Overlay */}
+          {/* Hover-Hinweis: die ganze Karte führt zur Produktseite. Nur
+              Dekoration - der Link heißt weiter wie das Produkt. */}
           <Fade in={isHovered}>
-            <Box sx={styles.quickViewOverlay}>
-              <Typography variant="body2" sx={styles.quickViewText}>
-                Schnellansicht
+            <Box sx={styles.hoverOverlay} aria-hidden="true">
+              <Typography
+                variant="body2"
+                component="span"
+                sx={styles.hoverLabel}
+              >
+                Ansehen
               </Typography>
             </Box>
           </Fade>
@@ -140,6 +157,11 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
           </Box>
         </CardContent>
       </CardActionArea>
+      {product.available !== false && product.orderId && (
+        <Box sx={{ px: 2, pb: 2 }}>
+          <AddToCartButton id={product.orderId} />
+        </Box>
+      )}
     </Card>
   )
 }
@@ -210,23 +232,27 @@ const styles = {
       transition: 'transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
     },
   },
-  quickViewOverlay: {
+  hoverOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    // Leichter, warmer Schleier: das Produkt bleibt erkennbar.
+    backgroundColor: 'rgba(59, 43, 40, 0.18)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: 'pointer',
   },
-  quickViewText: {
-    color: 'white',
+  hoverLabel: {
+    bgcolor: 'primary.main',
+    color: 'primary.contrastText',
     fontWeight: 'bold',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+    px: 2,
+    py: 0.5,
+    borderRadius: 999,
+    boxShadow: 2,
   },
   content: {
     display: 'flex',

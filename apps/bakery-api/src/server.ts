@@ -5,6 +5,7 @@
  * The order matters: models are initialised against the schema the
  * migrations produced; `sequelize.sync()` is never called at runtime.
  */
+import { fontsProblem } from './services/invoice-pdf'
 import * as http from 'http'
 import { Sequelize } from 'sequelize'
 
@@ -143,6 +144,14 @@ export async function startServer(
       config.port
     }`
   )
+  // Rechnungen: ohne die Schriftdateien lässt sich kein PDF/A erzeugen - das
+  // soll beim Start im Journal stehen, nicht erst beim ersten Ausstellen.
+  const fonts = fontsProblem()
+  if (fonts) {
+    console.warn(
+      `[WARN] ${fonts} - Rechnungen können nicht ausgestellt werden (docs/runbook.md §3.6).`
+    )
+  }
   edits.start()
   snapshots.start()
   // W4: catch up Backzettel deltas missed while no master data was loadable

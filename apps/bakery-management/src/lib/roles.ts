@@ -137,6 +137,12 @@ const REST_COUNT_ROUTE: RouteRule = {
   except: ['/admin/rest/auswertung'],
 }
 
+// Schreibrecht für die Zählliste in REST_COUNT_ROUTE.
+export const REST_COUNT_WRITE_ROLES: readonly PilotRole[] = [
+  'verkauf',
+  'inhaber',
+]
+
 /** Rezepte: Formulare zum Anlegen und Ändern (nur Inhaber und Backstubenleitung). */
 export const RECIPE_WRITE_PATHS: readonly string[] = [
   '/admin/rezepte/neu',
@@ -162,10 +168,12 @@ const BACKSTUBE_ROUTES: readonly RouteRule[] = [
 /**
  * DIE Zuordnung Rolle → Routen + Startseite.
  *
- * - inhaber: alles, Start Dashboard.
+ * - inhaber: alles, Start Dashboard. Nur er: u. a. Benutzer, Finanzen,
+ *   Belege (`/admin/finance/belege`), Dienstplan, Rechnungen (`/admin/rechnungen`, API `/api/invoices`) und
+ *   der Abgleich Produktion ↔ Kasse (`/admin/abgleich`, API `/api/abgleich`).
  * - verkauf: Vorbestellungen (M1, inkl. Abholliste darunter), Sammelstelle
  *   Mörsbach (heute die einzige Vorbestell-Erfassung), Produkte nur lesen
- *   (Liste, ohne Bearbeiten/Neu), Backschrank, Backzettel nur lesen (Z5, ohne
+ *   (Liste und Preisliste, ohne Bearbeiten/Neu), Backschrank, Backzettel nur lesen (Z5, ohne
  *   Grundmengen). Start: /admin/preorders (P3); das Dashboard bleibt
  *   Ausweichstart.
  * - backstube: Backzettel, Backstube-Tablet, Rezepte nur lesen (ohne
@@ -184,6 +192,8 @@ export const ROLE_ACCESS: Record<PilotRole, RoleAccess> = {
       '/admin/preorders',
       '/admin/delivery/preorders',
       { path: '/admin/products', exact: true },
+      // Preisliste (Laden) ansehen, drucken, als CSV - ohne Bearbeiten/Neu.
+      '/admin/products/preisliste',
       '/admin/partners',
       // Z5: nur lesen (die API erlaubt jeder Sitzung GET /api/backzettel) -
       // im Laden sieht man, was gebacken wird. Planen/Freigeben verweigert
@@ -267,11 +277,14 @@ export const PERSONAL_ONLY_ROUTES: readonly string[] = [
   '/admin/users',
   // Finanzen und Tagesziel (B4: `inhaber` mit Passwort-Sitzung) - vorher
   // standen sie an der Station im Menü und antworteten dann mit 403
-  // (W4-verify r2). `/admin/finance` schließt `/admin/finance/tagesziel` ein.
+  // (W4-verify r2). `/admin/finance` schließt Tagesziel, Buchungen und Belege ein.
   '/admin/finance',
   // Dienstplan samt Mitarbeiterprofilen und Urlaub (TASK-042): Personendaten,
   // die API verlangt `requirePersonalSession` auf dem ganzen Router.
   '/admin/dienstplan',
+  // Rechnungen: Kundenanschriften und rechtsverbindliche Belege; die API
+  // verlangt `requirePersonalSession` auf dem ganzen Router.
+  '/admin/rechnungen',
 ]
 
 /** Sitzungsart, wie sie `authSession.ts` speichert (hier ohne Import-Zyklus). */

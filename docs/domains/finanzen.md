@@ -3,6 +3,7 @@
 `/admin/finance` zeigt Bankumsätze aus dem privaten `hq`-Repo (`hq/data/finance/finance-summary.json`,
 `schema_version` 1) als Monatsreihe und Kostenstruktur; `/admin/finance/jahr` und
 `/admin/finance/monat/[JJJJ-MM]` daraus den Jahresabschluss (vorläufig) und die Monatsanalyse;
+`/admin/finance/buchungen` die einzelnen Bankbuchungen (`hq/data/finance/transactions/JJJJ-MM.json`);
 `/admin/finance/tagesziel` den Break-even als Tagesziel je Wochentag mit Ampel, rückblickend aus den
 Kassenberichten ([kassenberichte.md](kassenberichte.md)).
 
@@ -14,7 +15,8 @@ Management-App
 `src/lib/financeApi.ts`, `src/lib/targetsApi.ts`, `app/admin/finance/FinanceClient.tsx`,
 `app/admin/finance/tagesziel/TagesZielClient.tsx`, `components/targets/{TargetsTile,TargetStatusChip}.tsx`,
 `app/admin/finance/{jahr,monat}/**`, `components/finance/{FinanceCharts,FinancePrint,FinanceReportParts}.tsx`,
-`src/lib/{financeTypes,financeCharts}.ts`.
+`src/lib/{financeTypes,financeCharts}.ts`, `app/admin/finance/buchungen/**` (Core
+`apps/bakery-api/src/services/finance-transactions.core.js`).
 API-Details: [`docs/api/hq-data.md`](../api/hq-data.md).
 
 **Dieses Repo ist öffentlich, `hq` nicht.** Keine echten Beträge, IBANs oder Namen in Code, Tests,
@@ -71,8 +73,27 @@ Aus derselben bereinigten `finance-summary.json` plus den Monatssummen der Kasse
   Steuererstattung wie eine neue Ausgabe aus. Schwellen (1,5 × Ø und ≥ 300 €, „fehlt“ nur bei
   regelmäßigen Posten) im Kopf von `highlightsOf`; erst ab 6 Vergleichsmonaten.
 - **Kassenabgleich** (Kasse bar + Karte gegen Bareinzahlungen + Kartenabrechnungen) nur über
-  vollständige Monate. Bekannte Kleinigkeit: die Kasse zählt Bons „ohne Zahlung“ mit Betrag zum
-  Umsatz, der Kassenabschluss nicht.
+  Monate, in denen **Bank und Kasse** vollständig sind - Jahr (`reconciliation.months/from/to`)
+  wie Monat (`reconciliation: null`). Die Kasse ist vollständig, wenn an jedem Öffnungstag ein
+  Bericht vorliegt (`kasseCoverage` in `finance-report.core.js`, gezählt bis gestern - heute
+  nur, wenn sein Bericht schon da ist):
+
+  - Öffnungstage aus `kalender.core` `dayKind` mit den Backzettel-Stammdaten (Wochenplan +
+    `kalender.yaml`); `finance.routes.js` bekommt sie als `calendarConfig` von
+    `hq-data.routes.ts` (eigene Backzettel-Quelle, wie `app.ts` sie lädt). Ein Tag **mit** Bericht
+    zählt immer als Öffnungstag.
+  - Jahr ohne Eintrag in `kalender.yaml`: Wochenplan; ein gesetzlicher Feiertag ohne Bericht fehlt
+    nicht (ob offen war, weiß niemand) - mit Bericht zählt er. Nie ein erfundener Schließtag.
+  - Der laufende Monat ist nie vollständig. Ohne gültigen Wochenplan oder Kalender ist **kein**
+    Monat vollständig (`open_days: null`), und `notes` sagt es.
+  - Das `kasse` eines Monats trägt `open_days`, `report_days`, `complete` und `note`
+    („Kasse unvollständig: 8 von 26 Öffnungstagen“). Der Jahresabschluss zeigt `note` unter
+    „Kasse-Umsatz“, die Monatsanalyse den Hinweis `kasse_incomplete` (mit Datenbeginn oder
+    fehlenden Tagen) statt Differenz und Warnung.
+
+  Bekannte Kleinigkeit: die Kasse zählt Bons „ohne Zahlung“ mit Betrag zum Umsatz, der
+  Kassenabschluss nicht.
+
 - **Diagramme** (`FinanceCharts.tsx`, Daten nur umgeordnet in `financeCharts.ts`): Jahr im Verlauf,
   Ergebnis seit Jahresbeginn, Einnahmen nach Herkunft, Ausgaben nach Posten (Monat mit Ø-Strich),
   Verlauf der letzten 13 Monate (`trend`). Hochrechnung und aufgelaufenes Ergebnis liefert der
@@ -86,6 +107,65 @@ Aus derselben bereinigten `finance-summary.json` plus den Monatssummen der Kasse
   eine leere Seite an); Druck-Diagramme mit fester Breite (`PRINT_CHART_WIDTH`); Breiten in `sx`
   als Pixel-String (`px()`), weil MUI Zahlen ≤ 1 als Prozent liest. Prüfen mit `page.pdf()`, echte
   Zahlen nur lokal.
+
+## Buchungen (`/admin/finance/buchungen`, `/admin/finance/buchungen/[id]`)
+
+Liste der einzelnen Umsätze eines Monats (Tabelle, am Handy Karten) mit Monatswahl, Suche (Name,
+Verwendungszweck, Betrag - „12,50“ und „12.50“), Kategorie und Richtung (Eingänge/Ausgänge); die
+Filter stehen in der Adresse (`?monat=&kategorie=&richtung=ein|aus&suche=`). Die Detailseite zeigt
+eine Buchung mit Zuordnung und den neuesten zehn weiteren Buchungen derselben Gegenseite.
+Weiterer Ausbau (Rechnungen verknüpfen, Kategorien in der App setzen):
+[`docs/finanzen-buchungen.md`](../finanzen-buchungen.md).
+
+- **Bewusste Ausnahme von „nur das Aggregat“.** Einzelbuchungen tragen Klarnamen und
+  Verwendungszwecke (auch Löhne). Sie gehen nur an den Inhaber mit Passwort-Sitzung (dieselbe Wache
+  wie alle Finanz-Endpunkte) und nur durch die Whitelist `sanitizeTransaction` in
+  `finance-transactions.core.js`: IBAN der Gegenseite **maskiert** (`DE•• •••• 1234`), BIC,
+  Mandatsreferenz, Gläubiger-ID, End-to-End-Referenz, eigenes Konto und Quelldatei fallen weg. Ein
+  neues Feld im Export bleibt unsichtbar, bis es dort freigegeben wird. Antworten mit
+  `Cache-Control: no-store`.
+- **Gerechnet wird nur im Core:** Summen (gefiltert und Monat), Kategorien der Auswahl, Sortierung
+  (neueste zuerst, am selben Tag größere Beträge zuerst), Filter. Die Seite zeigt nur an.
+- **Kategorie** kommt aus den Regeln in hq (`config/categories.json`, `import_bank_csv.py`); Name
+  und Topf (`einnahme|ausgabe|neutral|offen`) aus `finance-summary.json`. Eine Kategorie ohne
+  Bezeichnung zählt als „offen“. Ändern geht heute nur in hq.
+- **Fehlende Daten:** kein `transactions/` → `status: 'no-data'`; ein Monat ohne Datei → leere
+  Liste mit `available: false`; Zeilen ohne ID, Datum oder Betrag werden verworfen (`skipped`),
+  eine kaputte Monatsdatei wird geloggt und fehlt. Nie Beispielwerte.
+- **IDs** sind die 16-stelligen Hex-IDs aus `import_bank_csv.py` (stabil über Re-Importe desselben
+  Auszugs). Wird ein Auszug neu eingelesen und eine ID ändert sich, zeigt die Detailseite „Diese
+  Buchung gibt es nicht“ mit Weg zurück zur Liste.
+
+## Belege (`/admin/finance/belege`)
+
+Der Inhaber fotografiert am Handy, lädt PDF oder reine XML hoch oder ergänzt einen Beleg direkt
+an einer Bankbuchung. Bis zu zehn Dateien gehören zu einem Beleg. Originale sind mit SHA-256
+registriert und schreibgeschützt. Ein Dateiduplikat verweist auf den vorhandenen Beleg. Gleicher
+Lieferant und gleiche Rechnungsnummer lösen einen Hinweis „Schon erfasst?“ aus.
+
+- UBL- und CII-XML liefern die strukturierten Zahlen. Bei einer PDF-Textschicht liest ein lokal
+  vorhandenes `pdftotext` Vorschläge aus. Ein unlesbarer ausgewiesener Gesamtbetrag bleibt offen.
+  Fotos und Scans werden von Hand erfasst. Die Währung muss vor der Bestätigung bekannt sein.
+  Der Bankabgleich verarbeitet Euro-Belege.
+- Der Inhaber prüft Felder und Original, ergänzt fehlende Angaben und bestätigt. Auch XML-Belege
+  benötigen die Bestätigung. Änderungen bleiben als Alt- und Neuwert im Audit nachvollziehbar.
+  Bei bestätigten Belegen bleiben Originale, Lieferant, gültiges Rechnungsdatum und Bruttobetrag erhalten.
+- Der Bankabgleich bewertet Betrag, Skontofrist, Buchungszeitraum, Gegenseite und Rechnungsnummer.
+  Das Fenster reicht von drei Tagen vor Rechnungsdatum bis 14 Tage nach Fälligkeit, ohne Fälligkeit
+  bis 45 Tage nach dem Rechnungsdatum. Skonto wird mit Satz und Frist berücksichtigt. Ist nur die Frist bekannt, erscheinen 2 % und 3 %
+  als schwächere, ausdrücklich gekennzeichnete Schätzungen. Sammellastschriften können zwei bis sechs Belege umfassen. Teilzahlungen und
+  mehrere ähnlich starke Vorschläge werden angezeigt. Eine vollständige Teilzahlungsgruppe
+  bleibt auch bei einem Skontotreffer sichtbar. Vormerkungen sind gekennzeichnet.
+- Übernommen wird eine Verknüpfung erst beim ausdrücklichen Bestätigen oder manuellen Zuordnen.
+  Wechselt eine Buchungs-ID, helfen Buchungstag (± drei Tage), Betrag und Gegenseite beim
+  Wiederfinden. Der Inhaber prüft und wählt eine angebotene Ersatzbuchung. Beim Upload an einer
+  Buchung zeigt die Verwaltung den Zuordnungsbetrag und den offenen Rest vor der Bestätigung.
+- Monatlich stehen „Zu prüfen“, „Ohne Buchung“ und „Ausgaben ohne Beleg“ zur Verfügung.
+  Bar bezahlte oder verworfene Belege fehlen in „Ohne Buchung“. In „Ausgaben ohne Beleg“ erscheinen
+  Abbuchungen mit einem noch unbelegten Restbetrag. Die optionale Ausnahmeliste liegt in hq und ist zunächst
+  leer. Fehlen Bankdaten, zeigt die Liste den fehlenden Monat an.
+- Rechte wie bei den Buchungen. Siehe [Belege-API](../api/receipts.md) und
+  [Betrieb und Sicherung](../runbook.md#belegoriginale).
 
 ## Tagesziel-Ampel (`/admin/finance/tagesziel`)
 
@@ -130,13 +210,16 @@ Dashboard-Kachel (`components/targets/TargetsTile.tsx`) und Detailseite.
   (Core und Routen, `financeCore.test.js`, `financeRoutes.test.js`)
 - API, Jahr/Monat: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/financeReport`
   (`financeReportCore.test.js`, `financeReportRoutes.test.js`)
+- API, Buchungen: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/financeTransactions`
+  (Core + Routen, Fixture `tests/fixtures/finance-transactions.synthetic.js`)
 - API, Tagesziel: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/targets`
   (`targetsCore.test.js`, `targetsRoutes.test.js`; synthetische Fixtures in Temp-Verzeichnissen)
 - Management-App: `src/lib/finance.spec.ts`, `src/lib/financeApi.spec.ts`,
   `admin/finance/FinanceClient.spec.tsx`, `src/lib/targetsApi.spec.ts`,
   `components/targets/TargetsTile.spec.tsx`, `components/targets/TargetStatusChip.spec.tsx`,
   `admin/finance/tagesziel/TagesZielClient.spec.tsx`, `admin/finance/{jahr,monat}/**/*.spec.tsx`,
-  `src/lib/financeCharts.spec.ts`, `components/finance/{FinanceCharts,FinancePrint}.spec.tsx`
+  `src/lib/financeCharts.spec.ts`, `components/finance/{FinanceCharts,FinancePrint}.spec.tsx`,
+  `admin/finance/buchungen/BuchungenClient.spec.tsx` (Liste + Detail)
 
 Fixtures sind erfunden: `apps/bakery-api/tests/fixtures/finance-summary.synthetic.js`,
 `apps/bakery-management/src/lib/targetsFixtures.ts`, `apps/bakery-api/tests/fixtures/finance-report.synthetic.js`,

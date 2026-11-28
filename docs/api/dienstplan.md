@@ -23,24 +23,34 @@ Other roles 403 `forbidden`, a PIN session 403 `personal_session_required`, no s
 or health data (there is no "krank"); this repo, its tests and the setup-dev seed use invented
 people only.
 
-| Endpoint                                                         | Answer (`{ success, data }`, writes may add `warnings`)                                                                           |
-| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/dienstplan?from=&to=`                                  | calendar: `{ from, to, today, closedWeekdays, employees[], shifts[], absences[], days[], hours[] }`                               |
-| `GET /api/dienstplan/employees`                                  | all employees (incl. deactivated), Verkauf first, then Backstube, Fahrer, Büro; by name                                           |
-| `POST /api/dienstplan/employees`                                 | `{ displayName, area, color?, employmentType?, weeklyHours?, entryDate?, exitDate?, userId?, note? }` → 201                       |
-| `GET /api/dienstplan/employees/:id?year=`                        | profile: `{ employee, year, entitlements[], balance, absences[] (of the year), upcomingShifts[] (≤ 20), hours, closedWeekdays }`  |
-| `PATCH /api/dienstplan/employees/:id`                            | any of the fields above + `active`; `active: false` deactivates. **No DELETE** (404)                                              |
-| `GET /api/dienstplan/employees/:id/entitlements`                 | `[{ employeeId, year, entitlementDays, carryoverDays }]`, newest year first                                                       |
-| `PUT /api/dienstplan/employees/:id/entitlements/:year`           | `{ entitlementDays?, carryoverDays? }` (number 0-365 or `null` = offen); upsert of that year's row                                |
-| `GET/POST /api/dienstplan/shift-templates`, `PATCH/DELETE …/:id` | `{ id, name, startTime, endTime, breakMinutes }`                                                                                  |
-| `GET /api/dienstplan/shifts?from=&to=[&employeeId=]`             | `[{ id, employeeId, date, startTime, endTime, breakMinutes, minutes, note }]`                                                     |
-| `POST /api/dienstplan/shifts`, `PATCH/DELETE …/:id`              | `{ employeeId, date, startTime?, endTime?, breakMinutes?, templateId?, note? }` - times from the template unless given            |
-| `GET /api/dienstplan/absences?from=&to=[&employeeId=]`           | overlapping the range: `[{ id, employeeId, type, status, startDate, endDate, halfDay, days, note }]`                              |
-| `POST /api/dienstplan/absences`, `PATCH/DELETE …/:id`            | `{ employeeId, type, status?, startDate, endDate?, halfDay?, note? }` - `status` default `geplant`, `endDate` default `startDate` |
-| `GET /api/dienstplan/balance?year=[&employeeId=]`                | one balance, or a list of all employees employed in that year (`+ displayName, area, active`)                                     |
+| Endpoint                                                         | Answer (`{ success, data }`, writes may add `warnings`)                                                                             |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/dienstplan?from=&to=`                                  | calendar: `{ from, to, today, closedWeekdays, employees[], shifts[], absences[], days[], hours[] }`                                 |
+| `GET /api/dienstplan/employees`                                  | all employees (incl. deactivated), Verkauf first, then Backstube, Fahrer, Büro; by name                                             |
+| `POST /api/dienstplan/employees`                                 | `{ displayName, area, color?, employmentType?, weeklyHours?, entryDate?, exitDate?, userId?, note? }` → 201                         |
+| `GET /api/dienstplan/employees/:id?year=`                        | profile: `{ employee, year, entitlements[], balance, absences[] (of the year), upcomingShifts[] (≤ 20), hours, closedWeekdays }`    |
+| `PATCH /api/dienstplan/employees/:id`                            | any of the fields above + `active`; `active: false` deactivates. **No DELETE** (404)                                                |
+| `GET /api/dienstplan/employees/:id/entitlements`                 | `[{ employeeId, year, entitlementDays, carryoverDays }]`, newest year first                                                         |
+| `PUT /api/dienstplan/employees/:id/entitlements/:year`           | `{ entitlementDays?, carryoverDays? }` (number 0-365 or `null` = offen); upsert of that year's row                                  |
+| `GET/POST /api/dienstplan/shift-templates`, `PATCH/DELETE …/:id` | `{ id, name, startTime, endTime, breakMinutes }`                                                                                    |
+| `GET /api/dienstplan/shifts?from=&to=[&employeeId=]`             | `[{ id, employeeId, date, startTime, endTime, breakMinutes, minutes, note }]`                                                       |
+| `POST /api/dienstplan/shifts`, `PATCH/DELETE …/:id`              | `{ employeeId, date, startTime?, endTime?, breakMinutes?, templateId?, note? }` - times from the template unless given              |
+| `GET /api/dienstplan/absences?from=&to=[&employeeId=]`           | overlapping the range: `[{ id, employeeId, type, status, startDate, endDate, halfDay, days, note }]`                                |
+| `POST /api/dienstplan/absences`, `PATCH/DELETE …/:id`            | `{ employeeId, type, status?, startDate, endDate?, halfDay?, note? }` - `status` default `geplant`, `endDate` default `startDate`   |
+| `GET /api/dienstplan/balance?year=[&employeeId=]`                | one balance, or a list of all employees employed in that year (`+ displayName, area, active`)                                       |
+| `GET /api/dienstplan/hours?week=\|month=[&area=]`                | `{ today, area, periods: { week \| null, month }, closedWeekdays, employees[], rows[], totals }` - hours and estimated overtime pay |
 
-The profile's `hours` is `{ week, month }`: `plannedHours` (below) for the current week (Mon-Sun)
-and the current month (Berlin today), independent of `year`.
+The profile's `hours` is `{ week, month }`: the current week (Mon-Sun) as `plannedHours` (below)
+plus `pay` (`overtimePay`), and the current month (Berlin today) as `monthHours` (through today,
+whole month in `full`, wage costs, Minijob check), independent of `year`.
+
+`/hours`: `week=JJJJ-MM-TT` (any day) → that week and the month of its Thursday (`weekMonth`, ISO
+week rule); `month=JJJJ-MM` → only the month (`periods.week: null`). Exactly one of them, years
+2000-2100 (else 400 `invalid_period`); `area` one of the areas or `alle` (else 400 `invalid_area`)
+filters rows and totals. Employees as in the calendar (active + inactive with entries in the
+range). Each row `{ employeeId, hourlyWageCents, week?, month }`: `week` = `plannedHours` + `pay`
+(indicative only), `month` = `monthHours` (below); `totals.week|month` from `hoursOverview`. The
+service passes `today` (`this.today()`, the box's date) into the core.
 
 In the profile each absence also carries `daysInYear`: its vacation days inside the shown year
 (the part the balance counts), next to `days` for the whole range - they differ for an absence
@@ -56,6 +66,9 @@ Migration `20270301000000-dienstplan.js` (additive, idempotent), models `Employe
 
 - `employees` - `display_name` (authoritative), `area` `verkauf|backstube|fahrer|buero`, `color`
   `#RRGGBB`, `employment_type` `vollzeit|teilzeit|minijob|aushilfe`, `weekly_hours`,
+  `hourly_wage_cents` (gross hourly wage in cents, `NULL` = offen; migration
+  `20270401000000-dienstplan-hourly-wage.js`: plain `ADD COLUMN`, no backfill, no table rebuild,
+  idempotent, `down()` drops the column in place),
   `entry_date`/`exit_date` (each optional), `active`, `user_id` → users (optional, `SET NULL`;
   one login links to at most one employee, 409 `user_linked`), `note`. Employees are deactivated,
   never deleted.
@@ -138,6 +151,34 @@ diffMinutes, targetDays, creditedDays, status }`. Plan = Σ (end − start − b
   week without holidays is exactly weeklyHours, a month averages weeklyHours × 13/3. Without
   `weeklyHours`: `status: 'no-target'`, `targetMinutes`/`diffMinutes` `null` ("offen"), never 0.
   `diffMinutes` = plan − target. Actual hours (time clock) are a later stage.
+- **Overtime pay** (`overtimePay(hours, hourlyWageCents)`): overtime = `max(0, diffMinutes)`;
+  `status` `ok` (`amountCents = round(overtime × cents ÷ 60)`) | `no-overtime` (0) | `no-wage`
+  (overtime but no wage: `amountCents: null`, never 0) | `no-target` (no weekly hours). No
+  surcharges, no carry-over between months - an estimate from the plan.
+- **Month** (`monthHours({ month, today, employee, shifts, absences, closedWeekdays })`,
+  provisional 2026-11-14): `phase` = `monthPhase(month, today)` `past` | `current` | `future`
+  (`today` is required - the core never reads the clock; missing → `TypeError`). The
+  `plannedHours` fields cover the counted range: `current` → first of the month … `today`
+  (inclusive), else the whole month; `asOf` = `today` when current; `full` = `plannedHours` of the
+  whole month. `pay` = `overtimePay` of the counted range - net within the month (minus hours of
+  one week offset overtime of another); `future` → `{ status: 'future', overtimeMinutes: null,
+  amountCents: null }`. `wageCost: { toDate (null when future), full }` from `wageCost(minutes,
+  wage)` = round(plan × wage ÷ 60), `status` `ok` | `no-wage` (planned hours without a wage:
+  `amountCents: null`, never 0; nothing planned = 0). `minijob` only for `employmentType:
+  'minijob'`: `minijobCheck(wageCost.full, year)` → `{ status: ok | over | no-wage | no-limit,
+  limitCents, plannedCostCents, overCents }`; over = strictly above the limit.
+  `MINIJOB_LIMIT_CENTS` = `{ 2026: 60300 }` (603 €; a year without a value → `no-limit`). `hourlyWageCents` is an
+  integer 1-99999 (0,01-999,99 €, `MAX_HOURLY_WAGE_CENTS`; else 400 `validation_failed`), `null`
+  clears it. `hoursOverview({ periods: { week?, month? }, today, employees, shifts, absences,
+closedWeekdays })` runs `plannedHours` + `overtimePay` for the week and `monthHours` for the
+  month and sums `{ plannedMinutes, targetMinutes, overtimeMinutes, amountCents, estimatedCount,
+missingWageCount, noTargetCount }` (the month over its counted range): target and overtime only
+  over people with a target; `amountCents` only over people with a wage, `null` when overtime
+  exists only without a wage. The month totals add `phase`, `asOf`, `full: { plannedMinutes,
+targetMinutes, noTargetCount }`, `wageCost: { toDate | null, full }` each `{ amountCents
+(known wages only, null if none), missingWageCount }` and `minijob: { count, overCount,
+openCount, limitCents }`; a future month has `overtimeMinutes`/`amountCents` `null`. Helpers
+  `weekOf`, `monthOf`, `weekMonth`.
 - **`days[]`**: `{ date, weekday (ISO), holidayName, restDay, closed, weight, halfDayName,
 openingHours, kind, kindLabel, kindDetail, calendar, verkaufBesetzt, besetzung }`.
   **Calendar (Z14):** `closed`, `openingHours` and `kind` (`normal` | `ruhetag` | `geschlossen` |
@@ -158,7 +199,8 @@ openingHours, kind, kindLabel, kindDetail, calendar, verkaufBesetzt, besetzung }
 Every write is one `audit_log` row in the same transaction: `create` / `update` / `delete` on
 `shift`, `absence`, `shift_template`, `vacation_entitlement` (entity id `employeeId/year`);
 `create` / `update` / `deactivate` / `reactivate` on `employee`. `data` holds the changed fields
-(`{ from, to }`), **never a note or a display name** - only `noteChanged` / `nameChanged: true`.
+(`{ from, to }`), **never a note, a display name or an hourly wage** - only `noteChanged` /
+`nameChanged` / `hourlyWageChanged: true`.
 A write that changes nothing (a PATCH/PUT with the current values) returns the row unchanged,
 without an update and without an audit row. A shift PATCH that only changes the note re-checks
 nothing and returns no warnings.
@@ -167,9 +209,14 @@ nothing and returns no warnings.
 
 `tests/unit/vacationCore.test.js` (Easter and holidays over several years, Ruhetag, half days,
 24./31.12., entry/exit mid-year, carryover expiry, no-config, opening hours, Besetzung, planned vs.
-target hours), `tests/integration/dienstplan.test.ts` (401/403 for other roles and PIN sessions,
-validation, overlaps, warnings, audit without notes, calendar with opening hours, Besetzung and
-hours, profile hours), `tests/migrations/pilotBaseline.test.ts`. `createApp({ dienstplan: { today, financeDir } })`
+target hours, overtime pay incl. a missing wage, month boundaries and a week across two months,
+month through today incl. today = first/last day, netting within the month, future month, wage
+costs with open wages, Minijob limit exact/over),
+`tests/integration/dienstplan.test.ts` (401/403 for other roles and PIN sessions, validation,
+overlaps, warnings, audit without notes, calendar with opening hours, Besetzung and hours, profile
+hours, hourly wage validation and audit, `/hours` incl. current/past/future month, wage costs
+and the Minijob limit), `tests/migrations/pilotBaseline.test.ts`
+(also: existing employees keep their rows, wage `NULL`). `createApp({ dienstplan: { today, financeDir } })`
 pins the clock and the finance dir. The setup-dev seed (`seedDienstplan` in
-`.claude/skills/setup-dev/scripts/lib/seed-next.mjs`) creates eight invented people through the
-API.
+`.claude/skills/setup-dev/scripts/lib/seed-next.mjs`) creates eight invented people with invented
+hourly wages (two left open) through the API.

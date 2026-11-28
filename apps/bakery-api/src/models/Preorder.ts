@@ -52,6 +52,8 @@ export class Preorder extends Model<
   declare pickupPointId: CreationOptional<string | null>
   declare status: CreationOptional<PreorderStatus>
   declare paid: CreationOptional<boolean>
+  declare externalPayment: CreationOptional<boolean>
+  declare mixedPayment: CreationOptional<boolean>
   /**
    * Amount paid when payment was recorded; `null` = not paid, or paid before
    * the column existed (then: in full). See migration 20261114.
@@ -91,6 +93,16 @@ export class Preorder extends Model<
           defaultValue: 'offen',
         },
         paid: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: false,
+        },
+        externalPayment: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: false,
+        },
+        mixedPayment: {
           type: DataTypes.BOOLEAN,
           allowNull: false,
           defaultValue: false,

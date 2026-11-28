@@ -4,42 +4,42 @@
     "name": "Rahmkuchen",
     "category": "Kuchen",
     "image": "/assets/images/products/kuchen.svg",
-    "price": 18
+    "price": 20
   },
   {
     "id": 71,
     "name": "Rahmkuchen (1 Stück)",
     "category": "Kuchen",
     "image": "/assets/images/products/kuchen.svg",
-    "price": 1.8
+    "price": 2
   },
   {
     "id": 72,
     "name": "Käsekuchen",
     "category": "Kuchen",
     "image": "/assets/images/products/kuchen.svg",
-    "price": 18
+    "price": 20
   },
   {
     "id": 73,
     "name": "Käsekuchen (1 Stück)",
     "category": "Kuchen",
     "image": "/assets/images/products/kuchen.svg",
-    "price": 1.8
+    "price": 2
   },
   {
     "id": 74,
     "name": "Apfelkuchen",
     "category": "Kuchen",
     "image": "/assets/images/products/kuchen.svg",
-    "price": 18
+    "price": 20
   },
   {
     "id": 75,
     "name": "Apfelkuchen (1 Stück)",
     "category": "Kuchen",
     "image": "/assets/images/products/kuchenstueck.svg",
-    "price": 1.8
+    "price": 2
   },
   {
     "id": 76,
@@ -81,7 +81,7 @@
     "name": "Marmorkuchen (1 Stück)",
     "category": "Kuchen",
     "image": "images/",
-    "price": 1.2
+    "price": 1.8
   },
   {
     "id": 82,
@@ -95,7 +95,7 @@
     "name": "Zitronenkuchen (1 Stück)",
     "category": "Kuchen",
     "image": "images/",
-    "price": 1.2
+    "price": 1.8
   },
   {
     "id": 84,
@@ -109,7 +109,7 @@
     "name": "Nusskuchen (1 Stück)",
     "category": "Kuchen",
     "image": "images/",
-    "price": 1.2
+    "price": 1.8
   },
   {
     "id": 86,
@@ -130,7 +130,7 @@
     "name": "Kranzkuchen gefüllt (Nuss, Schoko, Quark oder Pudding",
     "category": "Kuchen",
     "image": "/assets/images/products/kranzkuchen.svg",
-    "price": 20
+    "price": 22
   },
   {
     "id": 89,
@@ -172,13 +172,13 @@
     "name": "Zopf gefüllt (Nuss, Schoko, Quark oder Pudding)",
     "category": "Kuchen",
     "image": "/assets/images/products/hefezopf.svg",
-    "price": 10
+    "price": 11
   },
   {
     "id": 95,
     "name": "Rosinenbrot",
     "category": "Kuchen",
     "image": "images/",
-    "price": 9
+    "price": 10
   }
 ]

@@ -3,6 +3,7 @@ import os from 'os'
 import path from 'path'
 import {
   findMonorepoRoot,
+  isListedHqProduct,
   parseHqProduct,
   readHqProducts,
   resolveHqProductsDir,
@@ -118,6 +119,27 @@ describe('readHqProducts', () => {
     const result = readHqProducts({ env: { HQ_PRODUCTS_DIR: dir } })
     expect(result.dir).toBe(dir)
     expect(result.products).toHaveLength(1)
+  })
+})
+
+describe('isListedHqProduct', () => {
+  it('ohne Feld oder mit available: true steht das Produkt im Sortiment', () => {
+    expect(isListedHqProduct({})).toBe(true)
+    expect(isListedHqProduct({ available: undefined })).toBe(true)
+    expect(isListedHqProduct({ available: true })).toBe(true)
+  })
+
+  it('available: false nimmt es heraus', () => {
+    expect(isListedHqProduct({ available: false })).toBe(false)
+  })
+
+  it('gilt für ein gelesenes Produkt genauso', () => {
+    const angeboten = parseHqProduct(TESTBROT)
+    const nichtAngeboten = parseHqProduct(
+      TESTBROT.replace('available: true', 'available: false')
+    )
+    expect(angeboten && isListedHqProduct(angeboten)).toBe(true)
+    expect(nichtAngeboten && isListedHqProduct(nichtAngeboten)).toBe(false)
   })
 })
 

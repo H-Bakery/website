@@ -1,3 +1,4 @@
+import { File as NodeFile } from 'node:buffer'
 import { ApiClient, ApiError, filenameFromDisposition } from './api-client'
 
 function jsonResponse(status: number, body: unknown) {
@@ -67,6 +68,34 @@ describe('ApiClient', () => {
     expect(sentHeaders(1)['Authorization']).toBe('Bearer neu')
   })
 
+  it('sendet denselben Datei-Rohkörper beim Wiederholen mit dem neuen Token', async () => {
+    const file = new NodeFile(['%PDF-1.7'], 'test.pdf', {
+      type: 'application/pdf',
+    }) as unknown as File
+    client.setAuthToken('alt')
+    client.setUnauthorizedHandler(async () => {
+      client.setAuthToken('neu')
+      return true
+    })
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(401, { error: 'unauthorized' }))
+      .mockResolvedValueOnce(
+        jsonResponse(201, { success: true, data: { id: 12 } })
+      )
+
+    await expect(client.postFile('/api/receipts', file)).resolves.toMatchObject(
+      { data: { id: 12 } }
+    )
+    expect(fetchMock.mock.calls.map(([, init]) => init.body)).toEqual([
+      file,
+      file,
+    ])
+    expect(sentHeaders(1)).toMatchObject({
+      Authorization: 'Bearer neu',
+      'Content-Type': 'application/pdf',
+    })
+  })
+
   it('wirft die 401, wenn die Erneuerung scheitert, und versucht es nur einmal', async () => {
     client.setAuthToken('alt')
     const handler = jest.fn(async () => false)
@@ -113,6 +142,45 @@ describe('ApiClient', () => {
     expect(client.getBaseUrl()).toBe('')
     await client.get('/api/x', { a: 1 })
     expect(fetchMock.mock.calls[0][0]).toBe('/api/x?a=1')
+  })
+
+  it('wartet bei einem Audio-Upload mit eigenem Zeitlimit auf den Teilvorschlag', async () => {
+    jest.useFakeTimers()
+    try {
+      fetchMock.mockImplementation(async (_url, init: RequestInit) => {
+        const signal = init.signal
+        if (!signal) throw new Error('Abbruchsignal fehlt')
+        return new Promise((resolve, reject) => {
+          signal.addEventListener(
+            'abort',
+            () => {
+              reject(new DOMException('Abgebrochen', 'AbortError'))
+            },
+            { once: true }
+          )
+          setTimeout(
+            () =>
+              resolve(
+                jsonResponse(200, { success: true, data: 'Teilvorschlag' })
+              ),
+            24_000
+          )
+        })
+      })
+      const pending = client.postRaw(
+        '/api/sprache/verstehen',
+        new Blob(['Test'], { type: 'audio/wav' }),
+        new AbortController().signal,
+        { timeoutMs: 30_000 }
+      )
+      const check = expect(pending).resolves.toMatchObject({
+        data: 'Teilvorschlag',
+      })
+      await jest.advanceTimersByTimeAsync(24_000)
+      await check
+    } finally {
+      jest.useRealTimers()
+    }
   })
 
   describe('getBlob', () => {

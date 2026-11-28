@@ -18,6 +18,9 @@
  *                             eine Transaktion, Ergebnis je id (W4); Rollen wie /:id/status
  *   GET    /variants          { success, data: { [productId]: Sorten[] }, configured }
  *   GET    /:id               { success, data: Preorder }
+ *   GET    /:id/pdf           Bestellschein als PDF (`application/pdf`,
+ *                             `Bestellschein-<Code>.pdf`) - keine Rechnung;
+ *                             503 `pdf_fonts_missing` ohne Schriftdateien
  *   POST   /                  201 { success, data }          verkauf, inhaber
  *                             (optional `requestId`: a repeat returns the earlier order, 200)
  *   PATCH  /:id               { success, data }              verkauf, inhaber
@@ -42,6 +45,12 @@
 import { Request, Response, Router } from 'express'
 
 import { asyncHandler, requireRole } from '../auth/middleware'
+import { currentSeller } from '../services/invoice-seller'
+import { PdfFontsError } from '../services/pdf-kit'
+import {
+  preorderPdfFilename,
+  renderPreorderPdf,
+} from '../services/preorder-pdf'
 import {
   PickupPointDto,
   PreorderRecord,
@@ -65,6 +74,9 @@ const READ_ROLES = ['verkauf', 'fahrer'] as const // inhaber passes every check
 const WRITE_ROLES = ['verkauf'] as const
 /** Was der Fahrer setzen darf: Übergabe. */
 const FAHRER_TARGETS = ['abgeholt', 'nicht_abgeholt']
+
+const PDF_FONTS_MESSAGE =
+  'Der Bestellschein kann nicht erzeugt werden: auf der Box fehlen die Schriftdateien (apps/bakery-api/assets/fonts). Bitte den Betreuer verständigen.'
 
 export interface PreorderRouters {
   preorders: Router
@@ -264,6 +276,39 @@ function createPreordersRouter(service: PreordersService): Router {
       const result = await service.get(req.params['id'])
       if (fail(res, result) || !result.ok) return
       res.json({ success: true, data: result.data })
+    })
+  )
+
+  // Bestellschein zum Ausdrucken: genau das, was `GET /:id` antwortet (eine
+  // anonymisierte Bestellung also ohne Name, Telefon, Bemerkung), mit dem
+  // Briefkopf aus den Impressumsangaben. Keine Rechnung, nichts gespeichert.
+  router.get(
+    '/:id/pdf',
+    requireRole(...READ_ROLES),
+    asyncHandler(async (req, res) => {
+      const result = await service.get(req.params['id'])
+      if (fail(res, result) || !result.ok) return
+      let pdf: Buffer
+      try {
+        pdf = await renderPreorderPdf({
+          preorder: result.data,
+          seller: currentSeller(),
+          createdAt: service.now(),
+        })
+      } catch (error) {
+        if (!(error instanceof PdfFontsError)) throw error
+        console.error(`[ERROR] ${error.message}`)
+        sendError(res, 503, 'pdf_fonts_missing', PDF_FONTS_MESSAGE)
+        return
+      }
+      res.setHeader('Content-Type', 'application/pdf')
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${preorderPdfFilename(result.data)}"`
+      )
+      // Die Bestellung ändert sich: nie aus einem Zwischenspeicher.
+      res.setHeader('Cache-Control', 'no-store')
+      res.send(pdf)
     })
   )
 

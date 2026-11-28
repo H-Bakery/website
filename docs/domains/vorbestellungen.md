@@ -12,6 +12,35 @@ Verwaltung `apps/bakery-management/src/lib/preordersApi.ts`, `preordersTypes.ts`
 `src/components/preorders/`. Endpunkte, Rollen und Antwortform:
 [`docs/api/preorders.md`](../api/preorders.md).
 
+## Kanal WhatsApp
+
+Die Website bereitet aus dem Warenkorb eine Nachricht vor. Die Kundschaft sendet sie in
+WhatsApp und erhält dort die Bestätigung der Bäckerei. Das Team erfasst die Anfrage wie bisher
+in der Verwaltung mit dem Kanal „WhatsApp“. `W-…` ist die Referenz für Rückfragen im Chat.
+
+```text
+Hallo, ich möchte vorbestellen:
+
+2× Beispielbrot 1 kg
+3× Beispielweck
+1× Beispieltorte (ganz) – Aufschrift „Alles Gute“
+
+Abholung: Samstag, 28.11.2026, 09:30 Uhr
+Abholort: Laden
+Name: Erika Beispielfrau
+Anmerkung: bitte geschnitten
+
+Summe ca. 24,80 € (bezahlt wird bei Abholung)
+Bestell-Nr. W-7K3F
+```
+
+Die Positionen folgen den Sortimentsabschnitten und verwenden die hq-Produktnamen.
+Artikelnotizen stehen hinter der jeweiligen Position. Die allgemeine Anmerkung erscheint
+bei Bedarf. Die Summe ist eine Schätzung. Die Bestellnummer besteht aus `W-` und vier
+zufälligen Zeichen und dient der Zuordnung im Chat. Die Übernahme des Nachrichtentexts in
+die Verwaltung ist als eigener Schritt vorgesehen.
+[Warenkorb auf der Landing-Page](../apps/landing.md#warenkorb-und-whatsapp-vorbestellung)
+
 ## Regeln (API)
 
 - **Die Regeln stehen genau einmal** in `delivery-preorders.core.js` (bis B12 benutzte auch der
@@ -71,6 +100,19 @@ Verwaltung `apps/bakery-management/src/lib/preordersApi.ts`, `preordersTypes.ts`
   `paymentBalance` (> 0 noch kassieren, < 0 erstatten; storniert + bezahlt = −bezahlt).
   `/day`-Summary: `unpaidTotal` enthält Nachzahlungen (`topUpTotal`), dazu `refundCount`/`refundTotal`
   - auch über stornierte. `NULL` bei `paid` heißt „voll bezahlt" (Altbestand, Importe).
+- **Zahlung per Überweisung oder Rechnung** ist ein eigener Schalter beim Erfassen und Bearbeiten.
+  Er setzt den vorgesehenen Zahlungsweg außerhalb der Kasse und kann unabhängig von „Bezahlt“
+  erfasst werden. Bei bestehenden Bestellungen ist der Schalter aus, bis der Verkauf oder Inhaber
+  den Zahlungsweg erfasst. Er wirkt auf den [Euro-Abgleich](abgleich.md#euro-abgleich).
+- In der Abholliste zeigt der Übergabedialog den vorgesehenen Zahlungsweg und den offenen
+  Betrag. Verkauf und Inhaber können eine tatsächlich an der Ladenkasse erhaltene
+  Zahlung ausdrücklich erfassen. Bei vollständiger Kassenzahlung setzt die API den
+  Zahlungsweg auf Kasse. War ein Teil schon extern bezahlt, bleibt der Zahlungsweg
+  erhalten und die Kassennachzahlung markiert die Bestellung als Mischzahlung. Das Audit
+  protokolliert die Änderung.
+  Der Euro-Abgleich weist das Soll im betroffenen Abschnitt als offen aus.
+  Eine anschließende Rücknahme der Übergabe stellt den vorherigen Zahlungsstand
+  wieder her, sofern er seither gleich geblieben ist.
 - **Backzettel-Nachträge** schreibt der Schreibweg der Vorbestellung (Anlegen, Ändern, Status, Storno,
   Sammelaktion) in derselben Transaktion, nicht das Lesen des Backzettels - siehe
   [`backzettel.md`](backzettel.md).
@@ -144,14 +186,33 @@ und `/admin/preorders/tag?date=` (Summen je Produkt **und Sorte**, Abholliste, A
 - **Tastatur:** Die Maske ist kein `<form>` - Enter springt weiter (Name → Telefon → Suche → Menge →
   Hinzufügen → Suche), **Strg/Cmd+Enter speichert**. Die Ziffernblock-Tasten haben `tabIndex -1` und
   nehmen dem Mengenfeld den Fokus nicht.
+- **Speichern mit Lücken nennt den Grund:** fehlt etwas, springt der Fokus auf das erste Feld in der
+  Reihenfolge Name → Abholtag → Produktsuche (beim offenen Ziffernblock: Sorte bzw. Menge), das Feld
+  rollt in die Mitte, und die Meldung steht in der Speicherleiste unten (`role="alert"`, statt „0
+  Artikel · 0,00 €“) - am Handy lag der Hinweis bei „Bestellung“ außer Sicht. Ist die Lücke
+  gefüllt, nennt die Leiste die nächste, danach wieder die Summe. Abholtag und Uhrzeit stehen
+  nebeneinander nur, wo die Spalte breit genug ist (sm, ab xl); die Uhrzeit heißt „Uhrzeit“ mit
+  „optional“ darunter.
 - **Entwurf übersteht das Sitzungsende** (`src/lib/preorderDraft.ts`): eine halb erfasste
   Telefonbestellung liegt in `sessionStorage`, **einer je Benutzer** (`draftKey`, an der gemeinsamen
   Station überschreibt ein Kollege ihn nicht), verfällt nach 12 h und trägt die `requestId` des
   Speicherns mit - ein Wiederholen nach verlorener Antwort legt keine zweite Bestellung an. Meldet die
   API `request_id_changed`, entscheidet die Verkäuferin: in die schon angelegte Bestellung übernehmen
-  oder neu.
+  oder neu. Der Entwurf merkt sich auch den **Ausgang** (`outcome`, aus `requestFailureKind`): hat die
+  API jeden Versuch mit dieser Kennung abgelehnt (401, 4xx → `refused`), sagt er nach dem
+  Wiederherstellen „Noch nicht gespeichert – bitte prüfen und speichern.“; blieb einer ohne Antwort
+  oder kam 5xx (auch erst WLAN weg, dann die Sitzung abgelaufen), bleibt es bei „vielleicht schon
+  angekommen“. Ein Entwurf ohne das Feld (von vor dem Update, Versuch lief noch) gilt als unklar.
 - **Preis-Snapshot:** Die Summe in der Maske ist eine Vorschau. Ändert sich Tag oder Ort, vergibt der
   Server einen neuen Code - die Oberfläche sagt das an.
+- **„Als PDF drucken“ (Bestellschein):** Die Ansicht einer Vorbestellung lädt die Bestellung als
+  A4-PDF mit dem Briefkopf der Bäckerei: Code, Kunde, Telefon, Abholtag, -ort und -zeit, Bestellweg,
+  Status, Bezahlstand, Positionen mit Einzelpreis und Summe, Gesamtbetrag, Anmerkung. Darauf steht
+  „Dieser Bestellschein ist keine Rechnung.“ - eine Rechnung stellt nur der Inhaber unter
+  `/admin/rechnungen` aus. Stornierte tragen „STORNIERT“; eine anonymisierte Bestellung zeigt auch
+  im PDF weder Name noch Telefon noch Anmerkung. Den Knopf sieht jeder, der die Bestellung sehen
+  darf (auch der Fahrer). `GET /api/preorders/:id/pdf`, Details in
+  [`docs/api/preorders.md`](../api/preorders.md).
 - **Nie löschen:** Stornieren nur über die Rückfrage, `offen`/`bereit` sind bearbeitbar, abgeholt nur
   zurück auf „Offen". Auch „Storno aufheben" fragt nach - die Bestellung zählt danach wieder für die
   Backstube.
@@ -171,7 +232,7 @@ und `/admin/preorders/tag?date=` (Summen je Produkt **und Sorte**, Abholliste, A
   Kanal), `bakery-management-preorder-recent` (zuletzt erfasste Produkte); „Häufig" rechnet zusätzlich
   über die Vorbestellungen der letzten 28 Tage.
 
-## Abholliste (P2, `/admin/preorders/abholliste?date=&point=`)
+## Abholliste (P2, `/admin/preorders/abholliste?date=&point=&q=`)
 
 Die Übergabeliste je Tag und Abholort (`point` = `laden` oder die id einer Sammelstelle) - am Tablet
 an der Theke, am Handy des Fahrers an der Sammelstelle, auf Papier, wenn beides ausfällt. Logik ohne
@@ -184,7 +245,23 @@ React in `src/lib/abholliste.ts`.
   {Fenster} Uhr") oder nach Name (Sammelstelle-Vorgabe; Anfangsbuchstabe, Umlaute auf den
   Grundbuchstaben). Stornierte stehen immer zuletzt, durchgestrichen, und fehlen im Druck.
 - **Suche** im Client: ein- bis zweistellige Zahl = laufende Nummer am Ende des Codes (sonst träfe „4"
-  jedes Datum), sonst Name oder Code, ab drei Ziffern auch die Telefonnummer.
+  jedes Datum), sonst Name oder Code (ein ganzer Code auch ohne führende Null, `la-2026-11-17-3`), ab
+  drei Ziffern auch die Telefonnummer. Sie steht als `q` in der Adresse (Tippen ersetzt sie per
+  `replaceState`, ohne Serveranfrage; Tag/Ort per `router.replace`). Beim Öffnen gilt das `q` der
+  Adresse vor den Props der Seite - Browser-Zurück zeigt die Seite aus Nexts Cache ohne `q`.
+- **Nichts auf dieser Liste** (Kundin kommt einen Tag zu spät, Code vom Zettel eines anderen Tages):
+  (a) ein ganzer Code (`LA-2026-11-17-03`, auch klein getippt) zeigt ohne Anfrage auf seinen Tag und
+  Ort - `LA` = Laden, sonst die Sammelstelle mit dem Kürzel aus `codePrefixFor` der API (bei gleichem
+  Kürzel die an dem Tag belieferte); (b) sonst nach 300 ms Pause `GET /api/preorders?q=&from=&to=`
+  (14 Tage zurück, 30 voraus, nicht für eine laufende Nummer), Treffer als „Di 17.11. · Laden · Name
+  (nicht abgeholt)"; eine ältere Antwort zählt nicht mehr, lehnt die API ab (403), fehlt der Teil
+  still; (c) immer „In allen Vorbestellungen suchen" (`/admin/preorders?q=…&range=alle`). „Zur
+  Abholliste dieses Tages" wechselt Tag und Ort in der Seite und behält die Suche - dort steht dann
+  die Bestellung.
+- **„Bestellung öffnen"** (⋮) hängt die Herkunft an (`/admin/preorders/{id}?von=abholliste&date=&point=&q=`).
+  `[id]/page.tsx` prüft sie (`abhollisteBackFromQuery`) und gibt `PreorderDetailClient` einen festen
+  `backTo` mit „Zurück zur Abholliste" - auch nach dem Speichern, wenn die Bestellung den Tag wechselt.
+  Ungültige Herkunft → „Alle Vorbestellungen". Die App läuft am iPad ohne Browserleiste.
 - **Übergeben** setzt `abgeholt` über `POST /:id/status` mit `expectedUpdatedAt` (409 → Liste neu laden,
   Hinweis, nichts überschrieben). Bezahlt + Verkauf/Inhaber: ein Tipp mit „Rückgängig" (stellt Status,
   `paid` und `notCollected` von vorher wieder her). Sonst ein Dialog: „Bezahlt und übergeben" / „Ohne
@@ -240,8 +317,12 @@ Navigationspunkt „Sammelstelle Mörsbach" (eigene Liste mit Bestellschluss, Ba
   sind die P1-Maske bzw. die P3-Ansicht mit vorbelegter Sammelstelle und Rückweg auf den Liefertag
   (`MoersbachPreorderClients.tsx`).
 - Die Liste zeigt Sorten, Code und bezahlt, verlinkt auf die Abholliste und storniert mit
-  `expectedUpdatedAt`. Unter `md` (Handy, Tablet hochkant) steht je Bestellung eine Karte statt der
-  Tabelle - Summe, Status und Aktion lagen sonst seitlich außer Sicht.
+  `expectedUpdatedAt`. Solange die Tabelle nicht neben die Seitenleiste passt (`useContentWide()`:
+  Handy, Tablet hochkant und quer bis knapp 1250 px), steht je Bestellung eine Karte statt der
+  Tabelle - Summe, Status und Stornieren lagen sonst seitlich außer Sicht.
+- Liste und Backliste werten beim Wechsel von Tag oder Sammelstelle nur die letzte Anfrage aus und
+  zeigen bis zur Antwort „wird geladen“ (kein „Drucken“): eine späte Antwort des alten Tags überschrieb
+  sonst den neuen, und die Backliste druckte ihn unter dem neuen Datum.
 - `PUT /api/preorders/pickup-points/:id` (nur `inhaber`) ändert die Sammelstelle; die Seite zeigt allen
   anderen die Felder **schreibgeschützt** (`readOnly`, Schalter gesperrt, kein „Speichern"), schickt
   `expectedUpdatedAt` mit (409 `stale_pickup_point` → Hinweis mit „Neu laden") und begrenzt die Texte

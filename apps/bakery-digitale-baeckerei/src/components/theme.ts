@@ -47,6 +47,26 @@ export const rand = (
   px = 12
 ): string => `max(${px}px, env(safe-area-inset-${seite}))`
 
+/** Ein Gerät mit Maus: Hinweise nennen Klicken und Mausrad statt Tippen und Fingern. */
+export const MIT_MAUS = '@media (hover: hover) and (pointer: fine)'
+
+/** Abstand der Blickpunkt-Leiste zum unteren Rand. */
+export const LEISTE_UNTEN = rand('bottom', 8)
+
+/**
+ * Die Höhe der Blickpunkt-Leiste als CSS-Variable an `<html>`: Die Leiste
+ * misst sich selbst (ResizeObserver) und schreibt sie dorthin, Karte und
+ * Hinweis stehen darüber - wie viele Zeilen die Leiste auch hat. Bis zur
+ * ersten Messung (und in jsdom) gilt der Ersatzwert: die zweizeilige Leiste
+ * im Hochformat.
+ */
+export const LEISTE_HOEHE_VAR = '--leiste-hoehe'
+const LEISTE_HOEHE_ERSATZ = '104px'
+
+/** Die Oberkante der Leiste plus `abstand` px, gemessen vom unteren Rand. */
+export const ueberDerLeiste = (abstand = 0): string =>
+  `calc(${LEISTE_UNTEN} + var(${LEISTE_HOEHE_VAR}, ${LEISTE_HOEHE_ERSATZ}) + ${abstand}px)`
+
 /**
  * Markenpalette (docs/brand-identity.md): Highlight #d038ba, für Text und
  * Flächen die dunklere Stufe #A02E94 (Kontrast), Dunkelbraun #5A2E2A, Crème

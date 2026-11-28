@@ -18,6 +18,7 @@ the Backzettel-variant hook in `src/services/preorder-variants.ts`.
 | `POST /api/preorders/bulk-status`      | verkauf; fahrer only `abgeholt` / `nicht_abgeholt` | `{ ids, status?, notCollected?, paid?, expectedUpdatedAt? }` → `{ success, data: { counts, results } }`             |
 | `GET /api/preorders/variants`          | verkauf, fahrer                                    | `{ success, data: { [productId]: string[] }, configured, count }`                                                   |
 | `GET /api/preorders/:id`               | verkauf, fahrer                                    | `{ success, data }`; 404 `not_found`                                                                                |
+| `GET /api/preorders/:id/pdf`           | verkauf, fahrer                                    | `application/pdf`, `Bestellschein-<Code>.pdf` (see „Bestellschein“); 404 `not_found`, 503 `pdf_fonts_missing`       |
 | `POST /api/preorders`                  | verkauf                                            | 201 `{ success, data }`; optional `requestId` (a retry returns the earlier order, 200)                              |
 | `PATCH /api/preorders/:id`             | verkauf                                            | `{ success, data }`; partial; a date/place change renews the code; optional `expectedUpdatedAt`                     |
 | `POST /api/preorders/:id/status`       | verkauf; fahrer only `abgeholt` / `nicht_abgeholt` | `{ status?, notCollected?, paid?, expectedUpdatedAt? }` → `{ success, data }`                                       |
@@ -41,7 +42,7 @@ the Backzettel-variant hook in `src/services/preorder-variants.ts`.
   literally; phone digits from 3 on).
 - **`Preorder`** = `{ id, code, channel, customerName, customerPhone, pickupDate, pickupTime,
 pickupPointId, pickupPoint { id, name, window } | null, status, notCollected, notCollectedAt,
-paid, paidAmount, paymentBalance, note, items [{ productId, name, variant, unit, unitPrice,
+paid, externalPayment, paidAmount, paymentBalance, note, items [{ productId, name, variant, unit, unitPrice,
 quantity, lineTotal }], total, pickedUpAt, anonymizedAt, createdBy, updatedBy, createdAt,
 updatedAt, deadline, afterDeadline }`.
 - **Errors** via `sendError`: 400 `invalid_*` / `unknown_product` / `unknown_pickup_point` /
@@ -85,6 +86,22 @@ updatedAt, deadline, afterDeadline }`.
   on the status endpoint = „Rest kassiert"), kept on edit, cleared with `paid: false`.
   `paymentBalance` (core): > 0 still to collect, < 0 to refund; cancelled + paid = −paid. A NULL
   `paid_amount` with `paid` means "fully paid" (old rows, imports).
+- Für die **Zahlung außerhalb der Kasse** ist `externalPayment` (Boolean) optional bei `POST` und
+  `PATCH` unter `/api/preorders`. `true` steht für Überweisung oder Rechnung. Ohne Angabe
+  gilt beim Anlegen und im Altbestand `false`, beim Bearbeiten bleibt der gespeicherte Wert.
+  Ein anderer Datentyp ergibt 400 `invalid_external_payment`. `paid` und `paidAmount` werden
+  unabhängig davon erfasst. Der [Euro-Abgleich](abgleich.md#euro-abgleich-task-043) liest den
+  Zahlungsweg. Die Mörsbach-Aliasantwort behält ihren Vertrag.
+- Verkauf und Inhaber können `externalPayment` auch bei `POST /:id/status` mitschicken.
+  Bei vollständiger Kassenzahlung setzt die Abholliste es zusammen mit `paid: true` auf
+  `false`. Bei einer Kassennachzahlung nach externer Teilzahlung sendet sie
+  `cashTopUp: true` mit `paid: true`. Der Zahlungsweg bleibt erhalten. Der aktuelle Stand
+  liegt in `preorders.mixed_payment` (Boolean, Pflichtfeld, Standardwert `false`, Migration
+  `20270402000000-preorders-external-payment.js`). Der Euro-Abgleich liest diese Spalte.
+  Die Vorbestellantwort liefert bei einer Mischzahlung `mixedPayment: true`.
+  Das Audit protokolliert die Änderung. Bei Rücknahme einer Übergabe stellt der Dienst
+  den vorherigen Wert anhand des gespeicherten Übergabe-Snapshots wieder her, sofern
+  die Zahlung seit der Übergabe gleich geblieben ist.
 - **Retried create (`requestId`)** (migration `20261116000000-preorders-request-id.js`, unique,
   nullable): the entry form sends one id (8-64 of `[A-Za-z0-9_-]`, else 400 `invalid_request_id`)
   per order it is saving and keeps it across retries. A save whose answer was lost (Wi-Fi drop)
@@ -96,7 +113,7 @@ updatedAt, deadline, afterDeadline }`.
 - **Bulk status.** `POST /bulk-status` changes many preorders in **one** serialised write
   transaction (Abholliste: „alle bereit", Tagesabschluss „nicht abgeholt"). Body: `ids` (1-200
   positive integers or canonical digit strings like `"7"`, duplicates merged; else 400
-  `invalid_ids`), the same change fields as `/:id/status` (at least one, else 400
+  `invalid_ids`), `status`, `notCollected` or `paid` (at least one, else 400
   `invalid_status`; values that are wrong for every preorder - unknown `status`, non-boolean
   `paid`/`notCollected`, `notCollected` with a status other than `bereit` - are one top-level 400
   `invalid_status` / `invalid_paid` / `invalid_not_collected`, not `refused` per id), optional
@@ -230,6 +247,33 @@ not_collected }` (plus `paid: true` with `handed_over`), and not away from a han
   preorder can no longer be edited or change status (409 `anonymized`). Backups keep the names
   until they rotate out (runbook §5.1). The same nightly run anonymises old delivery stops (B8,
   report field `deliveryStops`, see [deliveries.md](deliveries.md#dsgvo-p4-rule-for-stops)).
+
+## Bestellschein (PDF)
+
+`GET /api/preorders/:id/pdf` - one order as a printable A4 sheet (button „Als PDF drucken“ on the
+detail page). Code: `src/services/preorder-pdf.ts`, shared pdfkit pieces (fonts, letterhead, footer)
+in `src/services/pdf-kit.ts`, the same ones the invoice uses.
+
+- **Same roles as `GET /:id`** (verkauf, fahrer, inhaber; backstube 403). Read-only: nothing is
+  stored, no audit row, `Cache-Control: no-store`.
+- **It draws exactly the `Preorder` DTO of `GET /:id`** - so an anonymised order prints
+  „anonymisiert“ and neither phone nor note; there is no second read path that could leak them.
+- **Not an invoice:** title „Bestellschein <Code>“, below it „Dieser Bestellschein ist keine
+  Rechnung.“, repeated in the footer. No bank details, no VAT breakdown, no XML, no PDF/A.
+- **Content:** letterhead and footer from the Impressum data (`currentSeller()` →
+  `@bakery/shared/legal`, without the bank columns), customer, phone (if any), pickup day with
+  weekday, place („Laden“ + time, or pickup point + window), channel, status („Nicht abgeholt“ when
+  marked so), payment („nicht bezahlt“, „bezahlt (X)“, plus „noch offen“ / „zu erstatten“ from
+  `paymentBalance`), lines (quantity + unit, name with variant, unit price, line total), total,
+  note. A cancelled order carries a red „STORNIERT“. The footer says „Stand <today>“.
+- **Nothing is computed here.** Line totals, total and balance are the order's own values
+  (`delivery-preorders.core.js`); euro formatting is `formatEuro(priceToCents())` from
+  `invoice.core.js`; the item label is `itemLabel()` of the preorder core.
+- One page for a normal order; a very long one (about 20+ lines) continues on further pages with
+  the table header repeated.
+- Fonts missing (`PdfFontsError`): 503 `pdf_fonts_missing` with a German `message`.
+- Tests: `tests/unit/preorderPdf.test.ts` (content, cancelled, anonymised, page break),
+  `tests/integration/preorderPdf.test.ts` (roles, 404, 503, anonymisation run).
 
 ## CLI
 

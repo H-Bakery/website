@@ -81,7 +81,7 @@ Gelöscht sind die Demo-Seiten, die nicht auf der „Keep"-Liste standen (`baker
   Seiten sind 404 - **auch im Pilotbetrieb**: der Proxy schreibt nur noch vorhandene, gesperrte Seiten
   auf „Im Pilotbetrieb nicht verfügbar" um (`PILOT_HIDDEN_ROUTES`, heute nur
   `/admin/sitzung-pruefen`; Dienstplan (nur Inhaber) und Rest am Abend sind im Pilot freigegeben,
-  Entscheidung 2026-11-08, und stehen in `PILOT_ALLOWED_ROUTES`). `pilotMode.spec.ts` fällt um, wenn eine `page.tsx` unter `app/admin`
+  Entscheidung 2026-11-08, ebenso Rechnungen (nur Inhaber mit persönlicher Anmeldung, 2026-11-13, [rechnungen.md](rechnungen.md)), und stehen in `PILOT_ALLOWED_ROUTES`). `pilotMode.spec.ts` fällt um, wenn eine `page.tsx` unter `app/admin`
   weder freigegeben noch dort gesperrt ist; `src/lib/oldPageRedirects.spec.ts` prüft die
   Weiterleitungen (Ziele im Pilotbetrieb erlaubt, keine fängt eine vorhandene Seite).
 
@@ -132,9 +132,20 @@ und Bausteine stehen in `src/components/layout/README.md`, Referenzseiten sind `
 `/admin/users`. Kurz: genau ein `PageLayout` je Seite, den Seitenrand setzt `admin/layout.tsx`
 (keine eigenen `p`/`Container`/`maxWidth`), höchstens 4 Kennzahlen, eine Hauptaktion je Seite,
 Tabellen werden unter 600 px zu Karten, Fehler stehen als deutscher Satz (`ErrorState` übersetzt
-„Failed to fetch“/HTTP 502 in den WLAN-Hinweis), Druck ist immer hell. Die Fahrer-App folgt
+„Failed to fetch“/HTTP 502 in den WLAN-Hinweis), Druck ist immer hell.
+**Tabellen schalten nach der Breite des Inhalts um, nicht nach dem Fenster:** ab `md` steht die
+Seitenleiste (280 px) fest daneben, quer am Tablet (1024-1200 px) bleiben 700-870 px. Listen, deren
+Summe, Status oder Aktion sonst rechts außer Sicht lägen (Vorbestellungen, Tagesübersicht,
+Sammelstelle), nehmen dafür `useContentWide()` (misst `<main>`, Tabelle ab 920 px Inhalt, also etwa
+ab 1250 px Fenster; darunter Karten). Tabellen ohne Karten stellen das Ergebnis vor und blenden
+Nebenspalten erst ein, wenn sie passen (Abgleich: Ungeklärt und Ampel gleich hinter dem Posten, CAP
+und „nicht verkauft oder nicht kassiert“ erst ab `xl`, je Tag aufgeklappt immer).
+**Tageswechsel:** Seiten, die beim Blättern neu laden, werten nur die letzte Anfrage aus
+(`++requestRef.current`) und zeigen bis zur Antwort „wird geladen“ statt des alten Tags unter dem
+neuen Datum - sonst druckte „Drucken“ den Vortag unter dem neuen Titel. Die Fahrer-App folgt
 denselben Regeln in CSS ([`docs/apps/delivery.md`](../apps/delivery.md#oberfläche)).
-Tests: `src/components/layout/layoutKit.spec.tsx`, `focusNotObscured.spec.tsx`.
+Tests: `src/components/layout/layoutKit.spec.tsx`, `focusNotObscured.spec.tsx`,
+`useContentWide.spec.tsx`.
 
 ## Theme und Dunkelmodus
 

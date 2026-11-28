@@ -1,3 +1,5 @@
+import * as fs from 'fs'
+import * as path from 'path'
 import React from 'react'
 import { fireEvent, screen } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
@@ -70,5 +72,19 @@ describe('Social-Media - Vorschau', () => {
         name: /herunterladen|1080x1080|optimiert/,
       })
     ).toHaveLength(1)
+  })
+
+  it('nennt das belegte Gründungsjahr 1933 (nicht 1952) - in Vorschau und Bild', () => {
+    renderWithTheme(<SocialMediaPage />)
+    expect(
+      screen.getByText('Traditionelle Handwerkskunst seit 1933')
+    ).toBeVisible()
+    expect(document.body.textContent).not.toContain('1952')
+    // Auch das heruntergeladene Bild (Canvas) nimmt den Text nur aus
+    // BRAND_FACTS - im Quelltext steht kein festes Gründungsjahr mehr.
+    const source = fs.readFileSync(path.join(__dirname, 'page.tsx'), 'utf-8')
+    expect(source).not.toContain('1952')
+    expect(source).not.toMatch(/seit \d{4}/)
+    expect(source).toContain('BRAND_FACTS.foundedYear')
   })
 })

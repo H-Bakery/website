@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Box,
   Button,
@@ -131,7 +131,14 @@ export default function BackingListClient({
   const [pointId, setPointId] = useState(initialPickupPointId ?? '')
   // Leer starten - der Vorgabetag kommt aus der Uhr (Hydration).
   const [date, setDate] = useState(initialDate ?? '')
-  const [day, setDay] = useState<PreorderSums | null>(null)
+  // Die Summen merken sich, für welchen Liefertag und welche Sammelstelle sie
+  // geladen wurden: nach einem Wechsel steht bis zur Antwort „wird geladen“
+  // da - nie die Mengen eines anderen Tags unter dem neuen Datum.
+  const [loaded, setLoaded] = useState<{
+    key: string
+    day: PreorderSums
+  } | null>(null)
+  const day = loaded?.key === `${date}|${pointId}` ? loaded.day : null
   const [pointsLoaded, setPointsLoaded] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -180,20 +187,31 @@ export default function BackingListClient({
     }
   }, [initialPickupPointId])
 
+  // Nur die letzte Anfrage zählt: beim schnellen Wechsel des Tags kam die
+  // Antwort des alten Tags sonst zuletzt an, und gedruckt wurde sie unter
+  // dem neuen Datum.
+  const requestRef = useRef(0)
   const load = useCallback(async () => {
+    const id = ++requestRef.current
     // Ohne Sammelstelle wäre es der ganze Tag (Laden inklusive).
-    if (!isBusinessDate(date) || !pointId) return
+    if (!isBusinessDate(date) || !pointId) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError(null)
     try {
-      setDay(await fetchPreorderSums(date, pointId))
+      const next = await fetchPreorderSums(date, pointId)
+      if (id !== requestRef.current) return
+      setLoaded({ key: `${date}|${pointId}`, day: next })
     } catch (err) {
-      setDay(null)
+      if (id !== requestRef.current) return
+      setLoaded(null)
       setError(
         preorderErrorMessage(err, 'Die Backliste konnte nicht geladen werden')
       )
     } finally {
-      setLoading(false)
+      if (id === requestRef.current) setLoading(false)
     }
   }, [date, pointId])
 

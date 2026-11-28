@@ -137,10 +137,24 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Gebacken, verkauft, übrig',
   },
   {
+    // Abgleich Produktion ↔ Kasse: nur Inhaber (ROLE_ACCESS; API:
+    // GET /api/abgleich `inhaber`).
+    label: 'Abgleich',
+    href: '/admin/abgleich',
+    icon: 'abgleich',
+    description: 'Produktion ↔ Kasse',
+  },
+  {
     label: 'Finanzen',
     href: '/admin/finance',
     icon: 'finance',
     description: 'Einnahmen und Ausgaben',
+  },
+  {
+    label: 'Belege',
+    href: '/admin/finance/belege',
+    icon: 'invoices',
+    description: 'Belege erfassen und mit Buchungen abgleichen',
   },
   {
     label: 'Tagesziel',
@@ -159,6 +173,14 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     href: '/admin/finance/monat',
     icon: 'monthreport',
     description: 'Auffälligkeiten im Monat',
+  },
+  {
+    // Ausgangsrechnungen (ZUGFeRD/Factur-X) - nur Inhaber (ROLE_ACCESS; API:
+    // /api/invoices `inhaber`). Im Pilot sichtbar (PILOT_ALLOWED_ROUTES).
+    label: 'Rechnungen',
+    href: '/admin/rechnungen',
+    icon: 'invoices',
+    description: 'Ausstellen, PDF mit ZUGFeRD',
   },
   {
     // TASK-042: Schichten (Verkauf), Abwesenheiten und Urlaubskonten - nur

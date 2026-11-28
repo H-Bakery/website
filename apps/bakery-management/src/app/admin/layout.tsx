@@ -42,6 +42,8 @@ import {
   QueryStats as RestSummaryIcon,
   CalendarMonth as DienstplanIcon,
   MenuBook as RecipesIcon,
+  ReceiptLong as InvoicesIcon,
+  CompareArrows as AbgleichIcon,
 } from '@mui/icons-material'
 import type { Theme } from '@mui/material/styles'
 import Link from 'next/link'
@@ -141,8 +143,10 @@ const iconMap: Record<string, React.ReactElement> = {
   help: <HelpIcon />,
   pickuppoint: <PickupPointIcon />,
   restsummary: <RestSummaryIcon />,
+  abgleich: <AbgleichIcon />,
   dienstplan: <DienstplanIcon />,
   recipes: <RecipesIcon />,
+  invoices: <InvoicesIcon />,
 }
 
 /**
@@ -184,6 +188,8 @@ const DYNAMIC_BREADCRUMB_LABELS: Record<string, string | null> = {
   // Rezepte: der Name steht als h1 auf der Seite; Kategorie und Kennung
   // (`breads/musterkruste`) sagen im Pfad niemandem etwas - siehe
   // `recipeBreadcrumbLabel`.
+  // Rechnungen: die Nummer steht als h1 auf der Seite.
+  '/admin/rechnungen/[id]': 'Rechnung',
   '/admin/rezepte/neu': 'Neues Rezept',
   '/admin/rezepte/bearbeiten': null,
 }
@@ -231,6 +237,7 @@ function getBreadcrumb(pathname: string, includeRoot = true): string[] {
       const recipeLabel = recipeBreadcrumbLabel(href)
       if (recipeLabel !== undefined) return recipeLabel
       // W4-verify r2: Produkt-ID (Slug) und Backzettel-Datum nicht roh zeigen
+      if (href === '/admin/products/preisliste') return 'Preisliste'
       if (/^\/admin\/products\/[^/]+$/.test(href)) return 'Bearbeiten'
       // Tage (Backzettel, Kassenbericht …) als „Donnerstag, 05.11.2026“
       if (isIsoDate(segment)) return formatDateLong(segment)

@@ -94,6 +94,8 @@ export interface PreorderRecord {
   pickupPointId: string | null
   status: string
   paid: boolean
+  externalPayment: boolean
+  mixedPayment: boolean
   /** Amount recorded as paid; `null` with `paid` = paid in full (legacy). */
   paidAmount: number | null
   note: string | null
@@ -141,6 +143,7 @@ interface ComparableInput {
   pickupTime: string | null
   pickupPointId: string | null
   paid: boolean
+  externalPayment?: boolean
   note: string | null
   items: Array<{ productId: string; variant?: string | null; quantity: number }>
 }
@@ -168,6 +171,7 @@ export function sameOrderInput(
     (input.pickupTime ?? null) === (record.pickupTime ?? null) &&
     (input.pickupPointId ?? null) === (record.pickupPointId ?? null) &&
     Boolean(input.paid) === Boolean(record.paid) &&
+    Boolean(input.externalPayment) === Boolean(record.externalPayment) &&
     (input.note ?? null) === (record.note ?? null) &&
     itemKeys(input.items) === itemKeys(record.items)
   )
@@ -246,6 +250,8 @@ export function toRecord(row: Preorder): PreorderRecord {
     pickupPointId: p.pickupPointId ?? null,
     status: p.status,
     paid: !!p.paid,
+    externalPayment: !!p.externalPayment,
+    mixedPayment: p.mixedPayment,
     paidAmount:
       p.paid && p.paidAmount != null && p.paidAmount !== ''
         ? Number(p.paidAmount)
@@ -290,6 +296,8 @@ export function toDto(
     notCollected: !!record.notCollectedAt,
     notCollectedAt: iso(record.notCollectedAt),
     paid: record.paid,
+    externalPayment: record.externalPayment,
+    ...(record.mixedPayment ? { mixedPayment: true } : {}),
     // W4 verification round 2: what was paid, and what is still owed (> 0)
     // or must be refunded (< 0) - after an edit or a cancellation.
     paidAmount: record.paid ? record.paidAmount ?? record.total : null,
@@ -336,6 +344,8 @@ function changedFields(
     'status',
     'paid',
     'paidAmount',
+    'externalPayment',
+    'mixedPayment',
     'note',
     'notCollectedAt',
   ]
@@ -1194,6 +1204,7 @@ export class PreordersService {
           status: input.status,
           paid: input.paid,
           paidAmount: input.paid ? core.itemsTotal(input.items) : null,
+          externalPayment: input.externalPayment,
           note: input.note,
           pickedUpAt: input.pickedUpAt ? new Date(input.pickedUpAt) : null,
           notCollectedAt: input.notCollectedAt
@@ -1274,7 +1285,13 @@ export class PreordersService {
         : current.paid
         ? current.paidAmount ?? (itemsChanged ? current.total : null)
         : core.itemsTotal(next.items ?? current.items)
-      const changed = changedFields(current, { ...next, paidAmount })
+      const mixedPayment =
+        current.mixedPayment && next.paid && next.externalPayment
+      const changed = changedFields(current, {
+        ...next,
+        paidAmount,
+        mixedPayment,
+      })
       if (changed.length === 0) {
         return { ok: true as const, status: 200, data: current }
       }
@@ -1297,6 +1314,8 @@ export class PreordersService {
           status: next.status,
           paid: next.paid,
           paidAmount,
+          externalPayment: next.externalPayment,
+          mixedPayment,
           note: next.note,
           pickedUpAt: next.pickedUpAt ? new Date(next.pickedUpAt) : null,
           notCollectedAt: next.notCollectedAt
@@ -1320,6 +1339,9 @@ export class PreordersService {
         record.id,
         auditData(record, {
           changed,
+          ...(changed.includes('mixedPayment')
+            ? { mixedPayment: record.mixedPayment }
+            : {}),
           ...(code !== current.code ? { previousCode: current.code } : {}),
           ...(changed.includes('status') ? { from: current.status } : {}),
         }),
@@ -1397,6 +1419,7 @@ export class PreordersService {
       ) as Failure
     }
     const changes = result.changes as Record<string, unknown>
+    let mixedPayment = current.mixedPayment || changes['cashTopUp'] === true
     // An explicit `paid: true` means the full current total was collected -
     // also on an order already paid with a balance left (W4-verify r2).
     const explicitPaid =
@@ -1426,14 +1449,26 @@ export class PreordersService {
         changes['paid'] = before.paid
         paidAfter = before.paid
         paidAmount = before.paid ? before.paidAmount : null
+        if (
+          changes['externalPayment'] === undefined &&
+          before.externalPayment !== undefined
+        ) {
+          changes['externalPayment'] = before.externalPayment
+        }
+        mixedPayment = before.mixedPayment ?? mixedPayment
       }
     }
     const handover =
       current.status !== 'abgeholt' && changes['status'] === 'abgeholt'
+    mixedPayment =
+      mixedPayment &&
+      paidAfter &&
+      Boolean(changes['externalPayment'] ?? current.externalPayment)
     const changed = changedFields(current, {
       ...current,
       ...changes,
       paidAmount,
+      mixedPayment,
     })
     if (changed.length === 0) {
       return { ok: true, status: 200, data: current, changed: false }
@@ -1450,7 +1485,11 @@ export class PreordersService {
         ...(changes['paid'] !== undefined
           ? { paid: changes['paid'] as boolean }
           : {}),
+        ...(changes['externalPayment'] !== undefined
+          ? { externalPayment: changes['externalPayment'] as boolean }
+          : {}),
         paidAmount,
+        mixedPayment,
         updatedBy: req?.user?.id ?? null,
       },
       { where: { id: current.id }, transaction }
@@ -1466,12 +1505,25 @@ export class PreordersService {
       record.id,
       auditData(record, {
         changed,
+        ...(changed.includes('mixedPayment')
+          ? { mixedPayment: record.mixedPayment }
+          : {}),
         from: current.status,
         ...(handover
           ? {
               payment: {
-                before: { paid: current.paid, paidAmount: current.paidAmount },
-                after: { paid: record.paid, paidAmount: record.paidAmount },
+                before: {
+                  paid: current.paid,
+                  paidAmount: current.paidAmount,
+                  externalPayment: current.externalPayment,
+                  mixedPayment: current.mixedPayment,
+                },
+                after: {
+                  paid: record.paid,
+                  paidAmount: record.paidAmount,
+                  externalPayment: record.externalPayment,
+                  mixedPayment: record.mixedPayment,
+                },
               },
             }
           : {}),
@@ -1495,7 +1547,12 @@ export class PreordersService {
   private async paymentBeforeHandover(
     current: PreorderRecord,
     transaction: Transaction
-  ): Promise<{ paid: boolean; paidAmount: number | null } | null> {
+  ): Promise<{
+    paid: boolean
+    paidAmount: number | null
+    externalPayment?: boolean
+    mixedPayment?: boolean
+  } | null> {
     const rows = await AuditLog.findAll({
       where: { entity: 'preorder', entityId: String(current.id) },
       order: [['id', 'DESC']],
@@ -1508,8 +1565,18 @@ export class PreordersService {
       ) as Record<string, unknown> | null
       const payment = data?.['payment'] as
         | {
-            before?: { paid?: unknown; paidAmount?: unknown }
-            after?: { paid?: unknown; paidAmount?: unknown }
+            before?: {
+              paid?: unknown
+              paidAmount?: unknown
+              externalPayment?: unknown
+              mixedPayment?: unknown
+            }
+            after?: {
+              paid?: unknown
+              paidAmount?: unknown
+              externalPayment?: unknown
+              mixedPayment?: unknown
+            }
           }
         | undefined
       if (!payment || !payment.before || !payment.after) continue
@@ -1531,6 +1598,16 @@ export class PreordersService {
       return {
         paid,
         paidAmount: paid ? amount(payment.before.paidAmount) : null,
+        externalPayment:
+          payment.after.externalPayment === current.externalPayment &&
+          typeof payment.before.externalPayment === 'boolean'
+            ? payment.before.externalPayment
+            : undefined,
+        mixedPayment:
+          payment.after.mixedPayment === current.mixedPayment &&
+          typeof payment.before.mixedPayment === 'boolean'
+            ? payment.before.mixedPayment
+            : undefined,
       }
     }
     return null

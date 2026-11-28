@@ -4,8 +4,13 @@
  * Koordinaten: Zonen-Rahmen des Saar LiDAR Explorers, unverändert übernommen
  * (x = Ost, y = Höhe in m ü. NHN, im Laden ≈ 244, z = −Nord). Nicht umrechnen.
  *
- * Der Laden hat drei Blickpunkte (DB3): Theke, Brotregal, Regale. Die Backstube
- * kommt später als weiterer Raum mit eigenem Modell.
+ * Der Laden hat drei Blickpunkte (DB3): Theke, Brotregal, Regale.
+ *
+ * Weitere Räume (DB11, zuerst die Backstube) sind weitere Einträge in `raeume`.
+ * Gezeigt wird ein Raum erst, wenn sein Modell in model.lock.json steht
+ * (src/lib/raeume/verfuegbar.ts) - ohne Lock wird er nicht gebaut und nicht
+ * gezeigt. Wie man einen Raum ergänzt: docs/apps/digitale-baeckerei.md,
+ * „Weitere Räume (Backstube)“.
  *
  * Alle Standorte liegen im Kundenbereich (Läufer vor der Theke) auf Augenhöhe
  * (1,45-1,65 m über dem Boden bei y = 244,25). Sie sind am echten Modell
@@ -96,6 +101,10 @@ export interface Intro {
    * dessen Name so beginnt.
    */
   braucht?: string
+  /** Ansage für Screenreader, solange der Flug läuft (sonst eine allgemeine). */
+  ansage?: string
+  /** Name des Canvas während des Flugs (sonst ein allgemeiner). */
+  label?: string
   punkte: readonly IntroPunkt[]
   /**
    * Eigener Zeitplan: Zur Filmzeit `film` (s) steht die Kamera an der
@@ -106,11 +115,38 @@ export interface Intro {
   ablauf?: readonly { film: number; pfad: number }[]
 }
 
+/**
+ * Eine Tür: Ein Tipp auf dieses Stück des Modells führt in einen anderen Raum.
+ * Ist der Zielraum nicht verfügbar (kein Modell im Lock), ist die Tür ein
+ * Stück Raum wie jedes andere.
+ */
+export interface Tuer {
+  /** Anfang der Knoten-ID im Modell: trifft `tuer` und `tuer/…`. */
+  knoten: string
+  /** id des Raums, in den die Tür führt. */
+  ziel: string
+}
+
 export interface Raum {
+  /** Auch der Schlüssel in model.lock.json, in den Daten-Dateien und in `?raum=<id>`. */
   id: string
   name: string
-  /** Datei unter public/model/ (aus scripts/sync-model.mjs). */
+  /** Beschriftung des Knopfs, der in diesen Raum führt (Du-Form, z. B. „In den Laden“). */
+  wechsel: string
+  /**
+   * Datei unter public/model/ (aus scripts/sync-model.mjs) - derselbe Name wie
+   * `datei` des Raums in model.lock.json.
+   */
   modell: string
+  /**
+   * Liegen in diesem Raum Produkte (Belegung aus dem Modell + Snapshot aus hq)?
+   * `false` (Backstube): Es gibt keine Produktkarten, nur Infopunkte.
+   * Infopunkte hat ein Raum, wenn es in hq seine Datei gibt
+   * (`config/digitale-baeckerei/raeume/<id>.yaml`) - dafür braucht es hier nichts.
+   */
+  produkte: boolean
+  /** id des Blickpunkts, an dem man den Raum betritt. */
+  start: string
   /** Zustand der Auslage, der gezeigt wird (`extras.fills` im Modell). */
   fuellung: string
   blickpunkte: readonly Blickpunkt[]
@@ -119,13 +155,24 @@ export interface Raum {
    * den das geladene Modell hergibt (`braucht`).
    */
   intros?: readonly Intro[]
+  /** Türen in andere Räume. */
+  tueren?: readonly Tuer[]
 }
+
+/** Ansage und Canvas-Name der Flüge im Laden (beide enden an der Theke). */
+export const INTRO_ANSAGE_LADEN =
+  'Kurzer Flug von der Straße zur Theke. Überspringen möglich.'
+export const INTRO_LABEL_LADEN =
+  '3D-Ansicht der Bäckerei, Flug von der Straße zur Theke'
 
 export const raeume: readonly Raum[] = [
   {
     id: 'laden',
     name: 'Laden',
+    wechsel: 'In den Laden',
     modell: 'twin.glb',
+    produkte: true,
+    start: 'theke',
     fuellung: 'morgens',
     blickpunkte: [
       {
@@ -217,6 +264,8 @@ export const raeume: readonly Raum[] = [
         id: 'kreisel',
         name: 'Vom Kreisel zur Theke',
         ziel: 'theke',
+        ansage: INTRO_ANSAGE_LADEN,
+        label: INTRO_LABEL_LADEN,
         braucht: 'umgebung/kreisel',
         punkte: [
           { t: 0, eye: [-25.0, 248.25, 61.0], look: [-4.0, 245.5, 28.0] },
@@ -237,6 +286,8 @@ export const raeume: readonly Raum[] = [
         id: 'kurz',
         name: 'Von der Straße zur Theke',
         ziel: 'theke',
+        ansage: INTRO_ANSAGE_LADEN,
+        label: INTRO_LABEL_LADEN,
         punkte: [
           { t: 0.0, eye: [0.55, 244.87, 20.0], look: [7.0, 246.2, -2.5] },
           { t: 1.2, eye: [3.2, 244.97, 15.0], look: [7.0, 245.6, -2.5] },
@@ -262,11 +313,19 @@ export const raeume: readonly Raum[] = [
   },
 ]
 
+/** Der Raum, in dem die App startet, wenn die Adresse keinen nennt. */
 export const START_RAUM_ID = 'laden'
-export const START_BLICKPUNKT_ID = 'theke'
 
-export function findeRaum(id: string): Raum | undefined {
-  return raeume.find((r) => r.id === id)
+export function findeRaum(
+  id: string,
+  unter: readonly Raum[] = raeume
+): Raum | undefined {
+  return unter.find((r) => r.id === id)
+}
+
+/** Der Blickpunkt, an dem man einen Raum betritt. */
+export function startBlickpunkt(raum: Raum): Blickpunkt {
+  return findeBlickpunkt(raum, raum.start) ?? raum.blickpunkte[0]
 }
 
 export function findeBlickpunkt(

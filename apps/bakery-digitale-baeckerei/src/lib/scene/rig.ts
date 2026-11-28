@@ -111,6 +111,64 @@ export function blickziel(
 }
 
 /**
+ * Ein Punkt im Bild, normiert wie in three (NDC): `x` von −1 (linker Rand)
+ * bis 1 (rechter Rand), `y` von −1 (unten) bis 1 (oben); 0/0 = Bildmitte.
+ */
+export interface Bildanker {
+  x: number
+  y: number
+}
+
+/**
+ * Die Blickrichtung durch den Bildpunkt `anker` einer Kamera, die nach
+ * `blick` schaut (senkrechter Öffnungswinkel `fov` in Grad, Seitenverhältnis
+ * `aspect`). Die Kamera rollt nicht (oben = +y, wie `camera.lookAt`).
+ */
+export function richtungImBild(
+  blick: { yaw: number; pitch: number },
+  fov: number,
+  aspect: number,
+  anker: Bildanker
+): { yaw: number; pitch: number } {
+  const t = Math.tan((fov * GRAD) / 2)
+  const sx = anker.x * aspect * t
+  const sy = anker.y * t
+  const sinY = Math.sin(blick.yaw)
+  const cosY = Math.cos(blick.yaw)
+  const sinP = Math.sin(blick.pitch)
+  const cosP = Math.cos(blick.pitch)
+  // Bild-rechts (−cos, 0, sin), Bild-oben und Blickrichtung im Weltrahmen.
+  const dx = -sx * cosY - sy * sinP * sinY + cosP * sinY
+  const dy = sy * cosP + sinP
+  const dz = sx * sinY - sy * sinP * cosY + cosP * cosY
+  return { yaw: Math.atan2(dx, dz), pitch: Math.atan2(dy, Math.hypot(dx, dz)) }
+}
+
+/**
+ * Umkehrung von `richtungImBild`: Wohin muss die Kamera beim Öffnungswinkel
+ * `fov` schauen, damit die Richtung `ziel` im Bildpunkt `anker` liegt?
+ * `null`, wenn es dafür keine Blickrichtung gibt (fast senkrecht).
+ */
+export function blickFuerAnker(
+  ziel: { yaw: number; pitch: number },
+  fov: number,
+  aspect: number,
+  anker: Bildanker
+): { yaw: number; pitch: number } | null {
+  const t = Math.tan((fov * GRAD) / 2)
+  const sx = anker.x * aspect * t
+  const sy = anker.y * t
+  // Höhe: sy·cos(p) + sin(p) = |Strahl|·sin(ziel.pitch), also
+  // √(1 + sy²)·sin(p + φ) mit φ = atan(sy).
+  const s = (Math.hypot(sx, sy, 1) * Math.sin(ziel.pitch)) / Math.hypot(1, sy)
+  if (!(Math.abs(s) <= 1)) return null
+  const pitch = Math.asin(s) - Math.atan(sy)
+  // Seite: Um so viel liegt der Strahl bei yaw 0 neben der Blickrichtung.
+  const neben = Math.atan2(-sx, Math.cos(pitch) - sy * Math.sin(pitch))
+  return { yaw: wickeln(ziel.yaw - neben), pitch }
+}
+
+/**
  * Standort, Ruhelage und Grenzen eines Blickpunkts für ein Seitenverhältnis.
  * Hochformat (aspect < 1) nimmt die eigenen Werte, falls vorhanden; der
  * waagerechte Winkel bleibt begrenzt (view.ts, `capHorizontalFov`).
@@ -287,10 +345,18 @@ export interface RigKern {
   ziehen(dYaw: number, dPitch: number): void
   /** Finger weg: jenseits der Grenze federt der Blick zurück. */
   loslassen(): void
-  /** Öffnungswinkel mal `faktor` (< 1 = heran). */
-  zoomen(faktor: number): void
-  /** Öffnungswinkel direkt setzen (Pinch), in den Grenzen. */
-  setzeFov(fov: number): void
+  /**
+   * Öffnungswinkel mal `faktor` (< 1 = heran). Mit `anker` (Mauszeiger)
+   * bleibt, was dort im Bild liegt, an seiner Stelle - siehe `setzeFov`.
+   */
+  zoomen(faktor: number, anker?: Bildanker): void
+  /**
+   * Öffnungswinkel direkt setzen (Pinch), in den Grenzen. Ohne `anker` zoomt
+   * er zur Bildmitte. Mit `anker` (Mitte der Finger) dreht der Blick so mit,
+   * dass die Richtung unter dem Anker dort im Bild bleibt - in den Grenzen
+   * des Umschauens. Während einer Fahrt oder beim Ziehen gilt die Mitte.
+   */
+  setzeFov(fov: number, anker?: Bildanker): void
   /** Heranzoomen und zum Punkt drehen, in den Grenzen. */
   zoomTo(world: Vec3): void
   /** Näher als in der Startweite (auch: gerade auf dem Weg dorthin)? */
@@ -438,6 +504,41 @@ export function createRigKern(o: { reducedMotion: boolean }): RigKern {
     }
   }
 
+  /**
+   * Zoom zum Anker (Finger, Mauszeiger): Was dort im Bild liegt, bleibt an
+   * seiner Stelle - der Blick dreht mit, aber nie über die Grenzen des neuen
+   * Öffnungswinkels hinaus (wie `zoomTo`). Steht er schon draußen (er federt
+   * gerade zurück, oder herausgezoomt schrumpfen die Grenzen), dreht er nicht
+   * weiter hinaus und federt wie beim Zoom zur Mitte zurück. Nur in Ruhe
+   * aufzurufen (keine Fahrt, kein Ziehen).
+   */
+  const zoomeUm = (neu: number, anker: Bildanker) => {
+    const p = aktuellePose()
+    if (!rahmen || !p) return
+    const f = klemmen(neu, rahmen.fovMin, rahmen.fovMax)
+    const ziel = blickFuerAnker(
+      richtungImBild(p, p.fov, aspect, anker),
+      f,
+      aspect,
+      anker
+    )
+    fov = f
+    if (ziel) {
+      const g = grenzen(rahmen, f, aspect)
+      abYaw = klemmen(
+        wickeln(ziel.yaw - rahmen.yaw0),
+        Math.min(-g.yaw, abYaw),
+        Math.max(g.yaw, abYaw)
+      )
+      abPitch = klemmen(
+        ziel.pitch - rahmen.pitch0,
+        Math.min(-g.pitch, abPitch),
+        Math.max(g.pitch, abPitch)
+      )
+    }
+    ohneBewegungKlemmen()
+  }
+
   const kern: RigKern = {
     setBlickpunkt(neu, opts) {
       const ziel = rahmenFuer(neu, aspect)
@@ -529,13 +630,26 @@ export function createRigKern(o: { reducedMotion: boolean }): RigKern {
       zieht = false
     },
 
-    zoomen(faktor) {
+    zoomen(faktor, anker) {
       if (!Number.isFinite(faktor) || faktor <= 0) return
-      kern.setzeFov((fahrt?.art === 'zoom' ? fahrt.nach.fov : fov) * faktor)
+      kern.setzeFov(
+        (fahrt?.art === 'zoom' ? fahrt.nach.fov : fov) * faktor,
+        anker
+      )
     },
 
-    setzeFov(neu) {
+    setzeFov(neu, anker) {
       if (!rahmen || fahrt?.art === 'wechsel' || !Number.isFinite(neu)) return
+      if (
+        anker &&
+        !fahrt &&
+        !zieht &&
+        Number.isFinite(anker.x) &&
+        Number.isFinite(anker.y)
+      ) {
+        zoomeUm(neu, anker)
+        return
+      }
       const von = fahrt ? aktuellePose() : null
       fov = klemmen(neu, rahmen.fovMin, rahmen.fovMax)
       if (fahrt) {

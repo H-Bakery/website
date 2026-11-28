@@ -16,10 +16,16 @@ const Item: React.FC<Props> = (props) => {
   const isActive = pathname === path
 
   return (
-    <Link style={{ textDecoration: 'none' }} href={path}>
+    <Link
+      style={{ textDecoration: 'none' }}
+      href={path}
+      aria-current={isActive ? 'page' : undefined}
+    >
       <Box
         sx={styles}
-        className={`menu-item ${cta && 'cta'} ${isActive && 'active'}`}
+        className={['menu-item', cta && 'cta', isActive && 'active']
+          .filter(Boolean)
+          .join(' ')}
       >
         <Typography variant="button">{label}</Typography>
       </Box>
@@ -35,6 +41,7 @@ const styles = {
   fontSize: '16px',
   boxShadow: 1,
   cursor: 'pointer',
+  whiteSpace: 'nowrap',
   transition: 'all ease-in-out 200ms',
 
   '&:hover': {
@@ -43,11 +50,11 @@ const styles = {
 
   '&.active': {
     bgcolor: 'primary.main',
-    color: 'common.white',
+    color: 'primary.contrastText',
   },
 
   '&.cta': {
-    color: 'common.white',
+    color: 'primary.contrastText',
     bgcolor: 'primary.main',
 
     '&:hover': {
