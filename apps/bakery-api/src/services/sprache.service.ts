@@ -35,12 +35,16 @@ interface SttProvider {
   }
 }
 
-function productPrompt(names: string[], maxLength = Infinity) {
-  let prompt = 'Produktnamen:'
-  for (const [index, name] of names.entries()) {
-    const part = (index === 0 ? ' ' : ', ') + name
-    if (prompt.length + part.length > maxLength) break
+function productPrompt(names: string[], maxBytes = Infinity) {
+  const prefix = 'Produktnamen:'
+  let prompt = prefix
+  let bytes = Buffer.byteLength(prefix, 'utf8')
+  for (const name of names) {
+    const part = (prompt === prefix ? ' ' : ', ') + name
+    const partBytes = Buffer.byteLength(part, 'utf8')
+    if (bytes + partBytes > maxBytes) continue
     prompt += part
+    bytes += partBytes
   }
   return prompt
 }
@@ -103,9 +107,11 @@ const STT = {
       body.set('response_format', 'json')
       body.set('language', 'de')
       body.set('temperature', '0')
-      body.set('prompt', productPrompt(names, 600))
+      // Whisper behält nur die letzten rund 223 Prompt-Tokens. Ein UTF-8-
+      // Bytelimit berücksichtigt auch mehrbyteige Umlaute und Sonderzeichen.
+      body.set('prompt', productPrompt(names, 400))
       const frames = core.whisperAudioContext(durationMs, audioContext)
-      if (frames !== undefined) body.set('audio_ctx', String(frames))
+      body.set('audio_ctx', String(frames))
     },
   },
 } satisfies Record<string, SttProvider>
@@ -592,6 +598,7 @@ export function createSpracheService(
     if (signal.aborted) throw unavailable(cfg.stt.unavailableMessage)
     const body = new FormData()
     if (cfg.sttModel) body.set('model', cfg.sttModel)
+    // Zeilenbeschriftungen zuerst, damit sie beim Kürzen Vorrang haben.
     const names = [
       ...new Set([
         ...rows.map(({ label }) => label),

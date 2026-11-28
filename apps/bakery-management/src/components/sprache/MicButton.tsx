@@ -26,7 +26,6 @@ import {
 import VoiceSheet, { type VoiceEntry } from './VoiceSheet'
 import { useRecorder } from './useRecorder'
 
-const NO_INTERNET = 'Spracheingabe braucht Internet – bitte tippen.'
 const NO_BOX_CONNECTION =
   'Keine Verbindung zur Bäckerei-Box – bitte WLAN prüfen oder tippen.'
 const NO_BUDGET = 'Spracheingabe für diesen Monat aufgebraucht – bitte tippen.'
@@ -111,7 +110,6 @@ export default function MicButton({
   }, [refresh, invalidateStatus])
 
   const local = status?.sttProvider === 'local'
-  const connectionMessage = local ? NO_BOX_CONNECTION : NO_INTERNET
   const budgetEmpty = !local && status?.budget.remainingEuro === 0
   const available = !!status?.enabled && status.screens.includes('rest')
   const listening = recorder.phase === 'recording'
@@ -119,7 +117,7 @@ export default function MicButton({
   const blocked = !available || !online || connectionError || budgetEmpty
   const message =
     !online || connectionError
-      ? connectionMessage
+      ? NO_BOX_CONNECTION
       : !available
       ? null
       : mode === 'insecure'
@@ -134,7 +132,7 @@ export default function MicButton({
 
   function send(clip: Blob) {
     if (!navigator.onLine) {
-      setFailure({ message: connectionMessage, retryable: true })
+      setFailure({ message: NO_BOX_CONNECTION, retryable: true })
       return
     }
     const controller = new AbortController()
@@ -150,7 +148,7 @@ export default function MicButton({
           if (request.current !== controller) return
           const apiError = error instanceof ApiError && error.code
           setFailure({
-            message: apiError ? error.message : connectionMessage,
+            message: apiError ? error.message : NO_BOX_CONNECTION,
             retryable: !apiError || error.code === 'voice_unavailable',
           })
         }
@@ -287,7 +285,7 @@ export default function MicButton({
           <Typography>
             Du kannst jederzeit tippen.{' '}
             {local
-              ? 'Die Aufnahme geht zur Erkennung an den eingerichteten Whisper-Dienst.'
+              ? 'Die Aufnahme wird auf der Bäckerei-Box erkannt und verlässt sie dafür nicht.'
               : 'Die Aufnahme geht zur Erkennung an den eingestellten Sprachanbieter.'}{' '}
             Ist Claude eingerichtet, erhält Anthropic bei Bedarf den gehörten
             Text und die Produktliste. Die Bäckerei-App speichert weder die

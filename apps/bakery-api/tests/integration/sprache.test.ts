@@ -235,10 +235,14 @@ it('steuert das alternative STT per Env und zeigt Parser-Lücken ohne Claude', a
 
 it('aktiviert die lokale Spracherkennung ohne Schlüssel und sendet WAV und Produktnamen', async () => {
   useLocal({ VOICE_STT_URL: 'https://sprache.test/erkennen' })
-  const aliases = Array.from(
-    { length: 30 },
-    (_, i) => `Synthetischer Testname ${i}`
-  )
+  const oversized = `Testkruste ${'Ä🧪'.repeat(70)}`
+  const aliases = [
+    oversized,
+    ...Array.from(
+      { length: 12 },
+      (_, i) => `Synthetisches Würzbrötchen ÄÖß 🥨🧪 №${i}`
+    ),
+  ]
   fs.writeFileSync(
     path.join(hq, 'config', 'sprache.yaml'),
     JSON.stringify({ 'test-weck': aliases })
@@ -266,11 +270,16 @@ it('aktiviert die lokale Spracherkennung ohne Schlüssel und sendet WAV und Prod
   expect(form.has('temperature_inc')).toBe(false)
   const prompt = String(form.get('prompt'))
   expect(prompt).toMatch(/^Produktnamen: /)
-  expect(prompt).toContain('Weck')
-  expect(prompt).toContain(aliases[0])
-  expect(prompt.length).toBeLessThanOrEqual(600)
-  expect(aliases).toContain(prompt.split(', ').at(-1))
-  expect(prompt).not.toContain(aliases.at(-1))
+  expect(Buffer.byteLength(prompt, 'utf8')).toBeLessThanOrEqual(400)
+  const names = prompt.slice('Produktnamen: '.length).split(', ')
+  expect(names).toContain('Test test-weck')
+  expect(names).toContain('Weck')
+  expect(names).toContain(aliases[1])
+  expect(names.indexOf('Test test-weck')).toBeLessThan(names.indexOf('Weck'))
+  expect(names.indexOf('Weck')).toBeLessThan(names.indexOf(aliases[1]))
+  const includedAliases = names.slice(names.indexOf(aliases[1]))
+  expect(includedAliases).toEqual(aliases.slice(1, 1 + includedAliases.length))
+  expect(includedAliases).not.toContain(aliases.at(-1))
   const file = form.get('file') as File
   expect(file.name).toBe('aufnahme.wav')
   expect(file.type).toBe('audio/wav')
@@ -279,12 +288,13 @@ it('aktiviert die lokale Spracherkennung ohne Schlüssel und sendet WAV und Prod
 
 it.each([
   [undefined, 1, '256'],
-  ['0', 8, null],
+  ['0', 8, '0'],
   ['500', 8, '500'],
   ['500', 12, '664'],
   ['500', 30, '1500'],
+  ['auto', 29.9, '1500'],
 ])(
-  'nutzt den Standard-Endpunkt und berücksichtigt audio_ctx=%s für %i s',
+  'nutzt den Standard-Endpunkt und berücksichtigt audio_ctx=%s für %s s',
   async (ctx, seconds, frames) => {
     useLocal({ VOICE_STT_MODEL: 'test-modell', OPENAI_API_KEY: 'test-cloud' })
     if (ctx !== undefined) env.VOICE_STT_AUDIO_CTX = ctx

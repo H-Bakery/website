@@ -53,7 +53,7 @@ für kurze Aufnahmen einen kleineren Audiokontext nutzen kann.
       `enabled: true` ohne Schlüssel. Eine ungültige URL lässt die Funktion aus.
 - [ ] Die API übergibt die WAV unverändert. Der automatische Audiokontext
       berücksichtigt die Clipdauer samt Puffer bis 30 Sekunden. Ein fester Wert
-      wird bei Bedarf angehoben, `0` verwendet die Servervorgabe.
+      wird bei Bedarf angehoben, `0` erzwingt das volle 30-Sekunden-Fenster.
 - [ ] `voice_usage` erfasst lokale STT mit Kosten von 0. Auch über dem
       Monatsbudget sind lokale Aufnahmen möglich. Die Limits je Person sowie
       die Budgetprüfung für Claude greifen weiter.

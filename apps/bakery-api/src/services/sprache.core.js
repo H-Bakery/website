@@ -690,7 +690,7 @@ function mergeModelProposal(parsed, result, transcript, validation) {
 function whisperAudioContext(durationMs, setting) {
   const raw = setting?.trim()
   const fixed = /^\d+$/.test(raw ?? '') ? Number(raw) : NaN
-  if (fixed === 0) return undefined
+  if (fixed === 0) return 0
 
   // Ein Frame je 20 ms, dazu 64 Frames Puffer am Clipende.
   const needed = Math.ceil(durationMs / 20) + 64

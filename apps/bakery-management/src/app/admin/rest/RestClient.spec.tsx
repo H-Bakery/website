@@ -756,6 +756,21 @@ describe('Spracheingabe für Rest am Abend', () => {
     )
   })
 
+  it('meldet eine fehlende Verbindung zur Box, wenn der Sprachstatus nicht abrufbar ist', async () => {
+    voiceApi.fetchVoiceStatus.mockRejectedValueOnce(new TypeError('Test'))
+    renderAs('verkauf')
+    expect(
+      await screen.findByText(
+        'Keine Verbindung zur Bäckerei-Box – bitte WLAN prüfen oder tippen.'
+      )
+    ).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Sprechen' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Verbindung prüfen' }))
+    expect(
+      await screen.findByRole('button', { name: 'Sprechen' })
+    ).toBeEnabled()
+  })
+
   it('lässt lokale Aufnahmen bei leerem Cloud-Budget zu', async () => {
     voiceApi.fetchVoiceStatus.mockResolvedValue({
       ...status,
@@ -902,6 +917,10 @@ describe('Spracheingabe für Rest am Abend', () => {
   })
 
   it('zeigt bei einer gescheiterten Wiederholung den Fehler im Blatt und behält den Vorschlag', async () => {
+    voiceApi.fetchVoiceStatus.mockResolvedValue({
+      ...status,
+      sttProvider: 'mistral',
+    })
     voiceApi.understandVoice
       .mockResolvedValueOnce(result)
       .mockRejectedValueOnce(
@@ -954,6 +973,9 @@ describe('Spracheingabe für Rest am Abend', () => {
     const notice = await screen.findByRole('dialog', {
       name: 'Freiwillige Spracheingabe',
     })
+    expect(notice).toHaveTextContent(
+      'Die Aufnahme wird auf der Bäckerei-Box erkannt und verlässt sie dafür nicht.'
+    )
     fireEvent.click(
       within(notice).getByRole('button', { name: 'Aufnahme starten' })
     )

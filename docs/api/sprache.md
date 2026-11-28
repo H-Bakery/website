@@ -75,8 +75,10 @@ Die Vorgabe für `VOICE_STT_URL` ist `http://127.0.0.1:8178/inference`.
 Nur HTTP- und HTTPS-URLs sind gültig. Die API sendet die unveränderte WAV
 als Multipart-Feld `file` (`aufnahme.wav`, `audio/wav`) mit
 `response_format=json`, `language=de`, `temperature=0` und einem
-`Produktnamen:`-Prompt. Der Prompt endet an einer Namensgrenze und umfasst
-höchstens 600 Zeichen. Das Modell wird am Server eingestellt.
+`Produktnamen:`-Prompt. Die Zeilenbeschriftungen haben Vorrang vor Postennamen
+und Aliasen. Die API nimmt ganze Namen bis zu einem Limit von 400 UTF-8-Bytes
+auf. Das lässt Spielraum für die Tokenisierung von Umlauten und Sonderzeichen.
+Das Modell wird am Server eingestellt.
 [Einrichtung auf der Bäckerei-Box](../runbook.md#lokale-spracherkennung-whispercpp)
 
 - `VOICE_STT_AUDIO_CTX=auto` (Vorgabe) berechnet `audio_ctx` je Clip aus
@@ -86,9 +88,10 @@ höchstens 600 Zeichen. Das Modell wird am Server eingestellt.
 - Eine positive Ganzzahl gibt den Zielwert vor. Die API erhöht ihn bei Bedarf
   auf die Clipdauer samt Puffer, höchstens auf 1500 Frames. Ungültige Werte
   verwenden die automatische Berechnung.
-- Bei `VOICE_STT_AUDIO_CTX=0` lässt die API das Feld weg. Damit auch
-  30-Sekunden-Clips vollständig erfasst werden, am Server `WHISPER_AUDIO_CTX=0`
-  für das volle Fenster belassen.
+- Bei `VOICE_STT_AUDIO_CTX=0` sendet die API ausdrücklich `audio_ctx=0` für
+  das volle 30-Sekunden-Fenster. Die API setzt `audio_ctx` für jede
+  Aufnahme. `WHISPER_AUDIO_CTX` gilt für andere Aufrufer, die das Feld
+  weglassen.
 - `VOICE_STT_TIMEOUT_MS` begrenzt den STT-Aufruf inklusive Wartezeit beim
   Anbieter auf 1000 bis 60000 ms. Die Vorgaben sind 12000 ms für Mistral und
   OpenAI und 25000 ms für `local`. Claude hat weiterhin 12000 ms.

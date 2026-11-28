@@ -374,17 +374,32 @@ Der Mikrofonzugriff am Tablet braucht weiterhin HTTPS (§3.7).
 
 3. `install.sh` kopiert die Unit bei der regulären Installation. Die optionale
    Konfiguration kann aus dem root-eigenen Checkout übernommen werden. Danach den Dienst
-   von Hand aktivieren.
+   von Hand aktivieren. In den folgenden Befehlen den eingestellten `WHISPER_PORT`
+   verwenden (Vorgabe 8178).
 
    ```bash
    sudo install -o root -g root -m 0640 /opt/bakery/src/deploy/whisper.env.example /etc/bakery/whisper.env
+   # Bei Bedarf vor der Aktivierung WHISPER_PORT in whisper.env ändern.
    sudo systemctl enable --now bakery-whisper
-   curl --fail http://127.0.0.1:8178/health
-   sudo journalctl -u bakery-whisper -n 50 --no-pager
+   whisper_port=8178 # Hier den eingestellten Port einsetzen.
+   whisper_url="http://127.0.0.1:${whisper_port}"
+   (
+     for attempt in {1..15}; do
+       if curl --fail --silent --max-time 2 "$whisper_url/health"; then
+         printf '\n'
+         exit 0
+       fi
+       sleep 2
+     done
+     printf '%s\n' 'Der Whisper-Dienst ist noch nicht bereit.' >&2
+     sudo journalctl -u bakery-whisper -n 50 --no-pager
+     exit 1
+   )
    ```
 
-   `/health` meldet nach dem Laden `{"status":"ok"}`. Der Dienst lauscht nur auf
-   `127.0.0.1`, weil er auch einen Endpunkt zum Laden von Modellen anbietet. Caddy
+   `/health` meldet nach dem Laden `{"status":"ok"}`. Nach erfolgreicher Prüfung
+   den POST in derselben Shell testen. Der Dienst lauscht nur auf `127.0.0.1`,
+   weil er auch einen Endpunkt zum Laden von Modellen anbietet. Caddy
    leitet Sprachaufrufe an die Bäckerei-API weiter. Systemd blendet unter `/var/lib/bakery` alles
    bis auf das schreibgeschützte Modellverzeichnis aus. WAV wird direkt verarbeitet.
    [systemd-Dokumentation zum Dateisystem-Namensraum](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html#TemporaryFileSystem=)
@@ -396,14 +411,15 @@ Der Mikrofonzugriff am Tablet braucht weiterhin HTTPS (§3.7).
    curl --fail --max-time 30 --write-out '\nDauer: %{time_total}s\n' \
      -F 'file=@test-rest.wav;type=audio/wav;filename=aufnahme.wav' \
      -F 'response_format=json' -F 'language=de' -F 'temperature=0' \
-     -F 'prompt=Produktnamen: Testsemmel' http://127.0.0.1:8178/inference
+     -F 'prompt=Produktnamen: Testsemmel' -F 'audio_ctx=0' "$whisper_url/inference"
    ```
 
 5. Mit `sudoedit /etc/bakery/bakery.env` `VOICE_ENABLED=1` und `VOICE_STT_PROVIDER=local`
    setzen. Bei geändertem Port auch `VOICE_STT_URL` anpassen. `sudo systemctl restart bakery-api`
    ausführen und am Tablet über HTTPS eine synthetische Abendzählung prüfen. Die API wählt das
-   Audiofenster standardmäßig pro Clip. Die Servervorgabe `WHISPER_AUDIO_CTX=0` erlaubt das
-   volle 30-Sekunden-Fenster, wenn die API den Parameter weglässt.
+   Audiofenster standardmäßig pro Clip. Mit `VOICE_STT_AUDIO_CTX=0` fordert sie das
+   volle 30-Sekunden-Fenster ausdrücklich an. Die Servervorgabe `WHISPER_AUDIO_CTX`
+   gilt für andere Aufrufer, die `audio_ctx` weglassen.
 
 6. Bei warmem Modell kurze Clips von 2 bis 8 Sekunden und einen 30-Sekunden-Clip mit
    Sprache bis zum Ende prüfen. Automatischen und vollen Audiokontext bei gleicher Aufnahme
