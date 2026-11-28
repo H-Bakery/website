@@ -860,6 +860,14 @@ check "Verwaltung bindet über localhost, nicht 127.0.0.1" sh -c "grep '^ExecSta
 check "Verwaltung: localhost wird 127.0.0.1 (ipv4first)" sh -c "grep '^ExecStart=' '$UNIT_MGMT' | grep -q -- '/usr/bin/node --dns-result-order=ipv4first '"
 
 # ---------------------------------------------------------------------------
+# Optionale Whisper-Unit: Installation in der Kopierliste, Aktivierung von Hand.
+check "Whisper-Unit vorhanden" test -f "$REPO_ROOT/deploy/systemd/bakery-whisper.service"
+check "install.sh kopiert Whisper" grep -q '^UNITS=".*bakery-whisper\.service' "$SCRIPTS/install.sh"
+check "install.sh aktiviert Whisper nicht" sh -c '
+  ! grep -E "^TIMERS=|systemctl (enable|start|restart)" "$1" | grep -Eq "bakery-whisper|UNITS"
+' _ "$SCRIPTS/install.sh"
+
+# ---------------------------------------------------------------------------
 echo
 echo "Ergebnis: $pass ok, $fail fehlgeschlagen"
 [ "$fail" -eq 0 ]

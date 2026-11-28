@@ -13,8 +13,10 @@ Die Antworten tragen `Cache-Control: no-store`.
 
 - `GET /api/sprache/status` liefert `enabled`, `screens` und `budget` mit
   `month` (Kalendermonat in Berlin), `limitEuro`, `spentEuro` und
-  `remainingEuro` und `warning` (mindestens 80 %). Ohne Freigabe oder passenden STT-Schlüssel kommt
-  `enabled: false` und die Liste der Bildschirme ist leer.
+  `remainingEuro` und `warning` (mindestens 80 %). `sttProvider` nennt den aktiven
+  Anbieter oder ist `null`. Ohne Freigabe oder gültige Anbieterkonfiguration kommt
+  `enabled: false` und die Liste der Bildschirme ist leer. Der Status prüft die
+  Konfiguration. Ein Ausfall des Anbieters zeigt sich beim Transkriptionsaufruf.
 - `POST /api/sprache/verstehen?screen=rest&date=YYYY-MM-DD` erwartet über HTTPS
   einen rohen WAV-Body (`audio/wav` oder `audio/x-wav`) mit PCM, 16 kHz,
   16 Bit, mono und einem Datenblock direkt nach dem Formatblock. Es gelten
@@ -43,11 +45,19 @@ Die Antworten tragen `Cache-Control: no-store`.
 | 415  | `voice_audio_format`                         | Audioformat fehlt oder passt nicht                                     |
 | 422  | `voice_not_understood`                       | Kein verwertbares Transkript oder Claude scheitert ohne Parser-Treffer |
 | 429  | `voice_rate_limit`, `voice_budget_exhausted` | Zu viele Aufnahmen je Benutzer oder Monatsbudget reicht nicht          |
-| 503  | `voice_disabled`, `voice_unavailable`        | Funktion aus oder der Transkriptionsanbieter ist nicht erreichbar      |
+| 503  | `voice_disabled`, `voice_unavailable`        | Funktion aus oder Transkription beim Anbieter fehlgeschlagen           |
+
+Bei einem Verbindungsfehler, Zeitlimit, HTTP-Fehler oder ungültigem JSON
+liefert `local` den Fehler `voice_unavailable` mit der Meldung
+„Die Spracherkennung auf der Bäckerei-Box antwortet nicht – bitte tippen.“
+Auch ein fehlendes oder nicht als String vorliegendes `text` gilt als Anbieterfehler.
+Ein leerer String ergibt 422. Bei Cloud-Ausfall lautet die Meldung
+„Spracheingabe braucht Internet – bitte tippen.“ Die Antworttexte des Anbieters
+werden bei Fehlern weder weitergegeben noch protokolliert.
 
 ## Konfiguration und Kosten
 
-`VOICE_ENABLED=1` und der Schlüssel des gewählten Anbieters aktivieren die Funktion.
+`VOICE_ENABLED=1` und eine gültige Konfiguration des gewählten Anbieters aktivieren die Funktion.
 `VOICE_STT_PROVIDER=mistral` verwendet `MISTRAL_API_KEY` und standardmäßig
 `voxtral-mini-2602` an `https://api.eu.mistral.ai`. Mistral führt dieses Modell
 seit dem 31.10.2026 als veraltet und nennt auf der Modellseite kein Abschaltdatum.
@@ -56,15 +66,46 @@ Der STT-Vergleich in Phase 0 legt das Pilotmodell fest. Dabei läuft auch
 [Mistral-Modellstatus](https://docs.mistral.ai/models/voxtral-mini-transcribe-26-02) · [Sprachen](https://docs.mistral.ai/studio/audio/specs-and-limits/languages) · [EU-Preise](https://docs.mistral.ai/inference/pricing?region=eu)
 
 `openai` verwendet `OPENAI_API_KEY` und standardmäßig `gpt-transcribe`.
-`VOICE_STT_MODEL` überschreibt das Modell. OpenAI schaltet das abgelöste
-`gpt-4o-mini-transcribe` am 26.02.2027 ab. Mit `ANTHROPIC_API_KEY` kann der
-Parser bei Lücken das Modell aus `VOICE_LLM_MODEL` fragen (Vorgabe
-`claude-haiku-5-5`). [OpenAI-Transkriptionsdoku](https://developers.openai.com/api/docs/guides/speech-to-text)
+`VOICE_STT_MODEL` überschreibt das Cloud-Modell. OpenAI schaltet das abgelöste
+`gpt-4o-mini-transcribe` am 26.02.2027 ab.
+[OpenAI-Transkriptionsdoku](https://developers.openai.com/api/docs/guides/speech-to-text)
+
+`local` verwendet `whisper-server` ohne API-Schlüssel oder Authorization-Header.
+Die Vorgabe für `VOICE_STT_URL` ist `http://127.0.0.1:8178/inference`.
+Nur HTTP- und HTTPS-URLs sind gültig. Die API sendet die unveränderte WAV
+als Multipart-Feld `file` (`aufnahme.wav`, `audio/wav`) mit
+`response_format=json`, `language=de`, `temperature=0` und einem
+`Produktnamen:`-Prompt. Der Prompt endet an einer Namensgrenze und umfasst
+höchstens 600 Zeichen. Das Modell wird am Server eingestellt.
+[Einrichtung auf der Bäckerei-Box](../runbook.md#lokale-spracherkennung-whispercpp)
+
+- `VOICE_STT_AUDIO_CTX=auto` (Vorgabe) berechnet `audio_ctx` je Clip aus
+  aufgerundeten 50 Frames pro Sekunde plus 64 Frames Puffer (1,28 Sekunden).
+  Mindestens 256 Frames geben kurzen Clips zusätzlichen Spielraum. Bei 1500
+  Frames (30 Sekunden) liegt die Obergrenze.
+- Eine positive Ganzzahl gibt den Zielwert vor. Die API erhöht ihn bei Bedarf
+  auf die Clipdauer samt Puffer, höchstens auf 1500 Frames. Ungültige Werte
+  verwenden die automatische Berechnung.
+- Bei `VOICE_STT_AUDIO_CTX=0` lässt die API das Feld weg. Damit auch
+  30-Sekunden-Clips vollständig erfasst werden, am Server `WHISPER_AUDIO_CTX=0`
+  für das volle Fenster belassen.
+- `VOICE_STT_TIMEOUT_MS` begrenzt den STT-Aufruf inklusive Wartezeit beim
+  Anbieter auf 1000 bis 60000 ms. Die Vorgaben sind 12000 ms für Mistral und
+  OpenAI und 25000 ms für `local`. Claude hat weiterhin 12000 ms.
+
+Mit `ANTHROPIC_API_KEY` kann die API bei Parser-Lücken nach jedem STT-Anbieter
+das Modell aus `VOICE_LLM_MODEL` fragen (Vorgabe `claude-haiku-5-5`).
 
 `VOICE_MONTHLY_BUDGET_EUR` beträgt standardmäßig 10. `VOICE_RATE_PER_MINUTE`
 und `VOICE_RATE_PER_DAY` gelten je Benutzer in gleitenden Fenstern von
-60 Sekunden bzw. 24 Stunden (Vorgaben 10 und 150). Die API reserviert Kosten
-vor jedem Anbieteraufruf in SQLite. Für STT beträgt die Reserve das
+60 Sekunden bzw. 24 Stunden (Vorgaben 10 und 150). Die API erfasst lokale
+Aufnahmen in `voice_usage` als `stt_provider = 'local'` mit STT-Kosten und
+Reserve von 0. STT-Tarifvariablen haben dafür keine Wirkung. Das Monatsbudget
+gilt für Cloud-STT und für jeden optionalen Claude-Aufruf. Lokale
+Transkription bleibt auch bei ausgeschöpftem Budget verfügbar.
+
+Für Cloud-Aufrufe reserviert die API geschätzte Kosten vorab in SQLite.
+Für Cloud-STT beträgt die Reserve das
 1,5-Fache der Clipdauer, auf volle Sekunden aufgerundet und mit mindestens
 drei Sekunden angesetzt. Für Tokentarife reserviert die API den höheren
 Betrag aus Dauer- und Tokenschätzung. Die Tokenschätzung nutzt 50 Audiotokens
@@ -95,7 +136,7 @@ dem Listentarif von 0,0045 USD/min für `gpt-transcribe`.
 verwenden ebenfalls Dezimalpunkte. Beim Modellwechsel die Vorgaben anhand
 des Anbietertarifs prüfen. Das lokale Budget schätzt Kosten mit 1 USD = 1 EUR.
 Nachgemeldeter Verbrauch kann die Schätzung über das lokale Limit heben.
-Die harte Ausgabengrenze wird beim Anbieter eingerichtet.
+Die harte Ausgabengrenze für Cloud-Aufrufe wird beim Anbieter eingerichtet.
 [OpenAI-Preise](https://developers.openai.com/api/docs/pricing) · [Pilot-Checkliste](../runbook.md#36-konfiguration-ausfüllen)
 
 ## Aliase
@@ -118,8 +159,10 @@ test-weck:
 Die Bäckerei-App hält die Aufnahme nur für die Verarbeitung im Arbeitsspeicher.
 Der gewählte STT-Dienst erhält die Aufnahme und eine Auswahlliste aus
 Produktnamen, Postennamen und Aliasen des Tages. Mistral bekommt bis zu
-100 Begriffe als `context_bias` (Array von Strings), OpenAI als `prompt`. Bei Parser-Lücken
-erhält Anthropic das Transkript, die bisherigen Parser-Treffer und die
+100 Begriffe als `context_bias` (Array von Strings), OpenAI und der lokale
+Dienst als `prompt`. Mit dem lokalen Loopback-Endpunkt bleibt die Aufnahme auf
+der Box. Bei Parser-Lücken und eingerichtetem Claude-Schlüssel erhält
+Anthropic das Transkript, die bisherigen Parser-Treffer und die
 Zählliste mit Schlüsseln, Namen, Sorten, Einheiten und Aliasen.
 Die Anfragen übertragen keine Anmeldeinformationen der Beschäftigten.
 Im Browser bleibt das Transkript bis zum Schließen des Vorschlags sichtbar.

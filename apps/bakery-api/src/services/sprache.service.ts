@@ -11,12 +11,47 @@ const { berlinToday } = require('./rest-am-abend.core')
 const yaml = require('js-yaml')
 /* eslint-enable @typescript-eslint/no-var-requires */
 
+const PROVIDER_TIMEOUT_MS = 12_000
+const NO_INTERNET = 'Spracheingabe braucht Internet – bitte tippen.'
+
+interface SttProvider {
+  endpoint: (env: NodeJS.ProcessEnv) => string | undefined
+  key?: 'MISTRAL_API_KEY' | 'OPENAI_API_KEY'
+  model?: string
+  rate: number
+  budgetExempt?: boolean
+  timeoutMs?: number
+  unavailableMessage?: string
+  requireText?: boolean
+  input: (
+    body: FormData,
+    names: string[],
+    request: { model?: string; durationMs: number; audioContext?: string }
+  ) => void
+  usage?: (usage?: Record<string, unknown>) => {
+    seconds: unknown
+    input: number
+    output: number
+  }
+}
+
+function productPrompt(names: string[], maxLength = Infinity) {
+  let prompt = 'Produktnamen:'
+  for (const [index, name] of names.entries()) {
+    const part = (index === 0 ? ' ' : ', ') + name
+    if (prompt.length + part.length > maxLength) break
+    prompt += part
+  }
+  return prompt
+}
+
 const STT = {
   mistral: {
-    endpoint: 'https://api.eu.mistral.ai/v1/audio/transcriptions',
+    endpoint: () => 'https://api.eu.mistral.ai/v1/audio/transcriptions',
+    key: 'MISTRAL_API_KEY',
     model: 'voxtral-mini-2602',
     rate: 0.003,
-    input: (body: FormData, names: string[]) => {
+    input: (body, names) => {
       body.set('language', 'de')
       for (const name of names) body.append('context_bias', name)
     },
@@ -27,15 +62,16 @@ const STT = {
     }),
   },
   openai: {
-    endpoint: 'https://api.openai.com/v1/audio/transcriptions',
+    endpoint: () => 'https://api.openai.com/v1/audio/transcriptions',
+    key: 'OPENAI_API_KEY',
     model: 'gpt-transcribe',
     rate: 0.006,
-    input: (body: FormData, names: string[], model: string) => {
+    input: (body, names, { model }) => {
       body.set(
         /^gpt-transcribe(?:-|$)/.test(model) ? 'languages[]' : 'language',
         'de'
       )
-      body.set('prompt', `Produktnamen: ${names.join(', ')}`)
+      body.set('prompt', productPrompt(names))
     },
     usage: (usage?: Record<string, unknown>) => ({
       seconds: usage?.type === 'duration' ? usage.seconds : undefined,
@@ -43,7 +79,36 @@ const STT = {
       output: usage?.type === 'tokens' ? tokenCount(usage.output_tokens) : 0,
     }),
   },
-}
+  local: {
+    endpoint: (env) => {
+      try {
+        const url = new URL(
+          env.VOICE_STT_URL ?? 'http://127.0.0.1:8178/inference'
+        )
+        if (url.protocol === 'http:' || url.protocol === 'https:') {
+          return url.href
+        }
+      } catch {
+        // Ungültige URL: Der Anbieter gilt als nicht eingerichtet.
+      }
+      return undefined
+    },
+    rate: 0,
+    budgetExempt: true,
+    timeoutMs: 25_000,
+    unavailableMessage:
+      'Die Spracherkennung auf der Bäckerei-Box antwortet nicht – bitte tippen.',
+    requireText: true,
+    input: (body, names, { durationMs, audioContext }) => {
+      body.set('response_format', 'json')
+      body.set('language', 'de')
+      body.set('temperature', '0')
+      body.set('prompt', productPrompt(names, 600))
+      const frames = core.whisperAudioContext(durationMs, audioContext)
+      if (frames !== undefined) body.set('audio_ctx', String(frames))
+    },
+  },
+} satisfies Record<string, SttProvider>
 
 // OpenAI-Modellseiten dokumentieren diese Tarife pro Million Tokens.
 const OPENAI_TOKEN_RATES = new Map([
@@ -93,11 +158,16 @@ function positive(
 
 function config(env: NodeJS.ProcessEnv) {
   const provider = (env.VOICE_STT_PROVIDER ?? 'mistral') as keyof typeof STT
-  const stt = Object.hasOwn(STT, provider) ? STT[provider] : null
-  const sttKey = (
-    provider === 'mistral' ? env.MISTRAL_API_KEY : env.OPENAI_API_KEY
-  )?.trim()
-  const sttModel = env.VOICE_STT_MODEL?.trim() || stt?.model
+  const stt: SttProvider | undefined = Object.hasOwn(STT, provider)
+    ? STT[provider]
+    : undefined
+  const sttEndpoint = stt?.endpoint(env)
+  const sttKey = stt?.key ? env[stt.key]?.trim() : undefined
+  const sttModel = stt?.model && (env.VOICE_STT_MODEL?.trim() || stt.model)
+  const requestedTimeout = Number(env.VOICE_STT_TIMEOUT_MS?.trim() || NaN)
+  const sttTimeoutMs = Number.isFinite(requestedTimeout)
+    ? Math.min(60_000, Math.max(1_000, Math.floor(requestedTimeout)))
+    : stt?.timeoutMs ?? PROVIDER_TIMEOUT_MS
   const listedRate = OPENAI_TOKEN_RATES.get(sttModel)
   const sttTokenInput = positive(
     env.VOICE_STT_USD_PER_M_INPUT,
@@ -108,11 +178,15 @@ function config(env: NodeJS.ProcessEnv) {
     listedRate?.output ?? 0
   )
   return {
-    enabled: env.VOICE_ENABLED === '1' && !!stt && !!sttKey,
+    enabled:
+      env.VOICE_ENABLED === '1' && !!sttEndpoint && (!stt?.key || !!sttKey),
     provider,
     stt,
+    sttEndpoint,
     sttKey,
     sttModel,
+    sttTimeoutMs,
+    sttAudioContext: env.VOICE_STT_AUDIO_CTX,
     sttTokenRate:
       provider === 'openai' && sttTokenInput > 0 && sttTokenOutput > 0
         ? { input: sttTokenInput, output: sttTokenOutput }
@@ -123,10 +197,9 @@ function config(env: NodeJS.ProcessEnv) {
       Number.MAX_SAFE_INTEGER,
       Math.round(positive(env.VOICE_MONTHLY_BUDGET_EUR, 10, true) * 1_000_000)
     ),
-    sttRate: positive(
-      env.VOICE_STT_USD_PER_MINUTE,
-      stt?.rate ?? STT.mistral.rate
-    ),
+    sttRate: stt?.budgetExempt
+      ? stt.rate
+      : positive(env.VOICE_STT_USD_PER_MINUTE, stt?.rate ?? STT.mistral.rate),
     llmRate: {
       input: positive(env.VOICE_LLM_USD_PER_M_INPUT, 0.1),
       output: positive(env.VOICE_LLM_USD_PER_M_OUTPUT, 0.5),
@@ -142,7 +215,10 @@ const MAX_OUTPUT = 2048
 const NOT_UNDERSTOOD = 'Nicht verstanden – bitte nochmal oder tippen.'
 const PARTIAL_HINT =
   'Freie Sätze konnten nicht ausgewertet werden – bitte prüfen oder tippen.'
-const NO_INTERNET = 'Spracheingabe braucht Internet – bitte tippen.'
+
+function unavailable(message = NO_INTERNET) {
+  return new BackzettelError(503, 'voice_unavailable', message)
+}
 
 function budgetError() {
   return new BackzettelError(
@@ -344,17 +420,27 @@ export function createSpracheService(
   async function providerJson(
     url: string,
     init: RequestInit,
-    signal: AbortSignal
+    signal: AbortSignal,
+    {
+      timeoutMs = PROVIDER_TIMEOUT_MS,
+      unavailableMessage = NO_INTERNET,
+      requireText = false,
+    } = {}
   ): Promise<ProviderResult> {
     try {
       const res = await fetcher(url, {
         ...init,
         redirect: 'error',
-        signal: AbortSignal.any([signal, AbortSignal.timeout(12_000)]),
+        signal: AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]),
       })
       if (res.ok) {
         const reply = await res.json()
-        if (reply && typeof reply === 'object' && !Array.isArray(reply))
+        if (
+          reply &&
+          typeof reply === 'object' &&
+          !Array.isArray(reply) &&
+          (!requireText || typeof reply.text === 'string')
+        )
           return reply
       } else {
         await res.body?.cancel()
@@ -362,7 +448,7 @@ export function createSpracheService(
     } catch {
       // Anbieterfehler können Anfrageinhalte enthalten. Nur den festen Fehler weitergeben.
     }
-    throw new BackzettelError(503, 'voice_unavailable', NO_INTERNET)
+    throw unavailable(unavailableMessage)
   }
 
   async function used(month: string) {
@@ -380,6 +466,7 @@ export function createSpracheService(
     const spent = cfg.enabled ? await used(month) : 0
     return {
       enabled: cfg.enabled,
+      sttProvider: cfg.enabled ? cfg.provider : null,
       screens: cfg.enabled ? Object.keys(core.ACTIONS) : [],
       budget: {
         month,
@@ -405,7 +492,7 @@ export function createSpracheService(
     const [id, inserted] = await getSequelize().query(
       `INSERT INTO voice_usage (started_ms, month, user_id, screen, duration_ms, stt_provider, cost_micro_eur, outcome)
        SELECT :started, :month, :user, :screen, :duration, :provider, :cost, 'pending'
-       WHERE (SELECT COALESCE(SUM(cost_micro_eur), 0) FROM voice_usage WHERE month = :month) + :cost <= :budget
+       WHERE (:budgetExempt = 1 OR (SELECT COALESCE(SUM(cost_micro_eur), 0) FROM voice_usage WHERE month = :month) + :cost <= :budget)
          AND (SELECT COUNT(*) FROM voice_usage WHERE user_id = :user AND started_ms > :minute) < :perMinute
          AND (SELECT COUNT(*) FROM voice_usage WHERE user_id = :user AND started_ms > :day) < :perDay`,
       {
@@ -418,6 +505,7 @@ export function createSpracheService(
           provider: cfg.provider,
           cost,
           budget: cfg.budget,
+          budgetExempt: cfg.stt.budgetExempt ? 1 : 0,
           perMinute: cfg.perMinute,
           perDay: cfg.perDay,
           minute: started.getTime() - 60_000,
@@ -427,7 +515,8 @@ export function createSpracheService(
       }
     )
     if (inserted) return { id, month }
-    if ((await used(month)) + cost > cfg.budget) throw budgetError()
+    if (!cfg.stt.budgetExempt && (await used(month)) + cost > cfg.budget)
+      throw budgetError()
     throw new BackzettelError(
       429,
       'voice_rate_limit',
@@ -500,10 +589,9 @@ export function createSpracheService(
         'Für diesen Tag gibt es keine passenden Zählzeilen.'
       )
     }
-    if (signal.aborted)
-      throw new BackzettelError(503, 'voice_unavailable', NO_INTERNET)
+    if (signal.aborted) throw unavailable(cfg.stt.unavailableMessage)
     const body = new FormData()
-    body.set('model', cfg.sttModel)
+    if (cfg.sttModel) body.set('model', cfg.sttModel)
     const names = [
       ...new Set([
         ...rows.map(({ label }) => label),
@@ -511,7 +599,11 @@ export function createSpracheService(
         ...rows.flatMap(({ aliases }) => aliases),
       ]),
     ].slice(0, 100)
-    cfg.stt.input(body, names, cfg.sttModel)
+    cfg.stt.input(body, names, {
+      model: cfg.sttModel,
+      durationMs: duration,
+      audioContext: cfg.sttAudioContext,
+    })
     const prompt = body.get('prompt')
     const sttReservation: number = core.reserveSttCost({
       clipSeconds: duration / 1000,
@@ -542,20 +634,27 @@ export function createSpracheService(
         'aufnahme.wav'
       )
       const speech = await providerJson(
-        cfg.stt.endpoint,
+        cfg.sttEndpoint,
         {
           method: 'POST',
-          headers: { authorization: `Bearer ${cfg.sttKey}` },
+          ...(cfg.sttKey && {
+            headers: { authorization: `Bearer ${cfg.sttKey}` },
+          }),
           body,
         },
-        signal
+        signal,
+        {
+          timeoutMs: cfg.sttTimeoutMs,
+          unavailableMessage: cfg.stt.unavailableMessage,
+          requireText: cfg.stt.requireText,
+        }
       )
-      const consumed = cfg.stt.usage(speech.usage)
-      tokens.input = consumed.input
-      tokens.output = consumed.output
+      const consumed = cfg.stt.usage?.(speech.usage)
+      tokens.input = consumed?.input ?? 0
+      tokens.output = consumed?.output ?? 0
       const sttCost: number = core.settledSttCost(
         duration / 1000,
-        consumed.seconds,
+        consumed?.seconds,
         cfg.sttRate,
         tokens,
         speech.usage?.type === 'tokens' ? cfg.sttTokenRate : undefined

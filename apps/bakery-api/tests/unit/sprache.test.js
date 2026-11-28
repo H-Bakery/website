@@ -5,7 +5,26 @@ const {
   candidatesForDay,
   mergeModelProposal,
   reserveSttCost,
+  whisperAudioContext,
 } = require('../../src/services/sprache.core')
+
+it.each([
+  [1_000, undefined, 256],
+  [8_001, 'auto', 465],
+  [8_001, ' 0 ', undefined],
+  [8_000, '500', 500],
+  [2_000, '200', 200],
+  [12_000, '200', 664],
+  [8_000, '1.5', 464],
+  [8_000, '-1', 464],
+  [8_000, '2000', 1500],
+  [30_000, '256', 1500],
+])(
+  'berechnet den Whisper-Audiokontext für %i ms bei %s',
+  (ms, setting, expected) => {
+    expect(whisperAudioContext(ms, setting)).toBe(expected)
+  }
+)
 
 function countRow(key, label, extra = {}) {
   return {

@@ -1,0 +1,62 @@
+# Lokale Spracherkennung für die Bäckerei-Box (TASK-049).
+# install.sh kopiert diese Unit. Freigabe von Hand nach Aufbau von Binary und
+# Modell gemäß Runbook: sudo systemctl enable --now bakery-whisper
+
+[Unit]
+Description=Bäckerei Heusser - Lokale Spracherkennung (whisper.cpp)
+Documentation=https://github.com/H-Bakery/website/blob/main/docs/runbook.md#lokale-spracherkennung-whispercpp
+
+[Service]
+Type=simple
+DynamicUser=yes
+Environment=WHISPER_MODEL=/var/lib/bakery/whisper/ggml-small-q5_1.bin
+Environment=WHISPER_PORT=8178
+Environment=WHISPER_THREADS=3
+Environment=WHISPER_AUDIO_CTX=0
+EnvironmentFile=-/etc/bakery/whisper.env
+ExecStart=/opt/whisper.cpp/current/bin/whisper-server --host 127.0.0.1 --port ${WHISPER_PORT} -l de --threads ${WHISPER_THREADS} --audio-ctx ${WHISPER_AUDIO_CTX} --model ${WHISPER_MODEL}
+Restart=on-failure
+RestartSec=5
+
+# Auf der 4-GB-Box sollen API und Verwaltung Vorrang haben.
+# Speichergrenzen beim Benchmark mit small-q5_1 auf der Box bestätigen.
+Nice=10
+CPUWeight=20
+CPUQuota=300%
+MemoryHigh=1G
+MemoryMax=1500M
+OOMScoreAdjust=500
+IOWeight=20
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+# Leeres tmpfs verdeckt Datenbank und hq-Klone. systemd bindet nur das
+# Modellverzeichnis vom Host schreibgeschützt ein. Der dynamische Benutzer
+# kann so das Modell lesen, ohne Rechte am privaten Host-Verzeichnis zu haben.
+TemporaryFileSystem=/var/lib/bakery:ro
+BindReadOnlyPaths=/var/lib/bakery/whisper
+InaccessiblePaths=-/etc/bakery/bakery.env -/etc/bakery/ops.env -/etc/bakery/restic-password -/etc/bakery/github-app.pem -/etc/bakery/hq-token -/etc/caddy
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+CapabilityBoundingSet=
+AmbientCapabilities=
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target

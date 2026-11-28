@@ -687,6 +687,17 @@ function mergeModelProposal(parsed, result, transcript, validation) {
   return { proposal, unmatched: [...unmatched.values()] }
 }
 
+function whisperAudioContext(durationMs, setting) {
+  const raw = setting?.trim()
+  const fixed = /^\d+$/.test(raw ?? '') ? Number(raw) : NaN
+  if (fixed === 0) return undefined
+
+  // Ein Frame je 20 ms, dazu 64 Frames Puffer am Clipende.
+  const needed = Math.ceil(durationMs / 20) + 64
+  const target = fixed > 0 ? fixed : 256
+  return Math.min(1500, Math.max(needed, target))
+}
+
 function reserveSttCost({
   clipSeconds,
   sttRate,
@@ -758,6 +769,7 @@ module.exports = {
   validateProposal,
   mergeModelProposal,
   budgetThreshold,
+  whisperAudioContext,
   reserveSttCost,
   settledSttCost,
   estimatedCostMicroEur,

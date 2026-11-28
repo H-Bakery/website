@@ -299,17 +299,18 @@ UStG); liegengebliebene Entwürfe verlieren im nächtlichen Lauf Name und Anschr
   gesicherter Datenbank und `INVOICES_ALLOW_DROP=1` wird trotzdem gelöscht. Ein Rollback des
   Releases (§4.1) braucht das nicht: ältere Releases lassen die Tabellen einfach unbenutzt.
 
-**Spracheingabe für Rest am Abend (TASK-048).** Vor der Pilotfreigabe:
+**Spracheingabe für Rest am Abend (TASK-048/049).** Vor der Pilotfreigabe:
 
 - [ ] HTTPS gemäß §3.7 einrichten. Beide Caddy-Profile erlauben den Mikrofonzugriff für dieselbe Origin. Die Aufnahme braucht einen sicheren Browserkontext mit HTTPS.
 - [ ] Mitarbeitende schriftlich gemäß Art. 13 DSGVO über die Verarbeitung informieren. Die Nutzung ist freiwillig. Tippen bleibt gleichwertig. [Art. 13 DSGVO](https://eur-lex.europa.eu/eli/reg/2016/679/oj/deu)
-- [ ] AVV/DPA für die genutzten Anbieter in hq ablegen.
+- [ ] Nur bei Cloud-Nutzung (STT oder Claude) AVV/DPA für die genutzten Anbieter in hq ablegen.
 - [ ] Bei Claude einen eigenen Workspace „Verwaltung“ und einen eigenen API-Schlüssel getrennt von den Agenten anlegen. Für den Workspace eine monatliche Ausgabengrenze in der Console setzen. [Claude-Workspace-Limits](https://platform.claude.com/docs/en/manage-claude/workspaces)
-- [ ] Beim genutzten STT-Anbieter eine harte Ausgabengrenze in der Console setzen. Bei Mistral den Workspace begrenzen. Bei OpenAI im Projekt das harte Limit aktivieren. [Mistral-Ausgabengrenzen](https://docs.mistral.ai/admin/billing-usage/usage-limits) · [OpenAI-Ausgabengrenzen](https://developers.openai.com/api/docs/guides/spend-limits)
-- [ ] Den STT-Vergleich aus Phase 0 durchführen und das Pilotmodell festlegen. Die Mistral-Vorgabe `voxtral-mini-2602` ist als veraltet markiert. Den Nachfolger `voxtral-mini-transcribe-3-0` mit deutschen Aufnahmen am EU-Endpunkt mittesten. Für OpenAI ist `gpt-transcribe` die Vorgabe. [Mistral-Modellstatus](https://docs.mistral.ai/models/voxtral-mini-transcribe-26-02) · [OpenAI-Transkriptionsdoku](https://developers.openai.com/api/docs/guides/speech-to-text)
+- [ ] Bei Cloud-STT eine harte Ausgabengrenze in der Console setzen. Bei Mistral den Workspace begrenzen. Bei OpenAI im Projekt das harte Limit aktivieren. [Mistral-Ausgabengrenzen](https://docs.mistral.ai/admin/billing-usage/usage-limits) · [OpenAI-Ausgabengrenzen](https://developers.openai.com/api/docs/guides/spend-limits)
+- [ ] Das Pilotmodell anhand synthetischer Aufnahmen festlegen. Für lokale Erkennung den Server wie unten beschrieben messen. Beim Cloud-Vergleich gilt `gpt-transcribe` als OpenAI-Vorgabe. Die Mistral-Vorgabe `voxtral-mini-2602` ist als veraltet markiert. Den Nachfolger `voxtral-mini-transcribe-3-0` mit deutschen Aufnahmen am EU-Endpunkt mittesten. [Mistral-Modellstatus](https://docs.mistral.ai/models/voxtral-mini-transcribe-26-02) · [OpenAI-Transkriptionsdoku](https://developers.openai.com/api/docs/guides/speech-to-text)
 
-Zur Freigabe in `bakery.env` `VOICE_ENABLED=1`, `VOICE_STT_PROVIDER=mistral`
-und `MISTRAL_API_KEY` setzen. Für OpenAI `openai` und `OPENAI_API_KEY` setzen.
+Zur lokalen Freigabe siehe die Schritte unten. Für Mistral in `bakery.env`
+`VOICE_ENABLED=1`, `VOICE_STT_PROVIDER=mistral` und `MISTRAL_API_KEY` setzen.
+Für OpenAI `openai` und `OPENAI_API_KEY` setzen.
 `VOICE_STT_MODEL` überschreibt die Vorgabe. Mit `ANTHROPIC_API_KEY` und
 `VOICE_LLM_MODEL` (Vorgabe `claude-haiku-5-5`) kann die API Parser-Lücken an
 Claude schicken. Die Schlüssel bleiben in der API-Umgebung. Nach Änderungen
@@ -322,6 +323,98 @@ gilt in der jeweiligen Anbieter-Console. `VOICE_RATE_PER_MINUTE` (10) und
 `VOICE_RATE_PER_DAY` (150) begrenzen die Nutzung je Benutzer. Bei 80 % steht
 einmal pro Monat eine Warnung im API-Journal und die Zählseite zeigt einen
 Hinweis. [Spracheingabe und Kostenschätzung](api/sprache.md)
+
+#### Lokale Spracherkennung (whisper.cpp)
+
+Mit `local` arbeitet die Spracherkennung ohne API-Schlüssel und ohne Anbietergebühren.
+Mit dem Loopback-Endpunkt bleibt die Aufnahme auf der Bäckerei-Box. Das reduziert die Weitergabe
+von Sprachdaten. Wenn Claude eingerichtet ist, kann bei Parser-Lücken weiterhin das Transkript an
+Anthropic gehen. Für einen vollständig lokalen Ablauf `ANTHROPIC_API_KEY` leer lassen.
+Der Mikrofonzugriff am Tablet braucht weiterhin HTTPS (§3.7).
+
+1. Abhängigkeiten installieren und auf der Box als normaler Benutzer den Server aus dem
+   festgelegten Tag bauen. Whisper- und GGML-Bibliotheken werden statisch eingebunden, damit
+   für den Dienst das installierte Binary genügt. [whisper.cpp v1.9.6](https://github.com/ggml-org/whisper.cpp/tree/v1.9.6)
+
+   ```bash
+   sudo apt-get update
+   sudo apt-get install git cmake build-essential curl
+   (
+     set -e
+     version=v1.9.6
+     build_dir=$(mktemp -d)
+     trap 'rm -r -- "$build_dir"' EXIT
+     git clone --depth 1 --branch "$version" https://github.com/ggml-org/whisper.cpp.git "$build_dir/src"
+     cmake -S "$build_dir/src" -B "$build_dir/build" -DCMAKE_BUILD_TYPE=Release \
+       -DBUILD_SHARED_LIBS=OFF -DWHISPER_BUILD_TESTS=OFF
+     cmake --build "$build_dir/build" --target whisper-server --parallel 2
+     sudo install -d -o root -g root -m 0755 "/opt/whisper.cpp/$version/bin"
+     sudo install -o root -g root -m 0755 "$build_dir/build/bin/whisper-server" \
+       "/opt/whisper.cpp/$version/bin/whisper-server"
+     sudo ln -sfnT "/opt/whisper.cpp/$version" /opt/whisper.cpp/current
+   )
+   ```
+
+2. Im Dateieintrag bei Hugging Face den SHA-256-Wert aus der Dateiinformation (LFS) übernehmen.
+   Die Datei erst nach erfolgreicher Prüfsumme installieren. [Dateiinformation zu ggml-small-q5_1.bin](https://huggingface.co/ggerganov/whisper.cpp/blob/main/ggml-small-q5_1.bin)
+
+   ```bash
+   (
+     set -e
+     model_dir=$(mktemp -d)
+     trap 'rm -r -- "$model_dir"' EXIT
+     cd "$model_dir"
+     curl --fail --location --output ggml-small-q5_1.bin \
+       https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin
+     printf '%s  %s\n' '<SHA256 aus dem Hugging-Face-Dateiinfo>' ggml-small-q5_1.bin | sha256sum -c
+     sudo install -d -o root -g root -m 0755 /var/lib/bakery/whisper
+     sudo install -o root -g root -m 0644 ggml-small-q5_1.bin /var/lib/bakery/whisper/
+   )
+   ```
+
+3. `install.sh` kopiert die Unit bei der regulären Installation. Die optionale
+   Konfiguration kann aus dem root-eigenen Checkout übernommen werden. Danach den Dienst
+   von Hand aktivieren.
+
+   ```bash
+   sudo install -o root -g root -m 0640 /opt/bakery/src/deploy/whisper.env.example /etc/bakery/whisper.env
+   sudo systemctl enable --now bakery-whisper
+   curl --fail http://127.0.0.1:8178/health
+   sudo journalctl -u bakery-whisper -n 50 --no-pager
+   ```
+
+   `/health` meldet nach dem Laden `{"status":"ok"}`. Der Dienst lauscht nur auf
+   `127.0.0.1`, weil er auch einen Endpunkt zum Laden von Modellen anbietet. Caddy
+   leitet Sprachaufrufe an die Bäckerei-API weiter. Systemd blendet unter `/var/lib/bakery` alles
+   bis auf das schreibgeschützte Modellverzeichnis aus. WAV wird direkt verarbeitet.
+   [systemd-Dokumentation zum Dateisystem-Namensraum](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html#TemporaryFileSystem=)
+
+4. Eine synthetische WAV mit PCM16, mono und 16 kHz vorbereiten, zum Beispiel mit
+   „Testsemmel zwei“, und den POST auf der Box prüfen.
+
+   ```bash
+   curl --fail --max-time 30 --write-out '\nDauer: %{time_total}s\n' \
+     -F 'file=@test-rest.wav;type=audio/wav;filename=aufnahme.wav' \
+     -F 'response_format=json' -F 'language=de' -F 'temperature=0' \
+     -F 'prompt=Produktnamen: Testsemmel' http://127.0.0.1:8178/inference
+   ```
+
+5. Mit `sudoedit /etc/bakery/bakery.env` `VOICE_ENABLED=1` und `VOICE_STT_PROVIDER=local`
+   setzen. Bei geändertem Port auch `VOICE_STT_URL` anpassen. `sudo systemctl restart bakery-api`
+   ausführen und am Tablet über HTTPS eine synthetische Abendzählung prüfen. Die API wählt das
+   Audiofenster standardmäßig pro Clip. Die Servervorgabe `WHISPER_AUDIO_CTX=0` erlaubt das
+   volle 30-Sekunden-Fenster, wenn die API den Parameter weglässt.
+
+6. Bei warmem Modell kurze Clips von 2 bis 8 Sekunden und einen 30-Sekunden-Clip mit
+   Sprache bis zum Ende prüfen. Automatischen und vollen Audiokontext bei gleicher Aufnahme
+   vergleichen. Bei zwei gleichzeitigen Anfragen wartet eine auf die andere. Laufzeit,
+   Erkennungsqualität, Speicher und Reaktionszeit der API messen. Die Grenzen
+   `MemoryHigh=1G` und `MemoryMax=1500M` mit `small-q5_1` auf der Box bestätigen.
+
+Für ein Update den Bau mit einem neuen festgelegten Tag wiederholen, den Link `current`
+umschalten und `sudo systemctl restart bakery-whisper` ausführen. Für den Rollback den Link
+auf den vorherigen Build setzen. Falls er schon entfernt wurde, den alten Tag neu bauen.
+Anschließend den Dienst neu starten und `/health` sowie den synthetischen POST erneut prüfen.
 
 ### 3.7 Zertifikat (DNS-01, Q2)
 
