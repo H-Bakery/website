@@ -100,19 +100,21 @@ Mikrofon-Knopf, kein Aufruf eines bezahlten Dienstes. Gewählte Vorgaben:
     Mikrofon nicht frei; Auftragsverarbeitungsverträge in hq ablegen; Testaufnahmen und Messung am
     Laden-Tablet. Die Caddy-Änderung (Mikrofon erlauben) wirkt erst nach F5.
 
-## TASK-044 - Bankumsätze per FinTS (nicht begonnen)
+## TASK-044 - Bankumsätze per FinTS (entschieden, nicht begonnen)
 
-Bewusst **nicht** an Codex gegeben: der Code liegt in `hq` neben echten Bankdaten, und vor allem
-anderen steht Frage 1. Empfehlung: **erst Stufe 2a** (Kontoauszug-CSV in der App hochladen,
-`docs/finanzen-buchungen.md`), FinTS nur, wenn das Herunterladen wirklich stört.
+**Entschieden am 28.11.2026: automatisch per FinTS** - kein Dritter (Aggregator), kein bezahltes
+EBICS. Die PIN liegt dann root-only auf dem Pi, alle 90-180 Tage bestätigst du eine pushTAN.
+Details und Umsetzung: `.mc/tasks/todo/TASK-044-bankumsaetze-per-fints-abholen.md`.
 
-1. **2a oder 2b?** Automatik heißt: Online-Banking-PIN liegt auf einem Gerät im Laden (ohne TAN
-   kein Geld bewegen, aber alle Umsätze lesbar). Nur mit ausdrücklichem Ja.
-2. Eigener Lese-Zugang bei der Sparkasse möglich? Sonst: eigener Zugang des Inhabers ok?
-3. Produktregistrierung (FinTS) auf den Namen der Bäckerei beantragen?
-4. Commits direkt auf hq `main` (wie die Kasse) oder Zweig + PR?
-5. Telegram: nur „N neue Buchungen, Stand …“ oder nur bei Fehlern?
-6. Rückfall auf 2a, wenn FinTS bei der Sparkasse hakt - ok?
+1. **Produktregistrierung beantragen** (Formular auf
+   [fints.org](https://www.fints.org/de/hersteller/produktregistrierung), im Original
+   unterschrieben einsenden; Nummer kommt nach 10-15 Werktagen). **Das ist der nächste Schritt** -
+   ohne Nummer kein Test gegen die Bank.
+2. Eigener Lese-Zugang bei der Sparkasse möglich (zweiter Anmeldename nur mit
+   Abfrageberechtigung)? Sonst: eigener Zugang des Inhabers ok?
+3. Commits direkt auf hq `main` (wie die Kasse) oder Zweig + PR? Vorgabe: `main`, reine Daten.
+4. Telegram: nur „N neue Buchungen, Stand …“ oder nur bei Fehlern? Vorgabe: Anzahl + Datum.
+5. Rückfall auf den CSV-Upload, wenn FinTS bei der Sparkasse hakt - ok? Vorgabe: ja.
 
 ## TASK-046 - Agentische Bäckerei-Beratung (nicht begonnen)
 
