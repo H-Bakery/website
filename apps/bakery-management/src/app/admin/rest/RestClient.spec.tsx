@@ -756,6 +756,31 @@ describe('Spracheingabe für Rest am Abend', () => {
     )
   })
 
+  it('meldet eine fehlende Verbindung zur Box, wenn der Sprachstatus nicht abrufbar ist', async () => {
+    voiceApi.fetchVoiceStatus.mockRejectedValueOnce(new TypeError('Test'))
+    renderAs('verkauf')
+    expect(
+      await screen.findByText(
+        'Keine Verbindung zur Bäckerei-Box – bitte WLAN prüfen oder tippen.'
+      )
+    ).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Sprechen' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Verbindung prüfen' }))
+    expect(
+      await screen.findByRole('button', { name: 'Sprechen' })
+    ).toBeEnabled()
+  })
+
+  it('lässt lokale Aufnahmen bei leerem Cloud-Budget zu', async () => {
+    voiceApi.fetchVoiceStatus.mockResolvedValue({
+      ...status,
+      sttProvider: 'local',
+      budget: { ...status.budget, remainingEuro: 0 },
+    })
+    renderAs('verkauf')
+    expect(await speak()).toBeVisible()
+  })
+
   async function speak() {
     fireEvent.click(await screen.findByRole('button', { name: 'Sprechen' }))
     expect(
@@ -892,9 +917,19 @@ describe('Spracheingabe für Rest am Abend', () => {
   })
 
   it('zeigt bei einer gescheiterten Wiederholung den Fehler im Blatt und behält den Vorschlag', async () => {
+    voiceApi.fetchVoiceStatus.mockResolvedValue({
+      ...status,
+      sttProvider: 'mistral',
+    })
     voiceApi.understandVoice
       .mockResolvedValueOnce(result)
-      .mockRejectedValueOnce(new ApiError('Test', 503, 'voice_unavailable'))
+      .mockRejectedValueOnce(
+        new ApiError(
+          'Spracheingabe braucht Internet – bitte tippen.',
+          503,
+          'voice_unavailable'
+        )
+      )
     renderAs('verkauf')
     const dialog = await speak()
     fireEvent.click(
@@ -923,21 +958,28 @@ describe('Spracheingabe für Rest am Abend', () => {
     ).toBeNull()
   })
 
-  it('sperrt nach voice_unavailable den Mikrofonknopf und zeigt eine Wiederholung an', async () => {
+  it('zeigt den lokalen Anbieterfehler und ermöglicht eine Wiederholung', async () => {
+    const message =
+      'Die Spracherkennung auf der Bäckerei-Box antwortet nicht – bitte tippen.'
+    voiceApi.fetchVoiceStatus.mockResolvedValue({
+      ...status,
+      sttProvider: 'local',
+    })
     voiceApi.understandVoice.mockRejectedValueOnce(
-      new ApiError('Test', 503, 'voice_unavailable')
+      new ApiError(message, 503, 'voice_unavailable')
     )
     renderAs('verkauf')
     fireEvent.click(await screen.findByRole('button', { name: 'Sprechen' }))
     const notice = await screen.findByRole('dialog', {
       name: 'Freiwillige Spracheingabe',
     })
+    expect(notice).toHaveTextContent(
+      'Die Aufnahme wird auf der Bäckerei-Box erkannt und verlässt sie dafür nicht.'
+    )
     fireEvent.click(
       within(notice).getByRole('button', { name: 'Aufnahme starten' })
     )
-    expect(
-      await screen.findByText('Spracheingabe braucht Internet – bitte tippen.')
-    ).toBeVisible()
+    expect(await screen.findByText(message)).toBeVisible()
     expect(
       await screen.findByRole('button', { name: 'Sprechen' })
     ).toBeDisabled()

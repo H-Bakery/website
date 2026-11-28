@@ -2,6 +2,7 @@ import { apiClient } from '@bakery/shared/data-access'
 
 export interface VoiceStatus {
   enabled: boolean
+  sttProvider?: 'mistral' | 'openai' | 'local' | null
   screens: string[]
   budget: {
     month: string
@@ -47,8 +48,8 @@ export async function understandVoice(
     `/api/sprache/verstehen?${query}`,
     clip,
     signal,
-    // STT und Claude haben serverseitig jeweils bis zu zwölf Sekunden.
-    { timeoutMs: 30_000 }
+    // Bis zu 60 s für STT und 12 s für Claude, dazu Zeit für Upload und API.
+    { timeoutMs: 80_000 }
   )
   if (!response.data) throw new Error('Leere Antwort.')
   return response.data

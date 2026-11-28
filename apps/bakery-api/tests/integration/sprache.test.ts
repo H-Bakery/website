@@ -1,4 +1,7 @@
 import * as fs from 'node:fs'
+import { once } from 'node:events'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { QueryTypes } from 'sequelize'
@@ -52,6 +55,19 @@ const post = (
     .send(clip)
 
 const response = (data: object) => new Response(JSON.stringify(data))
+const localUnavailable = {
+  error: 'voice_unavailable',
+  message:
+    'Die Spracherkennung auf der Bäckerei-Box antwortet nicht – bitte tippen.',
+}
+
+function useLocal(settings: NodeJS.ProcessEnv = {}) {
+  delete env.MISTRAL_API_KEY
+  delete env.OPENAI_API_KEY
+  delete env.ANTHROPIC_API_KEY
+  Object.assign(env, { VOICE_STT_PROVIDER: 'local', ...settings })
+}
+
 const usage = () =>
   api.sequelize.query<Record<string, unknown>>(
     'SELECT * FROM voice_usage ORDER BY id',
@@ -217,84 +233,307 @@ it('steuert das alternative STT per Env und zeigt Parser-Lücken ohne Claude', a
   expect(provider).toHaveBeenCalledTimes(1)
 })
 
-it('schickt einen freien Satz an Haiku und prüft die Werkzeugausgabe', async () => {
-  const text = 'Vom Weck liegen noch zwei in der Auslage'
-  provider.mockResolvedValueOnce(response({ text }))
+it('aktiviert die lokale Spracherkennung ohne Schlüssel und sendet WAV und Produktnamen', async () => {
+  useLocal({ VOICE_STT_URL: 'https://sprache.test/erkennen' })
+  const oversized = `Testkruste ${'Ä🧪'.repeat(70)}`
+  const aliases = [
+    oversized,
+    ...Array.from(
+      { length: 12 },
+      (_, i) => `Synthetisches Würzbrötchen ÄÖß 🥨🧪 №${i}`
+    ),
+  ]
+  fs.writeFileSync(
+    path.join(hq, 'config', 'sprache.yaml'),
+    JSON.stringify({ 'test-weck': aliases })
+  )
+  expect((await getStatus().expect(200)).body.data).toMatchObject({
+    enabled: true,
+    sttProvider: 'local',
+    screens: ['rest'],
+  })
+  const clip = audio(8.25)
+  const data = (await post('verkauf', DAY, clip).expect(200)).body.data
+  expect(data).toMatchObject({
+    proposal: [{ key: KEY, menge: 2, unsicher: false }],
+    usage: { costEuro: 0, llmUsed: false },
+  })
+  const [[url, opts]] = provider.mock.calls
+  expect(url).toBe('https://sprache.test/erkennen')
+  expect(new Headers(opts.headers).has('authorization')).toBe(false)
+  const form = opts.body as FormData
+  expect(form.get('response_format')).toBe('json')
+  expect(form.get('language')).toBe('de')
+  expect(form.get('temperature')).toBe('0')
+  expect(form.get('audio_ctx')).toBe('477')
+  expect(form.has('model')).toBe(false)
+  expect(form.has('temperature_inc')).toBe(false)
+  const prompt = String(form.get('prompt'))
+  expect(prompt).toMatch(/^Produktnamen: /)
+  expect(Buffer.byteLength(prompt, 'utf8')).toBeLessThanOrEqual(400)
+  const names = prompt.slice('Produktnamen: '.length).split(', ')
+  expect(names).toContain('Test test-weck')
+  expect(names).toContain('Weck')
+  expect(names).toContain(aliases[1])
+  expect(names.indexOf('Test test-weck')).toBeLessThan(names.indexOf('Weck'))
+  expect(names.indexOf('Weck')).toBeLessThan(names.indexOf(aliases[1]))
+  const includedAliases = names.slice(names.indexOf(aliases[1]))
+  expect(includedAliases).toEqual(aliases.slice(1, 1 + includedAliases.length))
+  expect(includedAliases).not.toContain(aliases.at(-1))
+  const file = form.get('file') as File
+  expect(file.name).toBe('aufnahme.wav')
+  expect(file.type).toBe('audio/wav')
+  expect(Buffer.from(await file.arrayBuffer()).equals(clip)).toBe(true)
+})
+
+it.each([
+  [undefined, 1, '256'],
+  ['0', 8, '0'],
+  ['500', 8, '500'],
+  ['500', 12, '664'],
+  ['500', 30, '1500'],
+  ['auto', 29.9, '1500'],
+])(
+  'nutzt den Standard-Endpunkt und berücksichtigt audio_ctx=%s für %s s',
+  async (ctx, seconds, frames) => {
+    useLocal({ VOICE_STT_MODEL: 'test-modell', OPENAI_API_KEY: 'test-cloud' })
+    if (ctx !== undefined) env.VOICE_STT_AUDIO_CTX = ctx
+    await post('verkauf', DAY, audio(seconds)).expect(200)
+    const [[url, opts]] = provider.mock.calls
+    expect(url).toBe('http://127.0.0.1:8178/inference')
+    expect(new Headers(opts.headers).has('authorization')).toBe(false)
+    const form = opts.body as FormData
+    expect(form.get('audio_ctx')).toBe(frames)
+    expect(form.has('model')).toBe(false)
+  }
+)
+
+it.each(['ftp://sprache.test/inference', 'keine-url', ''])(
+  'schaltet local bei ungültiger URL aus (%s)',
+  async (url) => {
+    useLocal({ VOICE_STT_URL: url })
+    expect((await getStatus().expect(200)).body.data).toMatchObject({
+      enabled: false,
+      screens: [],
+    })
+    expect((await post().expect(503)).body.error).toBe('voice_disabled')
+    expect(provider).not.toHaveBeenCalled()
+  }
+)
+
+it('transkribiert lokal kostenlos über dem Monatsbudget und begrenzt Aufnahmen je Person', async () => {
+  await post('inhaber').expect(200)
+  useLocal({
+    VOICE_MONTHLY_BUDGET_EUR: '0',
+    VOICE_STT_USD_PER_MINUTE: '100',
+    VOICE_STT_USD_PER_M_INPUT: '100',
+    VOICE_STT_USD_PER_M_OUTPUT: '100',
+    VOICE_RATE_PER_MINUTE: '1',
+    ANTHROPIC_API_KEY: 'test-llm',
+  })
+  expect((await getStatus().expect(200)).body.data.budget).toMatchObject({
+    remainingEuro: 0,
+    spentEuro: 0.00005,
+  })
   provider.mockResolvedValueOnce(
     response({
-      stop_reason: 'tool_use',
-      content: [
-        {
-          type: 'tool_use',
-          name: 'rest_set_counts',
-          input: {
-            zeilen: [
-              {
-                key: KEY,
-                menge: 2,
-                unsicher: false,
-                einheit: null,
-                gehoert: text,
-              },
-              {
-                key: 'fremd',
-                menge: 17,
-                unsicher: false,
-                einheit: null,
-                gehoert: text,
-              },
-            ],
-            nicht_zugeordnet: [],
-          },
-        },
-      ],
-      usage: {
-        input_tokens: 200,
-        output_tokens: 120,
-        cache_read_input_tokens: 1000,
-      },
+      text: 'Weck zwei, Krustis drei',
+      usage: { type: 'tokens', input_tokens: 19, output_tokens: 11 },
     })
   )
-  const result = await post().expect(200)
-  expect(result.body.data).toMatchObject({
-    proposal: [
-      { key: KEY, menge: 2, unsicher: false },
-      {
-        key: 'fremd',
-        menge: null,
-        unsicher: true,
-        reason: 'Diese Zählzeile ist nicht bekannt.',
-      },
-    ],
-    unmatched: [],
-    usage: { llmUsed: true },
+  const data = (await post().expect(200)).body.data
+  expect(data).toMatchObject({
+    proposal: [{ key: KEY, menge: 2, unsicher: false }],
+    hint: expect.any(String),
+    usage: { costEuro: 0, llmUsed: false, input: 0, output: 0 },
   })
-  const [url, opts] = provider.mock.calls[1]
-  expect(url).toBe('https://api.anthropic.com/v1/messages')
-  const body = JSON.parse(String(opts.body))
-  expect(body).toMatchObject({
-    model: 'claude-haiku-5-5',
-    thinking: { type: 'disabled' },
-    output_config: { effort: 'low' },
-    tools: [{ name: 'rest_set_counts', strict: true }],
-    system: [{ cache_control: { type: 'ephemeral' } }],
+  expect((await post().expect(429)).body.error).toBe('voice_rate_limit')
+  expect(provider).toHaveBeenCalledTimes(2)
+  expect((await usage())[1]).toMatchObject({
+    stt_provider: 'local',
+    cost_micro_eur: 0,
+    llm_used: 0,
+    outcome: 'llm_budget_exhausted',
   })
-  expect(
-    body.tools[0].input_schema.properties.zeilen.items.properties.key.enum
-  ).toContain(KEY)
-  expect(body.system[0].text).not.toContain(text)
-  expect(body.messages[0].content).toContain(text)
+})
+
+it.each([
+  new Response('Synthetischer Anbieterfehler', { status: 500 }),
+  new Response('Keine JSON-Antwort'),
+  response({ error: 'Synthetischer Anbieterfehler', text: 42 }),
+])('meldet ungültige lokale Antworten als voice_unavailable', async (reply) => {
+  useLocal()
+  provider.mockResolvedValueOnce(reply)
+  expect((await post().expect(503)).body).toMatchObject(localUnavailable)
+  expect(warn).not.toHaveBeenCalled()
   expect(await usage()).toEqual([
     expect.objectContaining({
-      llm_used: 1,
-      input_tokens: 200,
-      output_tokens: 120,
-      cache_read_tokens: 1000,
-      cost_micro_eur: 140,
-      outcome: 'review',
+      outcome: 'voice_unavailable',
+      cost_micro_eur: 0,
     }),
   ])
 })
+
+it('meldet ein leeres lokales Transkript als nicht verstanden', async () => {
+  useLocal()
+  provider.mockResolvedValueOnce(response({ text: ' \n ' }))
+  expect((await post().expect(422)).body.error).toBe('voice_not_understood')
+})
+
+it.each([
+  ['mistral', undefined, 12_000],
+  ['local', undefined, 25_000],
+  ['local', '32000', 32_000],
+  ['local', '90000', 60_000],
+] as const)(
+  'setzt den STT-Timeout für %s mit VOICE_STT_TIMEOUT_MS=%s',
+  async (stt, configured, expected) => {
+    if (stt === 'local') useLocal()
+    if (configured !== undefined) env.VOICE_STT_TIMEOUT_MS = configured
+    const timeout = jest.spyOn(AbortSignal, 'timeout')
+    try {
+      await post().expect(200)
+      expect(timeout).toHaveBeenCalledWith(expected)
+    } finally {
+      timeout.mockRestore()
+    }
+  }
+)
+
+it('bricht die lokale Anfrage nach dem konfigurierten Mindest-Timeout ab', async () => {
+  useLocal({ VOICE_STT_TIMEOUT_MS: '25' })
+  const timeout = jest.spyOn(AbortSignal, 'timeout')
+  provider.mockImplementationOnce(
+    (_url, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        const signal = init.signal
+        signal.addEventListener('abort', () => reject(signal.reason), {
+          once: true,
+        })
+      })
+  )
+  try {
+    expect((await post().expect(503)).body).toMatchObject(localUnavailable)
+    expect(timeout).toHaveBeenCalledWith(1000)
+  } finally {
+    timeout.mockRestore()
+  }
+})
+
+it('sendet Multipart über Loopback und meldet den geschlossenen Port als Ausfall', async () => {
+  const clip = audio()
+  let upload: Response
+  const server = createServer(async (req, res) => {
+    const chunks: Buffer[] = []
+    for await (const chunk of req) chunks.push(chunk)
+    upload = new Response(Buffer.concat(chunks), {
+      headers: { 'content-type': req.headers['content-type'] },
+    })
+    res.setHeader('content-type', 'application/json')
+    res.end(JSON.stringify({ text: 'Weck zwei' }))
+  })
+  await once(server.listen(0, '127.0.0.1'), 'listening')
+  try {
+    const { port } = server.address() as AddressInfo
+    useLocal({ VOICE_STT_URL: `http://127.0.0.1:${port}/inference` })
+    provider.mockImplementation(fetch)
+    await post('verkauf', DAY, clip).expect(200)
+    const form = await upload.formData()
+    expect(form.get('audio_ctx')).toBe('256')
+    const file = form.get('file') as File
+    expect(Buffer.from(await file.arrayBuffer()).equals(clip)).toBe(true)
+  } finally {
+    const closed = once(server, 'close')
+    server.close()
+    server.closeAllConnections()
+    await closed
+  }
+  expect((await post().expect(503)).body).toMatchObject(localUnavailable)
+})
+
+it.each(['mistral', 'local'])(
+  'schickt einen freien Satz nach %s an Haiku und prüft die Werkzeugausgabe',
+  async (stt) => {
+    if (stt === 'local') useLocal({ ANTHROPIC_API_KEY: 'test-llm' })
+    const text = 'Vom Weck liegen noch zwei in der Auslage'
+    provider.mockResolvedValueOnce(response({ text }))
+    provider.mockResolvedValueOnce(
+      response({
+        stop_reason: 'tool_use',
+        content: [
+          {
+            type: 'tool_use',
+            name: 'rest_set_counts',
+            input: {
+              zeilen: [
+                {
+                  key: KEY,
+                  menge: 2,
+                  unsicher: false,
+                  einheit: null,
+                  gehoert: text,
+                },
+                {
+                  key: 'fremd',
+                  menge: 17,
+                  unsicher: false,
+                  einheit: null,
+                  gehoert: text,
+                },
+              ],
+              nicht_zugeordnet: [],
+            },
+          },
+        ],
+        usage: {
+          input_tokens: 200,
+          output_tokens: 120,
+          cache_read_input_tokens: 1000,
+        },
+      })
+    )
+    const result = await post().expect(200)
+    expect(result.body.data).toMatchObject({
+      proposal: [
+        { key: KEY, menge: 2, unsicher: false },
+        {
+          key: 'fremd',
+          menge: null,
+          unsicher: true,
+          reason: 'Diese Zählzeile ist nicht bekannt.',
+        },
+      ],
+      unmatched: [],
+      usage: { llmUsed: true },
+    })
+    const [url, opts] = provider.mock.calls[1]
+    expect(url).toBe('https://api.anthropic.com/v1/messages')
+    const body = JSON.parse(String(opts.body))
+    expect(body).toMatchObject({
+      model: 'claude-haiku-5-5',
+      thinking: { type: 'disabled' },
+      output_config: { effort: 'low' },
+      tools: [{ name: 'rest_set_counts', strict: true }],
+      system: [{ cache_control: { type: 'ephemeral' } }],
+    })
+    expect(
+      body.tools[0].input_schema.properties.zeilen.items.properties.key.enum
+    ).toContain(KEY)
+    expect(body.system[0].text).not.toContain(text)
+    expect(body.messages[0].content).toContain(text)
+    expect(await usage()).toEqual([
+      expect.objectContaining({
+        llm_used: 1,
+        input_tokens: 200,
+        output_tokens: 120,
+        cache_read_tokens: 1000,
+        stt_provider: stt,
+        cost_micro_eur: stt === 'local' ? 90 : 140,
+        outcome: 'review',
+      }),
+    ])
+  }
+)
 
 it.each(['end_turn', 'refusal'])(
   'meldet „Nicht verstanden“ bei %s',
@@ -369,16 +608,19 @@ it('gibt nicht benötigte STT-Reserve nach der Antwort für weitere Aufnahmen fr
   expect((await getStatus()).body.data.budget.spentEuro).toBe(0.0001)
 })
 
-it.each(['VOICE_RATE_PER_MINUTE', 'VOICE_RATE_PER_DAY'])(
-  'beschränkt %s pro Benutzer',
-  async (setting) => {
-    env[setting] = '1'
-    await post().expect(200)
-    expect((await post().expect(429)).body.error).toBe('voice_rate_limit')
-    await post('inhaber').expect(200)
-    expect(provider).toHaveBeenCalledTimes(2)
-  }
-)
+it.each([
+  ['mistral', 'VOICE_RATE_PER_MINUTE'],
+  ['mistral', 'VOICE_RATE_PER_DAY'],
+  ['local', 'VOICE_RATE_PER_MINUTE'],
+  ['local', 'VOICE_RATE_PER_DAY'],
+])('beschränkt %s mit %s pro Benutzer', async (stt, setting) => {
+  if (stt === 'local') useLocal()
+  env[setting] = '1'
+  await post().expect(200)
+  expect((await post().expect(429)).body.error).toBe('voice_rate_limit')
+  await post('inhaber').expect(200)
+  expect(provider).toHaveBeenCalledTimes(2)
+})
 
 it('prüft Byte- und Zeitgrenze vor Fremdaufrufen', async () => {
   await post('verkauf', DAY, Buffer.alloc(1024 * 1024 + 1)).expect(413)

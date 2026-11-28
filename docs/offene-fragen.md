@@ -78,16 +78,20 @@ einfügen) ist nicht gebaut.
 
 ## TASK-048 - Sprechen statt Tippen (#189, deployt, ausgeschaltet)
 
-Gebaut als MVP für den Rest am Abend, **ausgeschaltet**: ohne `VOICE_ENABLED=1` und Schlüssel kein
-Mikrofon-Knopf, kein Aufruf eines bezahlten Dienstes. Gewählte Vorgaben:
+Gebaut als MVP für den Rest am Abend, **ausgeschaltet**. Der Mikrofonknopf setzt
+`VOICE_ENABLED=1`, einen konfigurierten Sprachanbieter und HTTPS voraus. Gewählte Vorgaben:
 
-1. **STT-Anbieter:** Mistral (EU), OpenAI als Alternative; Modell per `VOICE_STT_MODEL`
-   umstellbar. Der Vergleich in Phase 0 wählt das Pilotmodell.
+1. **STT-Anbieter:** Der Inhaber bevorzugt `local` (TASK-049). Auf der Bäckerei-Box
+   läuft die Erkennung mit whisper.cpp ohne Schlüssel und Anbietergebühren. Die Aufnahme
+   bleibt auf der Box. HTTPS ist weiterhin für das Mikrofon nötig. Welches Modell und
+   welcher Audiokontext bewähren sich im Server-Benchmark? Vorgabe für den Test ist
+   `small-q5_1` mit automatischem Kontext je Clip. Mistral (EU) und OpenAI bleiben
+   Cloud-Optionen mit umstellbarem Modell (`VOICE_STT_MODEL`).
 2. **Claude:** Haiku 5.5 nur für freie Sätze, die der eigene Parser nicht löst; eigener
    API-Schlüssel mit Ausgabelimit in der Console. Ohne Schlüssel läuft nur der Parser. Wer legt
    die Schlüssel an?
-3. **Budget:** 10 € im Monat, 10 Aufnahmen/Minute und 150/Tag je Person. Harte Grenze ist das
-   Limit in der Anbieter-Console.
+3. **Budget:** 10 € im Monat für Cloud-Aufrufe. Die harte Grenze liegt in der Anbieter-Console.
+   10 Aufnahmen/Minute und 150/Tag je Person gelten auch bei lokaler Erkennung.
 4. **Aliase** („Brezel“, „Weck“, Mundart): optionale Datei `hq/config/sprache.yaml` (Produkt-id →
    Liste). Wer pflegt sie (Anna?)
 5. **Transkripte und Audio:** werden nicht gespeichert.
@@ -97,8 +101,8 @@ Mikrofon-Knopf, kein Aufruf eines bezahlten Dienstes. Gewählte Vorgaben:
 8. **Warnung bei 80 % Budget:** Vorgabe Log + Anzeige. Zusätzlich Telegram?
 9. **Phase 2** (Kundendaten im Prompt): eigene Freigabe nach dem Pilot.
 10. **Vor dem Pilot:** HTTPS im LAN (DNS-01-Zertifikat, Q2) - ohne HTTPS gibt der Browser das
-    Mikrofon nicht frei; Auftragsverarbeitungsverträge in hq ablegen; Testaufnahmen und Messung am
-    Laden-Tablet. Die Caddy-Änderung (Mikrofon erlauben) wirkt erst nach F5.
+    Mikrofon nicht frei; bei Cloud-Nutzung Auftragsverarbeitungsverträge in hq ablegen;
+    Testaufnahmen und Messung am Laden-Tablet. Die Caddy-Änderung (Mikrofon erlauben) wirkt erst nach F5.
 
 ## TASK-044 - Bankumsätze per FinTS (entschieden, nicht begonnen)
 

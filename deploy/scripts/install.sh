@@ -48,7 +48,8 @@ fi
 APP_USER="${APP_USER:-bakery}"
 NODE_BIN="/usr/bin/node"
 NODE_MIN_MAJOR=20
-UNITS="bakery-api.service bakery-management.service bakery-hq-sync.service bakery-hq-sync.timer bakery-backup.service bakery-backup.timer bakery-health.service bakery-health.timer bakery-anonymize.service bakery-anonymize.timer bakery-snapshot-preorders.service bakery-snapshot-preorders.timer bakery-hq-token.service bakery-hq-token.timer"
+# bakery-whisper.service wird nur kopiert. Aktivierung siehe Runbook.
+UNITS="bakery-api.service bakery-management.service bakery-hq-sync.service bakery-hq-sync.timer bakery-backup.service bakery-backup.timer bakery-health.service bakery-health.timer bakery-anonymize.service bakery-anonymize.timer bakery-snapshot-preorders.service bakery-snapshot-preorders.timer bakery-hq-token.service bakery-hq-token.timer bakery-whisper.service"
 TIMERS="bakery-hq-token.timer bakery-hq-sync.timer bakery-backup.timer bakery-health.timer bakery-anonymize.timer bakery-snapshot-preorders.timer"
 
 mode="full"

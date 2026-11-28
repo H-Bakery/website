@@ -26,7 +26,8 @@ import {
 import VoiceSheet, { type VoiceEntry } from './VoiceSheet'
 import { useRecorder } from './useRecorder'
 
-const NO_INTERNET = 'Spracheingabe braucht Internet – bitte tippen.'
+const NO_BOX_CONNECTION =
+  'Keine Verbindung zur Bäckerei-Box – bitte WLAN prüfen oder tippen.'
 const NO_BUDGET = 'Spracheingabe für diesen Monat aufgebraucht – bitte tippen.'
 
 function noticeSeen(key: string) {
@@ -56,7 +57,10 @@ export default function MicButton({
   const [mode, setMode] = useState<'secure' | 'insecure' | 'unsupported'>()
   const [notice, setNotice] = useState(false)
   const [processing, setProcessing] = useState(false)
-  const [failure, setFailure] = useState<string | null>(null)
+  const [failure, setFailure] = useState<{
+    message: string
+    retryable: boolean
+  } | null>(null)
   const [results, setResults] = useState<VoiceResult[]>([])
   const recorder = useRecorder()
   const cancelRecording = recorder.cancel
@@ -105,14 +109,15 @@ export default function MicButton({
     }
   }, [refresh, invalidateStatus])
 
-  const budgetEmpty = status?.budget.remainingEuro === 0
+  const local = status?.sttProvider === 'local'
+  const budgetEmpty = !local && status?.budget.remainingEuro === 0
   const available = !!status?.enabled && status.screens.includes('rest')
   const listening = recorder.phase === 'recording'
   const busy = processing || recorder.phase !== 'idle'
   const blocked = !available || !online || connectionError || budgetEmpty
   const message =
     !online || connectionError
-      ? NO_INTERNET
+      ? NO_BOX_CONNECTION
       : !available
       ? null
       : mode === 'insecure'
@@ -127,7 +132,7 @@ export default function MicButton({
 
   function send(clip: Blob) {
     if (!navigator.onLine) {
-      setFailure(NO_INTERNET)
+      setFailure({ message: NO_BOX_CONNECTION, retryable: true })
       return
     }
     const controller = new AbortController()
@@ -141,13 +146,11 @@ export default function MicButton({
         },
         (error: unknown) => {
           if (request.current !== controller) return
-          setFailure(
-            error instanceof ApiError &&
-              error.code &&
-              error.code !== 'voice_unavailable'
-              ? error.message
-              : NO_INTERNET
-          )
+          const apiError = error instanceof ApiError && error.code
+          setFailure({
+            message: apiError ? error.message : NO_BOX_CONNECTION,
+            retryable: !apiError || error.code === 'voice_unavailable',
+          })
         }
       )
       .finally(() => {
@@ -194,10 +197,10 @@ export default function MicButton({
     : recorder.phase === 'requesting'
     ? 'Warte auf Mikrofonzugriff …'
     : null
-  const feedback = failure || recorder.error || message
+  const feedback = failure?.message || recorder.error || message
   const sheetOpen = results.length > 0 && !busy && !notice
   const checkConnection = connectionError && online ? refresh : undefined
-  const retryUnavailable = failure === NO_INTERNET
+  const retryUnavailable = failure?.retryable
 
   return (
     <>
@@ -280,11 +283,14 @@ export default function MicButton({
         <DialogTitle id="voice-notice">Freiwillige Spracheingabe</DialogTitle>
         <DialogContent>
           <Typography>
-            Du kannst jederzeit tippen. Die Aufnahme geht zur Erkennung an den
-            eingestellten Sprachanbieter. Bei Bedarf erhält Anthropic den
-            gehörten Text und die Produktliste. Die Bäckerei-App speichert weder
-            die Aufnahme noch den gehörten Text. Bitte sprich nur Produktnamen
-            und Mengen.
+            Du kannst jederzeit tippen.{' '}
+            {local
+              ? 'Die Aufnahme wird auf der Bäckerei-Box erkannt und verlässt sie dafür nicht.'
+              : 'Die Aufnahme geht zur Erkennung an den eingestellten Sprachanbieter.'}{' '}
+            Ist Claude eingerichtet, erhält Anthropic bei Bedarf den gehörten
+            Text und die Produktliste. Die Bäckerei-App speichert weder die
+            Aufnahme noch den gehörten Text. Bitte sprich nur Produktnamen und
+            Mengen.
           </Typography>
         </DialogContent>
         <DialogActions>
