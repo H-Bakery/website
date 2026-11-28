@@ -1,4 +1,4 @@
 :HL["/digitale-baeckerei/model/twin.glb","fetch",{"crossOrigin":"anonymous"}]
 2:[["children",{"s":"__PAGE__","h":160}]]
 1:[["children",{"s":"_not-found","h":96,"c":"$Q2"}]]
-0:{"b":"BzXRM71B0pZaIG2y6qoV5","t":{"t":{"s":"","h":80,"c":"$Q1"}}}
+0:{"b":"8EdQuG1YiJeI7cwmHXI27","t":{"t":{"s":"","h":80,"c":"$Q1"}}}
