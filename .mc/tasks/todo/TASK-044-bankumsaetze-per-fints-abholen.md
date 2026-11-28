@@ -17,7 +17,7 @@ sprint: ''
 depends_on: []
 due_date: ''
 created: 2026-11-22
-updated: 2026-11-22
+updated: 2026-11-28
 ---
 
 # Bankumsätze per FinTS automatisch abholen (statt CSV von Hand)
@@ -28,8 +28,12 @@ Heute lädt der Inhaber den Kontoauszug als CSV-CAMT (V8) im Online-Banking eine
 herunter, legt ihn in `hq/data/finance/bank/ksk/` ab, und am Mac laufen `import_bank_csv.py` +
 `analyze_finance.py` → PR. Die App zeigt das Ergebnis unter `/admin/finance/buchungen`. Dieser Task
 ist **Stufe 2 b** aus [`docs/finanzen-buchungen.md`](../../../docs/finanzen-buchungen.md)
-(„Automatisch abholen“) - dort steht die Empfehlung „erst a) CSV-Upload, b) nur, wenn das
-Herunterladen wirklich stört“. **Vor dem Bau muss der Inhaber b) ausdrücklich wählen** (Frage 2).
+(„Automatisch abholen“).
+
+**Entschieden am 28.11.2026: Stufe 2 b per FinTS.** Der Inhaber will die Buchungen automatisch
+holen lassen. Kein PSD2-Aggregator (kein Dritter, der alle Buchungen sieht) und kein EBICS (kostet
+bei der Sparkasse Monatsgebühr). Damit liegt die Online-Banking-PIN auf dem Pi (eigener
+Systembenutzer, root-only, siehe unten), und alle 90-180 Tage ist eine pushTAN nötig.
 
 Vorbild ist die Kassen-Pipeline auf `robot0` (`hq/data/reports/docs/AUTOMATION.md`,
 `agent/CLAUDE.md` §9): Zugangsdaten in einer 600-Datei, Deploy-Skript vom Mac, Cron, reine
@@ -158,11 +162,12 @@ end_to_end_reference oder counterparty_iban` quellübergreifend - Treffer = Dupl
 
 ## Risiken / Entscheidungen für den Inhaber
 
-1. **2 a oder 2 b?** Automatik heißt: Online-Banking-PIN liegt auf einem Gerät im Laden. Ohne TAN
-   kann damit niemand Geld bewegen, aber alle Umsätze lesen. Nur mit ausdrücklichem Ja.
+1. ~~2 a oder 2 b?~~ **Entschieden: 2 b per FinTS** (28.11.2026).
 2. **Eigener Lese-Zugang:** bei der Sparkasse nach einem zweiten Online-Banking-Zugang nur mit
    Abfrageberechtigung fragen. Falls es keinen gibt: eigener Zugang des Inhabers ok?
-3. **Produktregistrierung** auf den Namen der Bäckerei beantragen (Formular, Unterschrift).
+3. **Produktregistrierung** auf den Namen der Bäckerei beantragen (Formular, Unterschrift) -
+   **nächster Schritt, liegt auf dem kritischen Pfad** (10-15 Werktage). Ohne Nummer kein Test
+   gegen die Bank.
 4. **Commits direkt auf hq `main`** (wie Kasse, reine Daten) oder Zweig `bank/auto` + PR?
 5. **Telegram-Text** wie oben (nur Anzahl + Datum) - oder gar keine Meldung außer bei Fehlern?
 6. **Rückfall:** Wenn FinTS bei der Sparkasse hakt (Dialog-Abbrüche sind bei einzelnen Sparkassen
