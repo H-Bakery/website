@@ -2,7 +2,7 @@
 id: TASK-045
 title: Belege hochladen - Eingangsrechnungen per Foto/PDF, Texterkennung und Abgleich mit der Bank
 slug: belege-hochladen-ocr-abgleich
-status: todo
+status: done
 priority: 3
 owner: ''
 projects: []

@@ -2,7 +2,7 @@
 id: TASK-048
 title: Sprechen statt Tippen - Spracheingabe in der Verwaltung (zuerst Rest am Abend)
 slug: sprechen-statt-tippen
-status: backlog
+status: done
 priority: 3
 owner: ''
 projects: []
