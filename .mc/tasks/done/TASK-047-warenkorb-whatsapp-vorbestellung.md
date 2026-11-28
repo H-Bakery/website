@@ -2,7 +2,7 @@
 id: TASK-047
 title: Warenkorb auf der Website - Vorbestellung per WhatsApp-Nachricht
 slug: warenkorb-whatsapp-vorbestellung
-status: todo
+status: done
 priority: 2
 owner: ''
 projects: []

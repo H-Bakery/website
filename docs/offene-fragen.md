@@ -1,6 +1,6 @@
 # Offene Fragen an den Inhaber
 
-Stand 23.11.2026. Eine Liste für alle Entscheidungen, die die Umsetzung braucht. Wo schon gebaut
+Stand 28.11.2026. Eine Liste für alle Entscheidungen, die die Umsetzung braucht. Wo schon gebaut
 wird, steht die **gewählte Vorgabe** dabei - die gilt, bis du etwas anderes sagst. Antworten
 einfach hier eintragen (oder per Nachricht), danach wird die Vorgabe angepasst und die Frage
 gestrichen.
@@ -10,12 +10,13 @@ die Details dazu liegen in `hq`.
 
 ## Sofort: Freigaben
 
-| #   | Was                                                                                                                                                            | Stand                                                                                                                                                                                                    |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| F1  | **Deploy auf den Pi** mit TASK-043 (Abgleich in Euro, Datenbank-Migration für zwei neue Spalten an den Vorbestellungen).                                       | Gemergt, aber **nicht deployt**: der Auto-Modus hat den Deploy-Befehl blockiert. Entweder selbst `sudo /opt/bakery/bin/deploy.sh main` auf dem Pi oder dem Assistenten erlauben. Nicht um 14:30 / 17:30. |
-| F2  | **Abnahme TASK-043 an einem echten Wochenende:** Abgleich → Umschalter „Euro“, Soll/Ist je Abschnitt plausibel?                                                | nach dem Deploy                                                                                                                                                                                          |
-| F3  | **PRs der Codex-Runde prüfen und mergen:** #188 (TASK-047 Warenkorb), #189 (TASK-048 Sprache), #190 (TASK-045 Belege). Je drei Codex-Reviews, Befunde behoben. | #188 und #189 CI grün; #190 CI lief noch                                                                                                                                                                 |
-| F4  | **Deploy danach:** #189 und #190 bringen je eine Migration und eine Caddy-Änderung (Mikrofon erlauben; 15 MB nur für den Beleg-Upload).                        | mit F1 zusammen möglich                                                                                                                                                                                  |
+Erledigt am 23.11.2026: TASK-043, -045, -047 und -048 (PRs #187-#190) gemergt und auf den Pi
+deployt, Migrationen gelaufen.
+
+| #   | Was                                                                                                                                                                                                                                | Stand                                                                                                 |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| F2  | **Abnahme TASK-043 an einem echten Wochenende:** Abgleich → Umschalter „Euro“, Soll/Ist je Abschnitt plausibel?                                                                                                                    | offen                                                                                                 |
+| F5  | **Caddy auf dem Pi aktualisieren:** `sudo /opt/bakery/bin/install.sh && sudo systemctl reload caddy`. Erst dann gehen Beleg-Uploads bis 15 MB (sonst 5 MB) und das Mikrofon (zusätzlich HTTPS nötig). `deploy.sh` macht das nicht. | offen - der Auto-Modus blockiert den Befehl; selbst ausführen oder freigeben. Nicht um 14:30 / 17:30. |
 
 ## TASK-043 - Abgleich in Euro (gemergt)
 
@@ -27,7 +28,7 @@ die Details dazu liegen in `hq`.
 3. Bei Kassen-Sammeltasten (Gruppenbuchungen ohne Einzelprodukt) gilt „im Zweifel offen“: der
    Betrag erscheint als eigener Posten statt geschätzt verteilt. Passt das?
 
-## TASK-045 - Belege hochladen (PR #190)
+## TASK-045 - Belege hochladen (#190, deployt)
 
 Belege per Foto/PDF/XRechnung in der App, Ablage auf der Box mit Prüfsumme, Eingabe von Hand,
 Vorschläge Beleg ↔ Bankbuchung (nie automatisch bestätigt), „Ausgaben ohne Beleg“ je Monat.
@@ -48,12 +49,12 @@ von Hand. Gewählte Vorgaben:
 8. **Skonto:** Vorgabe erfasster Satz + Frist ergibt einen Vorschlag; ohne Satz 2 %/3 % als
    schwächerer Vorschlag.
 9. **Backup-Ziel (restic) einrichten:** Ohne Ziel und Restore-Probe keine rein digitale Ablage.
-   `pdftotext` (Paket `poppler-utils`) auf dem Pi installieren?
+   `pdftotext` ist auf dem Pi schon installiert.
 10. **Zeitraum für den Abgleich:** Vorgabe 3 Tage vor Rechnungsdatum bis Fälligkeit + 14 Tage
     (ohne Fälligkeit + 45).
 11. **Abnahme nach dem Merge:** echter Monat Belege, Handytest (iPhone/Android), Restore-Probe.
 
-## TASK-047 - Warenkorb mit WhatsApp-Vorbestellung (PR #188)
+## TASK-047 - Warenkorb mit WhatsApp-Vorbestellung (#188, deployt)
 
 Warenkorb auf der Website, Abholtag/-zeit, fertige WhatsApp-Nachricht mit Bestellnummer (am
 Desktop als QR-Code), Korb bleibt 7 Tage auf dem Gerät. Stufe 2 (Nachricht in die Verwaltung
@@ -75,7 +76,7 @@ einfügen) ist nicht gebaut.
 10. **Praxistest:** nach dem Merge eine Testbestellung mit drei Artikeln - lässt sich die Nachricht
     im Laden ohne Rückfrage erfassen?
 
-## TASK-048 - Sprechen statt Tippen (PR #189)
+## TASK-048 - Sprechen statt Tippen (#189, deployt, ausgeschaltet)
 
 Gebaut als MVP für den Rest am Abend, **ausgeschaltet**: ohne `VOICE_ENABLED=1` und Schlüssel kein
 Mikrofon-Knopf, kein Aufruf eines bezahlten Dienstes. Gewählte Vorgaben:
@@ -97,7 +98,7 @@ Mikrofon-Knopf, kein Aufruf eines bezahlten Dienstes. Gewählte Vorgaben:
 9. **Phase 2** (Kundendaten im Prompt): eigene Freigabe nach dem Pilot.
 10. **Vor dem Pilot:** HTTPS im LAN (DNS-01-Zertifikat, Q2) - ohne HTTPS gibt der Browser das
     Mikrofon nicht frei; Auftragsverarbeitungsverträge in hq ablegen; Testaufnahmen und Messung am
-    Laden-Tablet. Die Caddy-Änderung (Mikrofon erlauben) wirkt erst nach dem Deploy.
+    Laden-Tablet. Die Caddy-Änderung (Mikrofon erlauben) wirkt erst nach F5.
 
 ## TASK-044 - Bankumsätze per FinTS (nicht begonnen)
 
