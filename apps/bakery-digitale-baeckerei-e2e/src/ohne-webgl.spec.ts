@@ -167,7 +167,7 @@ test.describe('Neben der laufenden 3D-Ansicht', () => {
 })
 
 test.describe('Link-Vorschau', () => {
-  test('das HTML des Exports trägt Open Graph und bleibt noindex', async ({
+  test('das HTML des Exports trägt Open Graph, kein noindex, canonical = og:url', async ({
     page,
   }) => {
     const antwort = await page.request.get(PFAD)
@@ -187,6 +187,9 @@ test.describe('Link-Vorschau', () => {
     expect(meta('og:locale')).toBe('de_DE')
     expect(meta('og:type')).toBe('website')
     expect(meta('og:image')).toBeNull()
-    expect(meta('robots')).toMatch(/noindex/)
+    // Seit der Abnahme (P2) im Suchindex, mit der Adresse unter der Landingpage.
+    expect(meta('robots')).toBeNull()
+    const canonical = /<link rel="canonical" href="([^"]*)"/.exec(html)
+    expect(canonical?.[1]).toBe(meta('og:url'))
   })
 })

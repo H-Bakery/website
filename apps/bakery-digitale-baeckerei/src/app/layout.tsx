@@ -48,11 +48,10 @@ export const metadata: Metadata = {
     locale: 'de_DE',
     type: 'website',
   },
-  // Vorerst nicht im Index: öffentlich wird die Seite erst nach der Abnahme (P2).
-  robots: {
-    index: false,
-    follow: false,
-    googleBot: { index: false, follow: false },
+  // Öffentlich und verlinkt seit der Abnahme durch den Inhaber (P2): im Index,
+  // mit der Adresse unter der Landingpage als einziger gültiger.
+  alternates: {
+    canonical: APP_URL,
   },
 }
 

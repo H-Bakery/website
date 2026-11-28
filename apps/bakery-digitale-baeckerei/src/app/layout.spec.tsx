@@ -103,11 +103,10 @@ describe('RootLayout: Link-Vorschau (Open Graph)', () => {
     expect(metadata.openGraph).not.toHaveProperty('images')
   })
 
-  it('bleibt aus dem Suchindex (noindex, nofollow)', () => {
-    expect(metadata.robots).toEqual({
-      index: false,
-      follow: false,
-      googleBot: { index: false, follow: false },
-    })
+  it('steht im Suchindex, mit der Adresse unter der Landingpage als canonical', () => {
+    expect(metadata.robots).toBeUndefined()
+    expect(metadata.alternates?.canonical).toBe(
+      'https://xn--bckerei-heusser-0kb.de/digitale-baeckerei/'
+    )
   })
 })
